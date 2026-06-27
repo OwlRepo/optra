@@ -134,6 +134,7 @@ export default function ChatPage() {
         }
       />
 
+      <h1 className="sr-only">Assistant workspace</h1>
       <div className="grid gap-6 pb-6 pt-10 xl:grid-cols-[1.2fr_0.8fr]">
         <Card variant="elevated" className="flex min-h-[70vh] flex-col overflow-hidden">
           <div className="border-b border-border/70 px-6 py-5 sm:px-8">

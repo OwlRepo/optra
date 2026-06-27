@@ -26,7 +26,7 @@ export function AppHeader({
             {brand}
             <div className="min-w-0 space-y-1">
               <div className="flex flex-wrap items-center gap-2">
-                {title ? <h1 className="truncate text-xl font-semibold">{title}</h1> : null}
+                {title ? <div className="truncate text-xl font-semibold">{title}</div> : null}
                 {badge}
               </div>
               {description ? <p className="text-sm text-muted-foreground">{description}</p> : null}

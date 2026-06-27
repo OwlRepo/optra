@@ -3,7 +3,9 @@ import { type CoreMessage, streamText } from 'ai'
 
 export const runtime = 'edge'
 
-function isValidRole(role: unknown): role is CoreMessage['role'] {
+type SupportedRole = 'system' | 'user' | 'assistant'
+
+function isValidRole(role: unknown): role is SupportedRole {
   return role === 'system' || role === 'user' || role === 'assistant'
 }
 
@@ -26,7 +28,17 @@ function normalizeMessages(input: unknown): CoreMessage[] | null {
       return null
     }
 
-    messages.push({ role, content })
+    if (role === 'system') {
+      messages.push({ role: 'system', content })
+    }
+
+    if (role === 'user') {
+      messages.push({ role: 'user', content })
+    }
+
+    if (role === 'assistant') {
+      messages.push({ role: 'assistant', content })
+    }
   }
 
   return messages

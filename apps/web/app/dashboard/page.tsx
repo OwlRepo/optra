@@ -172,7 +172,7 @@ export default function DashboardPage() {
 
         <PageSection
           eyebrow={<Badge variant="outline">Workspace health</Badge>}
-          title="Clear overview for non-technical operators"
+          title={<h1 className="text-3xl font-semibold md:text-4xl">Clear overview for non-technical operators</h1>}
           description="Fast-scanning KPI cards and plain-language guidance reduce training overhead while backend integrations catch up."
         >
           <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">

@@ -43,12 +43,12 @@ const variantIcon: Record<ToastVariant, React.ReactNode> = {
 
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = React.useState<ToastItem[]>([])
-  const timers = React.useRef<Map<string, ReturnType<typeof window.setTimeout>>>(new Map())
+  const timers = React.useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
 
   const clearTimer = React.useCallback((id: string) => {
     const timer = timers.current.get(id)
     if (timer) {
-      window.clearTimeout(timer)
+      clearTimeout(timer)
       timers.current.delete(id)
     }
   }, [])
@@ -68,7 +68,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
         return
       }
 
-      const timeout = window.setTimeout(() => {
+      const timeout = setTimeout(() => {
         setToasts((current) => current.filter((toast) => toast.id !== id))
         timers.current.delete(id)
       }, duration ?? 4200)
@@ -102,7 +102,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
 
   React.useEffect(() => {
     return () => {
-      timers.current.forEach((timer) => window.clearTimeout(timer))
+      timers.current.forEach((timer) => clearTimeout(timer))
       timers.current.clear()
     }
   }, [])

@@ -47,7 +47,7 @@ export function StatCard({
           </div>
         </div>
         {icon ? (
-          <div className="flex size-11 items-center justify-center rounded-2xl border border-primary/10 bg-primary/8 text-primary shadow-[var(--shadow-sm)]">
+          <div className="flex size-11 items-center justify-center rounded-2xl border border-primary/10 bg-primary/10 text-primary shadow-[var(--shadow-sm)]">
             {icon}
           </div>
         ) : null}

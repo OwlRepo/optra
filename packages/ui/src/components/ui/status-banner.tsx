@@ -7,7 +7,7 @@ type StatusVariant = 'info' | 'success' | 'error' | 'loading'
 const variantConfig: Record<StatusVariant, { icon: React.ReactNode; className: string }> = {
   info: {
     icon: <Info className="size-4" />,
-    className: 'border-primary/15 bg-primary/8 text-primary',
+    className: 'border-primary/15 bg-primary/10 text-primary',
   },
   success: {
     icon: <CheckCircle2 className="size-4" />,
