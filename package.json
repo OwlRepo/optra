@@ -1,0 +1,24 @@
+{
+  "name": "support-second-brain",
+  "private": true,
+  "packageManager": "bun@1.1.0",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "turbo dev",
+    "build": "turbo build",
+    "lint": "turbo lint",
+    "type-check": "turbo type-check",
+    "docker:dev": "./scripts/dev.sh",
+    "docker:stop": "./scripts/stop.sh",
+    "docker:logs": "docker compose logs -f",
+    "deploy": "./scripts/deploy.sh",
+    "deploy:remote": "./scripts/deploy-remote.sh"
+  },
+  "devDependencies": {
+    "turbo": "^2.0.0",
+    "typescript": "^5.3.3"
+  }
+}

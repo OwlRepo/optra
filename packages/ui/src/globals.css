@@ -1,0 +1,230 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --background: oklch(0.985 0.004 255);
+    --foreground: oklch(0.238 0.03 264);
+    --card: oklch(1 0 0);
+    --card-foreground: oklch(0.238 0.03 264);
+    --popover: oklch(1 0 0);
+    --popover-foreground: oklch(0.238 0.03 264);
+    --primary: oklch(0.545 0.19 274);
+    --primary-foreground: oklch(0.985 0.004 255);
+    --secondary: oklch(0.968 0.007 255);
+    --secondary-foreground: oklch(0.302 0.028 264);
+    --muted: oklch(0.962 0.01 255);
+    --muted-foreground: oklch(0.52 0.02 264);
+    --accent: oklch(0.786 0.127 84);
+    --accent-foreground: oklch(0.222 0.02 264);
+    --destructive: oklch(0.615 0.209 27);
+    --destructive-foreground: oklch(0.985 0.004 255);
+    --success: oklch(0.659 0.151 154);
+    --success-foreground: oklch(0.985 0.004 255);
+    --warning: oklch(0.77 0.144 84);
+    --warning-foreground: oklch(0.232 0.02 264);
+    --border: oklch(0.913 0.012 255);
+    --input: oklch(0.945 0.012 255);
+    --ring: oklch(0.545 0.19 274);
+    --radius: 1rem;
+    --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.05), 0 1px 1px rgba(15, 23, 42, 0.03);
+    --shadow-md: 0 10px 20px rgba(15, 23, 42, 0.06), 0 2px 6px rgba(15, 23, 42, 0.04);
+    --shadow-lg: 0 18px 40px rgba(15, 23, 42, 0.08), 0 8px 16px rgba(15, 23, 42, 0.05);
+    --shadow-xl: 0 28px 80px rgba(15, 23, 42, 0.12), 0 10px 24px rgba(15, 23, 42, 0.07);
+    --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+    --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+    --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  .dark {
+    --background: oklch(0.15 0.018 264);
+    --foreground: oklch(0.948 0.008 255);
+    --card: oklch(0.19 0.016 264);
+    --card-foreground: oklch(0.948 0.008 255);
+    --popover: oklch(0.18 0.016 264);
+    --popover-foreground: oklch(0.948 0.008 255);
+    --primary: oklch(0.67 0.16 278);
+    --primary-foreground: oklch(0.16 0.018 264);
+    --secondary: oklch(0.23 0.018 264);
+    --secondary-foreground: oklch(0.948 0.008 255);
+    --muted: oklch(0.25 0.018 264);
+    --muted-foreground: oklch(0.7 0.018 264);
+    --accent: oklch(0.75 0.11 84);
+    --accent-foreground: oklch(0.16 0.018 264);
+    --destructive: oklch(0.62 0.18 27);
+    --destructive-foreground: oklch(0.948 0.008 255);
+    --success: oklch(0.72 0.14 154);
+    --success-foreground: oklch(0.16 0.018 264);
+    --warning: oklch(0.79 0.11 84);
+    --warning-foreground: oklch(0.16 0.018 264);
+    --border: oklch(0.29 0.016 264);
+    --input: oklch(0.24 0.016 264);
+    --ring: oklch(0.67 0.16 278);
+    --shadow-sm: 0 1px 2px rgba(2, 6, 23, 0.2), 0 1px 1px rgba(2, 6, 23, 0.2);
+    --shadow-md: 0 12px 22px rgba(2, 6, 23, 0.25), 0 2px 6px rgba(2, 6, 23, 0.2);
+    --shadow-lg: 0 20px 40px rgba(2, 6, 23, 0.34), 0 8px 18px rgba(2, 6, 23, 0.24);
+    --shadow-xl: 0 30px 80px rgba(2, 6, 23, 0.42), 0 10px 24px rgba(2, 6, 23, 0.28);
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    font-family: var(--font-body), system-ui, -apple-system, sans-serif;
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    min-height: 100vh;
+    background-image:
+      radial-gradient(circle at top, oklch(from var(--primary) l c h / 0.08), transparent 26%),
+      radial-gradient(circle at 82% 18%, oklch(from var(--accent) l c h / 0.09), transparent 22%);
+  }
+
+  ::selection {
+    background: oklch(from var(--primary) l c h / 0.16);
+    color: inherit;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    text-wrap: balance;
+    font-family: var(--font-display), system-ui, -apple-system, sans-serif;
+    font-weight: 700;
+    letter-spacing: -0.03em;
+  }
+
+  p,
+  li,
+  dd,
+  blockquote {
+    text-wrap: pretty;
+  }
+
+  [data-numeric],
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+
+  img,
+  video {
+    outline: 1px solid oklch(0 0 0 / 0.06);
+    outline-offset: -1px;
+  }
+
+  button,
+  [role='button'],
+  a,
+  input,
+  textarea {
+    transition-timing-function: var(--ease-out);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      scroll-behavior: auto !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+@layer utilities {
+  @keyframes fade-slide-in {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes shimmer {
+    0% {
+      background-position: 200% 0;
+    }
+    100% {
+      background-position: -200% 0;
+    }
+  }
+
+  .font-display {
+    font-family: var(--font-display), system-ui, -apple-system, sans-serif;
+  }
+
+  .font-body {
+    font-family: var(--font-body), system-ui, -apple-system, sans-serif;
+  }
+
+  .font-mono {
+    font-family: var(--font-mono), "SFMono-Regular", monospace;
+  }
+
+  .surface-panel {
+    @apply border border-border/70 bg-card/85 backdrop-blur-xl;
+    box-shadow: var(--shadow-lg);
+  }
+
+  .surface-subtle {
+    @apply border border-border/70 bg-card/70 backdrop-blur-md;
+    box-shadow: var(--shadow-md);
+  }
+
+  .surface-outline {
+    @apply border border-border/70 bg-background/70 backdrop-blur-sm;
+    box-shadow: var(--shadow-sm);
+  }
+
+  .app-grid {
+    background-image:
+      linear-gradient(to right, color-mix(in srgb, currentColor 4%, transparent) 1px, transparent 1px),
+      linear-gradient(to bottom, color-mix(in srgb, currentColor 4%, transparent) 1px, transparent 1px);
+    background-size: 24px 24px;
+    mask-image: radial-gradient(circle at center, black 40%, transparent 88%);
+  }
+
+  .shimmer {
+    background-image: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.5), transparent);
+    background-size: 200% 100%;
+    animation: shimmer 2s linear infinite;
+  }
+
+  .fade-slide-in {
+    animation: fade-slide-in 480ms var(--ease-out) both;
+  }
+
+  .ring-inset-soft {
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, currentColor 8%, transparent);
+  }
+
+  .text-gradient {
+    background: linear-gradient(135deg, oklch(from var(--foreground) l c h) 0%, oklch(from var(--primary) l c h / 0.92) 60%, oklch(from var(--accent) l c h / 0.85) 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .noise-overlay {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180' viewBox='0 0 180 180'%3E%3Cfilter id='a'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23a)' opacity='.04'/%3E%3C/svg%3E");
+  }
+}

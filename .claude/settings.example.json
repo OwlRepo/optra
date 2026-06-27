@@ -1,0 +1,23 @@
+{
+  "description": "Example Claude Code settings for this project. Rename to settings.json after verifying schema support.",
+  "note": "This is an example file. Claude Code settings schema is not verified for this project. Do not activate unless schema is verified.",
+  "permissions": {
+    "read": true,
+    "discovery": true,
+    "sourceWrites": false
+  },
+  "context": {
+    "loadOrder": [
+      "CLAUDE.md",
+      "docs/ai/entry-point.md",
+      "docs/ai/task-router.md",
+      "docs/ai/architecture-manifest.md",
+      "docs/ai/module-ownership-map.md",
+      "docs/ai/contracts/api-contracts.md",
+      "docs/ai/contracts/db-contracts.md",
+      "docs/ai/testing-strategy.md",
+      "docs/ai/risk-register.md",
+      "docs/ai/file-index/repository-map.md"
+    ]
+  }
+}

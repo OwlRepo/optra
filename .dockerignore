@@ -1,0 +1,23 @@
+node_modules
+.next
+dist
+build
+.turbo
+.git
+.gitignore
+# Environment files - loaded via env_file: in docker-compose
+# Runtime env vars come from docker-compose.prod.yml
+.env*
+!.env.example
+*.md
+!README.md
+.vscode
+.idea
+*.log
+coverage
+.DS_Store
+*.swp
+*.swo
+Dockerfile
+docker-compose*.yml
+scripts
