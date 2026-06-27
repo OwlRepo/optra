@@ -1,13 +1,49 @@
-import { Document } from 'langchain/document'
+import { extname } from 'path'
+import { loadText } from './txt'
+import { loadPDF } from './pdf'
+import { loadDOCX } from './docx'
+import { loadCSV } from './csv'
+import { loadJSON } from './json'
+import { loadHTML } from './html'
+import { loadXLSX } from './xlsx'
+import { loadPPTX } from './pptx'
+import { loadEML } from './eml'
+import { loadMSG } from './msg'
+import { loadYAML } from './yaml'
+import type { LoadedDocument } from './types'
 
-export async function loadFromPDF(path: string): Promise<Document[]> {
-  // TODO: Implement PDF loading using LangChain PDF loader
-  // Use PDFLoader from @langchain/community
-  throw new Error('Not implemented')
+export type { LoadedDocument }
+
+type LoaderFn = (filePath: string) => Promise<LoadedDocument>
+
+const LOADERS: Record<string, LoaderFn> = {
+  // Tier 1
+  txt:  loadText,
+  md:   loadText,
+  mdx:  loadText,
+  rst:  loadText,
+  pdf:  loadPDF,
+  docx: loadDOCX,
+  csv:  loadCSV,
+  json: loadJSON,
+  html: loadHTML,
+  htm:  loadHTML,
+  // Tier 2
+  xlsx: loadXLSX,
+  pptx: loadPPTX,
+  eml:  loadEML,
+  msg:  loadMSG,
+  yaml: loadYAML,
+  yml:  loadYAML,
 }
 
-export async function loadFromURL(url: string): Promise<Document[]> {
-  // TODO: Implement URL loading using LangChain web loaders
-  // Use CheerioWebBaseLoader or similar
-  throw new Error('Not implemented')
+export async function loadDocument(filePath: string): Promise<LoadedDocument> {
+  const ext = extname(filePath).replace('.', '').toLowerCase()
+  const loader = LOADERS[ext]
+
+  if (!loader) {
+    throw new Error(`Unsupported file type: .${ext}`)
+  }
+
+  return loader(filePath)
 }
