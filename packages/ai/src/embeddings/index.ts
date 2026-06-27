@@ -1,19 +1,24 @@
-import { OpenAIEmbeddings } from "@langchain/openai";
+import { OpenAIEmbeddings } from '@langchain/openai'
+import type { Chunk } from '../chunking/types'
+import type { EmbeddedChunk } from './types'
 
-const embeddings = new OpenAIEmbeddings({
-  modelName: "text-embedding-3-small",
+export type { EmbeddedChunk }
+
+const embedder = new OpenAIEmbeddings({
+  modelName: process.env.OPENAI_EMBEDDING_MODEL ?? 'text-embedding-3-small',
   openAIApiKey: process.env.OPENAI_API_KEY,
-});
+})
 
-export async function generateEmbeddings(texts: string[]): Promise<number[][]> {
-  // TODO: Generate embeddings for array of texts
-  // Returns array of embedding vectors (1536 dimensions for text-embedding-3-small)
-  return embeddings.embedDocuments(texts);
+export async function embedChunks(chunks: Chunk[]): Promise<EmbeddedChunk[]> {
+  const texts = chunks.map(c => c.content)
+  const vectors = await embedder.embedDocuments(texts)
+
+  return chunks.map((chunk, index) => ({
+    ...chunk,
+    embedding: vectors[index]!,
+  }))
 }
 
-export async function generateEmbedding(text: string): Promise<number[]> {
-  // TODO: Generate embedding for single text
-  return embeddings.embedQuery(text);
+export async function embedQuery(text: string): Promise<number[]> {
+  return embedder.embedQuery(text)
 }
-
-export { embeddings };

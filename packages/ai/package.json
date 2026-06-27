@@ -20,6 +20,7 @@
     "officeparser": "^7.2.2",
     "papaparse": "^5.5.4",
     "pdf-parse": "^2.4.5",
+    "tiktoken": "^1.0.22",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
