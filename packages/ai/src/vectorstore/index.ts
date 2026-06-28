@@ -13,14 +13,13 @@ export interface SearchResult {
 export async function syncChunks(
   embeddedChunks: EmbeddedChunk[],
   documentId: string,
-  tenantId: string
+  workspaceId: string
 ): Promise<void> {
   const incoming = embeddedChunks.map(c => ({
     chunk: c,
     hash: c.contentHash,
   }))
 
-  // load existing hashes for this document from DB
   const existing = await db
     .select({ id: chunksTable.id, contentHash: chunksTable.contentHash })
     .from(chunksTable)
@@ -29,7 +28,6 @@ export async function syncChunks(
   const existingHashSet = new Set(existing.map(r => r.contentHash))
   const incomingHashSet = new Set(incoming.map(r => r.hash))
 
-  // delete chunks no longer in the document
   const toDelete = existing
     .filter(r => !incomingHashSet.has(r.contentHash))
     .map(r => r.id)
@@ -38,14 +36,13 @@ export async function syncChunks(
     await db.delete(chunksTable).where(inArray(chunksTable.id, toDelete))
   }
 
-  // insert only new chunks (skip unchanged ones)
   const toInsert = incoming.filter(r => !existingHashSet.has(r.hash))
 
   if (toInsert.length > 0) {
     await db.insert(chunksTable).values(
       toInsert.map(({ chunk }) => ({
         documentId,
-        tenantId,
+        workspaceId,
         content: chunk.content,
         contentHash: chunk.contentHash,
         embedding: chunk.embedding,
@@ -59,7 +56,7 @@ export async function syncChunks(
 
 export async function similaritySearch(
   query: string,
-  tenantId: string,
+  workspaceId: string,
   limit = 5
 ): Promise<SearchResult[]> {
   const queryVector = await embedQuery(query)
@@ -77,7 +74,7 @@ export async function similaritySearch(
       metadata,
       1 - (embedding <=> ${vectorString}::vector) AS score
     FROM chunks
-    WHERE tenant_id = ${tenantId}::uuid
+    WHERE workspace_id = ${workspaceId}::uuid
     ORDER BY embedding <=> ${vectorString}::vector
     LIMIT ${limit}
   `)

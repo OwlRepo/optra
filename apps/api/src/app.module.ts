@@ -4,6 +4,7 @@ import { BullModule } from '@nestjs/bull'
 import { DocumentsModule } from './documents/documents.module'
 import { IngestModule } from './ingest/ingest.module'
 import { ChatModule } from './chat/chat.module'
+import { AuthModule } from './auth/auth.module'
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { ChatModule } from './chat/chat.module'
     DocumentsModule,
     IngestModule,
     ChatModule,
+    AuthModule,
   ],
 })
 export class AppModule {}

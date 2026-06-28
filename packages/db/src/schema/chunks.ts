@@ -1,8 +1,15 @@
-import { pgTable, uuid, text, varchar, jsonb, timestamp, customType } from 'drizzle-orm/pg-core'
+import {
+  pgTable,
+  uuid,
+  text,
+  varchar,
+  jsonb,
+  timestamp,
+  customType,
+} from 'drizzle-orm/pg-core'
 import { documents } from './documents'
-import { tenants } from './tenants'
+import { workspaces } from './workspaces'
 
-// pgvector custom type
 const vector = customType<{ data: number[]; driverData: string }>({
   dataType() {
     return 'vector(1536)'
@@ -15,7 +22,7 @@ const vector = customType<{ data: number[]; driverData: string }>({
 export const chunks = pgTable('chunks', {
   id: uuid('id').primaryKey().defaultRandom(),
   documentId: uuid('document_id').references(() => documents.id).notNull(),
-  tenantId: uuid('tenant_id').references(() => tenants.id).notNull(),
+  workspaceId: uuid('workspace_id').references(() => workspaces.id).notNull(),
   content: text('content').notNull(),
   contentHash: varchar('content_hash', { length: 64 }).notNull(),
   embedding: vector('embedding'),

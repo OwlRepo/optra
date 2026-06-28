@@ -10,15 +10,18 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
+    "@ai-sdk/openai": "^0.0.50",
+    "@hookform/resolvers": "^5.4.0",
+    "@repo/ai": "workspace:*",
+    "@repo/types": "workspace:*",
+    "@repo/ui": "workspace:*",
+    "ai": "^3.3.0",
+    "langchain": "^0.2.0",
     "next": "^14.2.0",
     "react": "^18.3.0",
     "react-dom": "^18.3.0",
-    "ai": "^3.3.0",
-    "@ai-sdk/openai": "^0.0.50",
-    "langchain": "^0.2.0",
-    "@repo/ai": "workspace:*",
-    "@repo/ui": "workspace:*",
-    "@repo/types": "workspace:*"
+    "react-hook-form": "^7.80.0",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.3.1",

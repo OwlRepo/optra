@@ -20,10 +20,10 @@ function buildContext(chunks: Awaited<ReturnType<typeof similaritySearch>>): str
 
 export async function* askQuestion(
   question: string,
-  tenantId: string,
+  workspaceId: string,
   limit = 5
 ): AsyncGenerator<string> {
-  const chunks = await similaritySearch(question, tenantId, limit)
+  const chunks = await similaritySearch(question, workspaceId, limit)
 
   if (chunks.length === 0) {
     yield "I don't have enough information to answer that."
@@ -32,7 +32,6 @@ export async function* askQuestion(
 
   const context = buildContext(chunks)
 
-  // llm.stream() is auto-traced by LangSmith when LANGSMITH_TRACING=true
   const stream = await llm.stream([
     new SystemMessage(SYSTEM_PROMPT),
     new HumanMessage(`Context:\n${context}\n\nQuestion: ${question}`),

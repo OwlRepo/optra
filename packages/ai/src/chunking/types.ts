@@ -11,7 +11,7 @@ export interface Chunk {
     strategy: ChunkStrategy
     sectionId?: string
     sectionTitle?: string
-    tenantId?: string
+    workspaceId?: string
     knowledgeBaseId?: string
     documentId?: string
     [key: string]: unknown
