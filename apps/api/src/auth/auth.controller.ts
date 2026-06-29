@@ -8,6 +8,7 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common'
+import { Throttle } from '@nestjs/throttler'
 import type { Request, Response } from 'express'
 import { AuthService } from './auth.service'
 import { RegisterDto } from './dto/register.dto'
@@ -16,17 +17,20 @@ import { LoginDto } from './dto/login.dto'
 
 const RT_COOKIE = 'mnemra_rt'
 const RT_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000
+const TEN_MINUTES_MS = 10 * 60 * 1000
 
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Post('register')
+  @Throttle({ default: { limit: 5, ttl: TEN_MINUTES_MS } })
   register(@Body() dto: RegisterDto) {
     return this.authService.register(dto)
   }
 
   @Post('verify-otp')
+  @Throttle({ default: { limit: 5, ttl: TEN_MINUTES_MS } })
   async verifyOtp(
     @Body() dto: VerifyOtpDto,
     @Res({ passthrough: true }) res: Response,
@@ -38,6 +42,7 @@ export class AuthController {
 
   @Post('login')
   @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 10, ttl: TEN_MINUTES_MS } })
   async login(
     @Body() dto: LoginDto,
     @Res({ passthrough: true }) res: Response,
@@ -49,10 +54,16 @@ export class AuthController {
 
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
-  async refresh(@Req() req: Request) {
+  @Throttle({ default: { limit: 20, ttl: TEN_MINUTES_MS } })
+  async refresh(
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
     const rawToken = req.cookies[RT_COOKIE]
     if (!rawToken) throw new UnauthorizedException('No refresh token')
-    return this.authService.refresh(rawToken)
+    const { accessToken, refreshToken } = await this.authService.refresh(rawToken)
+    this.setRtCookie(res, refreshToken)
+    return { accessToken }
   }
 
   @Post('logout')

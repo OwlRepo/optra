@@ -17,5 +17,6 @@ export async function POST(request: NextRequest) {
 
   const response = NextResponse.json({ message: 'Logged out' })
   response.cookies.delete('mnemra_rt')
+  response.cookies.delete('mnemra_at')
   return response
 }

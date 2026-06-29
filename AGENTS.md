@@ -49,6 +49,22 @@ Codex may implement only if `Status: IMPLEMENTATION_READY`.
 
 Codex may validate only if `Status: IMPLEMENTATION_READY` or `Status: VALIDATION_READY`.
 
+## Testing Contract
+
+Strict TDD, no exceptions. Write failing unit test first, confirm it fails, implement until it passes.
+
+Every file Codex touches requires unit test coverage. User-facing or cross-layer flows require e2e coverage too.
+
+Codex may install test dependencies/frameworks as needed.
+
+Implementation is not done until its tests exist and pass — this is part of the diff, not a follow-up.
+
+## Documentation Sync Contract
+
+Every code change updates the matching `docs/ai/*` entries in the same change — module ownership map, API/DB contracts, risk register, repository map, testing strategy.
+
+Scope the doc update to what the change actually touches. Add an entry instead of leaving something `UNMAPPED` when a touched area has none.
+
 ## Context Contract
 
 Context docs are maps only.

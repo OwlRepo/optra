@@ -51,7 +51,7 @@ When verified source code contradicts context docs:
 - mark `UNMAPPED CONTRACT` when contract is missing from contract map
 - mark `UNMAPPED RISK` when risk area is missing from risk register
 - use source code as truth for current task
-- do not update context docs unless user asks for context refresh
+- update matching `docs/ai/*` entries in the same change (see Documentation Sync Rule) — standing instruction, not per-request
 
 ## Task Classification
 
@@ -157,6 +157,32 @@ Claude uses `Status: IMPLEMENTATION_READY` only for approved handoff.
 
 Codex implements only when `Status: IMPLEMENTATION_READY`.
 
+## Testing Requirement
+
+Strict TDD for every implementation, no exceptions.
+
+Write failing unit test first. Confirm it fails. Implement until it passes.
+
+Every touched file requires unit test coverage.
+
+User-facing or cross-layer flows require e2e test coverage in addition to unit coverage.
+
+Install test dependencies/frameworks as needed. Missing tooling is not a reason to skip coverage — set it up first.
+
+`.ai-scratchpad.md` must list required tests per file, in TDD order, before implementation steps.
+
+Implementation is not complete until its tests exist and pass.
+
+## Documentation Sync Rule
+
+Every code change must update the matching `docs/ai/*` entries in the same change — not deferred, not optional.
+
+This replaces the old default of leaving context docs untouched; see updated `Drift Markers` below.
+
+Update only the rows/sections the current change actually touches — same scope discipline as the code change itself, not a full rewrite each time.
+
+If a touched area has no existing entry, add one instead of leaving it `UNMAPPED`.
+
 ## Source of Truth Rule
 
 Source of truth = real source code, tests, types, schemas, routes, controllers, services, stores, components, API contracts, database definitions.
@@ -205,4 +231,6 @@ Before writing `Status: IMPLEMENTATION_READY`:
 - API contract changes documented or marked `No API contract changes required.`
 - database/schema changes documented or marked `No schema changes required.`
 - verification commands verified from package scripts or repo docs
+- required unit/e2e tests listed per file, in TDD order (see Testing Requirement)
+- matching `docs/ai/*` entries updated for this change (see Documentation Sync Rule)
 - Deep tasks include `Deep implementation approved: Yes`

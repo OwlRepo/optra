@@ -20,6 +20,8 @@ const BCRYPT_ROUNDS = 12
 const OTP_EXPIRY_MINUTES = 10
 const RT_EXPIRY_DAYS = 7
 
+type DbClient = typeof db | Parameters<Parameters<typeof db.transaction>[0]>[0]
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -29,10 +31,12 @@ export class AuthService {
   ) {}
 
   async register(dto: RegisterDto): Promise<{ message: string }> {
+    const email = this.normalizeEmail(dto.email)
+
     const existing = await db
       .select({ id: users.id })
       .from(users)
-      .where(eq(users.email, dto.email))
+      .where(eq(users.email, email))
       .limit(1)
 
     if (existing.length > 0) {
@@ -43,7 +47,7 @@ export class AuthService {
 
     const [user] = await db
       .insert(users)
-      .values({ email: dto.email, passwordHash })
+      .values({ email, passwordHash })
       .returning({ id: users.id })
 
     const code = Math.floor(100000 + Math.random() * 900000).toString()
@@ -51,7 +55,7 @@ export class AuthService {
 
     await db.insert(otps).values({ userId: user.id, code, expiresAt })
 
-    await this.notifications.sendOtp(dto.email, code)
+    await this.notifications.sendOtp(email, code)
 
     return { message: 'Check your email for the verification code' }
   }
@@ -60,7 +64,7 @@ export class AuthService {
     const [user] = await db
       .select()
       .from(users)
-      .where(eq(users.email, dto.email))
+      .where(eq(users.email, this.normalizeEmail(dto.email)))
       .limit(1)
 
     if (!user) throw new UnauthorizedException('Invalid credentials')
@@ -86,14 +90,14 @@ export class AuthService {
 
     await db.update(users).set({ isVerified: true }).where(eq(users.id, user.id))
 
-    return this.issueTokens(user.id, user.email)
+    return this.issueTokens(db, user.id, user.email)
   }
 
   async login(dto: LoginDto): Promise<{ accessToken: string; refreshToken: string }> {
     const [user] = await db
       .select()
       .from(users)
-      .where(eq(users.email, dto.email))
+      .where(eq(users.email, this.normalizeEmail(dto.email)))
       .limit(1)
 
     if (!user) throw new UnauthorizedException('Invalid credentials')
@@ -105,26 +109,34 @@ export class AuthService {
       throw new ForbiddenException('Email not verified. Check your inbox for a verification code.')
     }
 
-    return this.issueTokens(user.id, user.email)
+    return this.issueTokens(db, user.id, user.email)
   }
 
-  async refresh(rawToken: string): Promise<{ accessToken: string }> {
+  async refresh(rawToken: string): Promise<{ accessToken: string; refreshToken: string }> {
     const tokenHash = this.hashToken(rawToken)
     const now = new Date()
 
+    // Fetch unconditionally (no expiry/revoked filter here) so we can tell "never existed"
+    // apart from "existed but was already rotated away" — the second case is a reuse/theft signal.
     const [rt] = await db
       .select()
       .from(refreshTokens)
-      .where(
-        and(
-          eq(refreshTokens.tokenHash, tokenHash),
-          gt(refreshTokens.expiresAt, now),
-          isNull(refreshTokens.revokedAt),
-        ),
-      )
+      .where(eq(refreshTokens.tokenHash, tokenHash))
       .limit(1)
 
     if (!rt) throw new UnauthorizedException('Invalid or expired refresh token')
+
+    if (rt.revokedAt) {
+      await db
+        .update(refreshTokens)
+        .set({ revokedAt: now })
+        .where(and(eq(refreshTokens.userId, rt.userId), isNull(refreshTokens.revokedAt)))
+      throw new UnauthorizedException('Session revoked — please log in again')
+    }
+
+    if (rt.expiresAt <= now) {
+      throw new UnauthorizedException('Invalid or expired refresh token')
+    }
 
     const [user] = await db
       .select({ id: users.id, email: users.email })
@@ -134,8 +146,12 @@ export class AuthService {
 
     if (!user) throw new NotFoundException('User not found')
 
-    const accessToken = this.jwtService.sign({ sub: user.id, email: user.email })
-    return { accessToken }
+    // Revoke-old and issue-new happen as one atomic step — a crash between them
+    // must never leave the user with a dead token and no replacement.
+    return db.transaction(async (tx) => {
+      await tx.update(refreshTokens).set({ revokedAt: now }).where(eq(refreshTokens.id, rt.id))
+      return this.issueTokens(tx, user.id, user.email)
+    })
   }
 
   async logout(rawToken: string): Promise<{ message: string }> {
@@ -148,6 +164,7 @@ export class AuthService {
   }
 
   private async issueTokens(
+    client: DbClient,
     userId: string,
     email: string,
   ): Promise<{ accessToken: string; refreshToken: string }> {
@@ -157,12 +174,16 @@ export class AuthService {
     const tokenHash = this.hashToken(rawToken)
     const expiresAt = new Date(Date.now() + RT_EXPIRY_DAYS * 24 * 60 * 60 * 1000)
 
-    await db.insert(refreshTokens).values({ userId, tokenHash, expiresAt })
+    await client.insert(refreshTokens).values({ userId, tokenHash, expiresAt })
 
     return { accessToken, refreshToken: rawToken }
   }
 
   private hashToken(token: string): string {
     return createHash('sha256').update(token).digest('hex')
+  }
+
+  private normalizeEmail(email: string): string {
+    return email.trim().toLowerCase()
   }
 }

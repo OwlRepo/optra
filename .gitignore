@@ -40,5 +40,9 @@ yarn-error.log*
 # Testing
 coverage
 
-# Drizzle
-drizzle
+# Stray compiled output committed inside src/ instead of dist/ (happened once — see docs/ai/file-index/repository-map.md)
+packages/*/src/**/*.js
+packages/*/src/**/*.js.map
+packages/*/src/**/*.d.ts
+apps/*/src/**/*.js
+apps/*/src/**/*.js.map
