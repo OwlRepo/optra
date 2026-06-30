@@ -52,6 +52,11 @@ Confirmed from `apps/web/package.json` as of 2026-06-29:
 - `bun run test:watch` — Vitest, watch mode
 
 `packages/db`/`packages/ai` still have no test commands — only `type-check`/`build`/`lint`. Playwright e2e for `apps/web` is still a known gap — deferred until there's a real multi-page flow worth driving a browser through (Priority 2 web pages).
+Confirmed from `packages/ai/package.json` as of 2026-06-30:
+
+- `bun run test` — Vitest, node environment, crawler coverage at `packages/ai/src/web/crawl.spec.ts`
+- `bun run test:watch` — Vitest watch mode
+- `bun run type-check` — `tsc --noEmit`
 
 Note: a plain `vitest.config.ts` failed to load in this repo with `ERR_REQUIRE_ESM` (a transitive dep, `std-env`, is ESM-only and the config got loaded as CJS). Fixed by naming it `vitest.config.mts` instead — forces Vite to treat it as ESM regardless of the package's default module type. If `apps/web` ever adds `"type": "module"` to its `package.json`, re-check whether this workaround is still needed.
 

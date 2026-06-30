@@ -134,6 +134,9 @@ export default function DashboardPage() {
               <Link href="/">Overview</Link>
             </Button>
             <Button asChild variant="ghost" size="sm">
+              <Link href="/workspaces">Workspaces</Link>
+            </Button>
+            <Button asChild variant="ghost" size="sm">
               <Link href="/chat">Assistant</Link>
             </Button>
           </>

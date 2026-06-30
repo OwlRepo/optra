@@ -1,12 +1,4 @@
-async function apiFetch(path: string, init?: RequestInit) {
-  const res = await fetch(path, {
-    ...init,
-    headers: { 'Content-Type': 'application/json', ...init?.headers },
-  })
-  const data = await res.json()
-  if (!res.ok) throw data
-  return data
-}
+import { apiFetch } from './client'
 
 export async function register(email: string, password: string) {
   return apiFetch('/api/auth/register', {

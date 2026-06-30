@@ -49,3 +49,33 @@ If risk area is missing, mark `UNMAPPED RISK`.
   - `documents.storage_key` exists after apply
   - `chunks.document_id` FK includes `ON DELETE CASCADE`
   - rerunning schema generation shows no diff
+
+- Documents / ingest queue is a live jobs risk as of Slice 3B.
+  Required checks:
+  - upload creates SeaweedFS object + `documents.status='pending'`
+  - Bull job uses retry `attempts=3` with exponential backoff
+  - processor always cleans temp files in `finally`
+  - processor writes terminal `done` or `failed`, never leaves stuck `processing` on handled errors
+  - `syncChunks()` receives tenant metadata and document/workspace ids
+
+- OpenAI embeddings are now in the document ingest critical path.
+  Required checks:
+  - upload path does not require a working OpenAI key to return `201 pending`
+  - embed failure isolates to the document row (`status='failed'`) and does not crash the worker
+  - retry remains safe because chunk sync is content-hash diff based
+
+- Priority 2 workspace/knowledge-base/document pages now poll document status client-side.
+  Required checks:
+  - `setInterval` is created only while at least one document is `pending` or `processing`
+  - the interval is cleared on unmount/navigation so route changes do not leak background polling
+  - 401s from any workspace/KB/document page route back to `/login`
+
+- Web crawling for knowledge-base sources is a live jobs + external-integration + quota risk as of 2026-06-30.
+  Required checks:
+  - crawler stays same-origin, honors robots.txt, sets explicit User-Agent, throttles requests, and caps depth/pages
+  - crawler tests never hit live network (`fetchImpl` injected)
+  - `scrape_runs` always reaches terminal `completed` or `failed`, never hangs in `running` on handled errors
+  - page-level crawl persistence failures increment `pagesFailed` without aborting whole run
+  - workspace doc quota clamps `maxPages` before queueing
+  - recrawl of same page upserts one `documents` row by `(knowledge_base_id, source_url)` and reuses ingest safely
+  - web page polls crawl runs every 3 seconds only while a run is `queued` or `running`

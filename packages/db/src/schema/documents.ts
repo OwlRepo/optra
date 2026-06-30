@@ -1,4 +1,5 @@
-import { pgTable, uuid, varchar, text, timestamp, pgEnum } from 'drizzle-orm/pg-core'
+import { sql } from 'drizzle-orm'
+import { pgTable, uuid, varchar, text, timestamp, pgEnum, uniqueIndex } from 'drizzle-orm/pg-core'
 import { workspaces } from './workspaces'
 import { knowledgeBases } from './knowledgeBases'
 
@@ -20,7 +21,11 @@ export const documents = pgTable('documents', {
   status: documentStatusEnum('status').notNull().default('pending'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
-})
+}, (table) => ({
+  knowledgeBaseSourceUrlUnique: uniqueIndex('documents_kb_source_url_unique')
+    .on(table.knowledgeBaseId, table.sourceUrl)
+    .where(sql`source_url is not null`),
+}))
 
 export type Document = typeof documents.$inferSelect
 export type NewDocument = typeof documents.$inferInsert

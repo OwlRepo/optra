@@ -10,6 +10,7 @@ import { AuthModule } from './auth/auth.module'
 import { WorkspacesModule } from './workspaces/workspaces.module'
 import { KnowledgeBasesModule } from './knowledge-bases/knowledge-bases.module'
 import { StorageModule } from './storage/storage.module'
+import { ScrapeModule } from './scrape/scrape.module'
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { StorageModule } from './storage/storage.module'
     WorkspacesModule,
     KnowledgeBasesModule,
     StorageModule,
+    ScrapeModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })

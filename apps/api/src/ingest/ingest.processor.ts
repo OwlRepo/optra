@@ -1,22 +1,74 @@
-import { Processor, Process } from '@nestjs/bull'
+import { unlink } from 'fs/promises'
+import { Process, Processor } from '@nestjs/bull'
+import { Logger } from '@nestjs/common'
 import { Job } from 'bull'
-// import * as ai from '@repo/ai'
-// import type { IngestJob } from '@repo/types'
+import { db, documents } from '@repo/db'
+import { eq } from 'drizzle-orm'
+import { StorageService } from '../storage/storage.service'
 
 @Processor('ingest-queue')
 export class IngestProcessor {
+  private readonly logger = new Logger(IngestProcessor.name)
+
+  constructor(private readonly storage: StorageService) {}
+
   @Process()
-  async handleIngest(job: Job) {
-    console.log('Processing ingest job:', job.id)
-    
-    // TODO: Implement full ingestion pipeline:
-    // 1. Load document using ai.loadFromPDF() or ai.loadFromURL()
-    // 2. Chunk using ai.chunkDocuments()
-    // 3. Generate embeddings using ai.generateEmbeddings()
-    // 4. Upsert to vector store using ai.upsertChunks()
-    // 5. Update document status in DB
-    
-    await new Promise(resolve => setTimeout(resolve, 1000))
-    return { success: true }
+  async handleIngest(job: Job<{ documentId: string }>): Promise<void> {
+    const { documentId } = job.data
+
+    await db
+      .update(documents)
+      .set({ status: 'processing', updatedAt: new Date() })
+      .where(eq(documents.id, documentId))
+
+    const [document] = await db.select().from(documents).where(eq(documents.id, documentId)).limit(1)
+
+    if (!document) {
+      throw new Error(`Document not found: ${documentId}`)
+    }
+
+    if (!document.storageKey) {
+      await db
+        .update(documents)
+        .set({ status: 'failed', updatedAt: new Date() })
+        .where(eq(documents.id, documentId))
+      return
+    }
+
+    let tempPath: string | undefined
+
+    try {
+      const { loadDocument, chunkDocument, embedChunks, syncChunks } = await import('@repo/ai')
+      tempPath = await this.storage.getToTempFile(document.storageKey)
+      const loaded = await loadDocument(tempPath)
+      const chunked = await chunkDocument(loaded)
+
+      for (const chunk of chunked) {
+        chunk.metadata.workspaceId = document.workspaceId
+        chunk.metadata.knowledgeBaseId = document.knowledgeBaseId
+        chunk.metadata.documentId = documentId
+      }
+
+      const embedded = await embedChunks(chunked)
+      await syncChunks(embedded, documentId, document.workspaceId)
+
+      await db
+        .update(documents)
+        .set({ status: 'done', updatedAt: new Date() })
+        .where(eq(documents.id, documentId))
+    } catch (error) {
+      this.logger.error(
+        `Ingest failed for document ${documentId}`,
+        error instanceof Error ? error.stack : String(error),
+      )
+      await db
+        .update(documents)
+        .set({ status: 'failed', updatedAt: new Date() })
+        .where(eq(documents.id, documentId))
+    } finally {
+      if (tempPath) {
+        await unlink(tempPath).catch(() => undefined)
+      }
+    }
   }
 }

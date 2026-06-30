@@ -9,7 +9,15 @@ export class IngestService {
   ) {}
 
   async queueDocument(documentId: string) {
-    await this.ingestQueue.add({ documentId })
+    await this.ingestQueue.add(
+      { documentId },
+      {
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 5000 },
+        removeOnComplete: true,
+        removeOnFail: false,
+      },
+    )
     return { queued: true, documentId }
   }
 }
