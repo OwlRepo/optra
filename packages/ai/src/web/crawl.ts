@@ -1,8 +1,10 @@
 import { Readability } from '@mozilla/readability'
 import * as cheerio from 'cheerio'
+import { promises as dns } from 'dns'
 import { JSDOM } from 'jsdom'
 import pLimit from 'p-limit'
 import robotsParser from 'robots-parser'
+import { assertPublicUrl, type LookupFn } from './ssrf'
 
 export interface CrawlOptions {
   maxDepth?: number
@@ -15,12 +17,21 @@ export interface CrawlOptions {
   userAgent?: string
   respectRobots?: boolean
   fetchImpl?: typeof fetch
+  lookup?: LookupFn
+  onPage?: (page: CrawledPage, progress: CrawlProgress) => void | Promise<void>
 }
 
 export interface CrawledPage {
   url: string
   title: string
   content: string
+}
+
+export interface CrawlProgress {
+  pagesFound: number
+  pagesVisited: number
+  pagesQueued: number
+  maxPages: number
 }
 
 type ScopeOptions = {
@@ -140,8 +151,10 @@ export async function crawlSite(seedUrl: string, options: CrawlOptions = {}): Pr
   const userAgent = options.userAgent ?? DEFAULT_USER_AGENT
   const respectRobots = options.respectRobots ?? true
   const fetchImpl = options.fetchImpl ?? fetch
+  const lookup = options.lookup ?? dns.lookup
 
   const canonicalSeed = canonicalizeUrl(seedUrl)
+  await assertPublicUrl(canonicalSeed, lookup)
   const seed = new URL(canonicalSeed)
   const scope = {
     origin: seed.origin,
@@ -157,6 +170,7 @@ export async function crawlSite(seedUrl: string, options: CrawlOptions = {}): Pr
   const visited = new Set<string>()
   const queued = new Set<string>([canonicalSeed])
   const results: CrawledPage[] = []
+  const progress = { pagesFound: 0 }
   const queue: QueueEntry[] = [{ url: canonicalSeed, depth: 0 }]
   const limit = pLimit(concurrency)
   const waitForTurn = makeRequestScheduler(effectiveDelayMs)
@@ -177,9 +191,12 @@ export async function crawlSite(seedUrl: string, options: CrawlOptions = {}): Pr
               resultsCount: results.length,
               robots,
               fetchImpl,
+              lookup,
               timeoutMs,
               userAgent,
               waitForTurn,
+              onPage: options.onPage,
+              progress,
             })
           } catch {
             return null
@@ -215,9 +232,12 @@ async function crawlPage(
     resultsCount: number
     robots: ReturnType<typeof robotsParser> | null
     fetchImpl: typeof fetch
+    lookup: LookupFn
     timeoutMs: number
     userAgent: string
     waitForTurn: () => Promise<void>
+    onPage?: CrawlOptions['onPage']
+    progress: { pagesFound: number }
   },
 ): Promise<CrawledPage | null> {
   const { url, depth } = entry
@@ -235,6 +255,7 @@ async function crawlPage(
     return null
   }
 
+  await assertPublicUrl(url, context.lookup)
   context.visited.add(url)
 
   await context.waitForTurn()
@@ -244,6 +265,7 @@ async function crawlPage(
       'User-Agent': context.userAgent,
       Accept: 'text/html',
     },
+    redirect: 'manual',
   }, context.timeoutMs)
 
   if (!response?.ok) {
@@ -282,7 +304,17 @@ async function crawlPage(
     return null
   }
 
-  return { url, title, content }
+  const page = { url, title, content }
+  context.progress.pagesFound += 1
+
+  await context.onPage?.(page, {
+    pagesFound: context.progress.pagesFound,
+    pagesVisited: context.visited.size,
+    pagesQueued: context.queued.size,
+    maxPages: context.maxPages,
+  })
+
+  return page
 }
 
 async function fetchWithRetry(

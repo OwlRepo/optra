@@ -1,0 +1,5 @@
+ragas
+langsmith
+langchain-openai
+datasets
+python-dotenv

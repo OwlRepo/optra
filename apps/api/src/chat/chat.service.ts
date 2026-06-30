@@ -2,12 +2,16 @@ import { Injectable, NotFoundException } from '@nestjs/common'
 import { and, asc, desc, eq } from 'drizzle-orm'
 import { chatMessages, chatSessions, db, type ChatMessageSource } from '@repo/db'
 import { CacheService } from '../cache/cache.service'
+import { UsageService } from '../limits/usage.service'
 
 type CacheStatus = 'exact' | 'semantic' | 'miss'
 
 @Injectable()
 export class ChatService {
-  constructor(private readonly cache: CacheService) {}
+  constructor(
+    private readonly cache: CacheService,
+    private readonly usage: UsageService,
+  ) {}
 
   async answer(
     workspaceId: string,
@@ -38,7 +42,7 @@ export class ChatService {
       }
     }
 
-    const { answerQuestion, embedQuery } = await import('@repo/ai')
+    const { answerQuestion, countTokens, embedQuery } = await import('@repo/ai')
     const embedding = await embedQuery(message)
     const semantic = await this.cache.getSemantic(workspaceId, embedding)
     if (semantic) {
@@ -55,6 +59,7 @@ export class ChatService {
     }
 
     const version = await this.cache.getVersion(workspaceId)
+    await this.usage.assertWithinBudget(workspaceId)
     const { sources, stream } = await answerQuestion(message, workspaceId)
 
     return {
@@ -63,6 +68,10 @@ export class ChatService {
       stream,
       cacheStatus: 'miss' as CacheStatus,
       onComplete: async (fullText: string) => {
+        await this.usage.addUsage(
+          workspaceId,
+          countTokens(message) + countTokens(fullText),
+        )
         await this.persistAssistant(session.id, fullText, sources)
         await this.cache.setExact(workspaceId, message, fullText, sources)
         await this.cache.saveSemantic(

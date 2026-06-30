@@ -36,6 +36,20 @@
       "when": 1782833454970,
       "tag": "0004_exotic_roughhouse",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "5",
+      "when": 1782841282296,
+      "tag": "0005_wide_juggernaut",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "5",
+      "when": 1782843818666,
+      "tag": "0006_needy_harrier",
+      "breakpoints": true
     }
   ]
 }

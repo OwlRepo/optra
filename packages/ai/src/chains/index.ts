@@ -38,6 +38,11 @@ export async function answerQuestion(
   workspaceId: string,
   limit = 5
 ): Promise<AnswerResult> {
+  if (process.env.LANGGRAPH_ENABLED === 'true') {
+    const { answerQuestionWithGraph } = await import('./graph')
+    return answerQuestionWithGraph(question, workspaceId, limit)
+  }
+
   const chunks = await similaritySearch(question, workspaceId, limit)
 
   if (chunks.length === 0) {

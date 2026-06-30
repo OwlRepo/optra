@@ -46,6 +46,24 @@ Storage integration note as of 2026-06-30:
 - Expected local dependency: SeaweedFS at `S3_ENDPOINT=http://localhost:8333`.
 - The spec is skipped when `S3_ENDPOINT` is absent so non-storage environments can still run the rest of the API suite.
 
+Scrape/upload security note as of 2026-07-01:
+- `packages/ai/src/web/ssrf.spec.ts` covers blocked hostnames, private/loopback/link-local IP ranges, IPv6 / IPv4-mapped cases, DNS rebinding, and public-host allow path.
+- `packages/ai/src/web/crawl.spec.ts` now covers blocked seed rejection and skipping in-scope links whose DNS resolves private.
+- `apps/api/src/scrape/scrape.service.spec.ts` now covers API-boundary rejection for non-public scrape seeds before queueing.
+- `apps/api/test/documents.e2e-spec.ts` now covers oversized upload rejection, unsupported extension rejection, and allowed small `.txt` upload.
+
+Queue reliability note as of 2026-07-01:
+- `apps/api/src/ingest/ingest.service.spec.ts` covers deterministic ingest job ids plus stale `pending`/`processing` reconciliation behavior.
+- `apps/api/src/documents/documents.service.spec.ts` covers upload enqueue failure marking the row terminal `failed`.
+- `apps/api/src/ingest/ingest.service.spec.ts` now also covers requeue clearing stale `processingStartedAt` and the ingest Bull timeout contract.
+- `apps/api/src/scrape/scrape.service.spec.ts` covers scrape enqueue failure, duplicate in-flight reuse, default subtree scope derivation, and stale `queued`/`running` reconciliation.
+- `apps/api/src/scrape/scrape.processor.spec.ts` covers live page-count / success / failure counter updates while crawl pages stream in.
+- `apps/api/test/scrape.e2e-spec.ts` covers `202` for a new crawl and `200` when the same in-flight crawl is reused.
+- `apps/web/src/lib/api/scrape.spec.ts` covers reused-run detection from HTTP status, and `apps/web/app/workspaces/[id]/knowledge-bases/[kbId]/page.spec.ts` covers disabled crawl submit + duplicate-run UI feedback plus truthful document-queue summary rendering.
+
+Workspace package sync note as of 2026-07-01:
+- After schema changes in `packages/db/src/schema/*`, run `bun run --cwd packages/db build` before API e2e or runtime verification so `@repo/db` `dist/*` stays aligned with the source schema used by Nest runtime and e2e Jest config.
+
 Confirmed from `apps/web/package.json` as of 2026-06-29:
 
 - `bun run test` — Vitest, runs once (`apps/web/**/*.spec.ts`, node environment, config at `vitest.config.mts` — must be `.mts` not `.ts`, see note below)
@@ -61,12 +79,25 @@ Chat cache note as of 2026-06-30:
 - `apps/api/src/chat/chat.service.spec.ts` covers exact-hit, semantic-hit, miss-to-cache, and single-embed behavior.
 - `apps/api/test/chat.e2e-spec.ts` covers repeat-question cache hits and version-bump invalidation after KB mutation.
 
+Chat limits note as of 2026-07-01:
+- `apps/api/src/limits/rate-limit.service.spec.ts` covers per-user/per-workspace minute buckets and fail-open Redis behavior.
+- `apps/api/src/limits/usage.service.spec.ts` covers monthly workspace token budget keys, cap enforcement, and fail-open Redis behavior.
+- `apps/api/src/chat/chat.service.spec.ts` now covers miss-path budget check + usage accounting; exact/semantic hits stay usage-exempt.
+- `apps/api/test/chat.e2e-spec.ts` now covers `429` after per-user chat rate-limit exhaustion.
+
+Offline eval note as of 2026-07-01:
+- `python3 scripts/eval/test_dataset_schema.py` validates `scripts/eval/eval-dataset.json` schema and `evaluate.py` metric list without network.
+- `python3 scripts/eval/evaluate.py` is manual/offline verification only; it requires `OPENAI_API_KEY` and Python deps from `scripts/eval/requirements.txt`.
+
 `packages/db`/`packages/ai` still have no test commands — only `type-check`/`build`/`lint`. Playwright e2e for `apps/web` is still a known gap — deferred until there's a real multi-page flow worth driving a browser through (Priority 2 web pages).
 Confirmed from `packages/ai/package.json` as of 2026-06-30:
 
 - `bun run test` — Vitest, node environment, crawler coverage at `packages/ai/src/web/crawl.spec.ts`
 - `bun run test:watch` — Vitest watch mode
 - `bun run type-check` — `tsc --noEmit`
+
+LangGraph note as of 2026-07-01:
+- `packages/ai/src/chains/graph.spec.ts` covers high-score direct generate, rewrite retry path, fallback after max rewrites, and optional self-grade regenerate.
 
 Note: a plain `vitest.config.ts` failed to load in this repo with `ERR_REQUIRE_ESM` (a transitive dep, `std-env`, is ESM-only and the config got loaded as CJS). Fixed by naming it `vitest.config.mts` instead — forces Vite to treat it as ESM regardless of the package's default module type. If `apps/web` ever adds `"type": "module"` to its `package.json`, re-check whether this workaround is still needed.
 

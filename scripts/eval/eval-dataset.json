@@ -1,0 +1,47 @@
+[
+  {
+    "question": "How do I upload a document into a workspace knowledge base?",
+    "answer": "Open the workspace, go to the knowledge base, and use the upload control on the documents page.",
+    "contexts": [
+      "Workspace knowledge-base pages let members upload documents through the documents route.",
+      "Uploaded files are stored, inserted as pending documents, and queued for ingest."
+    ],
+    "ground_truth": "Users upload documents from the workspace knowledge-base documents page, which stores the file and queues ingest."
+  },
+  {
+    "question": "Why am I getting a 403 when I try to chat in a workspace?",
+    "answer": "The chat endpoint requires you to be a member of that workspace.",
+    "contexts": [
+      "POST /workspaces/:workspaceId/chat is guarded by JwtAuthGuard and WorkspaceMemberGuard.",
+      "Non-members receive 403 before chat service logic runs."
+    ],
+    "ground_truth": "A user gets 403 on workspace chat when not authenticated as a member of that workspace."
+  },
+  {
+    "question": "Does deleting a document affect chat answers?",
+    "answer": "Yes. Deleting a document invalidates workspace chat cache so future answers recompute from current data.",
+    "contexts": [
+      "DocumentsService.remove deletes the document and bumps workspace chat cache version.",
+      "Chat cache lookups are version-based per workspace."
+    ],
+    "ground_truth": "Deleting a document invalidates the workspace chat cache version, forcing later chat requests to recompute."
+  },
+  {
+    "question": "What happens if no relevant chunks are retrieved for a question?",
+    "answer": "The assistant replies that it does not have enough information to answer.",
+    "contexts": [
+      "answerQuestion returns sources=[] when retrieval is empty.",
+      "Empty retrieval yields the fallback message: I don't have enough information to answer that."
+    ],
+    "ground_truth": "When retrieval returns no chunks, the system returns the fallback answer that it lacks enough information."
+  },
+  {
+    "question": "Are assistant citations stored with chat history?",
+    "answer": "Yes. Assistant message sources are persisted on the assistant chat message row.",
+    "contexts": [
+      "chat_messages stores assistant sources as jsonb.",
+      "ChatService persists assistant content and sources after streaming completes."
+    ],
+    "ground_truth": "Assistant citations are saved on the persisted assistant message record in chat history."
+  }
+]

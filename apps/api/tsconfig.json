@@ -11,7 +11,6 @@
     "target": "ES2021",
     "sourceMap": true,
     "outDir": "./dist",
-    "baseUrl": "./",
     "incremental": true,
     "skipLibCheck": true,
     "strictNullChecks": false,
@@ -19,12 +18,7 @@
     "strictBindCallApply": false,
     "forceConsistentCasingInFileNames": false,
     "noFallthroughCasesInSwitch": false,
-    "noEmit": false,
-    "paths": {
-      "@repo/ai": ["../../packages/ai/src"],
-      "@repo/db": ["../../packages/db/src"],
-      "@repo/types": ["../../packages/types/src"]
-    }
+    "noEmit": false
   },
   "include": ["src"]
 }

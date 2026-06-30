@@ -23,6 +23,7 @@ import { DocumentsService } from '../src/documents/documents.service'
 
 jest.mock('@repo/ai', () => ({
   answerQuestion: jest.fn(),
+  countTokens: jest.fn((text: string) => text.length),
   embedQuery: jest.fn(),
 }))
 
@@ -243,5 +244,39 @@ describe('Chat flow (e2e)', () => {
 
     expect(third.headers['x-chat-cache']).toBe('miss')
     expect(answerQuestion).toHaveBeenCalledTimes(2)
+  })
+
+  it('returns 429 after exceeding per-user chat rate limit', async () => {
+    const member = await registerAndVerify(app, `${prefix}ratelimit@example.com`, password)
+
+    const mine = await request(app.getHttpServer())
+      .get('/workspaces/me')
+      .set('Authorization', `Bearer ${member.accessToken}`)
+      .expect(200)
+    const workspaceId = mine.body[0].id as string
+
+    ;(embedQuery as jest.Mock).mockResolvedValue([0.1, 0.2])
+    ;(answerQuestion as jest.Mock).mockResolvedValue({
+      sources: [],
+      stream: (async function* () {
+        yield 'ok'
+      })(),
+    })
+
+    for (let i = 0; i < 20; i += 1) {
+      await request(app.getHttpServer())
+        .post(`/workspaces/${workspaceId}/chat`)
+        .set('Authorization', `Bearer ${member.accessToken}`)
+        .send({ message: `Rate limit ${i}` })
+        .expect(201)
+    }
+
+    const blocked = await request(app.getHttpServer())
+      .post(`/workspaces/${workspaceId}/chat`)
+      .set('Authorization', `Bearer ${member.accessToken}`)
+      .send({ message: 'Rate limit final' })
+      .expect(429)
+
+    expect(blocked.body.message).toBe('Rate limit exceeded')
   })
 })

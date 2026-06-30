@@ -19,6 +19,10 @@ export const documents = pgTable('documents', {
   storageKey: text('storage_key'),
   contentHash: varchar('content_hash', { length: 64 }),
   status: documentStatusEnum('status').notNull().default('pending'),
+  queueJobId: text('queue_job_id'),
+  enqueuedAt: timestamp('enqueued_at'),
+  processingStartedAt: timestamp('processing_started_at'),
+  lastError: text('last_error'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 }, (table) => ({

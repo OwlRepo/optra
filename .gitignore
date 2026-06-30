@@ -14,8 +14,10 @@ out
 .env.local
 .env.development.local
 .env.test.local
+.env.production
 .env.production.local
 .env.prod
+docker/seaweedfs/s3.prod.json
 
 # Debug
 npm-debug.log*

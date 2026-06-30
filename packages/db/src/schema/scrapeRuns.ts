@@ -20,6 +20,8 @@ export const scrapeRuns = pgTable('scrape_runs', {
     .notNull(),
   seedUrl: text('seed_url').notNull(),
   status: scrapeRunStatusEnum('status').notNull().default('queued'),
+  queueJobId: text('queue_job_id'),
+  enqueuedAt: timestamp('enqueued_at'),
   maxDepth: integer('max_depth').notNull(),
   maxPages: integer('max_pages').notNull(),
   pagesFound: integer('pages_found').notNull().default(0),
@@ -27,6 +29,7 @@ export const scrapeRuns = pgTable('scrape_runs', {
   pagesFailed: integer('pages_failed').notNull().default(0),
   error: text('error'),
   startedAt: timestamp('started_at'),
+  lastProgressAt: timestamp('last_progress_at'),
   finishedAt: timestamp('finished_at'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 })

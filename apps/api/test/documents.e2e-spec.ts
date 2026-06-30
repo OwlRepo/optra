@@ -2,7 +2,9 @@ import { INestApplication, ValidationPipe } from '@nestjs/common'
 import { Test } from '@nestjs/testing'
 import cookieParser from 'cookie-parser'
 import { and, eq, like } from 'drizzle-orm'
-import { readFile, unlink } from 'fs/promises'
+import { mkdtemp, readFile, rm, unlink, writeFile } from 'fs/promises'
+import { join } from 'path'
+import { tmpdir } from 'os'
 import request from 'supertest'
 import {
   db,
@@ -74,24 +76,54 @@ async function registerAndVerify(app: INestApplication, email: string, password:
 
 describe('Documents flow (e2e)', () => {
   let app: INestApplication
-  let storage: StorageService
   let ingest: { queueDocument: jest.Mock }
+  let storage: {
+    save: jest.Mock
+    getToTempFile: jest.Mock
+    delete: jest.Mock
+  }
   const prefix = `e2e-docs-${Date.now()}-`
   const password = 'password123'
 
   beforeAll(async () => {
     ingest = { queueDocument: jest.fn().mockResolvedValue({ queued: true }) }
+    const stored = new Map<string, Buffer>()
+    storage = {
+      save: jest.fn(async (key: string, body: Buffer) => {
+        stored.set(key, Buffer.from(body))
+        return key
+      }),
+      getToTempFile: jest.fn(async (key: string) => {
+        const body = stored.get(key)
+        if (!body) {
+          throw new Error(`Missing stored object ${key}`)
+        }
+
+        const dir = await mkdtemp(join(tmpdir(), 'docs-e2e-'))
+        const path = join(dir, key.split('/').pop() ?? 'file')
+        await writeFile(path, body)
+        return path
+      }),
+      delete: jest.fn(async (key: string) => {
+        if (!stored.has(key)) {
+          throw new Error(`Missing stored object ${key}`)
+        }
+
+        stored.delete(key)
+      }),
+    }
 
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
       .overrideProvider(IngestService)
       .useValue(ingest)
+      .overrideProvider(StorageService)
+      .useValue(storage)
       .compile()
 
     app = moduleRef.createNestApplication()
     app.use(cookieParser())
     app.useGlobalPipes(new ValidationPipe({ whitelist: true }))
     await app.init()
-    storage = app.get(StorageService)
   })
 
   afterEach(() => {
@@ -169,6 +201,7 @@ describe('Documents flow (e2e)', () => {
     const tempPath = await storage.getToTempFile(saved.storageKey!)
     await expect(readFile(tempPath, 'utf8')).resolves.toBe('seaweed test doc')
     await unlink(tempPath)
+    await rm(join(tempPath, '..'), { recursive: true, force: true })
 
     await request(app.getHttpServer())
       .post(`/workspaces/${ownerWorkspaceId}/knowledge-bases/${kbId}/documents`)
@@ -212,5 +245,40 @@ describe('Documents flow (e2e)', () => {
       .expect(200)
 
     await expect(storage.getToTempFile(saved.storageKey!)).rejects.toThrow()
+  })
+
+  it('rejects oversized and disallowed uploads, allows supported small txt upload', async () => {
+    const owner = await registerAndVerify(app, `${prefix}limits@example.com`, password)
+
+    const ownerMine = await request(app.getHttpServer())
+      .get('/workspaces/me')
+      .set('Authorization', `Bearer ${owner.accessToken}`)
+      .expect(200)
+    const workspaceId = ownerMine.body[0].id as string
+
+    const kbRes = await request(app.getHttpServer())
+      .post(`/workspaces/${workspaceId}/knowledge-bases`)
+      .set('Authorization', `Bearer ${owner.accessToken}`)
+      .send({ name: 'Upload Limits KB' })
+      .expect(201)
+    const kbId = kbRes.body.id as string
+
+    await request(app.getHttpServer())
+      .post(`/workspaces/${workspaceId}/knowledge-bases/${kbId}/documents`)
+      .set('Authorization', `Bearer ${owner.accessToken}`)
+      .attach('file', Buffer.alloc(26 * 1024 * 1024, 'a'), 'too-big.txt')
+      .expect(413)
+
+    await request(app.getHttpServer())
+      .post(`/workspaces/${workspaceId}/knowledge-bases/${kbId}/documents`)
+      .set('Authorization', `Bearer ${owner.accessToken}`)
+      .attach('file', Buffer.from('bad'), 'malware.exe')
+      .expect(400)
+
+    await request(app.getHttpServer())
+      .post(`/workspaces/${workspaceId}/knowledge-bases/${kbId}/documents`)
+      .set('Authorization', `Bearer ${owner.accessToken}`)
+      .attach('file', Buffer.from('allowed text'), 'allowed.txt')
+      .expect(201)
   })
 })

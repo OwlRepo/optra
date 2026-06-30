@@ -1,11 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import {
-  canonicalizeUrl,
-  crawlSite,
-  extractContent,
-  isInScope,
-} from './crawl'
+import { canonicalizeUrl, crawlSite, extractContent, isInScope } from './crawl'
 
 type MockResponseInit = {
   body: string
@@ -342,5 +337,88 @@ describe('crawlSite', () => {
     })
 
     expect(pages.some((page) => page.url === 'https://example.com/docs')).toBe(false)
+  })
+
+  it('throws when seed url fails public-url validation', async () => {
+    const { fetchImpl } = makeFetch(buildSite())
+    const lookup = vi.fn().mockResolvedValue([{ address: '127.0.0.1', family: 4 }])
+
+    await expect(
+      crawlSite('https://blocked.example.com/docs', {
+        fetchImpl,
+        lookup,
+        requestDelayMs: 0,
+        timeoutMs: 1000,
+      }),
+    ).rejects.toThrow('Blocked non-public URL')
+  })
+
+  it('skips in-scope links that resolve to private addresses', async () => {
+    const { fetchImpl, counts } = makeFetch({
+      'https://example.com/robots.txt': {
+        body: 'User-agent: *\nDisallow:\n',
+        contentType: 'text/plain',
+      },
+      'https://example.com/docs': {
+        body: htmlPage(
+          'Docs home',
+          `
+            <main>
+              <p>${'Home intro '.repeat(8)}</p>
+              <a href="https://private.example.com/docs/private">Private</a>
+            </main>
+          `,
+        ),
+      },
+    })
+    const lookup = vi.fn(async (hostname: string) => {
+      if (hostname === 'example.com') {
+        return [{ address: '93.184.216.34', family: 4 }]
+      }
+
+      if (hostname === 'private.example.com') {
+        return [{ address: '10.0.0.9', family: 4 }]
+      }
+
+      return [{ address: '93.184.216.34', family: 4 }]
+    })
+
+    const pages = await crawlSite('https://example.com/docs', {
+      fetchImpl,
+      lookup,
+      requestDelayMs: 0,
+      timeoutMs: 1000,
+    })
+
+    expect(pages.map((page) => page.url)).toEqual(['https://example.com/docs'])
+    expect(counts.get('https://private.example.com/docs/private')).toBeUndefined()
+  })
+
+  it('streams live progress through onPage as pages are accepted', async () => {
+    const { fetchImpl } = makeFetch(buildSite())
+    const progressEvents: Array<{ url: string; pagesFound: number; pagesVisited: number; pagesQueued: number; maxPages: number }> =
+      []
+
+    const pages = await crawlSite('https://example.com/docs/', {
+      maxDepth: 1,
+      includePrefixes: ['/docs'],
+      fetchImpl,
+      requestDelayMs: 0,
+      timeoutMs: 1000,
+      onPage: async (page, progress) => {
+        progressEvents.push({
+          url: page.url,
+          pagesFound: progress.pagesFound,
+          pagesVisited: progress.pagesVisited,
+          pagesQueued: progress.pagesQueued,
+          maxPages: progress.maxPages,
+        })
+      },
+    })
+
+    expect(progressEvents.map((event) => event.url).sort()).toEqual(pages.map((page) => page.url).sort())
+    expect(progressEvents.map((event) => event.pagesFound)).toEqual([1, 2, 3])
+    expect(progressEvents.every((event) => event.pagesVisited >= event.pagesFound)).toBe(true)
+    expect(progressEvents.every((event) => event.maxPages === 500)).toBe(true)
   })
 })

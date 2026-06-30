@@ -110,10 +110,23 @@ describe('ScrapeProcessor', () => {
 
   it('stores pages, upserts documents, queues ingest, completes run', async () => {
     const { workspace, knowledgeBase, run } = await seedRun(prefix)
-    mockCrawlSite.mockResolvedValue([
-      { url: 'https://example.com/docs/a', title: 'Page A', content: 'A body' },
-      { url: 'https://example.com/docs/b', title: 'Page B', content: 'B body' },
-    ])
+    mockCrawlSite.mockImplementationOnce(async (_url: string, options?: { onPage?: (...args: any[]) => Promise<void> }) => {
+      const pages = [
+        { url: 'https://example.com/docs/a', title: 'Page A', content: 'A body' },
+        { url: 'https://example.com/docs/b', title: 'Page B', content: 'B body' },
+      ]
+
+      for (const [index, page] of pages.entries()) {
+        await options?.onPage?.(page, {
+          pagesFound: index + 1,
+          pagesVisited: index + 1,
+          pagesQueued: pages.length,
+          maxPages: 10,
+        })
+      }
+
+      return pages
+    })
 
     await processor.handleScrape({
       id: 'job-1',
@@ -143,6 +156,75 @@ describe('ScrapeProcessor', () => {
     expect(updatedRun.pagesFailed).toBe(0)
   })
 
+  it('updates live crawl counters and heartbeat while pages stream in', async () => {
+    const { workspace, knowledgeBase, run } = await seedRun(prefix)
+    const progressSnapshots: Array<{ pagesFound: number; pagesSucceeded: number; pagesFailed: number; lastProgressAt: Date | null }> = []
+
+    mockCrawlSite.mockImplementationOnce(async (_url: string, options?: { onPage?: (...args: any[]) => Promise<void> }) => {
+      const firstPage = { url: 'https://example.com/docs/a', title: 'Page A', content: 'A body' }
+      const secondPage = { url: 'https://example.com/docs/b', title: 'Page B', content: 'B body' }
+
+      await options?.onPage?.(firstPage, {
+        pagesFound: 1,
+        pagesVisited: 1,
+        pagesQueued: 2,
+        maxPages: 10,
+      })
+      progressSnapshots.push(
+        await db
+          .select({
+            pagesFound: scrapeRuns.pagesFound,
+            pagesSucceeded: scrapeRuns.pagesSucceeded,
+            pagesFailed: scrapeRuns.pagesFailed,
+            lastProgressAt: scrapeRuns.lastProgressAt,
+          })
+          .from(scrapeRuns)
+          .where(eq(scrapeRuns.id, run.id))
+          .then((rows) => rows[0]!),
+      )
+
+      storage.save.mockRejectedValueOnce(new Error('save failed'))
+      await options?.onPage?.(secondPage, {
+        pagesFound: 2,
+        pagesVisited: 2,
+        pagesQueued: 2,
+        maxPages: 10,
+      })
+      progressSnapshots.push(
+        await db
+          .select({
+            pagesFound: scrapeRuns.pagesFound,
+            pagesSucceeded: scrapeRuns.pagesSucceeded,
+            pagesFailed: scrapeRuns.pagesFailed,
+            lastProgressAt: scrapeRuns.lastProgressAt,
+          })
+          .from(scrapeRuns)
+          .where(eq(scrapeRuns.id, run.id))
+          .then((rows) => rows[0]!),
+      )
+
+      return [firstPage, secondPage]
+    })
+
+    await processor.handleScrape({
+      id: 'job-live',
+      data: {
+        runId: run.id,
+        workspaceId: workspace.id,
+        knowledgeBaseId: knowledgeBase.id,
+        url: run.seedUrl,
+        maxDepth: 2,
+        maxPages: 10,
+      },
+    } as any)
+
+    expect(progressSnapshots).toHaveLength(2)
+    expect(progressSnapshots[0]).toMatchObject({ pagesFound: 1, pagesSucceeded: 1, pagesFailed: 0 })
+    expect(progressSnapshots[1]).toMatchObject({ pagesFound: 2, pagesSucceeded: 1, pagesFailed: 1 })
+    expect(progressSnapshots[0]?.lastProgressAt).not.toBeNull()
+    expect(progressSnapshots[1]?.lastProgressAt).not.toBeNull()
+  })
+
   it('updates existing sourceUrl instead of duplicating and counts per-page failures', async () => {
     const { workspace, knowledgeBase, run } = await seedRun(prefix)
     const [existing] = await db
@@ -157,10 +239,23 @@ describe('ScrapeProcessor', () => {
       })
       .returning()
 
-    mockCrawlSite.mockResolvedValue([
-      { url: 'https://example.com/docs/a', title: 'New Title', content: 'A body' },
-      { url: 'https://example.com/docs/b', title: 'Page B', content: 'B body' },
-    ])
+    mockCrawlSite.mockImplementationOnce(async (_url: string, options?: { onPage?: (...args: any[]) => Promise<void> }) => {
+      const pages = [
+        { url: 'https://example.com/docs/a', title: 'New Title', content: 'A body' },
+        { url: 'https://example.com/docs/b', title: 'Page B', content: 'B body' },
+      ]
+
+      for (const [index, page] of pages.entries()) {
+        await options?.onPage?.(page, {
+          pagesFound: index + 1,
+          pagesVisited: index + 1,
+          pagesQueued: pages.length,
+          maxPages: 10,
+        })
+      }
+
+      return pages
+    })
     storage.save
       .mockResolvedValueOnce(undefined)
       .mockRejectedValueOnce(new Error('save failed'))

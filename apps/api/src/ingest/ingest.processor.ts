@@ -19,10 +19,18 @@ export class IngestProcessor {
   @Process()
   async handleIngest(job: Job<{ documentId: string }>): Promise<void> {
     const { documentId } = job.data
+    const processingStartedAt = new Date()
+
+    this.logger.log(`Ingest processor start documentId=${documentId} jobId=${String(job.id)}`)
 
     await db
       .update(documents)
-      .set({ status: 'processing', updatedAt: new Date() })
+      .set({
+        status: 'processing',
+        processingStartedAt,
+        lastError: null,
+        updatedAt: processingStartedAt,
+      })
       .where(eq(documents.id, documentId))
 
     const [document] = await db.select().from(documents).where(eq(documents.id, documentId)).limit(1)
@@ -34,7 +42,11 @@ export class IngestProcessor {
     if (!document.storageKey) {
       await db
         .update(documents)
-        .set({ status: 'failed', updatedAt: new Date() })
+        .set({
+          status: 'failed',
+          lastError: 'Document is missing storageKey',
+          updatedAt: new Date(),
+        })
         .where(eq(documents.id, documentId))
       return
     }
@@ -58,17 +70,19 @@ export class IngestProcessor {
 
       await db
         .update(documents)
-        .set({ status: 'done', updatedAt: new Date() })
+        .set({ status: 'done', lastError: null, updatedAt: new Date() })
         .where(eq(documents.id, documentId))
+      this.logger.log(`Ingest processor completed documentId=${documentId} jobId=${String(job.id)}`)
       await this.cache.bumpVersion(document.workspaceId)
     } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
       this.logger.error(
         `Ingest failed for document ${documentId}`,
-        error instanceof Error ? error.stack : String(error),
+        error instanceof Error ? error.stack : message,
       )
       await db
         .update(documents)
-        .set({ status: 'failed', updatedAt: new Date() })
+        .set({ status: 'failed', lastError: message, updatedAt: new Date() })
         .where(eq(documents.id, documentId))
     } finally {
       if (tempPath) {

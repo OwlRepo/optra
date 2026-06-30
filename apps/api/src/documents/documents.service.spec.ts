@@ -1,6 +1,6 @@
 import { NotFoundException } from '@nestjs/common'
 import { Test } from '@nestjs/testing'
-import { and, eq, like } from 'drizzle-orm'
+import { and, asc, eq, like } from 'drizzle-orm'
 import { db, chunks, documents, knowledgeBases, pool, users, workspaceMembers, workspaces } from '@repo/db'
 import { DocumentsService } from './documents.service'
 import { CacheService } from '../cache/cache.service'
@@ -142,6 +142,34 @@ describe('DocumentsService', () => {
         } as Express.Multer.File,
       ),
     ).rejects.toThrow(NotFoundException)
+  })
+
+  it('marks the document failed when ingest enqueue fails', async () => {
+    const { workspace, knowledgeBase } = await seedWorkspaceFixture(
+      `${prefix}enqueue-fail@example.com`,
+      'Documents Spec WS Enqueue Fail',
+    )
+    const file = {
+      originalname: 'broken.pdf',
+      buffer: Buffer.from('pdf'),
+      mimetype: 'application/pdf',
+    } as Express.Multer.File
+
+    storage.save.mockResolvedValue(undefined)
+    ingest.queueDocument.mockRejectedValue(new Error('Redis unavailable'))
+
+    await expect(service.upload(workspace.id, knowledgeBase.id, file)).rejects.toThrow('Redis unavailable')
+
+    const [saved] = await db
+      .select()
+      .from(documents)
+      .where(and(eq(documents.workspaceId, workspace.id), eq(documents.knowledgeBaseId, knowledgeBase.id)))
+      .orderBy(asc(documents.createdAt))
+      .limit(1)
+
+    expect(saved.title).toBe('broken.pdf')
+    expect(saved.status).toBe('failed')
+    expect(saved.lastError).toContain('Redis unavailable')
   })
 
   it('listForKnowledgeBase is scoped to workspace and knowledge base', async () => {

@@ -1,7 +1,7 @@
 import { ForbiddenException, NotFoundException } from '@nestjs/common'
 import { getQueueToken } from '@nestjs/bull'
 import { Test } from '@nestjs/testing'
-import { and, eq, like } from 'drizzle-orm'
+import { and, desc, eq, like } from 'drizzle-orm'
 import {
   db,
   documents,
@@ -14,6 +14,11 @@ import {
 } from '@repo/db'
 import { ConfigService } from '@nestjs/config'
 import { ScrapeService } from './scrape.service'
+import { assertPublicUrl } from '@repo/ai'
+
+jest.mock('@repo/ai', () => ({
+  assertPublicUrl: jest.fn(),
+}))
 
 async function cleanupFixtures(prefix: string) {
   const matches = await db.select({ id: users.id }).from(users).where(like(users.email, `${prefix}%`))
@@ -58,11 +63,16 @@ async function seedWorkspaceFixture(email: string, workspaceName: string) {
 
 describe('ScrapeService', () => {
   let service: ScrapeService
-  let queue: { add: jest.Mock }
+  let queue: { add: jest.Mock; getJob: jest.Mock; on: jest.Mock }
   const prefix = `scrape-service-spec-${Date.now()}-`
 
   beforeAll(async () => {
-    queue = { add: jest.fn().mockResolvedValue({ id: 'job-1' }) }
+    queue = {
+      add: jest.fn().mockResolvedValue({ id: 'job-1' }),
+      getJob: jest.fn().mockResolvedValue({ id: 'job-1' }),
+      on: jest.fn(),
+    }
+    ;(assertPublicUrl as jest.Mock).mockResolvedValue(undefined)
 
     const moduleRef = await Test.createTestingModule({
       providers: [
@@ -80,6 +90,7 @@ describe('ScrapeService', () => {
 
   afterEach(() => {
     jest.clearAllMocks()
+    ;(assertPublicUrl as jest.Mock).mockResolvedValue(undefined)
   })
 
   afterAll(async () => {
@@ -125,6 +136,137 @@ describe('ScrapeService', () => {
         removeOnFail: false,
       }),
     )
+  })
+
+  it('derives seed-path scope when includePrefixes is omitted for a non-root path', async () => {
+    const { workspace, knowledgeBase } = await seedWorkspaceFixture(
+      `${prefix}derived-scope@example.com`,
+      'Scrape Derived Scope WS',
+    )
+
+    await service.startScrape(workspace.id, knowledgeBase.id, {
+      url: 'https://example.com/docs/article-a',
+      maxDepth: 2,
+      maxPages: 10,
+    })
+
+    expect(queue.add).toHaveBeenCalledWith(
+      expect.objectContaining({
+        includePrefixes: ['/docs/article-a'],
+      }),
+      expect.any(Object),
+    )
+  })
+
+  it('keeps broad scope for root-path seeds when includePrefixes is omitted', async () => {
+    const { workspace, knowledgeBase } = await seedWorkspaceFixture(
+      `${prefix}root-scope@example.com`,
+      'Scrape Root Scope WS',
+    )
+
+    await service.startScrape(workspace.id, knowledgeBase.id, {
+      url: 'https://example.com/',
+      maxDepth: 2,
+      maxPages: 10,
+    })
+
+    expect(queue.add).toHaveBeenCalledWith(
+      expect.objectContaining({
+        includePrefixes: undefined,
+      }),
+      expect.any(Object),
+    )
+  })
+
+  it('derives parent section scope for home-style seeds', async () => {
+    const { workspace, knowledgeBase } = await seedWorkspaceFixture(
+      `${prefix}home-scope@example.com`,
+      'Scrape Home Scope WS',
+    )
+
+    await service.startScrape(workspace.id, knowledgeBase.id, {
+      url: 'https://support.supremainc.com/en/support/home',
+      maxDepth: 2,
+      maxPages: 10,
+    })
+
+    expect(queue.add).toHaveBeenCalledWith(
+      expect.objectContaining({
+        includePrefixes: ['/en/support'],
+      }),
+      expect.any(Object),
+    )
+  })
+
+  it('marks the run failed when enqueueing the scrape job fails', async () => {
+    const { workspace, knowledgeBase } = await seedWorkspaceFixture(
+      `${prefix}enqueue-fail@example.com`,
+      'Scrape Enqueue Fail WS',
+    )
+    queue.add.mockRejectedValueOnce(new Error('Redis unavailable'))
+
+    await expect(
+      service.startScrape(workspace.id, knowledgeBase.id, {
+        url: 'https://example.com/docs',
+      }),
+    ).rejects.toThrow('Redis unavailable')
+
+    const [run] = await db
+      .select()
+      .from(scrapeRuns)
+      .where(and(eq(scrapeRuns.workspaceId, workspace.id), eq(scrapeRuns.knowledgeBaseId, knowledgeBase.id)))
+      .orderBy(desc(scrapeRuns.createdAt))
+      .limit(1)
+
+    expect(run.status).toBe('failed')
+    expect(run.error).toContain('Redis unavailable')
+  })
+
+  it('reuses an existing in-flight run for the same workspace, knowledge base, and seed url', async () => {
+    const { workspace, knowledgeBase } = await seedWorkspaceFixture(
+      `${prefix}reuse@example.com`,
+      'Scrape Reuse WS',
+    )
+    const [run] = await db
+      .insert(scrapeRuns)
+      .values({
+        workspaceId: workspace.id,
+        knowledgeBaseId: knowledgeBase.id,
+        seedUrl: 'https://example.com/docs',
+        status: 'queued',
+        maxDepth: 2,
+        maxPages: 10,
+        queueJobId: 'scrape:existing-run',
+        enqueuedAt: new Date(),
+      })
+      .returning()
+
+    queue.getJob.mockResolvedValueOnce({ id: 'scrape:existing-run' })
+
+    const result = await service.startScrape(workspace.id, knowledgeBase.id, {
+      url: 'https://example.com/docs',
+      maxDepth: 2,
+      maxPages: 10,
+    })
+
+    expect(result).toEqual({ runId: run.id, status: 'queued', reusedExisting: true })
+    expect(queue.add).not.toHaveBeenCalled()
+  })
+
+  it('rejects internal seed urls before enqueueing', async () => {
+    const { workspace, knowledgeBase } = await seedWorkspaceFixture(
+      `${prefix}blocked@example.com`,
+      'Scrape Blocked WS',
+    )
+    ;(assertPublicUrl as jest.Mock).mockRejectedValue(new Error('Blocked non-public URL'))
+
+    await expect(
+      service.startScrape(workspace.id, knowledgeBase.id, {
+        url: 'http://169.254.169.254/latest/meta-data',
+      }),
+    ).rejects.toThrow('URL is not allowed')
+
+    expect(queue.add).not.toHaveBeenCalled()
   })
 
   it('rejects when quota reached', async () => {
@@ -184,5 +326,119 @@ describe('ScrapeService', () => {
     await expect(
       service.listRuns(mine.workspace.id, other.knowledgeBase.id),
     ).rejects.toThrow(NotFoundException)
+  })
+
+  it('reconciliation marks stale queued runs failed when the Bull job is missing', async () => {
+    const { workspace, knowledgeBase } = await seedWorkspaceFixture(
+      `${prefix}reconcile-stale@example.com`,
+      'Scrape Reconcile Stale WS',
+    )
+    const staleQueuedAt = new Date(Date.now() - 3 * 60_000)
+    const [run] = await db
+      .insert(scrapeRuns)
+      .values({
+        workspaceId: workspace.id,
+        knowledgeBaseId: knowledgeBase.id,
+        seedUrl: 'https://example.com/docs',
+        status: 'queued',
+        maxDepth: 1,
+        maxPages: 5,
+        queueJobId: 'scrape:stale-run',
+        enqueuedAt: staleQueuedAt,
+      })
+      .returning()
+
+    queue.getJob.mockResolvedValueOnce(null)
+
+    await service.reconcileRuns()
+
+    const [updated] = await db.select().from(scrapeRuns).where(eq(scrapeRuns.id, run.id)).limit(1)
+    expect(updated.status).toBe('failed')
+    expect(updated.error).toContain('missing Bull job')
+  })
+
+  it('reconciliation leaves fresh and live runs untouched', async () => {
+    const { workspace, knowledgeBase } = await seedWorkspaceFixture(
+      `${prefix}reconcile-fresh@example.com`,
+      'Scrape Reconcile Fresh WS',
+    )
+    const [freshRun, liveRun] = await db
+      .insert(scrapeRuns)
+      .values([
+        {
+          workspaceId: workspace.id,
+          knowledgeBaseId: knowledgeBase.id,
+          seedUrl: 'https://example.com/fresh',
+          status: 'queued',
+          maxDepth: 1,
+          maxPages: 5,
+          queueJobId: 'scrape:fresh-run',
+          enqueuedAt: new Date(),
+        },
+        {
+          workspaceId: workspace.id,
+          knowledgeBaseId: knowledgeBase.id,
+          seedUrl: 'https://example.com/live',
+          status: 'running',
+          maxDepth: 1,
+          maxPages: 5,
+          queueJobId: 'scrape:live-run',
+          enqueuedAt: new Date(Date.now() - 31 * 60_000),
+          startedAt: new Date(Date.now() - 31 * 60_000),
+          lastProgressAt: new Date(),
+        },
+      ])
+      .returning()
+
+    queue.getJob.mockImplementation(async (jobId: string) => {
+      if (jobId === 'scrape:live-run') {
+        return { id: jobId }
+      }
+      return null
+    })
+
+    await service.reconcileRuns()
+
+    const runs = await db
+      .select()
+      .from(scrapeRuns)
+      .where(and(eq(scrapeRuns.workspaceId, workspace.id), eq(scrapeRuns.knowledgeBaseId, knowledgeBase.id)))
+
+    const fresh = runs.find((entry) => entry.id === freshRun.id)
+    const live = runs.find((entry) => entry.id === liveRun.id)
+
+    expect(fresh?.status).toBe('queued')
+    expect(live?.status).toBe('running')
+  })
+
+  it('reconciliation marks stale running runs failed when no progress heartbeat remains', async () => {
+    const { workspace, knowledgeBase } = await seedWorkspaceFixture(
+      `${prefix}reconcile-idle@example.com`,
+      'Scrape Reconcile Idle WS',
+    )
+    const staleRunningAt = new Date(Date.now() - 6 * 60_000)
+    const [run] = await db
+      .insert(scrapeRuns)
+      .values({
+        workspaceId: workspace.id,
+        knowledgeBaseId: knowledgeBase.id,
+        seedUrl: 'https://example.com/docs/idle',
+        status: 'running',
+        maxDepth: 1,
+        maxPages: 5,
+        queueJobId: 'scrape:idle-run',
+        enqueuedAt: staleRunningAt,
+        startedAt: staleRunningAt,
+        lastProgressAt: staleRunningAt,
+      })
+      .returning()
+
+    queue.getJob.mockResolvedValueOnce({ id: 'scrape:idle-run' })
+
+    await service.reconcileRuns()
+
+    const [updated] = await db.select().from(scrapeRuns).where(eq(scrapeRuns.id, run.id)).limit(1)
+    expect(updated.status).toBe('failed')
+    expect(updated.error).toContain('no crawl progress heartbeat')
   })
 })

@@ -44,13 +44,23 @@ async function cleanupUsers(prefix: string) {
 }
 
 async function registerAndVerify(app: INestApplication, email: string, password: string) {
-  await request(app.getHttpServer()).post('/auth/register').send({ email, password }).expect(201)
+  const ipSuffix = Math.max(
+    1,
+    [...email].reduce((acc, char) => acc + char.charCodeAt(0), 0) % 250,
+  )
+
+  await request(app.getHttpServer())
+    .post('/auth/register')
+    .set('X-Forwarded-For', `198.51.100.${ipSuffix}`)
+    .send({ email, password })
+    .expect(201)
 
   const [user] = await db.select().from(users).where(eq(users.email, email)).limit(1)
   const [otp] = await db.select().from(otps).where(eq(otps.userId, user.id)).limit(1)
 
   const verifyRes = await request(app.getHttpServer())
     .post('/auth/verify-otp')
+    .set('X-Forwarded-For', `198.51.100.${ipSuffix}`)
     .send({ email, code: otp.code })
     .expect(201)
 
@@ -63,12 +73,14 @@ async function registerAndVerify(app: INestApplication, email: string, password:
 describe('Scrape flow (e2e)', () => {
   let app: INestApplication
   let queue: { add: jest.Mock }
+  let reusableOwner: { accessToken: string; workspaceId: string } | null = null
   const prefix = `e2e-scrape-${Date.now()}-`
   const password = 'password123'
 
   beforeAll(async () => {
     queue = {
       add: jest.fn().mockResolvedValue({ id: 'job-1' }),
+      getJob: jest.fn().mockResolvedValue({ id: 'job-1' }),
       process: jest.fn(),
       on: jest.fn(),
       isReady: jest.fn().mockResolvedValue(true),
@@ -106,6 +118,7 @@ describe('Scrape flow (e2e)', () => {
       .set('Authorization', `Bearer ${owner.accessToken}`)
       .expect(200)
     const ownerWorkspaceId = ownerMine.body[0].id as string
+    reusableOwner = { accessToken: owner.accessToken, workspaceId: ownerWorkspaceId }
 
     const outsiderMine = await request(app.getHttpServer())
       .get('/workspaces/me')
@@ -183,5 +196,63 @@ describe('Scrape flow (e2e)', () => {
 
     expect(runsRes.body).toHaveLength(1)
     expect(runsRes.body[0].id).toBe(ownerStart.body.runId)
+  })
+
+  it('returns the same run when the same crawl is started twice while it is still in flight', async () => {
+    const owner = await registerAndVerify(app, `${prefix}dup-owner@example.com`, password)
+
+    const ownerMine = await request(app.getHttpServer())
+      .get('/workspaces/me')
+      .set('Authorization', `Bearer ${owner.accessToken}`)
+      .expect(200)
+    const workspaceId = ownerMine.body[0].id as string
+
+    const kbRes = await request(app.getHttpServer())
+      .post(`/workspaces/${workspaceId}/knowledge-bases`)
+      .set('Authorization', `Bearer ${owner.accessToken}`)
+      .send({ name: 'Duplicate Crawl KB' })
+      .expect(201)
+    const kbId = kbRes.body.id as string
+
+    const first = await request(app.getHttpServer())
+      .post(`/workspaces/${workspaceId}/knowledge-bases/${kbId}/scrape`)
+      .set('Authorization', `Bearer ${owner.accessToken}`)
+      .send({ url: 'https://example.com/docs', maxDepth: 2, maxPages: 5 })
+      .expect(202)
+
+    const second = await request(app.getHttpServer())
+      .post(`/workspaces/${workspaceId}/knowledge-bases/${kbId}/scrape`)
+      .set('Authorization', `Bearer ${owner.accessToken}`)
+      .send({ url: 'https://example.com/docs', maxDepth: 2, maxPages: 5 })
+      .expect(200)
+
+    expect(second.body).toEqual(first.body)
+    expect(queue.add).toHaveBeenCalledTimes(1)
+  })
+
+  it('derives subtree scope for non-root seeds when includePrefixes is omitted', async () => {
+    if (!reusableOwner) {
+      throw new Error('Reusable scrape owner missing')
+    }
+
+    const kbRes = await request(app.getHttpServer())
+      .post(`/workspaces/${reusableOwner.workspaceId}/knowledge-bases`)
+      .set('Authorization', `Bearer ${reusableOwner.accessToken}`)
+      .send({ name: 'Scope Crawl KB' })
+      .expect(201)
+    const kbId = kbRes.body.id as string
+
+    await request(app.getHttpServer())
+      .post(`/workspaces/${reusableOwner.workspaceId}/knowledge-bases/${kbId}/scrape`)
+      .set('Authorization', `Bearer ${reusableOwner.accessToken}`)
+      .send({ url: 'https://example.com/docs/article-a', maxDepth: 2, maxPages: 5 })
+      .expect(202)
+
+    expect(queue.add).toHaveBeenCalledWith(
+      expect.objectContaining({
+        includePrefixes: ['/docs/article-a'],
+      }),
+      expect.any(Object),
+    )
   })
 })

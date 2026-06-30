@@ -70,6 +70,9 @@
     "transform": {
       "^.+\\.(t|j)s$": "@swc/jest"
     },
+    "moduleNameMapper": {
+      "^@repo/(ai|db|types)$": "<rootDir>/../../../packages/$1/src"
+    },
     "collectCoverageFrom": ["**/*.(t|j)s"],
     "coverageDirectory": "../coverage",
     "testEnvironment": "node"

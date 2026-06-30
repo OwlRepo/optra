@@ -1,4 +1,5 @@
-import { Body, Controller, Get, HttpCode, Param, Post, UseGuards } from '@nestjs/common'
+import { Body, Controller, Get, Param, Post, Res, UseGuards } from '@nestjs/common'
+import type { Response } from 'express'
 import { Roles } from '../auth/decorators/roles.decorator'
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard'
 import { RolesGuard } from '../auth/guards/roles.guard'
@@ -11,15 +12,17 @@ export class ScrapeController {
   constructor(private readonly scrapeService: ScrapeService) {}
 
   @Post('scrape')
-  @HttpCode(202)
   @UseGuards(JwtAuthGuard, WorkspaceMemberGuard, RolesGuard)
   @Roles('owner', 'admin')
-  start(
+  async start(
     @Param('workspaceId') workspaceId: string,
     @Param('kbId') kbId: string,
     @Body() dto: ScrapeDto,
+    @Res({ passthrough: true }) response: Response,
   ) {
-    return this.scrapeService.startScrape(workspaceId, kbId, dto)
+    const result = await this.scrapeService.startScrape(workspaceId, kbId, dto)
+    response.status(result.reusedExisting ? 200 : 202)
+    return { runId: result.runId, status: result.status }
   }
 
   @Get('scrape-runs')

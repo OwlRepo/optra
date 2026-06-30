@@ -1,7 +1,7 @@
 import { NotFoundException } from '@nestjs/common'
 import { Test } from '@nestjs/testing'
 import { and, eq, like } from 'drizzle-orm'
-import { answerQuestion, embedQuery } from '@repo/ai'
+import { answerQuestion, countTokens, embedQuery } from '@repo/ai'
 import {
   chatMessages,
   chatSessions,
@@ -13,9 +13,11 @@ import {
 } from '@repo/db'
 import { CacheService } from '../cache/cache.service'
 import { ChatService } from './chat.service'
+import { UsageService } from '../limits/usage.service'
 
 jest.mock('@repo/ai', () => ({
   answerQuestion: jest.fn(),
+  countTokens: jest.fn(),
   embedQuery: jest.fn(),
 }))
 
@@ -71,6 +73,10 @@ describe('ChatService', () => {
     saveSemantic: jest.Mock
     getVersion: jest.Mock
   }
+  let usage: {
+    assertWithinBudget: jest.Mock
+    addUsage: jest.Mock
+  }
   const prefix = `chat-service-spec-${Date.now()}-`
 
   beforeAll(async () => {
@@ -81,10 +87,15 @@ describe('ChatService', () => {
       saveSemantic: jest.fn(),
       getVersion: jest.fn(),
     }
+    usage = {
+      assertWithinBudget: jest.fn(),
+      addUsage: jest.fn(),
+    }
     const moduleRef = await Test.createTestingModule({
       providers: [
         ChatService,
         { provide: CacheService, useValue: cache },
+        { provide: UsageService, useValue: usage },
       ],
     }).compile()
 
@@ -93,6 +104,7 @@ describe('ChatService', () => {
 
   afterEach(() => {
     jest.clearAllMocks()
+    ;(countTokens as jest.Mock).mockImplementation((text: string) => text.length)
   })
 
   afterAll(async () => {
@@ -115,7 +127,10 @@ describe('ChatService', () => {
     cache.getExact.mockResolvedValue(null)
     cache.getSemantic.mockResolvedValue(null)
     cache.getVersion.mockResolvedValue(1)
+    usage.assertWithinBudget.mockResolvedValue(undefined)
+    usage.addUsage.mockResolvedValue(undefined)
     ;(embedQuery as jest.Mock).mockResolvedValue([0.1, 0.2, 0.3])
+    ;(countTokens as jest.Mock).mockImplementation((text: string) => text.length)
     ;(answerQuestion as jest.Mock).mockResolvedValue({ sources, stream })
 
     const result = await service.answer(workspace.id, user.id, 'Hello assistant')
@@ -131,6 +146,11 @@ describe('ChatService', () => {
     await result.onComplete(body.join(''))
 
     expect(embedQuery).toHaveBeenCalledWith('Hello assistant')
+    expect(usage.assertWithinBudget).toHaveBeenCalledWith(workspace.id)
+    expect(usage.addUsage).toHaveBeenCalledWith(
+      workspace.id,
+      'Hello assistant'.length + 'hello world'.length,
+    )
     expect(cache.saveSemantic).toHaveBeenCalledWith(
       workspace.id,
       1,
@@ -165,7 +185,10 @@ describe('ChatService', () => {
     cache.getExact.mockResolvedValue(null)
     cache.getSemantic.mockResolvedValue(null)
     cache.getVersion.mockResolvedValue(1)
+    usage.assertWithinBudget.mockResolvedValue(undefined)
+    usage.addUsage.mockResolvedValue(undefined)
     ;(embedQuery as jest.Mock).mockResolvedValue([0.9])
+    ;(countTokens as jest.Mock).mockImplementation((text: string) => text.length)
     const existing = await service.answer(mine.workspace.id, mine.user.id, 'First turn')
 
     await existing.onComplete('first answer')
@@ -177,6 +200,7 @@ describe('ChatService', () => {
       })(),
     })
     ;(embedQuery as jest.Mock).mockResolvedValue([0.7])
+    ;(countTokens as jest.Mock).mockImplementation((text: string) => text.length)
 
     const followUp = await service.answer(
       mine.workspace.id,
@@ -195,6 +219,7 @@ describe('ChatService', () => {
       })(),
     })
     ;(embedQuery as jest.Mock).mockResolvedValue([0.5])
+    ;(countTokens as jest.Mock).mockImplementation((text: string) => text.length)
     const otherSession = await service.answer(other.workspace.id, other.user.id, 'Other turn')
     await otherSession.onComplete('other answer')
 
@@ -216,7 +241,10 @@ describe('ChatService', () => {
     cache.getExact.mockResolvedValue(null)
     cache.getSemantic.mockResolvedValue(null)
     cache.getVersion.mockResolvedValue(1)
+    usage.assertWithinBudget.mockResolvedValue(undefined)
+    usage.addUsage.mockResolvedValue(undefined)
     ;(embedQuery as jest.Mock).mockResolvedValue([0.4])
+    ;(countTokens as jest.Mock).mockImplementation((text: string) => text.length)
     ;(answerQuestion as jest.Mock).mockResolvedValue({
       sources: [{ documentId: 'doc-9', title: 'Doc Nine', sourceUrl: null, score: 0.7, snippet: 's' }],
       stream: (async function* () {
@@ -266,6 +294,8 @@ describe('ChatService', () => {
 
     expect(answerQuestion).not.toHaveBeenCalled()
     expect(embedQuery).not.toHaveBeenCalled()
+    expect(usage.assertWithinBudget).not.toHaveBeenCalled()
+    expect(usage.addUsage).not.toHaveBeenCalled()
     expect(body.join('')).toBe('cached exact')
 
     const messages = await db
@@ -290,6 +320,7 @@ describe('ChatService', () => {
       sources: [{ documentId: 'doc-sem', title: 'Sem Doc', sourceUrl: null, score: 0.96, snippet: 'sem' }],
     })
     ;(embedQuery as jest.Mock).mockResolvedValue([0.3, 0.4])
+    ;(countTokens as jest.Mock).mockImplementation((text: string) => text.length)
 
     const result = await service.answer(workspace.id, user.id, 'Paraphrase question')
     const body: string[] = []
@@ -300,11 +331,44 @@ describe('ChatService', () => {
 
     expect(embedQuery).toHaveBeenCalledTimes(1)
     expect(answerQuestion).not.toHaveBeenCalled()
+    expect(usage.assertWithinBudget).not.toHaveBeenCalled()
+    expect(usage.addUsage).not.toHaveBeenCalled()
     expect(cache.setExact).toHaveBeenCalledWith(
       workspace.id,
       'Paraphrase question',
       'cached semantic',
       [{ documentId: 'doc-sem', title: 'Sem Doc', sourceUrl: null, score: 0.96, snippet: 'sem' }],
+    )
+  })
+
+  it('miss path checks budget before generation and records user+assistant tokens once complete', async () => {
+    const { user, workspace } = await seedWorkspaceFixture(
+      `${prefix}usage@example.com`,
+      'Chat Spec Usage',
+    )
+    cache.getExact.mockResolvedValue(null)
+    cache.getSemantic.mockResolvedValue(null)
+    cache.getVersion.mockResolvedValue(2)
+    usage.assertWithinBudget.mockResolvedValue(undefined)
+    usage.addUsage.mockResolvedValue(undefined)
+    ;(embedQuery as jest.Mock).mockResolvedValue([0.2, 0.4])
+    ;(countTokens as jest.Mock).mockImplementation((text: string) => text.length)
+    ;(answerQuestion as jest.Mock).mockResolvedValue({
+      sources: [],
+      stream: (async function* () {
+        yield 'final answer'
+      })(),
+    })
+
+    const result = await service.answer(workspace.id, user.id, 'Count these tokens')
+    for await (const _token of result.stream) {
+    }
+    await result.onComplete('final answer')
+
+    expect(usage.assertWithinBudget).toHaveBeenCalledWith(workspace.id)
+    expect(usage.addUsage).toHaveBeenCalledWith(
+      workspace.id,
+      'Count these tokens'.length + 'final answer'.length,
     )
   })
 })

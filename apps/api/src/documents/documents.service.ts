@@ -33,7 +33,21 @@ export class DocumentsService {
       })
       .returning()
 
-    await this.ingest.queueDocument(document.id)
+    try {
+      await this.ingest.queueDocument(document.id)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      await db
+        .update(documents)
+        .set({
+          status: 'failed',
+          lastError: `Queue enqueue failed: ${message}`,
+          updatedAt: new Date(),
+        })
+        .where(eq(documents.id, document.id))
+      this.logger.error(`Document upload enqueue failed documentId=${document.id}: ${message}`)
+      throw error
+    }
 
     return {
       id: document.id,

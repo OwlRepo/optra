@@ -176,6 +176,57 @@ describe('KnowledgeBasePage', () => {
     })
   })
 
+  it('disables the crawl submit button while the request is in flight and shows duplicate-run feedback', async () => {
+    listDocumentsMock.mockResolvedValue([])
+    listScrapeRunsMock
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        {
+          id: 'run-1',
+          seedUrl: 'https://example.com/docs',
+          status: 'queued',
+          pagesFound: 0,
+          pagesSucceeded: 0,
+          pagesFailed: 0,
+          createdAt: '2026-06-30T00:00:00.000Z',
+        },
+      ])
+
+    let resolveScrape: ((value: unknown) => void) | undefined
+    scrapeSiteMock.mockReturnValue(
+      new Promise((resolve) => {
+        resolveScrape = resolve
+      }),
+    )
+
+    renderPage()
+
+    expect(await screen.findByText('No documents yet')).toBeDefined()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Scrape website' }))
+    fireEvent.change(screen.getByLabelText('Website URL'), {
+      target: { value: 'https://example.com/docs' },
+    })
+
+    const startButton = screen.getByRole('button', { name: 'Start crawl' }) as HTMLButtonElement
+    fireEvent.click(startButton)
+
+    await waitFor(() => {
+      expect(startButton.disabled).toBe(true)
+    })
+
+    resolveScrape?.({
+      runId: 'run-1',
+      status: 'queued',
+      reusedExisting: true,
+    })
+
+    await waitFor(() => {
+      expect(screen.getByText('Crawl already in progress')).toBeDefined()
+      expect(screen.queryByRole('button', { name: 'Start crawl' })).toBeNull()
+    })
+  })
+
   it('polls scrape runs while a crawl is running', async () => {
     vi.useFakeTimers()
     listDocumentsMock.mockResolvedValue([])
@@ -222,6 +273,54 @@ describe('KnowledgeBasePage', () => {
     await Promise.resolve()
 
     expect(listScrapeRunsMock).toHaveBeenCalledTimes(callCount)
+  })
+
+  it('shows discovered-page progress text for running and completed crawls', async () => {
+    listDocumentsMock.mockResolvedValue([])
+    listScrapeRunsMock.mockResolvedValue([
+      {
+        id: 'run-1',
+        seedUrl: 'https://example.com/docs',
+        status: 'running',
+        pagesFound: 10,
+        pagesSucceeded: 4,
+        pagesFailed: 1,
+        createdAt: '2026-06-30T00:00:00.000Z',
+      },
+      {
+        id: 'run-2',
+        seedUrl: 'https://example.com/done',
+        status: 'completed',
+        pagesFound: 3,
+        pagesSucceeded: 3,
+        pagesFailed: 0,
+        createdAt: '2026-06-30T00:00:00.000Z',
+      },
+    ])
+
+    renderPage()
+
+    expect(await screen.findByText('50% of discovered pages processed')).toBeDefined()
+    expect(screen.getByText('100% of discovered pages processed')).toBeDefined()
+  })
+
+  it('shows truthful document queue summary and surfaces in-flight docs first', async () => {
+    listDocumentsMock.mockResolvedValue([
+      { id: 'doc-done', title: 'Done.txt', status: 'done', createdAt: '2026-06-30T00:00:00.000Z', updatedAt: '2026-06-30T00:00:05.000Z' },
+      { id: 'doc-pending', title: 'Pending.txt', status: 'pending', createdAt: '2026-06-30T00:00:01.000Z', updatedAt: '2026-06-30T00:00:10.000Z' },
+      { id: 'doc-processing', title: 'Processing.txt', status: 'processing', createdAt: '2026-06-30T00:00:02.000Z', updatedAt: '2026-06-30T00:00:15.000Z' },
+      { id: 'doc-failed', title: 'Failed.txt', status: 'failed', createdAt: '2026-06-30T00:00:03.000Z', updatedAt: '2026-06-30T00:00:20.000Z' },
+    ])
+    listScrapeRunsMock.mockResolvedValue([])
+
+    renderPage()
+
+    expect(await screen.findByText('2 documents in flight')).toBeDefined()
+    expect(screen.getByText('25% indexed · 1 pending · 1 processing · 1 failed')).toBeDefined()
+
+    const rows = screen.getAllByRole('row')
+    expect(rows[1]?.textContent).toContain('Processing.txt')
+    expect(rows[2]?.textContent).toContain('Pending.txt')
   })
 
   it('deletes a document after confirmation', async () => {

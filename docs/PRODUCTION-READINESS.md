@@ -10,9 +10,9 @@
 
 | # | Item | Current state (checked) | Action | Sev | Blocks |
 |---|------|-------------------------|--------|-----|--------|
-| A1 | **SSRF on scrape seed URL** | `scrape.dto.ts` = `@IsUrl()` only; crawler `preventOutside` only stops *following* off-origin links, not the user-supplied seed. Server will fetch any URL incl. `http://169.254.169.254`, `localhost`, internal IPs. | Validate seed (and every fetched URL) against a blocklist: private/loopback/link-local/reserved IP ranges + internal hostnames; resolve DNS and re-check before fetch; require `http(s)`; optional per-workspace allowed-domain list. | 🔴 | Prod |
-| A2 | **File upload limits** | `FileInterceptor('file')` has no `limits`; multer memory storage buffers whole file in RAM. | Add `limits: { fileSize }` (e.g. 25MB), allowed MIME/extension whitelist (the 11 supported types), reject early. Consider disk/stream storage for large files. | 🔴 | Prod |
-| A3 | **`.env.production` not gitignored** | `.gitignore` has `.env`, `.env.local`, `.env.production.local`, `.env.prod` — but NOT `.env.production` (read by `docker-compose.prod.yml`). | Add `.env.production` (and `docker/seaweedfs/s3.prod.json`) to `.gitignore`. Verify nothing secret is already committed. | 🔴 | Prod/Demo |
+| A1 | **SSRF on scrape seed URL** | Fixed 2026-07-01. Scrape API rejects non-public/internal targets before queueing, and crawler revalidates every fetched URL with hostname/IP/DNS checks (`packages/ai/src/web/ssrf.ts`). | Keep allow/block rules centralized; consider optional per-workspace allow-domain lists later. | ✅ | — |
+| A2 | **File upload limits** | Fixed 2026-07-01. Uploads now enforce `MAX_UPLOAD_MB` and a supported MIME/extension allowlist before storage/ingest. | Consider disk/stream storage later for larger files, but RAM-DoS gap is closed. | ✅ | — |
+| A3 | **`.env.production` not gitignored** | Fixed 2026-07-01. `.env.production` and `docker/seaweedfs/s3.prod.json` are gitignored; tracked `.env.production` removed from index. | Keep verifying no prod secrets are tracked. | ✅ | — |
 | A4 | **Strong secrets in prod** | `.env.example` `JWT_SECRET=change-me-in-prod`. | Generate strong `JWT_SECRET`, real `OPENAI_API_KEY`/`RESEND_*`/S3 creds; inject via secrets manager, never commit. Rotate policy. | 🔴 | Demo |
 | A5 | **Security headers (helmet)** | `main.ts` sets CORS + cookies + ValidationPipe(whitelist) but no `helmet`. | Add `helmet()`; review CSP for the web app. | 🟠 | Prod |
 | A6 | **Global exception filter** | None; relying on Nest defaults. | Add a global filter: safe client messages, no stack/internal leakage, structured error logging. | 🟠 | Prod |
@@ -39,7 +39,7 @@
 | C4 | **Worker separation** | Bull `ingest-queue`/`scrape-queue` processors run IN the API process → ingest/crawl compete with chat latency. | Run a separate worker process/container for queues; scale independently. | 🟠 | Prod (load) |
 | C5 | **Graceful shutdown** | Not handled. | `enableShutdownHooks`, drain Bull, close PG pool on SIGTERM. | 🟠 | Prod |
 | C6 | **DB connection pooling** | `new Pool({ connectionString })` = default (max ~10); `dotenv` relative path. | Tune `max`/idle/timeouts for concurrency; consider PgBouncer; load-from-env robustly in prod. | 🟠 | Prod (load) |
-| C7 | **Prod stack dry-run** | `docker-compose.prod.yml` only `config`/`build`-validated, never actually run. | One full deploy dry-run (DB migrate, SeaweedFS bucket, Caddy TLS, register→chat smoke). | 🔴 | Demo |
+| C7 | **Prod stack dry-run** | Partially de-risked 2026-07-01: local `bun run build`, `bun run --cwd apps/api start`, and `bun run --cwd apps/api dev` now boot after removing broken `@repo/*` source-path runtime aliases. Full prod compose dry-run still not done. | One full deploy dry-run (DB migrate, SeaweedFS bucket, Caddy TLS, register→chat smoke). | 🔴 | Demo |
 
 ## D. Quality (answers)
 
@@ -47,7 +47,7 @@
 |---|------|---------------|--------|-----|--------|
 | D1 | **RAGAS evaluation** | Not built; LangSmith tracing ✅. | **Stage 2** (planned): faithfulness/answer-relevancy/context-precision/recall from traces, weekly; baseline before tuning. | 🟠 | Prod |
 | D2 | **User feedback loop** | None. | Thumbs up/down per answer → `chat_feedback` table → surface low-rated, feed eval set. | 🟠 | Prod |
-| D3 | **Conditional LangGraph** | Not built. | **Stage 3** (planned): grade→rewrite→retry→self-grade + "escalate to human", gated on low retrieval score (cheap path default). | 🟢 | — |
+| D3 | **Conditional LangGraph** | Built, flag-off (`LANGGRAPH_ENABLED=false`). **Known limitation:** the graph path buffers the full answer and yields it as one chunk (`graph.ts` `collectAnswer`) — loses token-by-token streaming. | Before enabling in prod: restore streaming via `graph.streamEvents` (stream the `generate`/`fallback` node tokens) so chat stays progressive. | 🟠 | Prod (only if flag on) |
 | D4 | **Grounding/hallucination guard** | System prompt + "I don't know" fallback ✅. | Strengthen with self-grade (D3) once measured (D1). | 🟢 | — |
 
 ## E. Observability
@@ -68,6 +68,9 @@
 | F4 | **Staging env** | None. | A staging deploy mirroring prod for dry-runs. | 🟠 | Prod |
 | F5 | **Dockerfile hardening** | `apps/{api,web}/Dockerfile` exist; not reviewed for non-root/multi-stage/size. | Review: multi-stage, non-root user, minimal base, pinned. | 🟢 | Prod |
 | F6 | **Migration runner in deploy** | Migrations run manually (`db:push`). | Run migrations as a deploy step (drizzle migrate) with the `0000–0004` history; avoid `push` in prod. | 🟠 | Prod |
+
+Dependency pin note:
+- `packages/ai` now pins `@langchain/langgraph` exactly to `0.2.39` so `bun install` cannot silently drift to the incompatible `0.2.7x` line while `@langchain/core` stays on `0.2.36`.
 
 ## G. Data / compliance (BPO = customer PII)
 

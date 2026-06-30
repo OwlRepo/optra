@@ -31,10 +31,16 @@ export class ScrapeProcessor {
   @Process()
   async handleScrape(job: Job<ScrapeJob>): Promise<void> {
     const { runId, workspaceId, knowledgeBaseId, url, maxDepth, maxPages, includePrefixes } = job.data
+    const startedAt = new Date()
+    let pagesFound = 0
+    let pagesSucceeded = 0
+    let pagesFailed = 0
+
+    this.logger.log(`Scrape processor start runId=${runId} jobId=${String(job.id)}`)
 
     await db
       .update(scrapeRuns)
-      .set({ status: 'running', startedAt: new Date(), error: null })
+      .set({ status: 'running', startedAt, lastProgressAt: startedAt, error: null })
       .where(eq(scrapeRuns.id, runId))
 
     try {
@@ -48,59 +54,83 @@ export class ScrapeProcessor {
         timeoutMs: 20_000,
         userAgent: this.config.get<string>('CRAWLER_USER_AGENT') ?? 'MnemraBot/1.0 (+https://mnemra.com/bot)',
         respectRobots: true,
-      })
+        onPage: async (page, progress) => {
+          const lastProgressAt = new Date()
+          pagesFound = progress.pagesFound
 
-      let pagesSucceeded = 0
-      let pagesFailed = 0
+          await db
+            .update(scrapeRuns)
+            .set({ pagesFound, lastProgressAt })
+            .where(eq(scrapeRuns.id, runId))
 
-      await db.update(scrapeRuns).set({ pagesFound: pages.length }).where(eq(scrapeRuns.id, runId))
+          this.logger.log(
+            `Scrape crawled page ${progress.pagesFound}/${progress.maxPages} runId=${runId} jobId=${String(job.id)} url=${page.url}`,
+          )
 
-      for (const page of pages) {
-        try {
-          const storageKey = `${workspaceId}/${knowledgeBaseId}/scrape/${randomUUID()}.txt`
-          await this.storage.save(storageKey, Buffer.from(page.content, 'utf-8'), 'text/plain')
+          try {
+            const storageKey = `${workspaceId}/${knowledgeBaseId}/scrape/${randomUUID()}.txt`
+            await this.storage.save(storageKey, Buffer.from(page.content, 'utf-8'), 'text/plain')
 
-          const [document] = await db
-            .insert(documents)
-            .values({
-              workspaceId,
-              knowledgeBaseId,
-              title: page.title || page.url,
-              sourceUrl: page.url,
-              storageKey,
-              status: 'pending',
-            })
-            .onConflictDoUpdate({
-              target: [documents.knowledgeBaseId, documents.sourceUrl],
-              targetWhere: sql`source_url is not null`,
-              set: {
+            const [document] = await db
+              .insert(documents)
+              .values({
+                workspaceId,
+                knowledgeBaseId,
                 title: page.title || page.url,
+                sourceUrl: page.url,
                 storageKey,
                 status: 'pending',
-                updatedAt: new Date(),
-              },
-            })
-            .returning()
+              })
+              .onConflictDoUpdate({
+                target: [documents.knowledgeBaseId, documents.sourceUrl],
+                targetWhere: sql`source_url is not null`,
+                set: {
+                  title: page.title || page.url,
+                  storageKey,
+                  status: 'pending',
+                  updatedAt: new Date(),
+                },
+              })
+              .returning()
 
-          await this.ingest.queueDocument(document.id)
-          pagesSucceeded += 1
-        } catch (error) {
-          pagesFailed += 1
-          this.logger.warn(
-            `Failed to persist scraped page ${page.url}: ${error instanceof Error ? error.message : String(error)}`,
-          )
-        }
-      }
+            await this.ingest.queueDocument(document.id)
+            pagesSucceeded += 1
+
+            await db
+              .update(scrapeRuns)
+              .set({ pagesFound, pagesSucceeded, pagesFailed, lastProgressAt })
+              .where(eq(scrapeRuns.id, runId))
+
+            this.logger.log(
+              `Scrape persist success runId=${runId} jobId=${String(job.id)} url=${page.url} found=${pagesFound} succeeded=${pagesSucceeded} failed=${pagesFailed}`,
+            )
+          } catch (error) {
+            pagesFailed += 1
+
+            await db
+              .update(scrapeRuns)
+              .set({ pagesFound, pagesSucceeded, pagesFailed, lastProgressAt })
+              .where(eq(scrapeRuns.id, runId))
+
+            this.logger.warn(
+              `Scrape persist failed runId=${runId} jobId=${String(job.id)} url=${page.url} found=${pagesFound} succeeded=${pagesSucceeded} failed=${pagesFailed} error=${error instanceof Error ? error.message : String(error)}`,
+            )
+          }
+        },
+      })
 
       await db
         .update(scrapeRuns)
         .set({
           status: 'completed',
+          pagesFound: pagesFound || pages.length,
           pagesSucceeded,
           pagesFailed,
+          error: null,
           finishedAt: new Date(),
         })
         .where(eq(scrapeRuns.id, runId))
+      this.logger.log(`Scrape processor completed runId=${runId} jobId=${String(job.id)}`)
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       this.logger.error(`Scrape failed for run ${runId}`, error instanceof Error ? error.stack : message)
