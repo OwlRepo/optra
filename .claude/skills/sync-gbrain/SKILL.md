@@ -1,0 +1,1 @@
+/Users/romeoangelesjr/Documents/personal/second-brain/.claude/skills/gstack/sync-gbrain/SKILL.md

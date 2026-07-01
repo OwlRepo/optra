@@ -1,0 +1,1 @@
+/Users/romeoangelesjr/Documents/personal/second-brain/.claude/skills/gstack/devex-review/SKILL.md
