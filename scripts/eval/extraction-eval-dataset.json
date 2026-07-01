@@ -1,0 +1,33 @@
+[
+  {
+    "transcript": "Customer says after OTP verification they land on the workspace page for one second, then the app sends them back to login. It happens on Chrome and Safari. Started after yesterday's deploy. Agent suspects access token cookie is not sticking.",
+    "should_create_ticket": true,
+    "expected": {
+      "title": "Login loop after OTP verification",
+      "issueSummary": "Users are redirected back to login right after completing OTP verification.",
+      "reproSteps": "1. Register or log in with OTP\n2. Complete verification\n3. Observe redirect back to login",
+      "severity": "high",
+      "productArea": "auth",
+      "hypothesizedRootCause": "Access token cookie may not persist after verify response.",
+      "nextAction": "Inspect verify OTP response and web proxy cookie handling after deploy."
+    }
+  },
+  {
+    "transcript": "Support lead reports CSV export reaches 95 percent and never finishes. Multiple customers reproduced it this morning in production. The UI spinner stays forever and no file downloads.",
+    "should_create_ticket": true,
+    "expected": {
+      "title": "CSV export stalls near completion",
+      "issueSummary": "Production CSV exports hang around 95 percent and never download.",
+      "reproSteps": "1. Start CSV export\n2. Wait for progress to reach about 95 percent\n3. Observe no file download",
+      "severity": "medium",
+      "productArea": "exports",
+      "hypothesizedRootCause": "Background export job may stall before final completion or file write.",
+      "nextAction": "Review export worker logs and completion path around final file write."
+    }
+  },
+  {
+    "transcript": "Caller spent five minutes thanking the team and asking for roadmap timing. No bug, no broken workflow, no request for support action.",
+    "should_create_ticket": false,
+    "expected": {}
+  }
+]

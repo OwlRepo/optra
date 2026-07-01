@@ -139,3 +139,16 @@ If risk area is missing, mark `UNMAPPED RISK`.
   - eval harness stays outside app runtime and never runs per request
   - dataset rows keep `question`, `answer`, `contexts`, `ground_truth` schema
   - weekly run records JSON output and lowest metric so prompt/retrieval fixes have evidence
+
+- Ticket copilot is a live tenant-isolation + queue-reliability + extraction-quality risk as of 2026-07-01.
+  Required checks:
+  - backend routes stay nested under `:workspaceId` with `JwtAuthGuard` + `WorkspaceMemberGuard`
+  - exact transcript dedup scopes by both `workspaceId` and `transcriptHash`, with DB unique enforcement to close concurrent-create races
+  - create path stores transcript before enqueue and job payload carries only `ticketId`
+  - queue enqueue failure after row insert marks ticket terminal `failed` with `lastError`
+  - startup reconciliation fails stale `pending` rows only after pending grace exceeds the 5-minute job timeout, and fails stale `processing` rows after 30 minutes when Bull no longer has the job
+  - extraction completion never overwrites a row that already left `pending|processing` due to human review or future retries
+  - extraction failures surface as ticket `failed` state and web failure banner, never raw 500 to user
+  - patch/save stamps `reviewedBy` and `reviewedAt`, preserving auditability for copied Linear tickets
+  - PATCH validators cap large free-text fields before they can bloat row size or API memory
+  - usefulness/edit-state feedback stays queryable for dashboard usefulness-rate observability

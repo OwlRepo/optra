@@ -89,6 +89,15 @@ Offline eval note as of 2026-07-01:
 - `python3 scripts/eval/test_dataset_schema.py` validates `scripts/eval/eval-dataset.json` schema and `evaluate.py` metric list without network.
 - `python3 scripts/eval/evaluate.py` is manual/offline verification only; it requires `OPENAI_API_KEY` and Python deps from `scripts/eval/requirements.txt`.
 
+Ticket copilot note as of 2026-07-01:
+- `packages/ai/src/chains/ticket-extraction.spec.ts` covers happy path, non-actionable transcript empty result, malformed JSON, refusal, timeout retry, and prompt-injection resistance.
+- `apps/api/src/tickets/tickets.service.spec.ts` covers dedup miss/hit, stale deleted-row fallback, unique-violation race fallback, enqueue failure terminal state, pending-stale grace vs timeout, getOne projection, review save audit fields, typed DB insert failure, and cross-workspace 404s.
+- `apps/api/src/tickets/ticket-extraction.processor.spec.ts` covers `pending -> processing -> done|failed` transitions plus no-clobber behavior for already-reviewed `done` rows.
+- `apps/api/test/tickets.e2e-spec.ts` covers workspace-scoped create/list/get/update flow, PATCH max-length validation, and required IDOR cases (`403` non-member, `404` foreign ticket id).
+- `apps/web/app/api/workspaces/[id]/tickets/**/*.spec.ts` covers same-origin ticket proxies, and `apps/web/app/workspaces/[id]/tickets/page.spec.ts` covers pending poll, transcript read-only rendering, confidence summary, low-confidence root-cause affordance, review save, copy-to-clipboard, and failure banner rendering.
+- `python3 scripts/eval/test_extraction_dataset_schema.py` validates extraction-eval dataset shape and `evaluate_extraction.py` field list without network.
+- `python3 scripts/eval/evaluate_extraction.py` is manual/live verification only; it requires `OPENAI_API_KEY` and Python deps from `scripts/eval/requirements.txt`.
+
 `packages/db`/`packages/ai` still have no test commands — only `type-check`/`build`/`lint`. Playwright e2e for `apps/web` is still a known gap — deferred until there's a real multi-page flow worth driving a browser through (Priority 2 web pages).
 Confirmed from `packages/ai/package.json` as of 2026-06-30:
 

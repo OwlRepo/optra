@@ -50,6 +50,20 @@
       "when": 1782843818666,
       "tag": "0006_needy_harrier",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "5",
+      "when": 1782887094724,
+      "tag": "0007_sudden_the_phantom",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "5",
+      "when": 1782889615362,
+      "tag": "0008_clumsy_pepper_potts",
+      "breakpoints": true
     }
   ]
 }

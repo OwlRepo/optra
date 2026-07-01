@@ -1,6 +1,6 @@
 import { NotFoundException } from '@nestjs/common'
 import { Test } from '@nestjs/testing'
-import { and, eq, like } from 'drizzle-orm'
+import { and, asc, eq, like } from 'drizzle-orm'
 import { answerQuestion, countTokens, embedQuery } from '@repo/ai'
 import {
   chatMessages,
@@ -169,6 +169,7 @@ describe('ChatService', () => {
       .select()
       .from(chatMessages)
       .where(eq(chatMessages.sessionId, result.sessionId))
+      .orderBy(asc(chatMessages.createdAt))
 
     expect(session.title).toBe('Hello assistant')
     expect(messages).toHaveLength(2)

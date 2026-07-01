@@ -11,6 +11,7 @@ import { WorkspacesModule } from './workspaces/workspaces.module'
 import { KnowledgeBasesModule } from './knowledge-bases/knowledge-bases.module'
 import { StorageModule } from './storage/storage.module'
 import { ScrapeModule } from './scrape/scrape.module'
+import { TicketsModule } from './tickets/tickets.module'
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { ScrapeModule } from './scrape/scrape.module'
     KnowledgeBasesModule,
     StorageModule,
     ScrapeModule,
+    TicketsModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })

@@ -47,6 +47,12 @@ const stats = [
     hint: 'No customer questions processed yet',
     icon: <Gauge className="size-5" />,
   },
+  {
+    label: 'Ticket usefulness rate',
+    value: '0%',
+    hint: 'Copilot feedback not collected yet',
+    icon: <CheckCircle2 className="size-5" />,
+  },
 ]
 
 const checklist = [
@@ -169,6 +175,17 @@ export default function DashboardPage() {
           action={
             <Button asChild size="sm" variant="ghost">
               <Link href="/chat">Open assistant</Link>
+            </Button>
+          }
+        />
+
+        <StatusBanner
+          variant="info"
+          title="Ticket copilot review quality"
+          description="Track usefulness-rate once workspace members start reviewing extracted ticket drafts. Alert when acceptance drops or heavily-edited reviews spike."
+          action={
+            <Button asChild size="sm" variant="ghost">
+              <Link href="/workspaces">Open workspaces</Link>
             </Button>
           }
         />

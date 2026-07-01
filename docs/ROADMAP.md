@@ -15,20 +15,20 @@
 - Chains: streaming RAG via async generator, grounded system prompt
 - Tracing: LangSmith auto-trace via env vars
 
-### packages/db — Partial
-- `tenants` table (id, name, createdAt)
-- `documents` table (id, tenantId, title, sourceUrl, contentHash, updatedAt, createdAt)
-- `chunks` table (id, documentId, tenantId, content, contentHash, embedding vector(1536), metadata jsonb, sectionId, sectionTitle, createdAt)
+### packages/db — Working schema foundation
+- Auth/workspace/KB/document/chat/scrape schema is live
+- `tickets` table now supports transcript-to-ticket copilot drafts, queue lifecycle, feedback, and review audit fields
+- Legacy roadmap references to `tenantId` are stale; live code now uses `workspaceId`
 
-### apps/api — Skeleton only
-- NestJS + Bull queue (Redis) wired
-- DocumentsModule, IngestModule, ChatModule — all routes exist, all services are stubs/TODOs
+### apps/api — Working product backend
+- Auth, workspaces, knowledge bases, documents/ingest, chat, scrape, and tickets modules are implemented
+- Redis-backed Bull queues live for ingest, scrape, and ticket extraction
+- Workspace-scoped guards + e2e coverage enforce tenant isolation across product routes
 
-### apps/web — Shell only
-- Landing page (complete, polished)
-- Dashboard page (hardcoded, not wired)
-- Chat page (uses Vercel AI SDK but calls OpenAI directly, bypasses RAG pipeline)
-- No auth pages, no workspace pages, no document pages
+### apps/web — Working operator surfaces
+- Auth pages, workspace pages, knowledge-base documents page, workspace chat, and new ticket-copilot page are implemented
+- Dashboard remains mostly placeholder data, but product navigation and feedback surfaces are wired
+- Same-origin API proxies front backend auth for workspaces, documents, chat, scrape, and tickets
 
 ### packages/ui — 15 components
 Button, Input, Card, Badge, Avatar, Separator, Skeleton, ChatBubble, Toast, StatusBanner, AppHeader, PageShell, PageSection, StatCard, EmptyState
@@ -39,68 +39,15 @@ Button, Input, Card, Badge, Avatar, Separator, Skeleton, ChatBubble, Toast, Stat
 
 ---
 
-### Priority 1 — Nothing works without these
+### Priority 1 — Shipped
 
-**DB schema (packages/db/src/schema/):**
-- `users` — id, email, passwordHash, isVerified, createdAt
-- `otps` — id, userId (FK), code, expiresAt, usedAt
-- `refresh_tokens` — id, userId (FK), tokenHash, expiresAt, revokedAt (SHA-256 hash stored, not raw token)
-- `workspaces` — id, name, ownerId (FK users), createdAt (NOTE: current `tenants` table maps to this concept — align or rename)
-- `workspace_members` — id, workspaceId (FK), userId (FK), role (owner|admin|member), joinedAt
-- `invitations` — id, workspaceId (FK), email, token, expiresAt, acceptedAt
-- `knowledge_bases` — id, workspaceId (FK), name, createdAt
-- Add `status` column to `documents` — enum: pending | processing | done | failed
-- Add `knowledgeBaseId` FK to `documents`
-
-**Auth (apps/api/src/auth/):**
-- `POST /auth/register` — create user, hash password (bcrypt), send OTP via Resend
-- `POST /auth/verify-otp` — verify code, set isVerified=true, return JWT
-- `POST /auth/login` — validate credentials, return access token + refresh token
-- `POST /auth/refresh` — swap refresh token for new access token
-- `POST /auth/logout` — revoke refresh token
-- JWT strategy + guard — attach user + workspaceId to every request
-- NestJS AuthModule with Passport
-
-**Auth (apps/web/app/):**
-- `/register` page
-- `/login` page
-- `/verify-otp` page
-- Auth middleware — redirect unauthenticated users
+Core auth/workspace schema and flows are built. Keep this section as historical context only.
 
 ---
 
-### Priority 2 — Core product flow
+### Priority 2 — Shipped core flow
 
-**Workspaces (apps/api/src/workspaces/):**
-- `POST /workspaces` — create workspace, auto-add creator as owner member
-- `GET /workspaces/me` — list workspaces for current user
-- `GET /workspaces/:id` — get single workspace
-- `POST /workspaces/:id/invite` — create invitation, send email via Resend
-- `POST /workspaces/accept-invite/:token` — validate token, add user as member
-- `DELETE /workspaces/:id/members/:userId` — remove member
-
-**Knowledge Bases (apps/api/src/knowledge-bases/):**
-- `POST /knowledge-bases` — create KB inside workspace
-- `GET /knowledge-bases` — list KBs for workspace
-- `DELETE /knowledge-bases/:id`
-
-**Documents + Ingestion (wire the pipeline):**
-- `POST /documents/upload` — multipart file upload, save to disk/storage, create document row with status=pending, queue ingest job
-- Wire `IngestProcessor`:
-  1. Load document from storage → `loadDocument(filePath)`
-  2. Chunk → `chunkDocument(doc)`
-  3. Embed → `embedChunks(chunks)`
-  4. Inject tenant metadata → add tenantId, knowledgeBaseId, documentId to each chunk
-  5. Sync → `syncChunks(embeddedChunks, documentId, tenantId)`
-  6. Update document status → done or failed
-- `GET /documents` — list documents for KB, include status
-- `DELETE /documents/:id` — delete document + its chunks
-
-**Web pages:**
-- Workspace creation flow
-- Member invite + accept flow
-- Knowledge base management page
-- Document upload page with drag-and-drop + ingestion status
+Workspace, KB, document ingest, and corresponding web pages are implemented.
 
 ---
 
