@@ -48,3 +48,4 @@ packages/*/src/**/*.js.map
 packages/*/src/**/*.d.ts
 apps/*/src/**/*.js
 apps/*/src/**/*.js.map
+.gstack/
