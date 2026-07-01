@@ -77,9 +77,9 @@ describe('Workspaces flow (e2e)', () => {
       .set('Authorization', `Bearer ${owner.accessToken}`)
       .expect(200)
 
-    expect(mineRes.body).toHaveLength(1)
-    expect(mineRes.body[0].name).toBe(`${ownerEmail}'s workspace`)
-    expect(mineRes.body[0].role).toBe('owner')
+    expect(mineRes.body.items).toHaveLength(1)
+    expect(mineRes.body.items[0].name).toBe(`${ownerEmail}'s workspace`)
+    expect(mineRes.body.items[0].role).toBe('owner')
 
     const createRes = await request(app.getHttpServer())
       .post('/workspaces')
@@ -89,11 +89,27 @@ describe('Workspaces flow (e2e)', () => {
 
     const teamWorkspaceId = createRes.body.id
 
+    await request(app.getHttpServer())
+      .post('/workspaces')
+      .set('Authorization', `Bearer ${owner.accessToken}`)
+      .send({ name: 'Docs' })
+      .expect(201)
+
     const mineAfterCreate = await request(app.getHttpServer())
       .get('/workspaces/me')
+      .query({ limit: 2 })
       .set('Authorization', `Bearer ${owner.accessToken}`)
       .expect(200)
-    expect(mineAfterCreate.body).toHaveLength(2)
+    expect(mineAfterCreate.body.items).toHaveLength(2)
+    expect(mineAfterCreate.body.nextCursor).toEqual(expect.any(String))
+
+    const minePageTwo = await request(app.getHttpServer())
+      .get('/workspaces/me')
+      .query({ limit: 2, cursor: mineAfterCreate.body.nextCursor })
+      .set('Authorization', `Bearer ${owner.accessToken}`)
+      .expect(200)
+    expect(minePageTwo.body.items).toHaveLength(1)
+    expect(minePageTwo.body.nextCursor).toBeNull()
 
     await request(app.getHttpServer())
       .post(`/workspaces/${teamWorkspaceId}/invite`)
@@ -118,7 +134,15 @@ describe('Workspaces flow (e2e)', () => {
       .get('/workspaces/me')
       .set('Authorization', `Bearer ${member.accessToken}`)
       .expect(200)
-    expect(memberMine.body.some((workspace: any) => workspace.id === teamWorkspaceId && workspace.role === 'member')).toBe(true)
+    expect(memberMine.body.items.some((workspace: any) => workspace.id === teamWorkspaceId && workspace.role === 'member')).toBe(true)
+
+    const membersAsMember = await request(app.getHttpServer())
+      .get(`/workspaces/${teamWorkspaceId}/members`)
+      .set('Authorization', `Bearer ${member.accessToken}`)
+      .expect(200)
+    expect(membersAsMember.body.items.map((m: any) => m.email).sort()).toEqual([memberEmail, ownerEmail].sort())
+    expect(membersAsMember.body.items.find((m: any) => m.email === ownerEmail)?.role).toBe('owner')
+    expect(membersAsMember.body.items.find((m: any) => m.email === memberEmail)?.role).toBe('member')
 
     await request(app.getHttpServer())
       .post(`/workspaces/${teamWorkspaceId}/invite`)
@@ -130,6 +154,11 @@ describe('Workspaces flow (e2e)', () => {
 
     await request(app.getHttpServer())
       .get(`/workspaces/${teamWorkspaceId}`)
+      .set('Authorization', `Bearer ${outsider.accessToken}`)
+      .expect(403)
+
+    await request(app.getHttpServer())
+      .get(`/workspaces/${teamWorkspaceId}/members`)
       .set('Authorization', `Bearer ${outsider.accessToken}`)
       .expect(403)
   })

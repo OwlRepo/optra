@@ -89,11 +89,40 @@ describe('WorkspacesService', () => {
     const mine = await service.create(user.id, 'Spec WS Mine')
     const hidden = await service.create(other.id, 'Spec WS Hidden')
 
-    const list = await service.listForUser(user.id)
+    const list = await service.listForUser(user.id, {})
 
-    expect(list.map((w: any) => w.id)).toContain(mine.id)
-    expect(list.map((w: any) => w.id)).not.toContain(hidden.id)
-    expect(list.find((w: any) => w.id === mine.id)?.role).toBe('owner')
+    expect(list.items.map((w: any) => w.id)).toContain(mine.id)
+    expect(list.items.map((w: any) => w.id)).not.toContain(hidden.id)
+    expect(list.items.find((w: any) => w.id === mine.id)?.role).toBe('owner')
+    expect(list.nextCursor).toBeNull()
+  })
+
+  it('paginates workspaces newest first with cursor', async () => {
+    const [user] = await db
+      .insert(users)
+      .values({ email: `workspaces-spec-paginate-${Date.now()}@example.com`, passwordHash: 'x', isVerified: true })
+      .returning()
+
+    const older = await service.create(user.id, 'Spec WS Older')
+    const middle = await service.create(user.id, 'Spec WS Middle')
+    const newer = await service.create(user.id, 'Spec WS Newer')
+
+    await db.update(workspaces).set({ createdAt: new Date('2026-07-01T00:00:01.000Z') }).where(eq(workspaces.id, older.id))
+    await db.update(workspaces).set({ createdAt: new Date('2026-07-01T00:00:02.000Z') }).where(eq(workspaces.id, middle.id))
+    await db.update(workspaces).set({ createdAt: new Date('2026-07-01T00:00:03.000Z') }).where(eq(workspaces.id, newer.id))
+
+    const firstPage = await service.listForUser(user.id, { limit: 2 })
+
+    expect(firstPage.items.map((workspace: any) => workspace.name)).toEqual(['Spec WS Newer', 'Spec WS Middle'])
+    expect(firstPage.nextCursor).toEqual(expect.any(String))
+
+    const secondPage = await service.listForUser(user.id, {
+      limit: 2,
+      cursor: firstPage.nextCursor!,
+    })
+
+    expect(secondPage.items.map((workspace: any) => workspace.name)).toEqual(['Spec WS Older'])
+    expect(secondPage.nextCursor).toBeNull()
   })
 
   it('invite inserts an invitation and calls notifications.sendInvite', async () => {
@@ -196,5 +225,88 @@ describe('WorkspacesService', () => {
     const workspace = await service.create(owner.id, 'Spec WS Last Owner')
 
     await expect(service.removeMember(workspace.id, owner.id)).rejects.toThrow(ForbiddenException)
+  })
+
+  it('listMembers returns joined email/role, scoped to the given workspace only', async () => {
+    const [owner] = await db
+      .insert(users)
+      .values({ email: `workspaces-spec-members-owner-${Date.now()}@example.com`, passwordHash: 'x', isVerified: true })
+      .returning()
+    const [member] = await db
+      .insert(users)
+      .values({ email: `workspaces-spec-members-member-${Date.now()}@example.com`, passwordHash: 'x', isVerified: true })
+      .returning()
+    const [otherOwner] = await db
+      .insert(users)
+      .values({ email: `workspaces-spec-members-other-${Date.now()}@example.com`, passwordHash: 'x', isVerified: true })
+      .returning()
+
+    const workspace = await service.create(owner.id, 'Spec WS Members')
+    await db.insert(workspaceMembers).values({ workspaceId: workspace.id, userId: member.id, role: 'member' })
+    const otherWorkspace = await service.create(otherOwner.id, 'Spec WS Members Other')
+
+    const list = await service.listMembers(workspace.id, {})
+
+    expect(list.items.map((m: any) => m.email).sort()).toEqual([member.email, owner.email].sort())
+    expect(list.items.find((m: any) => m.userId === owner.id)?.role).toBe('owner')
+    expect(list.items.find((m: any) => m.userId === member.id)?.role).toBe('member')
+    expect(list.items.some((m: any) => m.userId === otherOwner.id)).toBe(false)
+    expect(list.nextCursor).toBeNull()
+
+    await service.removeMember(otherWorkspace.id, otherOwner.id).catch(() => undefined)
+  })
+
+  it('paginates members with cursor and no skipped/duplicated rows', async () => {
+    const [owner] = await db
+      .insert(users)
+      .values({ email: `workspaces-spec-members-page-owner-${Date.now()}@example.com`, passwordHash: 'x', isVerified: true })
+      .returning()
+    const [memberA] = await db
+      .insert(users)
+      .values({ email: `workspaces-spec-members-page-a-${Date.now()}@example.com`, passwordHash: 'x', isVerified: true })
+      .returning()
+    const [memberB] = await db
+      .insert(users)
+      .values({ email: `workspaces-spec-members-page-b-${Date.now()}@example.com`, passwordHash: 'x', isVerified: true })
+      .returning()
+
+    const workspace = await service.create(owner.id, 'Spec WS Members Page')
+    await db.insert(workspaceMembers).values({
+      workspaceId: workspace.id,
+      userId: memberA.id,
+      role: 'member',
+      joinedAt: new Date('2026-07-01T00:00:01.000Z'),
+    })
+    await db.insert(workspaceMembers).values({
+      workspaceId: workspace.id,
+      userId: memberB.id,
+      role: 'member',
+      joinedAt: new Date('2026-07-01T00:00:02.000Z'),
+    })
+    await db
+      .update(workspaceMembers)
+      .set({ joinedAt: new Date('2026-07-01T00:00:00.000Z') })
+      .where(and(eq(workspaceMembers.workspaceId, workspace.id), eq(workspaceMembers.userId, owner.id)))
+
+    const firstPage = await service.listMembers(workspace.id, { limit: 2 })
+    expect(firstPage.items.map((m: any) => m.userId)).toEqual([owner.id, memberA.id])
+    expect(firstPage.nextCursor).toEqual(expect.any(String))
+
+    const secondPage = await service.listMembers(workspace.id, {
+      limit: 2,
+      cursor: firstPage.nextCursor!,
+    })
+    expect(secondPage.items.map((m: any) => m.userId)).toEqual([memberB.id])
+    expect(secondPage.nextCursor).toBeNull()
+  })
+
+  it('listMembers rejects an invalid cursor', async () => {
+    const [owner] = await db
+      .insert(users)
+      .values({ email: `workspaces-spec-members-badcursor-${Date.now()}@example.com`, passwordHash: 'x', isVerified: true })
+      .returning()
+    const workspace = await service.create(owner.id, 'Spec WS Members Bad Cursor')
+
+    await expect(service.listMembers(workspace.id, { cursor: 'not-a-real-cursor' })).rejects.toThrow(BadRequestException)
   })
 })

@@ -1,7 +1,12 @@
 import { apiFetch } from './client'
 
-export function listWorkspaces() {
-  return apiFetch('/api/workspaces')
+export function listWorkspaces(opts?: { cursor?: string; limit?: number }) {
+  const params = new URLSearchParams()
+  if (opts?.cursor) params.set('cursor', opts.cursor)
+  if (opts?.limit) params.set('limit', String(opts.limit))
+  const query = params.toString()
+
+  return apiFetch(`/api/workspaces${query ? `?${query}` : ''}`)
 }
 
 export function createWorkspace(name: string) {
@@ -32,4 +37,13 @@ export function removeMember(id: string, userId: string) {
   return apiFetch(`/api/workspaces/${id}/members/${userId}`, {
     method: 'DELETE',
   })
+}
+
+export function listMembers(id: string, opts?: { cursor?: string; limit?: number }) {
+  const params = new URLSearchParams()
+  if (opts?.cursor) params.set('cursor', opts.cursor)
+  if (opts?.limit) params.set('limit', String(opts.limit))
+  const query = params.toString()
+
+  return apiFetch(`/api/workspaces/${id}/members${query ? `?${query}` : ''}`)
 }

@@ -7,6 +7,7 @@ import {
   HttpStatus,
   Param,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common'
 import { CurrentUser, type CurrentUserContext } from '../auth/decorators/current-user.decorator'
@@ -14,8 +15,10 @@ import { Roles } from '../auth/decorators/roles.decorator'
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard'
 import { RolesGuard } from '../auth/guards/roles.guard'
 import { WorkspaceMemberGuard } from '../auth/guards/workspace-member.guard'
+import { ListQueryDto } from '../common/dto/list-query.dto'
 import { CreateWorkspaceDto } from './dto/create-workspace.dto'
 import { InviteMemberDto } from './dto/invite-member.dto'
+import { ListMembersQueryDto } from './dto/list-members-query.dto'
 import { WorkspacesService } from './workspaces.service'
 
 @Controller('workspaces')
@@ -33,8 +36,8 @@ export class WorkspacesController {
 
   @Get('me')
   @UseGuards(JwtAuthGuard)
-  listMine(@CurrentUser() user: CurrentUserContext) {
-    return this.workspacesService.listForUser(user.userId)
+  listMine(@CurrentUser() user: CurrentUserContext, @Query() query: ListQueryDto) {
+    return this.workspacesService.listForUser(user.userId, query)
   }
 
   @Post('accept-invite/:token')
@@ -61,6 +64,15 @@ export class WorkspacesController {
     @Body() dto: InviteMemberDto,
   ) {
     return this.workspacesService.invite(workspaceId, dto.email)
+  }
+
+  @Get(':workspaceId/members')
+  @UseGuards(JwtAuthGuard, WorkspaceMemberGuard)
+  listMembers(
+    @Param('workspaceId') workspaceId: string,
+    @Query() query: ListMembersQueryDto,
+  ) {
+    return this.workspacesService.listMembers(workspaceId, query)
   }
 
   @Delete(':workspaceId/members/:userId')

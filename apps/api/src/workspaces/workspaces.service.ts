@@ -6,10 +6,11 @@ import {
   NotFoundException,
 } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
-import { and, eq, gt, isNull } from 'drizzle-orm'
+import { and, asc, desc, eq, gt, isNull, lt, or, sql } from 'drizzle-orm'
 import { randomBytes } from 'crypto'
-import { db, invitations, workspaceMembers, workspaces } from '@repo/db'
+import { db, decodeCursor, encodeCursor, invitations, users, workspaceMembers, workspaces } from '@repo/db'
 import { NotificationsService } from '../notifications/notifications.service'
+import { ListQueryDto } from '../common/dto/list-query.dto'
 
 type DbTx = Parameters<Parameters<typeof db.transaction>[0]>[0]
 
@@ -37,7 +38,14 @@ export class WorkspacesService {
     })
   }
 
-  async listForUser(userId: string) {
+  async listForUser(
+    userId: string,
+    query: Pick<ListQueryDto, 'cursor' | 'limit'>,
+  ) {
+    const limit = Math.min(Math.max(Number(query.limit ?? 20), 1), 100)
+    const cursor = query.cursor ? decodeCursor(query.cursor) : null
+    const createdAtMs = sql<number>`floor(extract(epoch from ${workspaces.createdAt}) * 1000)`
+
     const rows = await db
       .select({
         id: workspaces.id,
@@ -48,9 +56,31 @@ export class WorkspacesService {
       })
       .from(workspaceMembers)
       .innerJoin(workspaces, eq(workspaceMembers.workspaceId, workspaces.id))
-      .where(eq(workspaceMembers.userId, userId))
+      .where(
+        and(
+          eq(workspaceMembers.userId, userId),
+          cursor
+            ? or(
+                lt(createdAtMs, Number(cursor.k[0])),
+                and(eq(createdAtMs, Number(cursor.k[0])), lt(workspaces.id, cursor.id)),
+              )
+            : undefined,
+        ),
+      )
+      .orderBy(desc(createdAtMs), desc(workspaces.id))
+      .limit(limit + 1)
 
-    return rows
+    const hasMore = rows.length > limit
+    const items = rows.slice(0, limit)
+    const last = items.at(-1)
+
+    return {
+      items,
+      nextCursor:
+        hasMore && last
+          ? encodeCursor({ k: [last.createdAt.getTime()], id: last.id })
+          : null,
+    }
   }
 
   async getOne(workspaceId: string) {
@@ -172,6 +202,51 @@ export class WorkspacesService {
     await db.delete(workspaceMembers).where(eq(workspaceMembers.id, member.id))
 
     return { message: 'Member removed' }
+  }
+
+  async listMembers(
+    workspaceId: string,
+    query: Pick<ListQueryDto, 'cursor' | 'limit'>,
+  ) {
+    const limit = Math.min(Math.max(Number(query.limit ?? 20), 1), 100)
+    const cursor = query.cursor ? decodeCursor(query.cursor) : null
+    const joinedAtMs = sql<number>`floor(extract(epoch from ${workspaceMembers.joinedAt}) * 1000)`
+
+    const rows = await db
+      .select({
+        id: workspaceMembers.id,
+        userId: workspaceMembers.userId,
+        email: users.email,
+        role: workspaceMembers.role,
+        joinedAt: workspaceMembers.joinedAt,
+      })
+      .from(workspaceMembers)
+      .innerJoin(users, eq(workspaceMembers.userId, users.id))
+      .where(
+        and(
+          eq(workspaceMembers.workspaceId, workspaceId),
+          cursor
+            ? or(
+                gt(joinedAtMs, Number(cursor.k[0])),
+                and(eq(joinedAtMs, Number(cursor.k[0])), gt(workspaceMembers.id, cursor.id)),
+              )
+            : undefined,
+        ),
+      )
+      .orderBy(asc(joinedAtMs), asc(workspaceMembers.id))
+      .limit(limit + 1)
+
+    const hasMore = rows.length > limit
+    const items = rows.slice(0, limit)
+    const last = items.at(-1)
+
+    return {
+      items,
+      nextCursor:
+        hasMore && last
+          ? encodeCursor({ k: [last.joinedAt.getTime()], id: last.id })
+          : null,
+    }
   }
 
   private async getWorkspaceOrThrow(client: typeof db | DbTx, workspaceId: string) {
