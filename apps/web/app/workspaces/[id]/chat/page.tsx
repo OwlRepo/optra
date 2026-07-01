@@ -26,6 +26,7 @@ import {
   Sparkles,
   Square,
 } from 'lucide-react'
+import { logout } from '@/lib/api/auth'
 import { getChatMessages, listChatSessions } from '@/lib/api/chat'
 import { isUnauthorized } from '@/lib/api/handle-unauthorized'
 
@@ -44,12 +45,22 @@ type ChatSession = {
   updatedAt: string
 }
 
+type ChatSessionList = {
+  items: ChatSession[]
+  nextCursor: string | null
+}
+
 type PersistedChatMessage = {
   id: string
   role: 'user' | 'assistant'
   content: string
   sources?: ChatSource[] | null
   createdAt: string
+}
+
+type ChatMessageList = {
+  items: PersistedChatMessage[]
+  nextCursor: string | null
 }
 
 const suggestedPrompts = [
@@ -77,6 +88,14 @@ function toChatMessage(message: PersistedChatMessage): Message {
   }
 }
 
+function toMessageSources(rows: PersistedChatMessage[]) {
+  return Object.fromEntries(
+    rows
+      .filter((row) => Array.isArray(row.sources) && row.sources.length > 0)
+      .map((row) => [row.id, row.sources ?? []]),
+  )
+}
+
 export default function WorkspaceChatPage({ params }: { params: { id: string } }) {
   const workspaceId = params.id
   const router = useRouter()
@@ -85,7 +104,11 @@ export default function WorkspaceChatPage({ params }: { params: { id: string } }
   const pendingSourcesRef = React.useRef<ChatSource[]>([])
   const pendingSessionIdRef = React.useRef<string | null>(null)
   const [sessions, setSessions] = React.useState<ChatSession[]>([])
+  const [nextSessionCursor, setNextSessionCursor] = React.useState<string | null>(null)
   const [activeSessionId, setActiveSessionId] = React.useState<string | undefined>()
+  const [isLoadingMoreSessions, setIsLoadingMoreSessions] = React.useState(false)
+  const [nextMessageCursor, setNextMessageCursor] = React.useState<string | null>(null)
+  const [isLoadingOlderMessages, setIsLoadingOlderMessages] = React.useState(false)
   const [sessionLoadError, setSessionLoadError] = React.useState<string | null>(null)
   const [messageSources, setMessageSources] = React.useState<Record<string, ChatSource[]>>({})
 
@@ -96,7 +119,9 @@ export default function WorkspaceChatPage({ params }: { params: { id: string } }
   const loadSessions = React.useCallback(async () => {
     try {
       const data = await listChatSessions(workspaceId)
-      setSessions(Array.isArray(data) ? data : [])
+      const rows = data && typeof data === 'object' ? (data as ChatSessionList) : null
+      setSessions(Array.isArray(rows?.items) ? rows.items : [])
+      setNextSessionCursor(rows?.nextCursor ?? null)
       setSessionLoadError(null)
     } catch (err) {
       if (isUnauthorized(err)) {
@@ -112,6 +137,38 @@ export default function WorkspaceChatPage({ params }: { params: { id: string } }
       setSessionLoadError(message)
     }
   }, [router, workspaceId])
+
+  const loadMoreSessions = React.useCallback(async () => {
+    if (!nextSessionCursor || isLoadingMoreSessions) {
+      return
+    }
+
+    setIsLoadingMoreSessions(true)
+
+    try {
+      const data = await listChatSessions(workspaceId, { cursor: nextSessionCursor })
+      const rows = data && typeof data === 'object' ? (data as ChatSessionList) : null
+      const nextItems = Array.isArray(rows?.items) ? rows.items : []
+
+      setSessions((current) => [...current, ...nextItems])
+      setNextSessionCursor(rows?.nextCursor ?? null)
+      setSessionLoadError(null)
+    } catch (err) {
+      if (isUnauthorized(err)) {
+        router.push('/login')
+        return
+      }
+
+      const message =
+        err && typeof err === 'object' && 'message' in err
+          ? String((err as { message: unknown }).message)
+          : 'Try again in a moment.'
+
+      setSessionLoadError(message)
+    } finally {
+      setIsLoadingMoreSessions(false)
+    }
+  }, [isLoadingMoreSessions, nextSessionCursor, router, workspaceId])
 
   const {
     messages,
@@ -161,15 +218,11 @@ export default function WorkspaceChatPage({ params }: { params: { id: string } }
       if (nextSessionId) {
         try {
           const data = await getChatMessages(workspaceId, nextSessionId)
-          const rows = Array.isArray(data) ? (data as PersistedChatMessage[]) : []
-          setMessages(rows.map(toChatMessage))
-          setMessageSources(
-            Object.fromEntries(
-              rows
-                .filter((row) => Array.isArray(row.sources) && row.sources.length > 0)
-                .map((row) => [row.id, row.sources ?? []]),
-            ),
-          )
+          const rows = data && typeof data === 'object' ? (data as ChatMessageList) : null
+          const items = Array.isArray(rows?.items) ? rows.items : []
+          setMessages(items.map(toChatMessage))
+          setMessageSources(toMessageSources(items))
+          setNextMessageCursor(rows?.nextCursor ?? null)
         } catch (err) {
           if (isUnauthorized(err)) {
             router.push('/login')
@@ -196,22 +249,26 @@ export default function WorkspaceChatPage({ params }: { params: { id: string } }
     void loadSessions()
   }, [loadSessions])
 
+  const handleLogout = React.useCallback(async () => {
+    try {
+      await logout()
+    } finally {
+      router.push('/login')
+    }
+  }, [router])
+
   const loadSessionMessages = React.useCallback(
     async (sessionId: string) => {
       try {
         const data = await getChatMessages(workspaceId, sessionId)
-        const rows = Array.isArray(data) ? (data as PersistedChatMessage[]) : []
+        const rows = data && typeof data === 'object' ? (data as ChatMessageList) : null
+        const items = Array.isArray(rows?.items) ? rows.items : []
 
         React.startTransition(() => {
           setActiveSessionId(sessionId)
-          setMessages(rows.map(toChatMessage))
-          setMessageSources(
-            Object.fromEntries(
-              rows
-                .filter((row) => Array.isArray(row.sources) && row.sources.length > 0)
-                .map((row) => [row.id, row.sources ?? []]),
-            ),
-          )
+          setMessages(items.map(toChatMessage))
+          setMessageSources(toMessageSources(items))
+          setNextMessageCursor(rows?.nextCursor ?? null)
         })
       } catch (err) {
         if (isUnauthorized(err)) {
@@ -234,6 +291,54 @@ export default function WorkspaceChatPage({ params }: { params: { id: string } }
     [router, setMessages, workspaceId],
   )
 
+  const loadOlderMessages = React.useCallback(async () => {
+    if (!activeSessionId || !nextMessageCursor || isLoadingOlderMessages) {
+      return
+    }
+
+    setIsLoadingOlderMessages(true)
+
+    try {
+      const data = await getChatMessages(workspaceId, activeSessionId, {
+        cursor: nextMessageCursor,
+      })
+      const rows = data && typeof data === 'object' ? (data as ChatMessageList) : null
+      const items = Array.isArray(rows?.items) ? rows.items : []
+
+      setMessages((current) => [...items.map(toChatMessage), ...current])
+      setMessageSources((current) => ({
+        ...toMessageSources(items),
+        ...current,
+      }))
+      setNextMessageCursor(rows?.nextCursor ?? null)
+    } catch (err) {
+      if (isUnauthorized(err)) {
+        router.push('/login')
+        return
+      }
+
+      const message =
+        err && typeof err === 'object' && 'message' in err
+          ? String((err as { message: unknown }).message)
+          : 'Try again in a moment.'
+
+      toastRef.current({
+        variant: 'error',
+        title: 'Failed to load older messages',
+        description: message,
+      })
+    } finally {
+      setIsLoadingOlderMessages(false)
+    }
+  }, [
+    activeSessionId,
+    isLoadingOlderMessages,
+    nextMessageCursor,
+    router,
+    setMessages,
+    workspaceId,
+  ])
+
   const submitForm = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (!input.trim() || isLoading) {
@@ -247,6 +352,7 @@ export default function WorkspaceChatPage({ params }: { params: { id: string } }
       setActiveSessionId(undefined)
       setMessages([])
       setMessageSources({})
+      setNextMessageCursor(null)
       setInput('')
     })
   }
@@ -285,6 +391,7 @@ export default function WorkspaceChatPage({ params }: { params: { id: string } }
             New chat
           </Button>
         }
+        onLogout={handleLogout}
       />
 
       <div className="grid gap-6 pb-6 pt-10 xl:grid-cols-[18rem_minmax(0,1fr)_20rem]">
@@ -321,6 +428,18 @@ export default function WorkspaceChatPage({ params }: { params: { id: string } }
                 title="No chat history yet"
                 description="Start first workspace conversation to create saved history."
               />
+            ) : null}
+
+            {nextSessionCursor ? (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => void loadMoreSessions()}
+                isLoading={isLoadingMoreSessions}
+                loadingText="Loading"
+              >
+                Load more sessions
+              </Button>
             ) : null}
           </div>
 
@@ -373,6 +492,18 @@ export default function WorkspaceChatPage({ params }: { params: { id: string } }
               />
             ) : (
               <div className="space-y-4">
+                {nextMessageCursor ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => void loadOlderMessages()}
+                    isLoading={isLoadingOlderMessages}
+                    loadingText="Loading"
+                  >
+                    Load older messages
+                  </Button>
+                ) : null}
+
                 {messages.map((message) => (
                   <div
                     key={message.id}

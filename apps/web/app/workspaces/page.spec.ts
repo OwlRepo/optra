@@ -10,6 +10,7 @@ const pushMock = vi.fn()
 const routerMock = { push: pushMock }
 const listWorkspacesMock = vi.fn()
 const createWorkspaceMock = vi.fn()
+const logoutMock = vi.fn()
 
 vi.mock('next/navigation', () => ({
   useRouter: () => routerMock,
@@ -20,6 +21,10 @@ vi.mock('@/lib/api/workspaces', () => ({
   createWorkspace: (...args: unknown[]) => createWorkspaceMock(...args),
 }))
 
+vi.mock('@/lib/api/auth', () => ({
+  logout: (...args: unknown[]) => logoutMock(...args),
+}))
+
 function renderPage() {
   return render(React.createElement(ToastProvider, undefined, React.createElement(WorkspacesPage)))
 }
@@ -28,6 +33,7 @@ describe('WorkspacesPage', () => {
   beforeEach(() => {
     listWorkspacesMock.mockReset()
     createWorkspaceMock.mockReset()
+    logoutMock.mockReset()
     pushMock.mockReset()
   })
 
@@ -37,10 +43,13 @@ describe('WorkspacesPage', () => {
   })
 
   it('renders fetched workspaces', async () => {
-    listWorkspacesMock.mockResolvedValue([
-      { id: 'ws-1', name: 'Alpha', role: 'owner' },
-      { id: 'ws-2', name: 'Bravo', role: 'member' },
-    ])
+    listWorkspacesMock.mockResolvedValue({
+      items: [
+        { id: 'ws-1', name: 'Alpha', role: 'owner' },
+        { id: 'ws-2', name: 'Bravo', role: 'member' },
+      ],
+      nextCursor: null,
+    })
 
     renderPage()
 
@@ -51,7 +60,7 @@ describe('WorkspacesPage', () => {
   })
 
   it('renders empty state when there are no workspaces', async () => {
-    listWorkspacesMock.mockResolvedValue([])
+    listWorkspacesMock.mockResolvedValue({ items: [], nextCursor: null })
 
     renderPage()
 
@@ -62,8 +71,8 @@ describe('WorkspacesPage', () => {
 
   it('creates a workspace from the modal and refreshes the list', async () => {
     listWorkspacesMock
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([{ id: 'ws-3', name: 'Gamma', role: 'owner' }])
+      .mockResolvedValueOnce({ items: [], nextCursor: null })
+      .mockResolvedValueOnce({ items: [{ id: 'ws-3', name: 'Gamma', role: 'owner' }], nextCursor: null })
     createWorkspaceMock.mockResolvedValue({ id: 'ws-3', name: 'Gamma', role: 'owner' })
 
     renderPage()
@@ -91,6 +100,82 @@ describe('WorkspacesPage', () => {
     renderPage()
 
     await waitFor(() => {
+      expect(pushMock).toHaveBeenCalledWith('/login')
+    })
+  })
+
+  it('renders load more button and appends next workspace page', async () => {
+    listWorkspacesMock
+      .mockResolvedValueOnce({
+        items: [
+          { id: 'ws-1', name: 'Alpha', role: 'owner' },
+          { id: 'ws-2', name: 'Bravo', role: 'member' },
+        ],
+        nextCursor: 'cursor-1',
+      })
+      .mockResolvedValueOnce({
+        items: [{ id: 'ws-3', name: 'Gamma', role: 'owner' }],
+        nextCursor: null,
+      })
+
+    renderPage()
+
+    expect(await screen.findByText('Alpha', undefined, { timeout: 2000 })).toBeDefined()
+    fireEvent.click(screen.getByRole('button', { name: 'Load more workspaces' }))
+
+    await waitFor(() => {
+      expect(listWorkspacesMock).toHaveBeenNthCalledWith(2, { cursor: 'cursor-1' })
+      expect(screen.getByText('Gamma')).toBeDefined()
+    })
+  })
+
+  it('hides load more button when workspace nextCursor is null', async () => {
+    listWorkspacesMock.mockResolvedValue({
+      items: [{ id: 'ws-1', name: 'Alpha', role: 'owner' }],
+      nextCursor: null,
+    })
+
+    renderPage()
+
+    expect(await screen.findByText('Alpha', undefined, { timeout: 2000 })).toBeDefined()
+    expect(screen.queryByRole('button', { name: 'Load more workspaces' })).toBeNull()
+  })
+
+  it('renders dashboard navigation link', async () => {
+    listWorkspacesMock.mockResolvedValue({ items: [], nextCursor: null })
+
+    renderPage()
+
+    expect((await screen.findByRole('link', { name: 'Dashboard' })).getAttribute('href')).toBe('/dashboard')
+  })
+
+  it('logs out and redirects to login', async () => {
+    listWorkspacesMock.mockResolvedValue({ items: [], nextCursor: null })
+    logoutMock.mockResolvedValue(undefined)
+
+    renderPage()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Log out' }))
+
+    await waitFor(() => {
+      expect(logoutMock).toHaveBeenCalledTimes(1)
+      expect(pushMock).toHaveBeenCalledWith('/login')
+    })
+  })
+
+  it('still redirects to login when logout rejects', async () => {
+    listWorkspacesMock.mockResolvedValue({ items: [], nextCursor: null })
+    logoutMock.mockRejectedValue(new Error('boom'))
+    window.addEventListener('unhandledrejection', (event) => {
+      event.preventDefault()
+    }, { once: true })
+
+    renderPage()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Log out' }))
+
+    await waitFor(() => {
+      expect(logoutMock).toHaveBeenCalledTimes(1)
       expect(pushMock).toHaveBeenCalledWith('/login')
     })
   })

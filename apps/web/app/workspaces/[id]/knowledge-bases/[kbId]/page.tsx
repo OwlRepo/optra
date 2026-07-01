@@ -28,6 +28,7 @@ import {
   listDocuments,
   uploadDocument,
 } from "@/lib/api/documents";
+import { logout } from "@/lib/api/auth";
 import { listScrapeRuns, scrapeSite } from "@/lib/api/scrape";
 import { isUnauthorized } from "@/lib/api/handle-unauthorized";
 import { listWorkspaces } from "@/lib/api/workspaces";
@@ -38,6 +39,11 @@ type DocumentRow = {
   status: "pending" | "processing" | "done" | "failed";
   createdAt?: string;
   updatedAt?: string;
+};
+
+type DocumentListResponse = {
+  items: DocumentRow[];
+  nextCursor: string | null;
 };
 
 type WorkspaceMembership = {
@@ -56,6 +62,11 @@ type ScrapeRunRow = {
   startedAt?: string | null;
   finishedAt?: string | null;
   createdAt?: string;
+};
+
+type ScrapeRunListResponse = {
+  items: ScrapeRunRow[];
+  nextCursor: string | null;
 };
 
 const statusVariant: Record<
@@ -112,7 +123,10 @@ export default function KnowledgeBasePage({
   const workspaceId = params.id;
   const knowledgeBaseId = params.kbId;
   const [documents, setDocuments] = React.useState<DocumentRow[]>([]);
+  const [nextCursor, setNextCursor] = React.useState<string | null>(null);
   const [scrapeRuns, setScrapeRuns] = React.useState<ScrapeRunRow[]>([]);
+  const [nextScrapeRunCursor, setNextScrapeRunCursor] =
+    React.useState<string | null>(null);
   const [membership, setMembership] =
     React.useState<WorkspaceMembership | null>(null);
   const [isLoading, setIsLoading] = React.useState(true);
@@ -122,6 +136,10 @@ export default function KnowledgeBasePage({
   );
   const [isScrapeModalOpen, setIsScrapeModalOpen] = React.useState(false);
   const [isSubmittingScrape, setIsSubmittingScrape] = React.useState(false);
+  const [isLoadingMoreDocuments, setIsLoadingMoreDocuments] =
+    React.useState(false);
+  const [isLoadingMoreScrapeRuns, setIsLoadingMoreScrapeRuns] =
+    React.useState(false);
   const [scrapeUrl, setScrapeUrl] = React.useState("");
   const [scrapeMaxDepth, setScrapeMaxDepth] = React.useState("3");
   const [scrapeMaxPages, setScrapeMaxPages] = React.useState("100");
@@ -136,8 +154,12 @@ export default function KnowledgeBasePage({
 
   const loadDocuments = React.useCallback(async () => {
     try {
-      const data = await listDocuments(workspaceId, knowledgeBaseId);
-      setDocuments(Array.isArray(data) ? data : []);
+      const data = (await listDocuments(
+        workspaceId,
+        knowledgeBaseId,
+      )) as DocumentListResponse;
+      setDocuments(Array.isArray(data?.items) ? data.items : []);
+      setNextCursor(data?.nextCursor ?? null);
     } catch (err) {
       if (isUnauthorized(err)) {
         router.push("/login");
@@ -159,10 +181,50 @@ export default function KnowledgeBasePage({
     }
   }, [knowledgeBaseId, router, workspaceId]);
 
+  const loadMoreDocuments = React.useCallback(async () => {
+    if (!nextCursor) {
+      return;
+    }
+
+    setIsLoadingMoreDocuments(true);
+    try {
+      const data = (await listDocuments(workspaceId, knowledgeBaseId, {
+        cursor: nextCursor,
+      })) as DocumentListResponse;
+      setDocuments((current) => [
+        ...current,
+        ...(Array.isArray(data?.items) ? data.items : []),
+      ]);
+      setNextCursor(data?.nextCursor ?? null);
+    } catch (err) {
+      if (isUnauthorized(err)) {
+        router.push("/login");
+        return;
+      }
+
+      const message =
+        err && typeof err === "object" && "message" in err
+          ? String((err as { message: unknown }).message)
+          : "Try again in a moment.";
+
+      toastRef.current({
+        variant: "error",
+        title: "Failed to load more documents",
+        description: message,
+      });
+    } finally {
+      setIsLoadingMoreDocuments(false);
+    }
+  }, [knowledgeBaseId, nextCursor, router, workspaceId]);
+
   const loadScrapeRuns = React.useCallback(async () => {
     try {
-      const data = await listScrapeRuns(workspaceId, knowledgeBaseId);
-      setScrapeRuns(Array.isArray(data) ? data : []);
+      const data = (await listScrapeRuns(
+        workspaceId,
+        knowledgeBaseId,
+      )) as ScrapeRunListResponse;
+      setScrapeRuns(Array.isArray(data?.items) ? data.items : []);
+      setNextScrapeRunCursor(data?.nextCursor ?? null);
     } catch (err) {
       if (isUnauthorized(err)) {
         router.push("/login");
@@ -184,11 +246,56 @@ export default function KnowledgeBasePage({
     }
   }, [knowledgeBaseId, router, workspaceId]);
 
+  const loadMoreScrapeRuns = React.useCallback(async () => {
+    if (!nextScrapeRunCursor || isLoadingMoreScrapeRuns) {
+      return;
+    }
+
+    setIsLoadingMoreScrapeRuns(true);
+    try {
+      const data = (await listScrapeRuns(workspaceId, knowledgeBaseId, {
+        cursor: nextScrapeRunCursor,
+      })) as ScrapeRunListResponse;
+      setScrapeRuns((current) => [
+        ...current,
+        ...(Array.isArray(data?.items) ? data.items : []),
+      ]);
+      setNextScrapeRunCursor(data?.nextCursor ?? null);
+    } catch (err) {
+      if (isUnauthorized(err)) {
+        router.push("/login");
+        return;
+      }
+
+      const message =
+        err && typeof err === "object" && "message" in err
+          ? String((err as { message: unknown }).message)
+          : "Try again in a moment.";
+
+      toastRef.current({
+        variant: "error",
+        title: "Failed to load more crawl runs",
+        description: message,
+      });
+    } finally {
+      setIsLoadingMoreScrapeRuns(false);
+    }
+  }, [
+    isLoadingMoreScrapeRuns,
+    knowledgeBaseId,
+    nextScrapeRunCursor,
+    router,
+    workspaceId,
+  ]);
+
   const loadMembership = React.useCallback(async () => {
     try {
       const memberships = await listWorkspaces();
+      const items = Array.isArray(memberships?.items)
+        ? memberships.items
+        : [];
       setMembership(
-        (Array.isArray(memberships) ? memberships : []).find(
+        items.find(
           (entry: WorkspaceMembership) => entry.id === workspaceId,
         ) ?? null,
       );
@@ -202,6 +309,14 @@ export default function KnowledgeBasePage({
   React.useEffect(() => {
     void Promise.all([loadDocuments(), loadMembership(), loadScrapeRuns()]);
   }, [loadDocuments, loadMembership, loadScrapeRuns]);
+
+  const handleLogout = React.useCallback(async () => {
+    try {
+      await logout();
+    } finally {
+      router.push("/login");
+    }
+  }, [router]);
 
   const hasInFlightDocuments = documents.some(
     (document) =>
@@ -432,10 +547,14 @@ export default function KnowledgeBasePage({
               </Button>
             ) : null}
             <Button asChild variant="ghost" size="sm">
+              <Link href="/workspaces">All workspaces</Link>
+            </Button>
+            <Button asChild variant="ghost" size="sm">
               <Link href={`/workspaces/${workspaceId}`}>Back to workspace</Link>
             </Button>
           </>
         }
+        onLogout={handleLogout}
       />
 
       <div className="space-y-8 py-10">
@@ -495,51 +614,67 @@ export default function KnowledgeBasePage({
               description="Start a crawl to ingest docs pages from a website."
             />
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Seed URL</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Pages</TableHead>
-                  <TableHead>Started</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {scrapeRuns.map((run) => (
-                  <TableRow key={run.id}>
-                    <TableCell className="font-medium">{run.seedUrl}</TableCell>
-                    <TableCell>
-                      <Badge
-                        variant={
-                          run.status === "completed"
-                            ? "success"
-                            : run.status === "failed"
-                              ? "destructive"
-                              : "secondary"
-                        }
-                      >
-                        {run.status}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <div className="space-y-1">
-                        <div>{`${run.pagesFound}/${run.pagesSucceeded}/${run.pagesFailed}`}</div>
-                        {getScrapeProgressLabel(run) ? (
-                          <div className="text-xs text-muted-foreground">
-                            {getScrapeProgressLabel(run)}
-                          </div>
-                        ) : null}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      {run.startedAt
-                        ? new Date(run.startedAt).toLocaleString()
-                        : "Queued"}
-                    </TableCell>
+            <>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Seed URL</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Pages</TableHead>
+                    <TableHead>Started</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {scrapeRuns.map((run) => (
+                    <TableRow key={run.id}>
+                      <TableCell className="font-medium">{run.seedUrl}</TableCell>
+                      <TableCell>
+                        <Badge
+                          variant={
+                            run.status === "completed"
+                              ? "success"
+                              : run.status === "failed"
+                                ? "destructive"
+                                : "secondary"
+                          }
+                        >
+                          {run.status}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <div className="space-y-1">
+                          <div>{`${run.pagesFound}/${run.pagesSucceeded}/${run.pagesFailed}`}</div>
+                          {getScrapeProgressLabel(run) ? (
+                            <div className="text-xs text-muted-foreground">
+                              {getScrapeProgressLabel(run)}
+                            </div>
+                          ) : null}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        {run.startedAt
+                          ? new Date(run.startedAt).toLocaleString()
+                          : "Queued"}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+              {nextScrapeRunCursor ? (
+                <div className="mt-4 flex justify-center">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => void loadMoreScrapeRuns()}
+                    isLoading={isLoadingMoreScrapeRuns}
+                    loadingText="Loading"
+                    aria-label="Load more crawl runs"
+                  >
+                    {!isLoadingMoreScrapeRuns ? "Load more crawl runs" : null}
+                  </Button>
+                </div>
+              ) : null}
+            </>
           )}
         </PageSection>
 
@@ -560,61 +695,77 @@ export default function KnowledgeBasePage({
               description="Upload the first document to start the ingest pipeline."
             />
           ) : (
-            <Table>
-              <TableHeader>
-                <div className="flex items-center justify-between gap-2 p-5">
-                  <div className="text-sm font-medium">
-                    {inFlightDocumentCount} document
-                    {inFlightDocumentCount === 1 ? "" : "s"} in flight
+            <>
+              <Table>
+                <TableHeader>
+                  <div className="flex items-center justify-between gap-2 p-5">
+                    <div className="text-sm font-medium">
+                      {inFlightDocumentCount} document
+                      {inFlightDocumentCount === 1 ? "" : "s"} in flight
+                    </div>
+                    <div className="text-sm text-muted-foreground">
+                      {hasInFlightDocuments
+                        ? `${documentProgressPercent}% indexed · ${pendingDocumentCount} pending · ${processingDocumentCount} processing · ${failedDocumentCount} failed`
+                        : failedDocumentCount > 0
+                          ? `${doneDocumentCount} done · ${failedDocumentCount} failed`
+                          : `All ${doneDocumentCount} documents indexed.`}
+                    </div>
                   </div>
-                  <div className="text-sm text-muted-foreground">
-                    {hasInFlightDocuments
-                      ? `${documentProgressPercent}% indexed · ${pendingDocumentCount} pending · ${processingDocumentCount} processing · ${failedDocumentCount} failed`
-                      : failedDocumentCount > 0
-                        ? `${doneDocumentCount} done · ${failedDocumentCount} failed`
-                        : `All ${doneDocumentCount} documents indexed.`}
-                  </div>
-                </div>
-                <TableRow>
-                  <TableHead>Title</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Created</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {sortedDocuments.map((document) => (
-                  <TableRow key={document.id}>
-                    <TableCell className="font-medium">
-                      {document.title}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={statusVariant[document.status]}>
-                        {document.status}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      {document.createdAt
-                        ? new Date(document.createdAt).toLocaleString()
-                        : "Just now"}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {canManage ? (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          aria-label={`Delete ${document.title}`}
-                          onClick={() => setPendingDelete(document)}
-                        >
-                          <Trash2 className="size-4" />
-                          Delete
-                        </Button>
-                      ) : null}
-                    </TableCell>
+                  <TableRow>
+                    <TableHead>Title</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Created</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {sortedDocuments.map((document) => (
+                    <TableRow key={document.id}>
+                      <TableCell className="font-medium">
+                        {document.title}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={statusVariant[document.status]}>
+                          {document.status}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        {document.createdAt
+                          ? new Date(document.createdAt).toLocaleString()
+                          : "Just now"}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {canManage ? (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            aria-label={`Delete ${document.title}`}
+                            onClick={() => setPendingDelete(document)}
+                          >
+                            <Trash2 className="size-4" />
+                            Delete
+                          </Button>
+                        ) : null}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+              {nextCursor ? (
+                <div className="mt-4 flex justify-center">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => void loadMoreDocuments()}
+                    isLoading={isLoadingMoreDocuments}
+                    loadingText="Loading"
+                    aria-label="Load more documents"
+                  >
+                    {!isLoadingMoreDocuments ? "Load more documents" : null}
+                  </Button>
+                </div>
+              ) : null}
+            </>
           )}
         </PageSection>
       </div>

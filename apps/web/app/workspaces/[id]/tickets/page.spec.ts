@@ -12,6 +12,7 @@ const listTicketsMock = vi.fn()
 const createTicketMock = vi.fn()
 const getTicketMock = vi.fn()
 const updateTicketMock = vi.fn()
+const logoutMock = vi.fn()
 
 vi.mock('next/navigation', () => ({
   useRouter: () => routerMock,
@@ -22,6 +23,10 @@ vi.mock('@/lib/api/tickets', () => ({
   createTicket: (...args: unknown[]) => createTicketMock(...args),
   getTicket: (...args: unknown[]) => getTicketMock(...args),
   updateTicket: (...args: unknown[]) => updateTicketMock(...args),
+}))
+
+vi.mock('@/lib/api/auth', () => ({
+  logout: (...args: unknown[]) => logoutMock(...args),
 }))
 
 function renderPage() {
@@ -43,6 +48,7 @@ describe('TicketsPage', () => {
     createTicketMock.mockReset()
     getTicketMock.mockReset()
     updateTicketMock.mockReset()
+    logoutMock.mockReset()
     vi.stubGlobal('navigator', {
       clipboard: {
         writeText: vi.fn().mockResolvedValue(undefined),
@@ -66,9 +72,15 @@ describe('TicketsPage', () => {
       }) as typeof window.setInterval)
     vi.spyOn(window, 'clearInterval').mockImplementation(() => undefined)
     listTicketsMock
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([{ id: 'ticket-1', title: null, status: 'pending', severity: null, createdAt: '2026-07-01T00:00:00.000Z', updatedAt: '2026-07-01T00:00:00.000Z' }])
-      .mockResolvedValue([{ id: 'ticket-1', title: 'OTP login loop', status: 'done', severity: 'high', createdAt: '2026-07-01T00:00:00.000Z', updatedAt: '2026-07-01T00:00:03.000Z' }])
+      .mockResolvedValueOnce({ items: [], nextCursor: null })
+      .mockResolvedValueOnce({
+        items: [{ id: 'ticket-1', title: null, status: 'pending', severity: null, createdAt: '2026-07-01T00:00:00.000Z', updatedAt: '2026-07-01T00:00:00.000Z' }],
+        nextCursor: null,
+      })
+      .mockResolvedValue({
+        items: [{ id: 'ticket-1', title: 'OTP login loop', status: 'done', severity: 'high', createdAt: '2026-07-01T00:00:00.000Z', updatedAt: '2026-07-01T00:00:03.000Z' }],
+        nextCursor: null,
+      })
     getTicketMock
       .mockResolvedValueOnce({
         id: 'ticket-1',
@@ -133,9 +145,12 @@ describe('TicketsPage', () => {
   })
 
   it('edits ticket, records feedback, and copies Linear markdown', async () => {
-    listTicketsMock.mockResolvedValue([
-      { id: 'ticket-1', title: 'OTP login loop', status: 'done', severity: 'high', createdAt: '2026-07-01T00:00:00.000Z', updatedAt: '2026-07-01T00:00:03.000Z' },
-    ])
+    listTicketsMock.mockResolvedValue({
+      items: [
+        { id: 'ticket-1', title: 'OTP login loop', status: 'done', severity: 'high', createdAt: '2026-07-01T00:00:00.000Z', updatedAt: '2026-07-01T00:00:03.000Z' },
+      ],
+      nextCursor: null,
+    })
     getTicketMock.mockResolvedValue({
       id: 'ticket-1',
       transcript: 'OTP transcript',
@@ -227,9 +242,12 @@ describe('TicketsPage', () => {
   })
 
   it('shows failure banner when extraction fails', async () => {
-    listTicketsMock.mockResolvedValue([
-      { id: 'ticket-1', title: null, status: 'failed', severity: null, createdAt: '2026-07-01T00:00:00.000Z', updatedAt: '2026-07-01T00:00:03.000Z' },
-    ])
+    listTicketsMock.mockResolvedValue({
+      items: [
+        { id: 'ticket-1', title: null, status: 'failed', severity: null, createdAt: '2026-07-01T00:00:00.000Z', updatedAt: '2026-07-01T00:00:03.000Z' },
+      ],
+      nextCursor: null,
+    })
     getTicketMock.mockResolvedValue({
       id: 'ticket-1',
       transcript: 'garbled transcript',
@@ -252,9 +270,12 @@ describe('TicketsPage', () => {
   })
 
   it('renders selected transcript read-only beside draft fields', async () => {
-    listTicketsMock.mockResolvedValue([
-      { id: 'ticket-1', title: 'OTP login loop', status: 'done', severity: 'high', createdAt: '2026-07-01T00:00:00.000Z', updatedAt: '2026-07-01T00:00:03.000Z' },
-    ])
+    listTicketsMock.mockResolvedValue({
+      items: [
+        { id: 'ticket-1', title: 'OTP login loop', status: 'done', severity: 'high', createdAt: '2026-07-01T00:00:00.000Z', updatedAt: '2026-07-01T00:00:03.000Z' },
+      ],
+      nextCursor: null,
+    })
     getTicketMock.mockResolvedValue({
       id: 'ticket-1',
       transcript: 'Caller says OTP verify bounces back to login after success screen.',
@@ -286,9 +307,12 @@ describe('TicketsPage', () => {
   })
 
   it('shows confidence summary badge for extracted fields', async () => {
-    listTicketsMock.mockResolvedValue([
-      { id: 'ticket-1', title: 'OTP login loop', status: 'done', severity: 'high', createdAt: '2026-07-01T00:00:00.000Z', updatedAt: '2026-07-01T00:00:03.000Z' },
-    ])
+    listTicketsMock.mockResolvedValue({
+      items: [
+        { id: 'ticket-1', title: 'OTP login loop', status: 'done', severity: 'high', createdAt: '2026-07-01T00:00:00.000Z', updatedAt: '2026-07-01T00:00:03.000Z' },
+      ],
+      nextCursor: null,
+    })
     getTicketMock.mockResolvedValue({
       id: 'ticket-1',
       transcript: 'OTP transcript',
@@ -317,9 +341,12 @@ describe('TicketsPage', () => {
   })
 
   it('shows root-cause verify affordance only when confidence is low', async () => {
-    listTicketsMock.mockResolvedValue([
-      { id: 'ticket-1', title: 'OTP login loop', status: 'done', severity: 'high', createdAt: '2026-07-01T00:00:00.000Z', updatedAt: '2026-07-01T00:00:03.000Z' },
-    ])
+    listTicketsMock.mockResolvedValue({
+      items: [
+        { id: 'ticket-1', title: 'OTP login loop', status: 'done', severity: 'high', createdAt: '2026-07-01T00:00:00.000Z', updatedAt: '2026-07-01T00:00:03.000Z' },
+      ],
+      nextCursor: null,
+    })
     getTicketMock
       .mockResolvedValueOnce({
         id: 'ticket-1',
@@ -373,6 +400,119 @@ describe('TicketsPage', () => {
 
     await waitFor(() => {
       expect(screen.queryByText('Best guess - verify')).toBeNull()
+    })
+  })
+
+  it('renders back to workspace navigation link', async () => {
+    listTicketsMock.mockResolvedValue({
+      items: [
+        { id: 'ticket-1', title: 'OTP login loop', status: 'done', severity: 'high', createdAt: '2026-07-01T00:00:00.000Z', updatedAt: '2026-07-01T00:00:03.000Z' },
+      ],
+      nextCursor: null,
+    })
+    getTicketMock.mockResolvedValue({
+      id: 'ticket-1',
+      transcript: 'OTP transcript',
+      title: 'OTP login loop',
+      issueSummary: 'Users loop back to login.',
+      reproSteps: '1. Verify OTP',
+      severity: 'high',
+      productArea: 'auth',
+      hypothesizedRootCause: 'Cookie missing',
+      nextAction: 'Trace cookie write',
+      status: 'done',
+      fieldConfidence: {},
+    })
+
+    renderPage()
+
+    expect((await screen.findByRole('link', { name: 'Back to workspace' })).getAttribute('href')).toBe('/workspaces/ws-1')
+  })
+
+  it('logs out and redirects to login', async () => {
+    listTicketsMock.mockResolvedValue({
+      items: [
+        { id: 'ticket-1', title: 'OTP login loop', status: 'done', severity: 'high', createdAt: '2026-07-01T00:00:00.000Z', updatedAt: '2026-07-01T00:00:03.000Z' },
+      ],
+      nextCursor: null,
+    })
+    getTicketMock.mockResolvedValue({
+      id: 'ticket-1',
+      transcript: 'OTP transcript',
+      title: 'OTP login loop',
+      issueSummary: 'Users loop back to login.',
+      reproSteps: '1. Verify OTP',
+      severity: 'high',
+      productArea: 'auth',
+      hypothesizedRootCause: 'Cookie missing',
+      nextAction: 'Trace cookie write',
+      status: 'done',
+      fieldConfidence: {},
+    })
+    logoutMock.mockResolvedValue(undefined)
+
+    renderPage()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Log out' }))
+
+    await waitFor(() => {
+      expect(logoutMock).toHaveBeenCalledTimes(1)
+    })
+    await logoutMock.mock.results[0]?.value
+
+    await waitFor(() => {
+      expect(pushMock).toHaveBeenCalledWith('/login')
+    })
+  })
+
+  it('renders load more tickets and refresh resets to first page', async () => {
+    listTicketsMock
+      .mockResolvedValueOnce({
+        items: [
+          { id: 'ticket-1', title: 'Newest ticket', status: 'pending', severity: null, createdAt: '2026-07-01T00:00:00.000Z', updatedAt: '2026-07-01T00:00:03.000Z' },
+        ],
+        nextCursor: 'ticket-cursor-1',
+      })
+      .mockResolvedValueOnce({
+        items: [
+          { id: 'ticket-2', title: 'Older ticket', status: 'done', severity: 'low', createdAt: '2026-07-01T00:00:00.000Z', updatedAt: '2026-07-01T00:00:02.000Z' },
+        ],
+        nextCursor: null,
+      })
+      .mockResolvedValue({
+        items: [
+          { id: 'ticket-1', title: 'Newest ticket', status: 'pending', severity: null, createdAt: '2026-07-01T00:00:00.000Z', updatedAt: '2026-07-01T00:00:04.000Z' },
+        ],
+        nextCursor: 'ticket-cursor-1',
+      })
+    getTicketMock.mockResolvedValue({
+      id: 'ticket-1',
+      transcript: 'Newest transcript',
+      title: 'Newest ticket',
+      issueSummary: null,
+      reproSteps: null,
+      severity: null,
+      productArea: 'general',
+      hypothesizedRootCause: null,
+      nextAction: null,
+      status: 'pending',
+      fieldConfidence: {},
+    })
+
+    renderPage()
+
+    expect(await screen.findByText('Newest ticket')).toBeDefined()
+    fireEvent.click(screen.getByRole('button', { name: 'Load more tickets' }))
+
+    await waitFor(() => {
+      expect(listTicketsMock).toHaveBeenNthCalledWith(2, 'ws-1', { cursor: 'ticket-cursor-1' })
+      expect(screen.getByText('Older ticket')).toBeDefined()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh' }))
+
+    await waitFor(() => {
+      expect(listTicketsMock).toHaveBeenNthCalledWith(3, 'ws-1')
     })
   })
 })

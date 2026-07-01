@@ -25,6 +25,7 @@ import {
   useToast,
 } from '@repo/ui'
 import { ClipboardCopy, RefreshCcw, Save, Sparkles } from 'lucide-react'
+import { logout } from '@/lib/api/auth'
 import { createTicket, getTicket, listTickets, updateTicket } from '@/lib/api/tickets'
 import { isUnauthorized } from '@/lib/api/handle-unauthorized'
 
@@ -38,6 +39,11 @@ type TicketSummary = {
   severity: Severity
   createdAt?: string
   updatedAt?: string
+}
+
+type TicketListResponse = {
+  items: TicketSummary[]
+  nextCursor: string | null
 }
 
 type TicketDetail = {
@@ -138,6 +144,7 @@ export default function TicketsPage({ params }: { params: { id: string } }) {
   const router = useRouter()
   const { toast } = useToast()
   const [tickets, setTickets] = React.useState<TicketSummary[]>([])
+  const [nextTicketCursor, setNextTicketCursor] = React.useState<string | null>(null)
   const [selectedTicketId, setSelectedTicketId] = React.useState<string | null>(null)
   const [selectedTicket, setSelectedTicket] = React.useState<TicketDetail | null>(null)
   const [editor, setEditor] = React.useState<EditorState | null>(null)
@@ -145,6 +152,7 @@ export default function TicketsPage({ params }: { params: { id: string } }) {
   const [isLoading, setIsLoading] = React.useState(true)
   const [isSaving, setIsSaving] = React.useState(false)
   const [isCreating, setIsCreating] = React.useState(false)
+  const [isLoadingMoreTickets, setIsLoadingMoreTickets] = React.useState(false)
 
   const handleUnauthorized = React.useCallback((error: unknown) => {
     if (isUnauthorized(error)) {
@@ -157,7 +165,9 @@ export default function TicketsPage({ params }: { params: { id: string } }) {
   const loadTickets = React.useCallback(async () => {
     try {
       const data = await listTickets(workspaceId)
-      setTickets(Array.isArray(data) ? data : [])
+      const rows = data && typeof data === 'object' ? (data as TicketListResponse) : null
+      setTickets(Array.isArray(rows?.items) ? rows.items : [])
+      setNextTicketCursor(rows?.nextCursor ?? null)
     } catch (error) {
       if (handleUnauthorized(error)) return
       toast({
@@ -171,6 +181,31 @@ export default function TicketsPage({ params }: { params: { id: string } }) {
       setIsLoading(false)
     }
   }, [handleUnauthorized, toast, workspaceId])
+
+  const loadMoreTickets = React.useCallback(async () => {
+    if (!nextTicketCursor || isLoadingMoreTickets) {
+      return
+    }
+
+    setIsLoadingMoreTickets(true)
+    try {
+      const data = await listTickets(workspaceId, { cursor: nextTicketCursor })
+      const rows = data && typeof data === 'object' ? (data as TicketListResponse) : null
+      setTickets((current) => [...current, ...(Array.isArray(rows?.items) ? rows.items : [])])
+      setNextTicketCursor(rows?.nextCursor ?? null)
+    } catch (error) {
+      if (handleUnauthorized(error)) return
+      toast({
+        variant: 'error',
+        title: 'Failed to load more tickets',
+        description: error && typeof error === 'object' && 'message' in error
+          ? String((error as { message: unknown }).message)
+          : 'Try again in a moment.',
+      })
+    } finally {
+      setIsLoadingMoreTickets(false)
+    }
+  }, [handleUnauthorized, isLoadingMoreTickets, nextTicketCursor, toast, workspaceId])
 
   const loadTicketDetail = React.useCallback(async (ticketId: string) => {
     try {
@@ -192,6 +227,14 @@ export default function TicketsPage({ params }: { params: { id: string } }) {
   React.useEffect(() => {
     void loadTickets()
   }, [loadTickets])
+
+  const handleLogout = React.useCallback(async () => {
+    try {
+      await logout()
+    } finally {
+      router.push('/login')
+    }
+  }, [router])
 
   React.useEffect(() => {
     if (tickets.length === 0) {
@@ -333,12 +376,18 @@ export default function TicketsPage({ params }: { params: { id: string } }) {
         title="Ticket copilot"
         description="Paste support-call transcripts, review extracted drafts, then copy polished tickets into Linear."
         badge={<Badge variant="secondary">Workspace scoped</Badge>}
+        navigation={
+          <Button asChild variant="ghost" size="sm">
+            <Link href={`/workspaces/${workspaceId}`}>Back to workspace</Link>
+          </Button>
+        }
         actions={
           <Button variant="outline" size="sm" onClick={() => void loadTickets()}>
             <RefreshCcw className="size-4" />
             Refresh
           </Button>
         }
+        onLogout={handleLogout}
       />
 
       <div className="space-y-8 pt-10">
@@ -389,28 +438,44 @@ export default function TicketsPage({ params }: { params: { id: string } }) {
                     description="Paste first transcript to start extraction."
                   />
                 ) : (
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Title</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead>Severity</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {tickets.map((ticket) => (
-                        <TableRow
-                          key={ticket.id}
-                          onClick={() => setSelectedTicketId(ticket.id)}
-                          className="cursor-pointer"
-                        >
-                          <TableCell>{ticket.title ?? 'Untitled draft'}</TableCell>
-                          <TableCell><Badge variant={statusVariant[ticket.status]}>{ticket.status}</Badge></TableCell>
-                          <TableCell>{ticket.severity ?? '—'}</TableCell>
+                  <>
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Title</TableHead>
+                          <TableHead>Status</TableHead>
+                          <TableHead>Severity</TableHead>
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+                      </TableHeader>
+                      <TableBody>
+                        {tickets.map((ticket) => (
+                          <TableRow
+                            key={ticket.id}
+                            onClick={() => setSelectedTicketId(ticket.id)}
+                            className="cursor-pointer"
+                          >
+                            <TableCell>{ticket.title ?? 'Untitled draft'}</TableCell>
+                            <TableCell><Badge variant={statusVariant[ticket.status]}>{ticket.status}</Badge></TableCell>
+                            <TableCell>{ticket.severity ?? '—'}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                    {nextTicketCursor ? (
+                      <div className="mt-4 flex justify-center">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => void loadMoreTickets()}
+                          isLoading={isLoadingMoreTickets}
+                          loadingText="Loading"
+                          aria-label="Load more tickets"
+                        >
+                          {!isLoadingMoreTickets ? 'Load more tickets' : null}
+                        </Button>
+                      </div>
+                    ) : null}
+                  </>
                 )}
               </div>
             </Card>

@@ -26,6 +26,7 @@ import {
   useToast,
 } from '@repo/ui'
 import { BriefcaseBusiness, Plus } from 'lucide-react'
+import { logout } from '@/lib/api/auth'
 import { createWorkspace, listWorkspaces } from '@/lib/api/workspaces'
 import { isUnauthorized } from '@/lib/api/handle-unauthorized'
 
@@ -41,6 +42,11 @@ type Workspace = {
   createdAt?: string
 }
 
+type WorkspaceListResponse = {
+  items: Workspace[]
+  nextCursor: string | null
+}
+
 type FormData = z.infer<typeof schema>
 
 export default function WorkspacesPage() {
@@ -48,8 +54,10 @@ export default function WorkspacesPage() {
   const { toast } = useToast()
   const toastRef = React.useRef(toast)
   const [workspaces, setWorkspaces] = React.useState<Workspace[]>([])
+  const [nextCursor, setNextCursor] = React.useState<string | null>(null)
   const [isLoading, setIsLoading] = React.useState(true)
   const [isModalOpen, setIsModalOpen] = React.useState(false)
+  const [isLoadingMore, setIsLoadingMore] = React.useState(false)
 
   const {
     register,
@@ -69,7 +77,8 @@ export default function WorkspacesPage() {
     try {
       setIsLoading(true)
       const data = await listWorkspaces()
-      setWorkspaces(Array.isArray(data) ? data : [])
+      setWorkspaces(Array.isArray(data?.items) ? data.items : [])
+      setNextCursor(data?.nextCursor ?? null)
     } catch (err) {
       if (isUnauthorized(err)) {
         router.push('/login')
@@ -89,6 +98,40 @@ export default function WorkspacesPage() {
   React.useEffect(() => {
     void loadWorkspaces()
   }, [loadWorkspaces])
+
+  const handleLogout = React.useCallback(async () => {
+    try {
+      await logout()
+    } finally {
+      router.push('/login')
+    }
+  }, [router])
+
+  const loadMoreWorkspaces = React.useCallback(async () => {
+    if (!nextCursor) {
+      return
+    }
+
+    try {
+      setIsLoadingMore(true)
+      const data = (await listWorkspaces({ cursor: nextCursor })) as WorkspaceListResponse
+      setWorkspaces((current) => [...current, ...(Array.isArray(data?.items) ? data.items : [])])
+      setNextCursor(data?.nextCursor ?? null)
+    } catch (err) {
+      if (isUnauthorized(err)) {
+        router.push('/login')
+        return
+      }
+
+      toastRef.current({
+        variant: 'error',
+        title: 'Failed to load more workspaces',
+        description: err instanceof Error ? err.message : 'Try again in a moment.',
+      })
+    } finally {
+      setIsLoadingMore(false)
+    }
+  }, [nextCursor, router])
 
   const onSubmit = handleSubmit(async (data) => {
     try {
@@ -121,12 +164,18 @@ export default function WorkspacesPage() {
         title="Workspaces"
         description="Create a workspace, review your access, and jump into knowledge operations."
         badge={<Badge variant="secondary">P2 ready</Badge>}
+        navigation={
+          <Button asChild variant="ghost" size="sm">
+            <Link href="/dashboard">Dashboard</Link>
+          </Button>
+        }
         actions={
           <Button size="sm" onClick={() => setIsModalOpen(true)}>
             <Plus className="size-4" />
             New workspace
           </Button>
         }
+        onLogout={handleLogout}
       />
 
       <div className="space-y-8 py-10">
@@ -154,30 +203,46 @@ export default function WorkspacesPage() {
               }
             />
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Role</TableHead>
-                  <TableHead className="text-right">Open</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {workspaces.map((workspace) => (
-                  <TableRow key={workspace.id}>
-                    <TableCell className="font-medium">{workspace.name}</TableCell>
-                    <TableCell>
-                      <Badge variant={workspace.role === 'owner' ? 'success' : 'secondary'}>{workspace.role}</Badge>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Button asChild variant="ghost" size="sm">
-                        <Link href={`/workspaces/${workspace.id}`}>Open</Link>
-                      </Button>
-                    </TableCell>
+            <>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Role</TableHead>
+                    <TableHead className="text-right">Open</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {workspaces.map((workspace) => (
+                    <TableRow key={workspace.id}>
+                      <TableCell className="font-medium">{workspace.name}</TableCell>
+                      <TableCell>
+                        <Badge variant={workspace.role === 'owner' ? 'success' : 'secondary'}>{workspace.role}</Badge>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button asChild variant="ghost" size="sm">
+                          <Link href={`/workspaces/${workspace.id}`}>Open</Link>
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+              {nextCursor ? (
+                <div className="mt-4 flex justify-center">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => void loadMoreWorkspaces()}
+                    isLoading={isLoadingMore}
+                    loadingText="Loading"
+                    aria-label="Load more workspaces"
+                  >
+                    {!isLoadingMore ? 'Load more workspaces' : null}
+                  </Button>
+                </div>
+              ) : null}
+            </>
           )}
         </PageSection>
       </div>

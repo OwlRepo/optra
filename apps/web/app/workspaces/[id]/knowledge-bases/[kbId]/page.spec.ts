@@ -14,6 +14,7 @@ const scrapeSiteMock = vi.fn()
 const uploadDocumentMock = vi.fn()
 const deleteDocumentMock = vi.fn()
 const listWorkspacesMock = vi.fn()
+const logoutMock = vi.fn()
 
 vi.mock('next/navigation', () => ({
   useRouter: () => routerMock,
@@ -32,6 +33,10 @@ vi.mock('@/lib/api/scrape', () => ({
 
 vi.mock('@/lib/api/workspaces', () => ({
   listWorkspaces: (...args: unknown[]) => listWorkspacesMock(...args),
+}))
+
+vi.mock('@/lib/api/auth', () => ({
+  logout: (...args: unknown[]) => logoutMock(...args),
 }))
 
 function renderPage() {
@@ -55,8 +60,9 @@ describe('KnowledgeBasePage', () => {
     uploadDocumentMock.mockReset()
     deleteDocumentMock.mockReset()
     listWorkspacesMock.mockReset()
-    listWorkspacesMock.mockResolvedValue([{ id: 'ws-1', role: 'owner' }])
-    listScrapeRunsMock.mockResolvedValue([])
+    logoutMock.mockReset()
+    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+    listScrapeRunsMock.mockResolvedValue({ items: [], nextCursor: null })
   })
 
   afterEach(() => {
@@ -66,10 +72,13 @@ describe('KnowledgeBasePage', () => {
   })
 
   it('renders documents with status badges', async () => {
-    listDocumentsMock.mockResolvedValue([
-      { id: 'doc-1', title: 'Guide.pdf', status: 'done', createdAt: '2026-06-30T00:00:00.000Z' },
-      { id: 'doc-2', title: 'Notes.txt', status: 'failed', createdAt: '2026-06-30T00:00:00.000Z' },
-    ])
+    listDocumentsMock.mockResolvedValue({
+      items: [
+        { id: 'doc-1', title: 'Guide.pdf', status: 'done', createdAt: '2026-06-30T00:00:00.000Z' },
+        { id: 'doc-2', title: 'Notes.txt', status: 'failed', createdAt: '2026-06-30T00:00:00.000Z' },
+      ],
+      nextCursor: null,
+    })
 
     renderPage()
 
@@ -79,7 +88,7 @@ describe('KnowledgeBasePage', () => {
   })
 
   it('uploads a selected file', async () => {
-    listDocumentsMock.mockResolvedValue([])
+    listDocumentsMock.mockResolvedValue({ items: [], nextCursor: null })
     uploadDocumentMock.mockResolvedValue({ id: 'doc-3', title: 'Upload.txt', status: 'pending' })
 
     renderPage()
@@ -101,12 +110,18 @@ describe('KnowledgeBasePage', () => {
   it('polls while a document is pending and stops after unmount', async () => {
     vi.useFakeTimers()
     listDocumentsMock
-      .mockResolvedValueOnce([
-        { id: 'doc-1', title: 'Guide.pdf', status: 'pending', createdAt: '2026-06-30T00:00:00.000Z' },
-      ])
-      .mockResolvedValue([
-        { id: 'doc-1', title: 'Guide.pdf', status: 'processing', createdAt: '2026-06-30T00:00:00.000Z' },
-      ])
+      .mockResolvedValueOnce({
+        items: [
+          { id: 'doc-1', title: 'Guide.pdf', status: 'pending', createdAt: '2026-06-30T00:00:00.000Z' },
+        ],
+        nextCursor: null,
+      })
+      .mockResolvedValue({
+        items: [
+          { id: 'doc-1', title: 'Guide.pdf', status: 'processing', createdAt: '2026-06-30T00:00:00.000Z' },
+        ],
+        nextCursor: null,
+      })
 
     const view = renderPage()
 
@@ -130,20 +145,23 @@ describe('KnowledgeBasePage', () => {
   })
 
   it('submits scrape form and renders runs table', async () => {
-    listDocumentsMock.mockResolvedValue([])
+    listDocumentsMock.mockResolvedValue({ items: [], nextCursor: null })
     listScrapeRunsMock
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([
-        {
-          id: 'run-1',
-          seedUrl: 'https://example.com/docs',
-          status: 'queued',
-          pagesFound: 0,
-          pagesSucceeded: 0,
-          pagesFailed: 0,
-          createdAt: '2026-06-30T00:00:00.000Z',
-        },
-      ])
+      .mockResolvedValueOnce({ items: [], nextCursor: null })
+      .mockResolvedValueOnce({
+        items: [
+          {
+            id: 'run-1',
+            seedUrl: 'https://example.com/docs',
+            status: 'queued',
+            pagesFound: 0,
+            pagesSucceeded: 0,
+            pagesFailed: 0,
+            createdAt: '2026-06-30T00:00:00.000Z',
+          },
+        ],
+        nextCursor: null,
+      })
     scrapeSiteMock.mockResolvedValue({ runId: 'run-1', status: 'queued' })
 
     renderPage()
@@ -177,20 +195,23 @@ describe('KnowledgeBasePage', () => {
   })
 
   it('disables the crawl submit button while the request is in flight and shows duplicate-run feedback', async () => {
-    listDocumentsMock.mockResolvedValue([])
+    listDocumentsMock.mockResolvedValue({ items: [], nextCursor: null })
     listScrapeRunsMock
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([
-        {
-          id: 'run-1',
-          seedUrl: 'https://example.com/docs',
-          status: 'queued',
-          pagesFound: 0,
-          pagesSucceeded: 0,
-          pagesFailed: 0,
-          createdAt: '2026-06-30T00:00:00.000Z',
-        },
-      ])
+      .mockResolvedValueOnce({ items: [], nextCursor: null })
+      .mockResolvedValueOnce({
+        items: [
+          {
+            id: 'run-1',
+            seedUrl: 'https://example.com/docs',
+            status: 'queued',
+            pagesFound: 0,
+            pagesSucceeded: 0,
+            pagesFailed: 0,
+            createdAt: '2026-06-30T00:00:00.000Z',
+          },
+        ],
+        nextCursor: null,
+      })
 
     let resolveScrape: ((value: unknown) => void) | undefined
     scrapeSiteMock.mockReturnValue(
@@ -229,30 +250,36 @@ describe('KnowledgeBasePage', () => {
 
   it('polls scrape runs while a crawl is running', async () => {
     vi.useFakeTimers()
-    listDocumentsMock.mockResolvedValue([])
+    listDocumentsMock.mockResolvedValue({ items: [], nextCursor: null })
     listScrapeRunsMock
-      .mockResolvedValueOnce([
-        {
-          id: 'run-1',
-          seedUrl: 'https://example.com/docs',
-          status: 'running',
-          pagesFound: 3,
-          pagesSucceeded: 2,
-          pagesFailed: 0,
-          createdAt: '2026-06-30T00:00:00.000Z',
-        },
-      ])
-      .mockResolvedValue([
-        {
-          id: 'run-1',
-          seedUrl: 'https://example.com/docs',
-          status: 'completed',
-          pagesFound: 3,
-          pagesSucceeded: 3,
-          pagesFailed: 0,
-          createdAt: '2026-06-30T00:00:00.000Z',
-        },
-      ])
+      .mockResolvedValueOnce({
+        items: [
+          {
+            id: 'run-1',
+            seedUrl: 'https://example.com/docs',
+            status: 'running',
+            pagesFound: 3,
+            pagesSucceeded: 2,
+            pagesFailed: 0,
+            createdAt: '2026-06-30T00:00:00.000Z',
+          },
+        ],
+        nextCursor: null,
+      })
+      .mockResolvedValue({
+        items: [
+          {
+            id: 'run-1',
+            seedUrl: 'https://example.com/docs',
+            status: 'completed',
+            pagesFound: 3,
+            pagesSucceeded: 3,
+            pagesFailed: 0,
+            createdAt: '2026-06-30T00:00:00.000Z',
+          },
+        ],
+        nextCursor: null,
+      })
 
     const view = renderPage()
 
@@ -276,27 +303,30 @@ describe('KnowledgeBasePage', () => {
   })
 
   it('shows discovered-page progress text for running and completed crawls', async () => {
-    listDocumentsMock.mockResolvedValue([])
-    listScrapeRunsMock.mockResolvedValue([
-      {
-        id: 'run-1',
-        seedUrl: 'https://example.com/docs',
-        status: 'running',
-        pagesFound: 10,
-        pagesSucceeded: 4,
-        pagesFailed: 1,
-        createdAt: '2026-06-30T00:00:00.000Z',
-      },
-      {
-        id: 'run-2',
-        seedUrl: 'https://example.com/done',
-        status: 'completed',
-        pagesFound: 3,
-        pagesSucceeded: 3,
-        pagesFailed: 0,
-        createdAt: '2026-06-30T00:00:00.000Z',
-      },
-    ])
+    listDocumentsMock.mockResolvedValue({ items: [], nextCursor: null })
+    listScrapeRunsMock.mockResolvedValue({
+      items: [
+        {
+          id: 'run-1',
+          seedUrl: 'https://example.com/docs',
+          status: 'running',
+          pagesFound: 10,
+          pagesSucceeded: 4,
+          pagesFailed: 1,
+          createdAt: '2026-06-30T00:00:00.000Z',
+        },
+        {
+          id: 'run-2',
+          seedUrl: 'https://example.com/done',
+          status: 'completed',
+          pagesFound: 3,
+          pagesSucceeded: 3,
+          pagesFailed: 0,
+          createdAt: '2026-06-30T00:00:00.000Z',
+        },
+      ],
+      nextCursor: null,
+    })
 
     renderPage()
 
@@ -305,12 +335,15 @@ describe('KnowledgeBasePage', () => {
   })
 
   it('shows truthful document queue summary and surfaces in-flight docs first', async () => {
-    listDocumentsMock.mockResolvedValue([
-      { id: 'doc-done', title: 'Done.txt', status: 'done', createdAt: '2026-06-30T00:00:00.000Z', updatedAt: '2026-06-30T00:00:05.000Z' },
-      { id: 'doc-pending', title: 'Pending.txt', status: 'pending', createdAt: '2026-06-30T00:00:01.000Z', updatedAt: '2026-06-30T00:00:10.000Z' },
-      { id: 'doc-processing', title: 'Processing.txt', status: 'processing', createdAt: '2026-06-30T00:00:02.000Z', updatedAt: '2026-06-30T00:00:15.000Z' },
-      { id: 'doc-failed', title: 'Failed.txt', status: 'failed', createdAt: '2026-06-30T00:00:03.000Z', updatedAt: '2026-06-30T00:00:20.000Z' },
-    ])
+    listDocumentsMock.mockResolvedValue({
+      items: [
+        { id: 'doc-done', title: 'Done.txt', status: 'done', createdAt: '2026-06-30T00:00:00.000Z', updatedAt: '2026-06-30T00:00:05.000Z' },
+        { id: 'doc-pending', title: 'Pending.txt', status: 'pending', createdAt: '2026-06-30T00:00:01.000Z', updatedAt: '2026-06-30T00:00:10.000Z' },
+        { id: 'doc-processing', title: 'Processing.txt', status: 'processing', createdAt: '2026-06-30T00:00:02.000Z', updatedAt: '2026-06-30T00:00:15.000Z' },
+        { id: 'doc-failed', title: 'Failed.txt', status: 'failed', createdAt: '2026-06-30T00:00:03.000Z', updatedAt: '2026-06-30T00:00:20.000Z' },
+      ],
+      nextCursor: null,
+    })
     listScrapeRunsMock.mockResolvedValue([])
 
     renderPage()
@@ -325,10 +358,13 @@ describe('KnowledgeBasePage', () => {
 
   it('deletes a document after confirmation', async () => {
     listDocumentsMock
-      .mockResolvedValueOnce([
-        { id: 'doc-1', title: 'Guide.pdf', status: 'done', createdAt: '2026-06-30T00:00:00.000Z' },
-      ])
-      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce({
+        items: [
+          { id: 'doc-1', title: 'Guide.pdf', status: 'done', createdAt: '2026-06-30T00:00:00.000Z' },
+        ],
+        nextCursor: null,
+      })
+      .mockResolvedValueOnce({ items: [], nextCursor: null })
     deleteDocumentMock.mockResolvedValue({ message: 'Deleted' })
 
     renderPage()
@@ -341,5 +377,143 @@ describe('KnowledgeBasePage', () => {
     await waitFor(() => {
       expect(deleteDocumentMock).toHaveBeenCalledWith('ws-1', 'kb-1', 'doc-1')
     })
+  })
+
+  it('renders load more button and appends next page rows', async () => {
+    listDocumentsMock
+      .mockResolvedValueOnce({
+        items: [
+          { id: 'doc-1', title: 'Guide.pdf', status: 'done', createdAt: '2026-06-30T00:00:00.000Z' },
+          { id: 'doc-2', title: 'Notes.txt', status: 'done', createdAt: '2026-06-30T00:00:01.000Z' },
+        ],
+        nextCursor: 'cursor-1',
+      })
+      .mockResolvedValueOnce({
+        items: [
+          { id: 'doc-3', title: 'Appendix.txt', status: 'done', createdAt: '2026-06-30T00:00:02.000Z' },
+        ],
+        nextCursor: null,
+      })
+
+    renderPage()
+
+    expect(await screen.findByText('Guide.pdf')).toBeDefined()
+    expect(screen.getByRole('button', { name: 'Load more documents' })).toBeDefined()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Load more documents' }))
+
+    await waitFor(() => {
+      expect(listDocumentsMock).toHaveBeenNthCalledWith(2, 'ws-1', 'kb-1', { cursor: 'cursor-1' })
+      expect(screen.getByText('Appendix.txt')).toBeDefined()
+    })
+  })
+
+  it('hides load more button when documents nextCursor is null', async () => {
+    listDocumentsMock.mockResolvedValue({
+      items: [
+        { id: 'doc-1', title: 'Guide.pdf', status: 'done', createdAt: '2026-06-30T00:00:00.000Z' },
+      ],
+      nextCursor: null,
+    })
+
+    renderPage()
+
+    expect(await screen.findByText('Guide.pdf')).toBeDefined()
+    expect(screen.queryByRole('button', { name: 'Load more documents' })).toBeNull()
+  })
+
+  it('renders all workspaces link alongside back to workspace', async () => {
+    listDocumentsMock.mockResolvedValue({ items: [], nextCursor: null })
+
+    renderPage()
+
+    expect((await screen.findByRole('link', { name: 'All workspaces' })).getAttribute('href')).toBe('/workspaces')
+    expect(screen.getByRole('link', { name: 'Back to workspace' }).getAttribute('href')).toBe('/workspaces/ws-1')
+  })
+
+  it('logs out and redirects to login', async () => {
+    listDocumentsMock.mockResolvedValue({ items: [], nextCursor: null })
+    logoutMock.mockResolvedValue(undefined)
+
+    renderPage()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Log out' }))
+
+    await waitFor(() => {
+      expect(logoutMock).toHaveBeenCalledTimes(1)
+      expect(pushMock).toHaveBeenCalledWith('/login')
+    })
+  })
+
+  it('renders load more crawl runs and polling refresh resets to first page', async () => {
+    vi.useFakeTimers()
+    listDocumentsMock.mockResolvedValue({ items: [], nextCursor: null })
+    listScrapeRunsMock
+      .mockResolvedValueOnce({
+        items: [
+          {
+            id: 'run-1',
+            seedUrl: 'https://example.com/newest',
+            status: 'running',
+            pagesFound: 3,
+            pagesSucceeded: 1,
+            pagesFailed: 0,
+            createdAt: '2026-06-30T00:00:02.000Z',
+          },
+        ],
+        nextCursor: 'run-cursor-1',
+      })
+      .mockResolvedValueOnce({
+        items: [
+          {
+            id: 'run-2',
+            seedUrl: 'https://example.com/older',
+            status: 'completed',
+            pagesFound: 3,
+            pagesSucceeded: 3,
+            pagesFailed: 0,
+            createdAt: '2026-06-30T00:00:01.000Z',
+          },
+        ],
+        nextCursor: null,
+      })
+      .mockResolvedValue({
+        items: [
+          {
+            id: 'run-1',
+            seedUrl: 'https://example.com/newest',
+            status: 'running',
+            pagesFound: 4,
+            pagesSucceeded: 2,
+            pagesFailed: 0,
+            createdAt: '2026-06-30T00:00:02.000Z',
+          },
+        ],
+        nextCursor: 'run-cursor-1',
+      })
+
+    renderPage()
+
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(screen.getByText('https://example.com/newest')).toBeDefined()
+    expect(screen.getByRole('button', { name: 'Load more crawl runs' })).toBeDefined()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Load more crawl runs' }))
+
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(listScrapeRunsMock).toHaveBeenNthCalledWith(2, 'ws-1', 'kb-1', {
+      cursor: 'run-cursor-1',
+    })
+    expect(screen.getByText('https://example.com/older')).toBeDefined()
+
+    await vi.advanceTimersByTimeAsync(3000)
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(listScrapeRunsMock).toHaveBeenNthCalledWith(3, 'ws-1', 'kb-1')
   })
 })

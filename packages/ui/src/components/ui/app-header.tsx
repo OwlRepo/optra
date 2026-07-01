@@ -1,4 +1,6 @@
 import * as React from 'react'
+import { LogOut } from 'lucide-react'
+import { Button } from './button'
 import { cn } from '../../lib/utils'
 
 export function AppHeader({
@@ -8,6 +10,7 @@ export function AppHeader({
   description,
   navigation,
   actions,
+  onLogout,
   className,
 }: {
   brand?: React.ReactNode
@@ -16,6 +19,7 @@ export function AppHeader({
   description?: string
   navigation?: React.ReactNode
   actions?: React.ReactNode
+  onLogout?: () => void | Promise<void>
   className?: string
 }) {
   return (
@@ -32,7 +36,25 @@ export function AppHeader({
               {description ? <p className="text-sm text-muted-foreground">{description}</p> : null}
             </div>
           </div>
-          <div className="flex items-center gap-3">{actions}</div>
+          <div className="flex items-center gap-3">
+            {actions}
+            {onLogout ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  const result = onLogout()
+                  if (result && typeof result === 'object' && 'catch' in result && typeof result.catch === 'function') {
+                    void result.catch(() => {})
+                  }
+                }}
+                aria-label="Log out"
+              >
+                <LogOut className="size-4" />
+                Log out
+              </Button>
+            ) : null}
+          </div>
         </div>
         {navigation ? <div className="flex flex-wrap items-center gap-2">{navigation}</div> : null}
       </div>
