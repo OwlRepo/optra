@@ -10,6 +10,7 @@ import {
   Param,
   PayloadTooLargeException,
   Post,
+  Query,
   UploadedFile,
   UseGuards,
   UseFilters,
@@ -23,6 +24,7 @@ import { Roles } from '../auth/decorators/roles.decorator'
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard'
 import { RolesGuard } from '../auth/guards/roles.guard'
 import { WorkspaceMemberGuard } from '../auth/guards/workspace-member.guard'
+import { ListDocumentsQueryDto } from './dto/list-documents-query.dto'
 import { DocumentsService } from './documents.service'
 
 const MAX_UPLOAD_MB = Number(process.env.MAX_UPLOAD_MB ?? 25)
@@ -134,8 +136,12 @@ export class DocumentsController {
 
   @Get()
   @UseGuards(JwtAuthGuard, WorkspaceMemberGuard)
-  list(@Param('workspaceId') workspaceId: string, @Param('kbId') kbId: string) {
-    return this.documentsService.listForKnowledgeBase(workspaceId, kbId)
+  list(
+    @Param('workspaceId') workspaceId: string,
+    @Param('kbId') kbId: string,
+    @Query() query: ListDocumentsQueryDto,
+  ) {
+    return this.documentsService.listForKnowledgeBase(workspaceId, kbId, query)
   }
 
   @Delete(':documentId')

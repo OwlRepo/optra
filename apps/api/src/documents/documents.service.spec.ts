@@ -1,4 +1,4 @@
-import { NotFoundException } from '@nestjs/common'
+import { BadRequestException, NotFoundException } from '@nestjs/common'
 import { Test } from '@nestjs/testing'
 import { and, asc, eq, like } from 'drizzle-orm'
 import { db, chunks, documents, knowledgeBases, pool, users, workspaceMembers, workspaces } from '@repo/db'
@@ -191,10 +191,83 @@ describe('DocumentsService', () => {
       storageKey: `${other.workspace.id}/${other.knowledgeBase.id}/hidden.txt`,
     })
 
-    const list = await service.listForKnowledgeBase(mine.workspace.id, mine.knowledgeBase.id)
+    const list = await service.listForKnowledgeBase(mine.workspace.id, mine.knowledgeBase.id, {})
 
-    expect(list).toHaveLength(1)
-    expect(list[0]?.title).toBe('visible.txt')
+    expect(list.items).toHaveLength(1)
+    expect(list.items[0]?.title).toBe('visible.txt')
+    expect(list.nextCursor).toBeNull()
+  })
+
+  it('paginates documents by createdAt cursor and survives concurrent inserts', async () => {
+    const mine = await seedWorkspaceFixture(`${prefix}paginate@example.com`, 'Documents Spec WS Paginate')
+    const base = new Date('2026-07-01T00:00:00.000Z')
+
+    await db.insert(documents).values([
+      {
+        workspaceId: mine.workspace.id,
+        knowledgeBaseId: mine.knowledgeBase.id,
+        title: 'first.txt',
+        status: 'done',
+        storageKey: `${mine.workspace.id}/${mine.knowledgeBase.id}/first.txt`,
+        createdAt: new Date(base.getTime() + 1000),
+        updatedAt: new Date(base.getTime() + 1000),
+      },
+      {
+        workspaceId: mine.workspace.id,
+        knowledgeBaseId: mine.knowledgeBase.id,
+        title: 'second.txt',
+        status: 'done',
+        storageKey: `${mine.workspace.id}/${mine.knowledgeBase.id}/second.txt`,
+        createdAt: new Date(base.getTime() + 2000),
+        updatedAt: new Date(base.getTime() + 2000),
+      },
+      {
+        workspaceId: mine.workspace.id,
+        knowledgeBaseId: mine.knowledgeBase.id,
+        title: 'third.txt',
+        status: 'done',
+        storageKey: `${mine.workspace.id}/${mine.knowledgeBase.id}/third.txt`,
+        createdAt: new Date(base.getTime() + 3000),
+        updatedAt: new Date(base.getTime() + 3000),
+      },
+    ])
+
+    const firstPage = await service.listForKnowledgeBase(mine.workspace.id, mine.knowledgeBase.id, { limit: 2 })
+
+    expect(firstPage.items.map((item) => item.title)).toEqual(['first.txt', 'second.txt'])
+    expect(firstPage.nextCursor).toEqual(expect.any(String))
+
+    await db.insert(documents).values({
+      workspaceId: mine.workspace.id,
+      knowledgeBaseId: mine.knowledgeBase.id,
+      title: 'between-pages.txt',
+      status: 'done',
+      storageKey: `${mine.workspace.id}/${mine.knowledgeBase.id}/between-pages.txt`,
+      createdAt: new Date(base.getTime() + 2500),
+      updatedAt: new Date(base.getTime() + 2500),
+    })
+
+    const secondPage = await service.listForKnowledgeBase(mine.workspace.id, mine.knowledgeBase.id, {
+      limit: 2,
+      cursor: firstPage.nextCursor!,
+    })
+
+    const combinedTitles = [...firstPage.items, ...secondPage.items].map((item) => item.title)
+
+    expect(combinedTitles.filter((title) => title === 'first.txt')).toHaveLength(1)
+    expect(combinedTitles.filter((title) => title === 'second.txt')).toHaveLength(1)
+    expect(combinedTitles.filter((title) => title === 'third.txt')).toHaveLength(1)
+    expect(secondPage.nextCursor).toBeNull()
+  })
+
+  it('rejects invalid document cursor', async () => {
+    const mine = await seedWorkspaceFixture(`${prefix}bad-cursor@example.com`, 'Documents Spec WS Bad Cursor')
+
+    await expect(
+      service.listForKnowledgeBase(mine.workspace.id, mine.knowledgeBase.id, {
+        cursor: '%%%bad%%%',
+      }),
+    ).rejects.toThrow(BadRequestException)
   })
 
   it('remove deletes document, cascades chunks, calls storage.delete, and 404s cross-workspace ids', async () => {

@@ -1,10 +1,11 @@
 import { randomUUID } from 'crypto'
 import { Injectable, Logger, NotFoundException } from '@nestjs/common'
-import { and, asc, eq } from 'drizzle-orm'
-import { db, documents, knowledgeBases } from '@repo/db'
+import { and, asc, eq, gt, or, sql } from 'drizzle-orm'
+import { db, decodeCursor, documents, encodeCursor, knowledgeBases } from '@repo/db'
 import { IngestService } from '../ingest/ingest.service'
 import { StorageService } from '../storage/storage.service'
 import { CacheService } from '../cache/cache.service'
+import { ListDocumentsQueryDto } from './dto/list-documents-query.dto'
 
 @Injectable()
 export class DocumentsService {
@@ -56,10 +57,17 @@ export class DocumentsService {
     }
   }
 
-  async listForKnowledgeBase(workspaceId: string, kbId: string) {
+  async listForKnowledgeBase(
+    workspaceId: string,
+    kbId: string,
+    query: Pick<ListDocumentsQueryDto, 'cursor' | 'limit'>,
+  ) {
     await this.assertKbInWorkspace(workspaceId, kbId)
+    const limit = Math.min(Math.max(Number(query.limit ?? 20), 1), 100)
+    const cursor = query.cursor ? decodeCursor(query.cursor) : null
+    const createdAtMs = sql<number>`floor(extract(epoch from ${documents.createdAt}) * 1000)`
 
-    return db
+    const rows = await db
       .select({
         id: documents.id,
         title: documents.title,
@@ -68,8 +76,35 @@ export class DocumentsService {
         updatedAt: documents.updatedAt,
       })
       .from(documents)
-      .where(and(eq(documents.workspaceId, workspaceId), eq(documents.knowledgeBaseId, kbId)))
-      .orderBy(asc(documents.createdAt))
+      .where(
+        and(
+          eq(documents.workspaceId, workspaceId),
+          eq(documents.knowledgeBaseId, kbId),
+          cursor
+            ? or(
+                gt(createdAtMs, Number(cursor.k[0])),
+                and(
+                  eq(createdAtMs, Number(cursor.k[0])),
+                  gt(documents.id, cursor.id),
+                ),
+              )
+            : undefined,
+        ),
+      )
+      .orderBy(asc(createdAtMs), asc(documents.id))
+      .limit(limit + 1)
+
+    const hasMore = rows.length > limit
+    const items = rows.slice(0, limit)
+    const last = items.at(-1)
+
+    return {
+      items,
+      nextCursor:
+        hasMore && last
+          ? encodeCursor({ k: [last.createdAt.getTime()], id: last.id })
+          : null,
+    }
   }
 
   async remove(workspaceId: string, kbId: string, documentId: string): Promise<{ message: string }> {

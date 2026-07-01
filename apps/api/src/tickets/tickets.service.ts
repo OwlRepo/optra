@@ -8,8 +8,15 @@ import {
   OnModuleInit,
 } from '@nestjs/common'
 import { Job, Queue } from 'bull'
-import { and, desc, eq, or } from 'drizzle-orm'
-import { db, type TicketFieldConfidence, tickets } from '@repo/db'
+import { and, desc, eq, lt, or, sql } from 'drizzle-orm'
+import {
+  db,
+  decodeCursor,
+  encodeCursor,
+  type TicketFieldConfidence,
+  tickets,
+} from '@repo/db'
+import { ListQueryDto } from '../common/dto/list-query.dto'
 import type { UpdateTicketDto } from './dto/update-ticket.dto'
 
 const PENDING_TICKET_STALE_MS = 10 * 60_000
@@ -102,8 +109,16 @@ export class TicketsService implements OnModuleInit {
     return { statusCode: 202, ticket: this.toCreateResponse(created) }
   }
 
-  async list(workspaceId: string) {
-    return db
+  async list(
+    workspaceId: string,
+    query: Pick<ListQueryDto, 'cursor' | 'limit'> = {},
+  ) {
+    const limit = Math.min(Math.max(Number(query.limit ?? 20), 1), 100)
+    const cursor = query.cursor ? decodeCursor(query.cursor) : null
+    const updatedAtUs = sql<number>`floor(extract(epoch from ${tickets.updatedAt}) * 1000000)`
+    const createdAtUs = sql<number>`floor(extract(epoch from ${tickets.createdAt}) * 1000000)`
+
+    const rows = await db
       .select({
         id: tickets.id,
         title: tickets.title,
@@ -111,10 +126,49 @@ export class TicketsService implements OnModuleInit {
         severity: tickets.severity,
         createdAt: tickets.createdAt,
         updatedAt: tickets.updatedAt,
+        updatedCursor: updatedAtUs,
+        createdCursor: createdAtUs,
       })
       .from(tickets)
-      .where(eq(tickets.workspaceId, workspaceId))
-      .orderBy(desc(tickets.updatedAt), desc(tickets.createdAt))
+      .where(
+        and(
+          eq(tickets.workspaceId, workspaceId),
+          cursor
+            ? or(
+                lt(updatedAtUs, Number(cursor.k[0])),
+                and(
+                  eq(updatedAtUs, Number(cursor.k[0])),
+                  lt(createdAtUs, Number(cursor.k[1])),
+                ),
+                and(
+                  eq(updatedAtUs, Number(cursor.k[0])),
+                  eq(createdAtUs, Number(cursor.k[1])),
+                  lt(tickets.id, cursor.id),
+                ),
+              )
+            : undefined,
+        ),
+      )
+      .orderBy(desc(updatedAtUs), desc(createdAtUs), desc(tickets.id))
+      .limit(limit + 1)
+
+    const hasMore = rows.length > limit
+    const items = rows
+      .slice(0, limit)
+      .map(({ updatedCursor: _updatedCursor, createdCursor: _createdCursor, ...ticket }) => ticket)
+    const last = items.at(-1)
+    const lastRow = rows.at(Math.min(limit, rows.length) - 1)
+
+    return {
+      items,
+      nextCursor:
+        hasMore && last && lastRow
+          ? encodeCursor({
+              k: [lastRow.updatedCursor, lastRow.createdCursor],
+              id: last.id,
+            })
+          : null,
+    }
   }
 
   async getOne(workspaceId: string, ticketId: string) {

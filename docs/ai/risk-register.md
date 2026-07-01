@@ -35,6 +35,7 @@ If risk area is missing, mark `UNMAPPED RISK`.
 | Transactions           | Data consistency, atomicity                  | Deep              | Transaction boundaries, rollback       | Transactional flow     | Verify against DB contracts              |
 | External Integrations  | Third-party dependencies, failure modes      | Deep              | Error handling, retry, tests           | Integration flow       | Verify against integration documentation |
 | Production Deployment  | Availability, rollback, monitoring           | Deep              | Deploy safety, rollback plan           | Smoke test             | Verify against deployment docs           |
+| Unbounded List Responses | Every list-returning endpoint (workspaces, knowledge bases, documents, chat sessions, chat messages, scrape runs, tickets) returns full unbounded arrays with no limit/offset/cursor; documents can approach the 5000/workspace quota, tickets/chat-sessions/scrape-runs have no cap at all | Deep for Documents/Chat/Tickets/Scraping (matches their existing domain risk), Standard for Workspaces/Knowledge Bases | Keyset cursor correctness under concurrent insert/delete, response-shape contract change on all 7 endpoints, proxy query-string forwarding | Paginate through a seeded large list and confirm no skipped/duplicated rows across pages | Found during 2026-07-01 production-readiness audit. Workstream A shipped on 2026-07-01: all 7 endpoints now use keyset cursor pagination, and the web auth proxy forwards query strings. |
 
 ## Current Notes
 

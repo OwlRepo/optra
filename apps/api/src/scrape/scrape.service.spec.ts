@@ -253,6 +253,72 @@ describe('ScrapeService', () => {
     expect(queue.add).not.toHaveBeenCalled()
   })
 
+  it('paginates scrape runs by createdAt desc with cursor', async () => {
+    const { workspace, knowledgeBase } = await seedWorkspaceFixture(
+      `${prefix}runs-page@example.com`,
+      'Scrape Runs Page WS',
+    )
+
+    await db.insert(scrapeRuns).values([
+      {
+        workspaceId: workspace.id,
+        knowledgeBaseId: knowledgeBase.id,
+        seedUrl: 'https://example.com/first',
+        status: 'completed',
+        maxDepth: 1,
+        maxPages: 10,
+        createdAt: new Date('2026-07-01T00:00:01.000Z'),
+      },
+      {
+        workspaceId: workspace.id,
+        knowledgeBaseId: knowledgeBase.id,
+        seedUrl: 'https://example.com/second',
+        status: 'completed',
+        maxDepth: 1,
+        maxPages: 10,
+        createdAt: new Date('2026-07-01T00:00:02.000Z'),
+      },
+      {
+        workspaceId: workspace.id,
+        knowledgeBaseId: knowledgeBase.id,
+        seedUrl: 'https://example.com/third',
+        status: 'completed',
+        maxDepth: 1,
+        maxPages: 10,
+        createdAt: new Date('2026-07-01T00:00:03.000Z'),
+      },
+    ])
+
+    const firstPage = await service.listRuns(workspace.id, knowledgeBase.id, { limit: 2 })
+
+    expect(firstPage.items.map((run) => run.seedUrl)).toEqual([
+      'https://example.com/third',
+      'https://example.com/second',
+    ])
+    expect(firstPage.nextCursor).toEqual(expect.any(String))
+
+    await db.insert(scrapeRuns).values({
+      workspaceId: workspace.id,
+      knowledgeBaseId: knowledgeBase.id,
+      seedUrl: 'https://example.com/between',
+      status: 'completed',
+      maxDepth: 1,
+      maxPages: 10,
+      createdAt: new Date('2026-07-01T00:00:01.500Z'),
+    })
+
+    const secondPage = await service.listRuns(workspace.id, knowledgeBase.id, {
+      limit: 2,
+      cursor: firstPage.nextCursor!,
+    })
+
+    expect(secondPage.items.map((run) => run.seedUrl)).toEqual([
+      'https://example.com/between',
+      'https://example.com/first',
+    ])
+    expect(secondPage.nextCursor).toBeNull()
+  })
+
   it('rejects internal seed urls before enqueueing', async () => {
     const { workspace, knowledgeBase } = await seedWorkspaceFixture(
       `${prefix}blocked@example.com`,
@@ -313,10 +379,11 @@ describe('ScrapeService', () => {
       maxPages: 5,
     })
 
-    const runs = await service.listRuns(mine.workspace.id, mine.knowledgeBase.id)
+    const runs = await service.listRuns(mine.workspace.id, mine.knowledgeBase.id, {})
 
-    expect(runs).toHaveLength(1)
-    expect(runs[0]?.seedUrl).toBe('https://example.com/docs')
+    expect(runs.items).toHaveLength(1)
+    expect(runs.items[0]?.seedUrl).toBe('https://example.com/docs')
+    expect(runs.nextCursor).toBeNull()
   })
 
   it('404s when kb not in workspace', async () => {
@@ -324,7 +391,7 @@ describe('ScrapeService', () => {
     const other = await seedWorkspaceFixture(`${prefix}other404@example.com`, 'Scrape Other 404 WS')
 
     await expect(
-      service.listRuns(mine.workspace.id, other.knowledgeBase.id),
+      service.listRuns(mine.workspace.id, other.knowledgeBase.id, {}),
     ).rejects.toThrow(NotFoundException)
   })
 

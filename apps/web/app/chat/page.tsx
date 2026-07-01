@@ -19,7 +19,8 @@ export default function ChatRedirectPage() {
         const workspaces = await listWorkspaces()
         if (cancelled) return
 
-        const firstWorkspace = Array.isArray(workspaces) ? workspaces[0] : null
+        const items = Array.isArray(workspaces?.items) ? workspaces.items : []
+        const firstWorkspace = items[0] ?? null
         if (firstWorkspace?.id) {
           router.push(`/workspaces/${firstWorkspace.id}/chat`)
           return

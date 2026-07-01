@@ -3,6 +3,7 @@ import {
   Controller,
   Get,
   HttpException,
+  Query,
   Param,
   Post,
   Res,
@@ -15,6 +16,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard'
 import { WorkspaceMemberGuard } from '../auth/guards/workspace-member.guard'
 import { ChatDto } from './dto/chat.dto'
 import { ChatRateLimitGuard } from '../limits/chat-rate-limit.guard'
+import { ListQueryDto } from '../common/dto/list-query.dto'
 
 @Controller('workspaces/:workspaceId/chat')
 export class ChatController {
@@ -79,8 +81,9 @@ export class ChatController {
   listSessions(
     @Param('workspaceId') workspaceId: string,
     @CurrentUser() user: CurrentUserContext,
+    @Query() query: ListQueryDto,
   ) {
-    return this.chatService.listSessions(workspaceId, user.userId)
+    return this.chatService.listSessions(workspaceId, user.userId, query)
   }
 
   @Get('sessions/:sessionId/messages')
@@ -89,7 +92,8 @@ export class ChatController {
     @Param('workspaceId') workspaceId: string,
     @Param('sessionId') sessionId: string,
     @CurrentUser() user: CurrentUserContext,
+    @Query() query: ListQueryDto,
   ) {
-    return this.chatService.getMessages(workspaceId, user.userId, sessionId)
+    return this.chatService.getMessages(workspaceId, user.userId, sessionId, query)
   }
 }

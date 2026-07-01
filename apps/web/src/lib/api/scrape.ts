@@ -27,6 +27,24 @@ export async function scrapeSite(workspaceId: string, kbId: string, payload: Scr
   }
 }
 
-export function listScrapeRuns(workspaceId: string, kbId: string) {
-  return apiFetch(`/api/workspaces/${workspaceId}/knowledge-bases/${kbId}/scrape-runs`)
+export function listScrapeRuns(
+  workspaceId: string,
+  kbId: string,
+  options?: { cursor?: string; limit?: number },
+) {
+  const search = new URLSearchParams()
+
+  if (options?.cursor) {
+    search.set('cursor', options.cursor)
+  }
+
+  if (options?.limit) {
+    search.set('limit', String(options.limit))
+  }
+
+  const query = search.toString()
+
+  return apiFetch(
+    `/api/workspaces/${workspaceId}/knowledge-bases/${kbId}/scrape-runs${query ? `?${query}` : ''}`,
+  )
 }

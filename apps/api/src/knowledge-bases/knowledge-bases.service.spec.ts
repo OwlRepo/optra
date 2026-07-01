@@ -1,4 +1,4 @@
-import { ConflictException, NotFoundException } from '@nestjs/common'
+import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common'
 import { Test } from '@nestjs/testing'
 import { and, eq, like } from 'drizzle-orm'
 import { db, documents, knowledgeBases, pool, users, workspaceMembers, workspaces } from '@repo/db'
@@ -107,10 +107,58 @@ describe('KnowledgeBasesService', () => {
     const mine = await service.create(workspace.id, 'Mine KB')
     await service.create(otherWorkspace.id, 'Hidden KB')
 
-    const list = await service.listForWorkspace(workspace.id)
+    const list = await service.listForWorkspace(workspace.id, {})
 
-    expect(list.map((kb) => kb.id)).toContain(mine.id)
-    expect(list).toHaveLength(1)
+    expect(list.items.map((kb) => kb.id)).toContain(mine.id)
+    expect(list.items).toHaveLength(1)
+    expect(list.nextCursor).toBeNull()
+  })
+
+  it('paginates workspace knowledge bases newest first with cursor', async () => {
+    const [user] = await db
+      .insert(users)
+      .values({ email: `kb-spec-paginate-${Date.now()}@example.com`, passwordHash: 'x', isVerified: true })
+      .returning()
+    const [workspace] = await db
+      .insert(workspaces)
+      .values({ name: 'KB Spec WS Paginate', ownerId: user.id })
+      .returning()
+    await db.insert(workspaceMembers).values({ workspaceId: workspace.id, userId: user.id, role: 'owner' })
+
+    const older = await service.create(workspace.id, 'Older KB')
+    const middle = await service.create(workspace.id, 'Middle KB')
+    const newer = await service.create(workspace.id, 'Newer KB')
+
+    await db.update(knowledgeBases).set({ createdAt: new Date('2026-07-01T00:00:01.000Z') }).where(eq(knowledgeBases.id, older.id))
+    await db.update(knowledgeBases).set({ createdAt: new Date('2026-07-01T00:00:02.000Z') }).where(eq(knowledgeBases.id, middle.id))
+    await db.update(knowledgeBases).set({ createdAt: new Date('2026-07-01T00:00:03.000Z') }).where(eq(knowledgeBases.id, newer.id))
+
+    const firstPage = await service.listForWorkspace(workspace.id, { limit: 2 })
+
+    expect(firstPage.items.map((kb) => kb.name)).toEqual(['Newer KB', 'Middle KB'])
+    expect(firstPage.nextCursor).toEqual(expect.any(String))
+
+    const secondPage = await service.listForWorkspace(workspace.id, {
+      limit: 2,
+      cursor: firstPage.nextCursor!,
+    })
+
+    expect(secondPage.items.map((kb) => kb.name)).toEqual(['Older KB'])
+    expect(secondPage.nextCursor).toBeNull()
+  })
+
+  it('rejects invalid knowledge base cursor', async () => {
+    const [user] = await db
+      .insert(users)
+      .values({ email: `kb-spec-bad-cursor-${Date.now()}@example.com`, passwordHash: 'x', isVerified: true })
+      .returning()
+    const [workspace] = await db
+      .insert(workspaces)
+      .values({ name: 'KB Spec WS Bad Cursor', ownerId: user.id })
+      .returning()
+    await db.insert(workspaceMembers).values({ workspaceId: workspace.id, userId: user.id, role: 'owner' })
+
+    await expect(service.listForWorkspace(workspace.id, { cursor: '%%%bad%%%' })).rejects.toThrow(BadRequestException)
   })
 
   it('remove deletes an empty KB', async () => {

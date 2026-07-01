@@ -7,12 +7,14 @@ import {
   HttpStatus,
   Param,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common'
 import { Roles } from '../auth/decorators/roles.decorator'
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard'
 import { RolesGuard } from '../auth/guards/roles.guard'
 import { WorkspaceMemberGuard } from '../auth/guards/workspace-member.guard'
+import { ListQueryDto } from '../common/dto/list-query.dto'
 import { CreateKnowledgeBaseDto } from './dto/create-knowledge-base.dto'
 import { KnowledgeBasesService } from './knowledge-bases.service'
 
@@ -32,8 +34,8 @@ export class KnowledgeBasesController {
 
   @Get()
   @UseGuards(JwtAuthGuard, WorkspaceMemberGuard)
-  list(@Param('workspaceId') workspaceId: string) {
-    return this.knowledgeBasesService.listForWorkspace(workspaceId)
+  list(@Param('workspaceId') workspaceId: string, @Query() query: ListQueryDto) {
+    return this.knowledgeBasesService.listForWorkspace(workspaceId, query)
   }
 
   @Delete(':kbId')

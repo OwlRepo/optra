@@ -98,19 +98,19 @@ describe('Knowledge bases flow (e2e)', () => {
       .get('/workspaces/me')
       .set('Authorization', `Bearer ${owner.accessToken}`)
       .expect(200)
-    const ownerWorkspaceId = ownerMine.body[0].id as string
+    const ownerWorkspaceId = ownerMine.body.items[0].id as string
 
     const memberMine = await request(app.getHttpServer())
       .get('/workspaces/me')
       .set('Authorization', `Bearer ${member.accessToken}`)
       .expect(200)
-    const memberOwnWorkspaceId = memberMine.body[0].id as string
+    const memberOwnWorkspaceId = memberMine.body.items[0].id as string
 
     const outsiderMine = await request(app.getHttpServer())
       .get('/workspaces/me')
       .set('Authorization', `Bearer ${outsider.accessToken}`)
       .expect(200)
-    const outsiderWorkspaceId = outsiderMine.body[0].id as string
+    const outsiderWorkspaceId = outsiderMine.body.items[0].id as string
 
     const createRes = await request(app.getHttpServer())
       .post(`/workspaces/${ownerWorkspaceId}/knowledge-bases`)
@@ -140,6 +140,36 @@ describe('Knowledge bases flow (e2e)', () => {
       .get(`/workspaces/${ownerWorkspaceId}/knowledge-bases`)
       .set('Authorization', `Bearer ${member.accessToken}`)
       .expect(200)
+
+    await request(app.getHttpServer())
+      .post(`/workspaces/${ownerWorkspaceId}/knowledge-bases`)
+      .set('Authorization', `Bearer ${owner.accessToken}`)
+      .send({ name: 'How-to' })
+      .expect(201)
+
+    await request(app.getHttpServer())
+      .post(`/workspaces/${ownerWorkspaceId}/knowledge-bases`)
+      .set('Authorization', `Bearer ${owner.accessToken}`)
+      .send({ name: 'Playbooks' })
+      .expect(201)
+
+    const pageOne = await request(app.getHttpServer())
+      .get(`/workspaces/${ownerWorkspaceId}/knowledge-bases`)
+      .query({ limit: 2 })
+      .set('Authorization', `Bearer ${member.accessToken}`)
+      .expect(200)
+
+    expect(pageOne.body.items).toHaveLength(2)
+    expect(pageOne.body.nextCursor).toEqual(expect.any(String))
+
+    const pageTwo = await request(app.getHttpServer())
+      .get(`/workspaces/${ownerWorkspaceId}/knowledge-bases`)
+      .query({ limit: 2, cursor: pageOne.body.nextCursor })
+      .set('Authorization', `Bearer ${member.accessToken}`)
+      .expect(200)
+
+    expect(pageTwo.body.items).toHaveLength(1)
+    expect(pageTwo.body.nextCursor).toBeNull()
 
     await request(app.getHttpServer())
       .post(`/workspaces/${ownerWorkspaceId}/knowledge-bases`)

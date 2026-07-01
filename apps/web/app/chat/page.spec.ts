@@ -34,7 +34,7 @@ describe('ChatRedirectPage', () => {
   })
 
   it('redirects to first workspace chat', async () => {
-    listWorkspacesMock.mockResolvedValue([{ id: 'ws-1', role: 'owner' }])
+    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
 
     renderPage()
 

@@ -1,7 +1,22 @@
 import { apiFetch } from './client'
 
-export function listTickets(workspaceId: string) {
-  return apiFetch(`/api/workspaces/${workspaceId}/tickets`)
+export function listTickets(
+  workspaceId: string,
+  options?: { cursor?: string; limit?: number },
+) {
+  const search = new URLSearchParams()
+
+  if (options?.cursor) {
+    search.set('cursor', options.cursor)
+  }
+
+  if (options?.limit) {
+    search.set('limit', String(options.limit))
+  }
+
+  const query = search.toString()
+
+  return apiFetch(`/api/workspaces/${workspaceId}/tickets${query ? `?${query}` : ''}`)
 }
 
 export function createTicket(workspaceId: string, body: { transcript: string }) {

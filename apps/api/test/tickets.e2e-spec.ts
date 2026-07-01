@@ -150,10 +150,12 @@ describe('Tickets flow (e2e)', () => {
 
     const pendingList = await request(app.getHttpServer())
       .get(`/workspaces/${workspaceId}/tickets`)
+      .query({ limit: 1 })
       .set('Authorization', `Bearer ${coworker.accessToken}`)
       .expect(200)
 
-    expect(pendingList.body[0].status).toBe('pending')
+    expect(pendingList.body.items[0].status).toBe('pending')
+    expect(pendingList.body.nextCursor).toBeNull()
 
     await db
       .update(tickets)

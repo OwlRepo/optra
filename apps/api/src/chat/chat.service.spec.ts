@@ -226,13 +226,46 @@ describe('ChatService', () => {
 
     expect(followUp.sessionId).toBe(existing.sessionId)
 
-    const mineSessions = await service.listSessions(mine.workspace.id, mine.user.id)
-    expect(mineSessions).toHaveLength(1)
-    expect(mineSessions[0]?.id).toBe(existing.sessionId)
+    const mineSessions = await service.listSessions(mine.workspace.id, mine.user.id, {})
+    expect(mineSessions.items).toHaveLength(1)
+    expect(mineSessions.items[0]?.id).toBe(existing.sessionId)
+    expect(mineSessions.nextCursor).toBeNull()
 
-    const otherSessions = await service.listSessions(other.workspace.id, other.user.id)
-    expect(otherSessions).toHaveLength(1)
-    expect(otherSessions[0]?.id).toBe(otherSession.sessionId)
+    const otherSessions = await service.listSessions(other.workspace.id, other.user.id, {})
+    expect(otherSessions.items).toHaveLength(1)
+    expect(otherSessions.items[0]?.id).toBe(otherSession.sessionId)
+  })
+
+  it('paginates chat sessions by updatedAt desc with cursor', async () => {
+    const mine = await seedWorkspaceFixture(`${prefix}sessions-page@example.com`, 'Chat Spec Session Page')
+    cache.getExact.mockResolvedValue({
+      answer: 'cached exact',
+      sources: [],
+    })
+
+    const first = await service.answer(mine.workspace.id, mine.user.id, 'First question')
+    await first.onComplete('cached exact')
+    const second = await service.answer(mine.workspace.id, mine.user.id, 'Second question')
+    await second.onComplete('cached exact')
+    const third = await service.answer(mine.workspace.id, mine.user.id, 'Third question')
+    await third.onComplete('cached exact')
+
+    await db.update(chatSessions).set({ updatedAt: new Date('2026-07-01T00:00:01.000Z') }).where(eq(chatSessions.id, first.sessionId))
+    await db.update(chatSessions).set({ updatedAt: new Date('2026-07-01T00:00:02.000Z') }).where(eq(chatSessions.id, second.sessionId))
+    await db.update(chatSessions).set({ updatedAt: new Date('2026-07-01T00:00:03.000Z') }).where(eq(chatSessions.id, third.sessionId))
+
+    const firstPage = await service.listSessions(mine.workspace.id, mine.user.id, { limit: 2 })
+
+    expect(firstPage.items.map((session) => session.title)).toEqual(['Third question', 'Second question'])
+    expect(firstPage.nextCursor).toEqual(expect.any(String))
+
+    const secondPage = await service.listSessions(mine.workspace.id, mine.user.id, {
+      limit: 2,
+      cursor: firstPage.nextCursor!,
+    })
+
+    expect(secondPage.items.map((session) => session.title)).toEqual(['First question'])
+    expect(secondPage.nextCursor).toBeNull()
   })
 
   it('getMessages returns assistant sources and rejects foreign session access', async () => {
@@ -258,14 +291,15 @@ describe('ChatService', () => {
     }
     await mineTurn.onComplete('answer')
 
-    const messages = await service.getMessages(mine.workspace.id, mine.user.id, mineTurn.sessionId)
-    expect(messages).toHaveLength(2)
-    expect(messages[1]?.sources).toEqual([
+    const messages = await service.getMessages(mine.workspace.id, mine.user.id, mineTurn.sessionId, {})
+    expect(messages.items).toHaveLength(2)
+    expect(messages.items[1]?.sources).toEqual([
       { documentId: 'doc-9', title: 'Doc Nine', sourceUrl: null, score: 0.7, snippet: 's' },
     ])
+    expect(messages.nextCursor).toBeNull()
 
     await expect(
-      service.getMessages(mine.workspace.id, other.user.id, mineTurn.sessionId),
+      service.getMessages(mine.workspace.id, other.user.id, mineTurn.sessionId, {}),
     ).rejects.toThrow(NotFoundException)
 
     const [dbSession] = await db
@@ -274,6 +308,70 @@ describe('ChatService', () => {
       .where(and(eq(chatSessions.id, mineTurn.sessionId), eq(chatSessions.userId, mine.user.id)))
       .limit(1)
     expect(dbSession).toBeDefined()
+  })
+
+  it('paginates chat messages by createdAt asc with cursor', async () => {
+    const mine = await seedWorkspaceFixture(`${prefix}messages-page@example.com`, 'Chat Spec Message Page')
+
+    cache.getExact.mockResolvedValue({
+      answer: 'cached exact',
+      sources: [],
+    })
+
+    const turn = await service.answer(mine.workspace.id, mine.user.id, 'Need answer')
+    await turn.onComplete('cached exact')
+
+    const inserted = await db
+      .insert(chatMessages)
+      .values([
+        {
+          sessionId: turn.sessionId,
+          role: 'user',
+          content: 'Older one',
+          sources: null,
+          createdAt: new Date('2026-07-01T00:00:01.000Z'),
+        },
+        {
+          sessionId: turn.sessionId,
+          role: 'assistant',
+          content: 'Older two',
+          sources: [],
+          createdAt: new Date('2026-07-01T00:00:02.000Z'),
+        },
+        {
+          sessionId: turn.sessionId,
+          role: 'user',
+          content: 'Older three',
+          sources: null,
+          createdAt: new Date('2026-07-01T00:00:03.000Z'),
+        },
+      ])
+      .returning()
+
+    const firstPage = await service.getMessages(mine.workspace.id, mine.user.id, turn.sessionId, {
+      limit: 2,
+    })
+
+    expect(firstPage.items.map((message) => message.content)).toEqual(['Older one', 'Older two'])
+    expect(firstPage.nextCursor).toEqual(expect.any(String))
+
+    await db
+      .insert(chatMessages)
+      .values({
+        sessionId: turn.sessionId,
+        role: 'assistant',
+        content: 'Between page',
+        sources: [],
+        createdAt: new Date('2026-07-01T00:00:02.500Z'),
+      })
+
+    const secondPage = await service.getMessages(mine.workspace.id, mine.user.id, turn.sessionId, {
+      limit: 2,
+      cursor: firstPage.nextCursor!,
+    })
+
+    expect(secondPage.items.map((message) => message.content)).toEqual(['Between page', 'Older three'])
+    expect(secondPage.items.map((message) => message.id)).not.toContain(inserted[0]?.id)
   })
 
   it('exact hit skips LLM and still persists assistant turn', async () => {

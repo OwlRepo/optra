@@ -201,6 +201,74 @@ describe('TicketsService', () => {
     ).rejects.toThrow(NotFoundException)
   })
 
+  it('paginates tickets by updatedAt desc, createdAt desc, then id', async () => {
+    const { workspace } = await seedWorkspaceFixture(
+      `${prefix}list-page@example.com`,
+      'Tickets Spec List Page',
+    )
+
+    await db.insert(tickets).values([
+      {
+        workspaceId: workspace.id,
+        transcript: 'First transcript',
+        transcriptHash: `first-${Date.now()}`,
+        status: 'done',
+        title: 'First ticket',
+        productArea: 'general',
+        fieldConfidence: {},
+        createdAt: new Date('2026-07-01T00:00:01.000Z'),
+        updatedAt: new Date('2026-07-01T00:00:03.000Z'),
+      },
+      {
+        workspaceId: workspace.id,
+        transcript: 'Second transcript',
+        transcriptHash: `second-${Date.now()}`,
+        status: 'done',
+        title: 'Second ticket',
+        productArea: 'general',
+        fieldConfidence: {},
+        createdAt: new Date('2026-07-01T00:00:02.000Z'),
+        updatedAt: new Date('2026-07-01T00:00:04.000Z'),
+      },
+      {
+        workspaceId: workspace.id,
+        transcript: 'Third transcript',
+        transcriptHash: `third-${Date.now()}`,
+        status: 'done',
+        title: 'Third ticket',
+        productArea: 'general',
+        fieldConfidence: {},
+        createdAt: new Date('2026-07-01T00:00:03.000Z'),
+        updatedAt: new Date('2026-07-01T00:00:05.000Z'),
+      },
+    ])
+
+    const firstPage = await service.list(workspace.id, { limit: 2 })
+
+    expect(firstPage.items.map((ticket) => ticket.title)).toEqual(['Third ticket', 'Second ticket'])
+    expect(firstPage.nextCursor).toEqual(expect.any(String))
+
+    await db.insert(tickets).values({
+      workspaceId: workspace.id,
+      transcript: 'Between transcript',
+      transcriptHash: `between-${Date.now()}`,
+      status: 'done',
+      title: 'Between ticket',
+      productArea: 'general',
+      fieldConfidence: {},
+      createdAt: new Date('2026-07-01T00:00:01.500Z'),
+      updatedAt: new Date('2026-07-01T00:00:03.500Z'),
+    })
+
+    const secondPage = await service.list(workspace.id, {
+      limit: 2,
+      cursor: firstPage.nextCursor!,
+    })
+
+    expect(secondPage.items.map((ticket) => ticket.title)).toEqual(['Between ticket', 'First ticket'])
+    expect(secondPage.nextCursor).toBeNull()
+  })
+
   it('returns existing ticket when insert loses dedup race on unique violation', async () => {
     const { workspace } = await seedWorkspaceFixture(
       `${prefix}race@example.com`,

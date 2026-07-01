@@ -9,9 +9,18 @@ import {
 } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { Job, Queue } from 'bull'
-import { and, count, desc, eq, or } from 'drizzle-orm'
-import { db, documents, knowledgeBases, scrapeRuns, type ScrapeRun } from '@repo/db'
+import { and, count, desc, eq, lt, or, sql } from 'drizzle-orm'
+import {
+  db,
+  decodeCursor,
+  documents,
+  encodeCursor,
+  knowledgeBases,
+  scrapeRuns,
+  type ScrapeRun,
+} from '@repo/db'
 import { assertPublicUrl } from '@repo/ai'
+import { ListQueryDto } from '../common/dto/list-query.dto'
 import { ScrapeDto } from './dto/scrape.dto'
 
 const QUEUED_SCRAPE_STALE_MS = 2 * 60_000
@@ -119,14 +128,48 @@ export class ScrapeService implements OnModuleInit {
     }
   }
 
-  async listRuns(workspaceId: string, kbId: string) {
+  async listRuns(
+    workspaceId: string,
+    kbId: string,
+    query: Pick<ListQueryDto, 'cursor' | 'limit'>,
+  ) {
     await this.assertKbInWorkspace(workspaceId, kbId)
+    const limit = Math.min(Math.max(Number(query.limit ?? 20), 1), 100)
+    const cursor = query.cursor ? decodeCursor(query.cursor) : null
+    const createdAtUs = sql<number>`floor(extract(epoch from ${scrapeRuns.createdAt}) * 1000000)`
 
-    return db
+    const rows = await db
       .select()
       .from(scrapeRuns)
-      .where(and(eq(scrapeRuns.workspaceId, workspaceId), eq(scrapeRuns.knowledgeBaseId, kbId)))
-      .orderBy(desc(scrapeRuns.createdAt))
+      .where(
+        and(
+          eq(scrapeRuns.workspaceId, workspaceId),
+          eq(scrapeRuns.knowledgeBaseId, kbId),
+          cursor
+            ? or(
+                lt(createdAtUs, Number(cursor.k[0])),
+                and(eq(createdAtUs, Number(cursor.k[0])), lt(scrapeRuns.id, cursor.id)),
+              )
+            : undefined,
+        ),
+      )
+      .orderBy(desc(createdAtUs), desc(scrapeRuns.id))
+      .limit(limit + 1)
+
+    const hasMore = rows.length > limit
+    const items = rows.slice(0, limit)
+    const last = items.at(-1)
+
+    return {
+      items,
+      nextCursor:
+        hasMore && last
+          ? encodeCursor({
+              k: [Math.floor(last.createdAt.getTime() * 1000)],
+              id: last.id,
+            })
+          : null,
+    }
   }
 
   async quotaRemaining(workspaceId: string) {

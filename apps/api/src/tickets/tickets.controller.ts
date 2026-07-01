@@ -1,8 +1,9 @@
-import { Body, Controller, Get, Param, Patch, Post, Res, UseGuards } from '@nestjs/common'
+import { Body, Controller, Get, Param, Patch, Post, Query, Res, UseGuards } from '@nestjs/common'
 import type { Response } from 'express'
 import { CurrentUser, type CurrentUserContext } from '../auth/decorators/current-user.decorator'
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard'
 import { WorkspaceMemberGuard } from '../auth/guards/workspace-member.guard'
+import { ListQueryDto } from '../common/dto/list-query.dto'
 import { CreateTicketDto } from './dto/create-ticket.dto'
 import { UpdateTicketDto } from './dto/update-ticket.dto'
 import { TicketsService } from './tickets.service'
@@ -25,8 +26,8 @@ export class TicketsController {
 
   @Get()
   @UseGuards(JwtAuthGuard, WorkspaceMemberGuard)
-  list(@Param('workspaceId') workspaceId: string) {
-    return this.ticketsService.list(workspaceId)
+  list(@Param('workspaceId') workspaceId: string, @Query() query: ListQueryDto) {
+    return this.ticketsService.list(workspaceId, query)
   }
 
   @Get(':ticketId')

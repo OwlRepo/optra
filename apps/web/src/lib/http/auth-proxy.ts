@@ -17,7 +17,8 @@ export async function proxyJson(
     return NextResponse.json({ message: 'Unauthorized' }, { status: 401 })
   }
 
-  const response = await fetch(`${API_URL}${backendPath}`, {
+  const url = `${API_URL}${backendPath}${request.nextUrl.search}`
+  const response = await fetch(url, {
     method: options.method,
     headers: {
       Authorization: `Bearer ${bearer}`,

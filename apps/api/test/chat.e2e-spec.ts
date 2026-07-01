@@ -105,7 +105,7 @@ describe('Chat flow (e2e)', () => {
       .get('/workspaces/me')
       .set('Authorization', `Bearer ${member.accessToken}`)
       .expect(200)
-    const workspaceId = memberMine.body[0].id as string
+    const workspaceId = memberMine.body.items[0].id as string
 
     await db.insert(workspaceMembers).values({
       workspaceId,
@@ -137,23 +137,36 @@ describe('Chat flow (e2e)', () => {
     const sessionId = okRes.headers['x-chat-session-id'] as string
     const sessionsRes = await request(app.getHttpServer())
       .get(`/workspaces/${workspaceId}/chat/sessions`)
+      .query({ limit: 1 })
       .set('Authorization', `Bearer ${member.accessToken}`)
       .expect(200)
 
-    expect(sessionsRes.body).toHaveLength(1)
-    expect(sessionsRes.body[0].id).toBe(sessionId)
+    expect(sessionsRes.body.items).toHaveLength(1)
+    expect(sessionsRes.body.items[0].id).toBe(sessionId)
+    expect(sessionsRes.body.nextCursor).toBeNull()
 
     const messagesRes = await request(app.getHttpServer())
       .get(`/workspaces/${workspaceId}/chat/sessions/${sessionId}/messages`)
+      .query({ limit: 1 })
       .set('Authorization', `Bearer ${member.accessToken}`)
       .expect(200)
 
-    expect(messagesRes.body).toHaveLength(2)
-    expect(messagesRes.body[0].role).toBe('user')
-    expect(messagesRes.body[1].role).toBe('assistant')
-    expect(messagesRes.body[1].sources).toEqual([
+    expect(messagesRes.body.items).toHaveLength(1)
+    expect(messagesRes.body.items[0].role).toBe('user')
+    expect(messagesRes.body.nextCursor).toEqual(expect.any(String))
+
+    const messagesNextRes = await request(app.getHttpServer())
+      .get(`/workspaces/${workspaceId}/chat/sessions/${sessionId}/messages`)
+      .query({ limit: 1, cursor: messagesRes.body.nextCursor })
+      .set('Authorization', `Bearer ${member.accessToken}`)
+      .expect(200)
+
+    expect(messagesNextRes.body.items).toHaveLength(1)
+    expect(messagesNextRes.body.items[0].role).toBe('assistant')
+    expect(messagesNextRes.body.items[0].sources).toEqual([
       { documentId: 'doc-1', title: 'Doc One', sourceUrl: null, score: 0.8, snippet: 'snippet' },
     ])
+    expect(messagesNextRes.body.nextCursor).toBeNull()
 
     await request(app.getHttpServer())
       .get(`/workspaces/${workspaceId}/chat/sessions/${sessionId}/messages`)
@@ -186,7 +199,7 @@ describe('Chat flow (e2e)', () => {
       .get('/workspaces/me')
       .set('Authorization', `Bearer ${member.accessToken}`)
       .expect(200)
-    const workspaceId = mine.body[0].id as string
+    const workspaceId = mine.body.items[0].id as string
 
     ;(embedQuery as jest.Mock).mockResolvedValue([0.9, 0.8, 0.7])
     ;(answerQuestion as jest.Mock).mockResolvedValue({
@@ -253,7 +266,7 @@ describe('Chat flow (e2e)', () => {
       .get('/workspaces/me')
       .set('Authorization', `Bearer ${member.accessToken}`)
       .expect(200)
-    const workspaceId = mine.body[0].id as string
+    const workspaceId = mine.body.items[0].id as string
 
     ;(embedQuery as jest.Mock).mockResolvedValue([0.1, 0.2])
     ;(answerQuestion as jest.Mock).mockResolvedValue({

@@ -146,13 +146,13 @@ describe('Documents flow (e2e)', () => {
       .get('/workspaces/me')
       .set('Authorization', `Bearer ${owner.accessToken}`)
       .expect(200)
-    const ownerWorkspaceId = ownerMine.body[0].id as string
+    const ownerWorkspaceId = ownerMine.body.items[0].id as string
 
     const outsiderMine = await request(app.getHttpServer())
       .get('/workspaces/me')
       .set('Authorization', `Bearer ${outsider.accessToken}`)
       .expect(200)
-    const outsiderWorkspaceId = outsiderMine.body[0].id as string
+    const outsiderWorkspaceId = outsiderMine.body.items[0].id as string
 
     const kbRes = await request(app.getHttpServer())
       .post(`/workspaces/${ownerWorkspaceId}/knowledge-bases`)
@@ -214,13 +214,38 @@ describe('Documents flow (e2e)', () => {
       .set('Authorization', `Bearer ${outsider.accessToken}`)
       .expect(403)
 
+    const secondUpload = await request(app.getHttpServer())
+      .post(`/workspaces/${ownerWorkspaceId}/knowledge-bases/${kbId}/documents`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .attach('file', Buffer.from('second doc'), 'second.txt')
+      .expect(201)
+
+    const thirdUpload = await request(app.getHttpServer())
+      .post(`/workspaces/${ownerWorkspaceId}/knowledge-bases/${kbId}/documents`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .attach('file', Buffer.from('third doc'), 'third.txt')
+      .expect(201)
+
     const listRes = await request(app.getHttpServer())
       .get(`/workspaces/${ownerWorkspaceId}/knowledge-bases/${kbId}/documents`)
+      .query({ limit: 2 })
       .set('Authorization', `Bearer ${member.accessToken}`)
       .expect(200)
 
-    expect(listRes.body).toHaveLength(1)
-    expect(listRes.body[0].id).toBe(uploadRes.body.id)
+    expect(listRes.body.items).toHaveLength(2)
+    expect(listRes.body.items[0].id).toBe(uploadRes.body.id)
+    expect(listRes.body.items[1].id).toBe(secondUpload.body.id)
+    expect(listRes.body.nextCursor).toEqual(expect.any(String))
+
+    const pageTwoRes = await request(app.getHttpServer())
+      .get(`/workspaces/${ownerWorkspaceId}/knowledge-bases/${kbId}/documents`)
+      .query({ limit: 2, cursor: listRes.body.nextCursor })
+      .set('Authorization', `Bearer ${member.accessToken}`)
+      .expect(200)
+
+    expect(pageTwoRes.body.items).toHaveLength(1)
+    expect(pageTwoRes.body.items[0].id).toBe(thirdUpload.body.id)
+    expect(pageTwoRes.body.nextCursor).toBeNull()
 
     const outsiderKbRes = await request(app.getHttpServer())
       .post(`/workspaces/${outsiderWorkspaceId}/knowledge-bases`)
@@ -254,7 +279,7 @@ describe('Documents flow (e2e)', () => {
       .get('/workspaces/me')
       .set('Authorization', `Bearer ${owner.accessToken}`)
       .expect(200)
-    const workspaceId = ownerMine.body[0].id as string
+    const workspaceId = ownerMine.body.items[0].id as string
 
     const kbRes = await request(app.getHttpServer())
       .post(`/workspaces/${workspaceId}/knowledge-bases`)
