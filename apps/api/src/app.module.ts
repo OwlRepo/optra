@@ -12,6 +12,8 @@ import { KnowledgeBasesModule } from './knowledge-bases/knowledge-bases.module'
 import { StorageModule } from './storage/storage.module'
 import { ScrapeModule } from './scrape/scrape.module'
 import { TicketsModule } from './tickets/tickets.module'
+import { EventsModule } from './events/events.module'
+import { SearchModule } from './search/search.module'
 
 @Module({
   imports: [
@@ -32,6 +34,8 @@ import { TicketsModule } from './tickets/tickets.module'
     StorageModule,
     ScrapeModule,
     TicketsModule,
+    EventsModule,
+    SearchModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })

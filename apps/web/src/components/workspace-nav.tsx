@@ -1,9 +1,12 @@
 'use client'
 
+import * as React from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { cn } from '@repo/ui'
+import { Badge, cn } from '@repo/ui'
 import { BriefcaseBusiness, Database, MessageSquareText, Settings, Ticket, Users } from 'lucide-react'
+import { getUnreadCount } from '@/lib/api/events'
+import { WorkspaceSearch } from './workspace-search'
 
 export function workspaceNavItems(workspaceId: string) {
   return [
@@ -18,9 +21,21 @@ export function workspaceNavItems(workspaceId: string) {
 
 export function WorkspaceNav({ workspaceId, collapsed }: { workspaceId: string; collapsed: boolean }) {
   const pathname = usePathname()
+  const [unreadCount, setUnreadCount] = React.useState(0)
+
+  React.useEffect(() => {
+    void getUnreadCount(workspaceId)
+      .then((response) => {
+        setUnreadCount(typeof response?.count === 'number' ? response.count : 0)
+      })
+      .catch(() => {
+        setUnreadCount(0)
+      })
+  }, [workspaceId])
 
   return (
     <nav className="flex flex-col gap-1">
+      <WorkspaceSearch workspaceId={workspaceId} collapsed={collapsed} />
       {workspaceNavItems(workspaceId).map((item) => {
         const isActive = item.exact ? pathname === item.href : pathname === item.href || pathname?.startsWith(`${item.href}/`)
 
@@ -36,6 +51,11 @@ export function WorkspaceNav({ workspaceId, collapsed }: { workspaceId: string; 
           >
             {item.icon}
             <span className={collapsed ? 'sr-only' : undefined}>{item.label}</span>
+            {item.label === 'Overview' && unreadCount > 0 ? (
+              <Badge variant="default" className="ml-auto" aria-hidden="true">
+                {unreadCount}
+              </Badge>
+            ) : null}
           </Link>
         )
       })}

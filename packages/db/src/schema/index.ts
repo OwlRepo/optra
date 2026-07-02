@@ -1,6 +1,7 @@
 export * from './users'
 export * from './workspaces'
 export * from './workspaceMembers'
+export * from './workspaceEvents'
 export * from './invitations'
 export * from './knowledgeBases'
 export * from './otps'

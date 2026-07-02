@@ -15,6 +15,7 @@ import { ConfigService } from '@nestjs/config'
 import { ScrapeProcessor } from './scrape.processor'
 import { StorageService } from '../storage/storage.service'
 import { IngestService } from '../ingest/ingest.service'
+import { EventsService } from '../events/events.service'
 
 const mockCrawlSite = jest.fn()
 
@@ -78,17 +79,20 @@ describe('ScrapeProcessor', () => {
   let processor: ScrapeProcessor
   let storage: { save: jest.Mock }
   let ingest: { queueDocument: jest.Mock }
+  let events: { record: jest.Mock }
   const prefix = `scrape-processor-spec-${Date.now()}-`
 
   beforeAll(async () => {
     storage = { save: jest.fn().mockResolvedValue(undefined) }
     ingest = { queueDocument: jest.fn().mockResolvedValue({ queued: true }) }
+    events = { record: jest.fn().mockResolvedValue(undefined) }
 
     const moduleRef = await Test.createTestingModule({
       providers: [
         ScrapeProcessor,
         { provide: StorageService, useValue: storage },
         { provide: IngestService, useValue: ingest },
+        { provide: EventsService, useValue: events },
         {
           provide: ConfigService,
           useValue: { get: jest.fn().mockReturnValue('CrawlerTest/1.0') },
@@ -154,6 +158,12 @@ describe('ScrapeProcessor', () => {
     expect(updatedRun.pagesFound).toBe(2)
     expect(updatedRun.pagesSucceeded).toBe(2)
     expect(updatedRun.pagesFailed).toBe(0)
+    expect(events.record).toHaveBeenCalledWith(
+      workspace.id,
+      'scrape_completed',
+      run.id,
+      `Crawl of ${run.seedUrl}`,
+    )
   })
 
   it('updates live crawl counters and heartbeat while pages stream in', async () => {
@@ -308,5 +318,42 @@ describe('ScrapeProcessor', () => {
     expect(updatedRun.finishedAt).not.toBeNull()
     expect(storage.save).not.toHaveBeenCalled()
     expect(ingest.queueDocument).not.toHaveBeenCalled()
+    expect(events.record).toHaveBeenCalledWith(
+      workspace.id,
+      'scrape_failed',
+      run.id,
+      `Crawl of ${run.seedUrl}`,
+      'crawl exploded',
+    )
+  })
+
+  it('swallows event-record failures and still completes the scrape run terminal update', async () => {
+    const { workspace, knowledgeBase, run } = await seedRun(prefix)
+    events.record.mockRejectedValueOnce(new Error('events down'))
+    mockCrawlSite.mockImplementationOnce(async (_url: string, options?: { onPage?: (...args: any[]) => Promise<void> }) => {
+      const page = { url: 'https://example.com/docs/a', title: 'Page A', content: 'A body' }
+      await options?.onPage?.(page, {
+        pagesFound: 1,
+        pagesVisited: 1,
+        pagesQueued: 1,
+        maxPages: 10,
+      })
+      return [page]
+    })
+
+    await processor.handleScrape({
+      id: 'job-events-down',
+      data: {
+        runId: run.id,
+        workspaceId: workspace.id,
+        knowledgeBaseId: knowledgeBase.id,
+        url: run.seedUrl,
+        maxDepth: 2,
+        maxPages: 10,
+      },
+    } as any)
+
+    const [updatedRun] = await db.select().from(scrapeRuns).where(eq(scrapeRuns.id, run.id)).limit(1)
+    expect(updatedRun.status).toBe('completed')
   })
 })

@@ -3,7 +3,8 @@ export async function apiFetch(path: string, init?: RequestInit) {
     ...init,
     headers: { 'Content-Type': 'application/json', ...init?.headers },
   })
-  const data = await res.json()
+  const isEmpty = res.status === 204 || res.status === 205
+  const data = isEmpty ? {} : await res.json()
   if (!res.ok) throw data
   return data
 }

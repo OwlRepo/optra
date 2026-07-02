@@ -27,6 +27,10 @@ export async function proxyJson(
     body: options.body ? JSON.stringify(options.body) : undefined,
   })
 
+  if (response.status === 204 || response.status === 205) {
+    return new NextResponse(null, { status: response.status })
+  }
+
   const data = await response.json().catch(() => ({}))
   return NextResponse.json(data, { status: response.status })
 }

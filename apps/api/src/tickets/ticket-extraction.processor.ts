@@ -4,10 +4,13 @@ import { Job } from 'bull'
 import { db, tickets } from '@repo/db'
 import { and, eq, inArray } from 'drizzle-orm'
 import { extractTicketFromTranscript } from '@repo/ai'
+import { EventsService } from '../events/events.service'
 
 @Processor('ticket-extraction-queue')
 export class TicketExtractionProcessor {
   private readonly logger = new Logger(TicketExtractionProcessor.name)
+
+  constructor(private readonly events: EventsService) {}
 
   @Process()
   async handleExtraction(job: Job<{ ticketId: string }>) {
@@ -37,7 +40,7 @@ export class TicketExtractionProcessor {
 
     try {
       const extracted = await extractTicketFromTranscript(ticket.transcript)
-      await db
+      const rows = await db
         .update(tickets)
         .set({
           ...extracted,
@@ -47,11 +50,17 @@ export class TicketExtractionProcessor {
         })
         .where(and(eq(tickets.id, ticketId), inArray(tickets.status, ['pending', 'processing'])))
         .returning({ id: tickets.id })
-        .then((rows) => {
-          if (rows.length === 0) {
-            this.logger.warn(`Ticket extraction completion skipped ticketId=${ticketId}: row already terminal`)
-          }
-        })
+      if (rows.length === 0) {
+        this.logger.warn(`Ticket extraction completion skipped ticketId=${ticketId}: row already terminal`)
+      } else {
+        await this.events
+          .record(ticket.workspaceId, 'ticket_extracted', ticketId, extracted.title ?? 'Ticket draft')
+          .catch((err: unknown) => {
+            this.logger.warn(
+              `Event record failed ticketId=${ticketId}: ${err instanceof Error ? err.message : String(err)}`,
+            )
+          })
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       this.logger.error(
@@ -66,6 +75,13 @@ export class TicketExtractionProcessor {
           updatedAt: new Date(),
         })
         .where(eq(tickets.id, ticketId))
+      await this.events
+        .record(ticket.workspaceId, 'ticket_failed', ticketId, ticket.title ?? 'Ticket draft', message)
+        .catch((err: unknown) => {
+          this.logger.warn(
+            `Event record failed ticketId=${ticketId}: ${err instanceof Error ? err.message : String(err)}`,
+          )
+        })
     }
   }
 }

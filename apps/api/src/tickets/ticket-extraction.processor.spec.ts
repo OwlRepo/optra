@@ -3,6 +3,7 @@ import { Test } from '@nestjs/testing'
 import { eq, like } from 'drizzle-orm'
 import { db, pool, tickets, users, workspaceMembers, workspaces } from '@repo/db'
 import { TicketExtractionProcessor } from './ticket-extraction.processor'
+import { EventsService } from '../events/events.service'
 
 const mockExtractTicketFromTranscript = jest.fn()
 
@@ -54,11 +55,16 @@ async function seedTicket(emailPrefix: string) {
 
 describe('TicketExtractionProcessor', () => {
   let processor: TicketExtractionProcessor
+  let events: { record: jest.Mock }
   const prefix = `ticket-processor-spec-${Date.now()}-`
 
   beforeAll(async () => {
+    events = { record: jest.fn().mockResolvedValue(undefined) }
     const moduleRef = await Test.createTestingModule({
-      providers: [TicketExtractionProcessor],
+      providers: [
+        TicketExtractionProcessor,
+        { provide: EventsService, useValue: events },
+      ],
     }).compile()
 
     processor = moduleRef.get(TicketExtractionProcessor)
@@ -74,7 +80,7 @@ describe('TicketExtractionProcessor', () => {
   })
 
   it('moves ticket from processing to done with extracted fields', async () => {
-    const { ticket } = await seedTicket(prefix)
+    const { workspace, ticket } = await seedTicket(prefix)
     mockExtractTicketFromTranscript.mockResolvedValue({
       title: 'OTP login loop',
       issueSummary: 'User gets kicked back to login after OTP verify.',
@@ -100,10 +106,16 @@ describe('TicketExtractionProcessor', () => {
     expect(updated.status).toBe('done')
     expect(updated.title).toBe('OTP login loop')
     expect(updated.fieldConfidence.title).toBe(0.9)
+    expect(events.record).toHaveBeenCalledWith(
+      workspace.id,
+      'ticket_extracted',
+      ticket.id,
+      'OTP login loop',
+    )
   })
 
   it('marks ticket failed when extraction throws typed error', async () => {
-    const { ticket } = await seedTicket(prefix)
+    const { workspace, ticket } = await seedTicket(prefix)
     mockExtractTicketFromTranscript.mockRejectedValue(new Error('Model refusal'))
 
     await processor.handleExtraction({ data: { ticketId: ticket.id }, id: 'job-2' } as any)
@@ -111,6 +123,13 @@ describe('TicketExtractionProcessor', () => {
     const [updated] = await db.select().from(tickets).where(eq(tickets.id, ticket.id)).limit(1)
     expect(updated.status).toBe('failed')
     expect(updated.lastError).toContain('Model refusal')
+    expect(events.record).toHaveBeenCalledWith(
+      workspace.id,
+      'ticket_failed',
+      ticket.id,
+      'Ticket draft',
+      'Model refusal',
+    )
   })
 
   it('does not overwrite reviewed fields when rerun hits a done ticket', async () => {
@@ -156,5 +175,34 @@ describe('TicketExtractionProcessor', () => {
     expect(updated.title).toBe('Human-edited title')
     expect(updated.issueSummary).toBe('Human summary')
     expect(updated.hypothesizedRootCause).toBe('Reviewed cause')
+  })
+
+  it('swallows event-record failures and still completes the ticket terminal update', async () => {
+    const { ticket } = await seedTicket(prefix)
+    mockExtractTicketFromTranscript.mockResolvedValue({
+      title: 'OTP login loop',
+      issueSummary: 'User gets kicked back to login after OTP verify.',
+      reproSteps: '1. Verify OTP\n2. Observe redirect',
+      severity: 'high',
+      productArea: 'auth',
+      hypothesizedRootCause: 'Cookie missing',
+      nextAction: 'Inspect verify response cookies',
+      fieldConfidence: {
+        title: 0.9,
+        issueSummary: 0.9,
+        reproSteps: 0.8,
+        severity: 0.8,
+        productArea: 0.8,
+        hypothesizedRootCause: 0.7,
+        nextAction: 0.8,
+      },
+    })
+    events.record.mockRejectedValueOnce(new Error('events down'))
+
+    await processor.handleExtraction({ data: { ticketId: ticket.id }, id: 'job-events-down' } as any)
+
+    const [updated] = await db.select().from(tickets).where(eq(tickets.id, ticket.id)).limit(1)
+    expect(updated.status).toBe('done')
+    expect(updated.title).toBe('OTP login loop')
   })
 })

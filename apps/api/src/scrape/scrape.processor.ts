@@ -7,6 +7,7 @@ import { and, eq, sql } from 'drizzle-orm'
 import { db, documents, scrapeRuns } from '@repo/db'
 import { StorageService } from '../storage/storage.service'
 import { IngestService } from '../ingest/ingest.service'
+import { EventsService } from '../events/events.service'
 
 type ScrapeJob = {
   runId: string
@@ -26,6 +27,7 @@ export class ScrapeProcessor {
     private readonly storage: StorageService,
     private readonly ingest: IngestService,
     private readonly config: ConfigService,
+    private readonly events: EventsService,
   ) {}
 
   @Process()
@@ -130,6 +132,13 @@ export class ScrapeProcessor {
           finishedAt: new Date(),
         })
         .where(eq(scrapeRuns.id, runId))
+      await this.events
+        .record(workspaceId, 'scrape_completed', runId, `Crawl of ${url}`)
+        .catch((err: unknown) => {
+          this.logger.warn(
+            `Event record failed runId=${runId}: ${err instanceof Error ? err.message : String(err)}`,
+          )
+        })
       this.logger.log(`Scrape processor completed runId=${runId} jobId=${String(job.id)}`)
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
@@ -143,6 +152,13 @@ export class ScrapeProcessor {
           finishedAt: new Date(),
         })
         .where(and(eq(scrapeRuns.id, runId), eq(scrapeRuns.workspaceId, workspaceId)))
+      await this.events
+        .record(workspaceId, 'scrape_failed', runId, `Crawl of ${url}`, message)
+        .catch((err: unknown) => {
+          this.logger.warn(
+            `Event record failed runId=${runId}: ${err instanceof Error ? err.message : String(err)}`,
+          )
+        })
     }
   }
 }

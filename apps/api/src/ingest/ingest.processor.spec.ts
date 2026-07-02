@@ -5,6 +5,7 @@ import { db, chunks, documents, knowledgeBases, pool, users, workspaceMembers, w
 import { IngestProcessor } from './ingest.processor'
 import { CacheService } from '../cache/cache.service'
 import { StorageService } from '../storage/storage.service'
+import { EventsService } from '../events/events.service'
 
 const mockLoadDocument = jest.fn()
 const mockChunkDocument = jest.fn()
@@ -84,17 +85,20 @@ describe('IngestProcessor', () => {
   let processor: IngestProcessor
   let storage: { getToTempFile: jest.Mock }
   let cache: { bumpVersion: jest.Mock }
+  let events: { record: jest.Mock }
   const fixtureEmailPrefix = `ingest-spec-${Date.now()}-`
 
   beforeAll(async () => {
     storage = { getToTempFile: jest.fn() }
     cache = { bumpVersion: jest.fn() }
+    events = { record: jest.fn().mockResolvedValue(undefined) }
 
     const moduleRef = await Test.createTestingModule({
       providers: [
         IngestProcessor,
         { provide: StorageService, useValue: storage },
         { provide: CacheService, useValue: cache },
+        { provide: EventsService, useValue: events },
       ],
     }).compile()
 
@@ -184,6 +188,12 @@ describe('IngestProcessor', () => {
     expect(mockEmbedChunks.mock.invocationCallOrder[0]).toBeLessThan(mockSyncChunks.mock.invocationCallOrder[0])
     expect(mockUnlink).toHaveBeenCalledWith('/tmp/ingest-spec.txt')
     expect(cache.bumpVersion).toHaveBeenCalledWith(workspace.id)
+    expect(events.record).toHaveBeenCalledWith(
+      workspace.id,
+      'document_ingested',
+      document.id,
+      document.title,
+    )
   })
 
   it('failure path marks document failed and still cleans temp file', async () => {
@@ -199,5 +209,42 @@ describe('IngestProcessor', () => {
     const [updated] = await db.select().from(documents).where(eq(documents.id, document.id)).limit(1)
     expect(updated.status).toBe('failed')
     expect(mockUnlink).toHaveBeenCalledWith('/tmp/ingest-fail.txt')
+    expect(events.record).toHaveBeenCalledWith(
+      document.workspaceId,
+      'document_failed',
+      document.id,
+      document.title,
+      'bad file',
+    )
+  })
+
+  it('swallows event-record failures and still completes the ingest job terminal update', async () => {
+    const { workspace, knowledgeBase, document } = await seedDocument(fixtureEmailPrefix)
+    storage.getToTempFile.mockResolvedValue('/tmp/ingest-events-fail.txt')
+    mockUnlink.mockResolvedValue(undefined)
+    mockLoadDocument.mockResolvedValue({
+      content: 'hello world',
+      metadata: { source: '/tmp/ingest-events-fail.txt', fileType: 'txt', fileName: 'ingest-events-fail.txt' },
+    })
+    mockChunkDocument.mockResolvedValue([
+      {
+        content: 'hello',
+        contentHash: 'hash-events',
+        metadata: { source: '/tmp/ingest-events-fail.txt', fileType: 'txt', chunkIndex: 0, totalChunks: 1, strategy: 'recursive' },
+      },
+    ])
+    mockEmbedChunks.mockImplementation(async (input) =>
+      input.map((chunk: any) => ({ ...chunk, embedding: [0.3, 0.4] })),
+    )
+    mockSyncChunks.mockResolvedValue(undefined)
+    events.record.mockRejectedValueOnce(new Error('events down'))
+
+    await expect(
+      processor.handleIngest({ data: { documentId: document.id }, id: 'job-events-down' } as any),
+    ).resolves.toBeUndefined()
+
+    const [updated] = await db.select().from(documents).where(eq(documents.id, document.id)).limit(1)
+    expect(updated.status).toBe('done')
+    expect(cache.bumpVersion).toHaveBeenCalledWith(workspace.id)
   })
 })

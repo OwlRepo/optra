@@ -14,6 +14,7 @@ export const workspaceMembers = pgTable('workspace_members', {
   userId: uuid('user_id').references(() => users.id).notNull(),
   role: workspaceMemberRoleEnum('role').notNull().default('member'),
   joinedAt: timestamp('joined_at').defaultNow().notNull(),
+  eventsSeenAt: timestamp('events_seen_at'),
 })
 
 export type WorkspaceMember = typeof workspaceMembers.$inferSelect

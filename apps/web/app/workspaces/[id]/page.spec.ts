@@ -11,6 +11,9 @@ const routerMock = { push: pushMock }
 const getWorkspaceMock = vi.fn()
 const listWorkspacesMock = vi.fn()
 const logoutMock = vi.fn()
+const listEventsMock = vi.fn()
+const markEventsSeenMock = vi.fn()
+const getUnreadCountMock = vi.fn()
 
 vi.mock('next/navigation', () => ({
   useRouter: () => routerMock,
@@ -20,6 +23,12 @@ vi.mock('next/navigation', () => ({
 vi.mock('@/lib/api/workspaces', () => ({
   getWorkspace: (...args: unknown[]) => getWorkspaceMock(...args),
   listWorkspaces: (...args: unknown[]) => listWorkspacesMock(...args),
+}))
+
+vi.mock('@/lib/api/events', () => ({
+  listEvents: (...args: unknown[]) => listEventsMock(...args),
+  markEventsSeen: (...args: unknown[]) => markEventsSeenMock(...args),
+  getUnreadCount: (...args: unknown[]) => getUnreadCountMock(...args),
 }))
 
 vi.mock('@/lib/api/auth', () => ({
@@ -44,6 +53,12 @@ describe('WorkspaceOverviewPage', () => {
     getWorkspaceMock.mockReset()
     listWorkspacesMock.mockReset()
     logoutMock.mockReset()
+    listEventsMock.mockReset()
+    markEventsSeenMock.mockReset()
+    getUnreadCountMock.mockReset()
+    listEventsMock.mockResolvedValue({ items: [], nextCursor: null })
+    markEventsSeenMock.mockResolvedValue({})
+    getUnreadCountMock.mockResolvedValue({ count: 0 })
   })
 
   afterEach(() => {
@@ -103,5 +118,42 @@ describe('WorkspaceOverviewPage', () => {
 
     expect((await screen.findAllByText('Alpha')).length).toBeGreaterThan(0)
     expect(screen.getByText('Failed to load workspace')).toBeDefined()
+  })
+
+  it('renders activity feed rows and marks events seen once after load', async () => {
+    vi.spyOn(Date.prototype, 'toLocaleString').mockReturnValue('Jul 2, 2026, 9:00 AM')
+    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
+    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+    listEventsMock.mockResolvedValue({
+      items: [
+        {
+          id: 'evt-1',
+          type: 'document_ingested',
+          title: 'Imported guide',
+          detail: null,
+          createdAt: '2026-07-02T01:00:00.000Z',
+        },
+      ],
+      nextCursor: null,
+    })
+
+    renderPage()
+
+    expect(await screen.findByText('Imported guide')).toBeDefined()
+    expect(screen.getByText('Jul 2, 2026, 9:00 AM')).toBeDefined()
+    await waitFor(() => {
+      expect(markEventsSeenMock).toHaveBeenCalledTimes(1)
+      expect(markEventsSeenMock).toHaveBeenCalledWith('ws-1')
+    })
+  })
+
+  it('renders empty state when there is no activity', async () => {
+    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
+    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+    listEventsMock.mockResolvedValue({ items: [], nextCursor: null })
+
+    renderPage()
+
+    expect(await screen.findByText('No activity yet')).toBeDefined()
   })
 })

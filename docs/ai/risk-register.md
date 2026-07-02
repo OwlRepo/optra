@@ -35,6 +35,8 @@ If risk area is missing, mark `UNMAPPED RISK`.
 | Transactions           | Data consistency, atomicity                  | Deep              | Transaction boundaries, rollback       | Transactional flow     | Verify against DB contracts              |
 | External Integrations  | Third-party dependencies, failure modes      | Deep              | Error handling, retry, tests           | Integration flow       | Verify against integration documentation |
 | Production Deployment  | Availability, rollback, monitoring           | Deep              | Deploy safety, rollback plan           | Smoke test             | Verify against deployment docs           |
+| Workspace Events       | Shared cross-job write hooks plus per-member unread state | Standard | Job terminal-state safety, membership-row scoping, tests | Upload/crawl/extract then inspect feed/badge | Event recording must never fail or retry ingest/scrape/ticket jobs; `events_seen_at` updates only caller row |
+| Search                 | Cross-workspace retrieval leaks, mixed retrieval mechanisms | Standard | Workspace scoping, grouped response shape, tests | Search docs/tickets/chat in 2 workspaces | Documents use vector chunk search while tickets/chat use full-text; scores are not comparable and must stay in separate arrays |
 | Unbounded List Responses | Every list-returning endpoint (workspaces, knowledge bases, documents, chat sessions, chat messages, scrape runs, tickets) returns full unbounded arrays with no limit/offset/cursor; documents can approach the 5000/workspace quota, tickets/chat-sessions/scrape-runs have no cap at all | Deep for Documents/Chat/Tickets/Scraping (matches their existing domain risk), Standard for Workspaces/Knowledge Bases | Keyset cursor correctness under concurrent insert/delete, response-shape contract change on all 7 endpoints, proxy query-string forwarding | Paginate through a seeded large list and confirm no skipped/duplicated rows across pages | Found during 2026-07-01 production-readiness audit. Workstream A shipped on 2026-07-01: all 7 endpoints now use keyset cursor pagination, and the web auth proxy forwards query strings. |
 
 ## Current Notes
@@ -153,3 +155,18 @@ If risk area is missing, mark `UNMAPPED RISK`.
   - patch/save stamps `reviewedBy` and `reviewedAt`, preserving auditability for copied Linear tickets
   - PATCH validators cap large free-text fields before they can bloat row size or API memory
   - usefulness/edit-state feedback stays queryable for dashboard usefulness-rate observability
+
+- Workspace Events are a live jobs + tenant-state risk as of 2026-07-02.
+  Required checks:
+  - every terminal processor hook (`ingest`, `scrape`, `ticket-extraction`) wraps `events.record(...)` in `.catch(...)`
+  - event-record failure never changes job terminal DB update or retry behavior
+  - unread count uses caller membership row only and treats `events_seen_at IS NULL` as "all unread"
+  - viewing Overview marks events seen once per visit and clears the sidebar badge on next load
+
+- Search is a live tenant-isolation + relevance-shape risk as of 2026-07-02.
+  Required checks:
+  - `GET /workspaces/:workspaceId/search` stays behind `JwtAuthGuard` + `WorkspaceMemberGuard`
+  - document results fetch `documents` rows scoped to route `workspaceId`, even if a chunk hit references another workspace document id
+  - ticket full-text search filters `tickets.workspace_id = :workspaceId`
+  - chat full-text search joins `chat_sessions` because `chat_messages` has no `workspace_id`
+  - response shape stays `{documents, tickets, chatMessages}` and never becomes one merged ranking

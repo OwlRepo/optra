@@ -6,6 +6,7 @@ import { db, documents } from '@repo/db'
 import { eq } from 'drizzle-orm'
 import { StorageService } from '../storage/storage.service'
 import { CacheService } from '../cache/cache.service'
+import { EventsService } from '../events/events.service'
 
 @Processor('ingest-queue')
 export class IngestProcessor {
@@ -14,6 +15,7 @@ export class IngestProcessor {
   constructor(
     private readonly storage: StorageService,
     private readonly cache: CacheService,
+    private readonly events: EventsService,
   ) {}
 
   @Process()
@@ -72,6 +74,13 @@ export class IngestProcessor {
         .update(documents)
         .set({ status: 'done', lastError: null, updatedAt: new Date() })
         .where(eq(documents.id, documentId))
+      await this.events
+        .record(document.workspaceId, 'document_ingested', documentId, document.title)
+        .catch((err: unknown) => {
+          this.logger.warn(
+            `Event record failed documentId=${documentId}: ${err instanceof Error ? err.message : String(err)}`,
+          )
+        })
       this.logger.log(`Ingest processor completed documentId=${documentId} jobId=${String(job.id)}`)
       await this.cache.bumpVersion(document.workspaceId)
     } catch (error) {
@@ -84,6 +93,13 @@ export class IngestProcessor {
         .update(documents)
         .set({ status: 'failed', lastError: message, updatedAt: new Date() })
         .where(eq(documents.id, documentId))
+      await this.events
+        .record(document.workspaceId, 'document_failed', documentId, document.title, message)
+        .catch((err: unknown) => {
+          this.logger.warn(
+            `Event record failed documentId=${documentId}: ${err instanceof Error ? err.message : String(err)}`,
+          )
+        })
     } finally {
       if (tempPath) {
         await unlink(tempPath).catch(() => undefined)
