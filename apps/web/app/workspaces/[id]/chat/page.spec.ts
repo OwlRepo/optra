@@ -136,6 +136,7 @@ describe('WorkspaceChatPage', () => {
           createdAt: '',
           sources: [
             {
+              sourceType: 'document',
               documentId: 'doc-1',
               title: 'Support SOP',
               sourceUrl: 'https://example.com/sop',
@@ -189,6 +190,46 @@ describe('WorkspaceChatPage', () => {
     })
     expect(container.querySelector('svg.lucide-search.size-5.text-primary')).not.toBeNull()
     expect(container.querySelector('.rounded-2xl.bg-primary\\/10.text-primary')).toBeNull()
+  })
+
+  it('renders ticket citation without link', async () => {
+    getChatMessagesMock.mockResolvedValueOnce({
+      items: [
+        {
+          id: 'assistant-1',
+          role: 'assistant',
+          content: 'Grounded answer',
+          createdAt: '',
+          sources: [
+            {
+              sourceType: 'ticket',
+              ticketId: 'ticket-1',
+              title: 'Ticket citation',
+              score: 0.77,
+              snippet: 'Ticket excerpt',
+            },
+          ],
+        },
+      ],
+      nextCursor: null,
+    })
+
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('Ticket citation')).toBeDefined()
+      expect(screen.getByText('Ticket excerpt')).toBeDefined()
+    })
+
+    expect(screen.queryByRole('link', { name: 'Ticket citation' })).toBeNull()
+  })
+
+  it('renders legacy source without sourceType as document citation', async () => {
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByRole('link', { name: 'Support SOP' })).toBeDefined()
+    })
   })
 
   it('loads session history and new chat clears session body', async () => {

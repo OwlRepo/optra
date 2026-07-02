@@ -1,5 +1,6 @@
+import { createHash } from 'node:crypto'
 import { eq, inArray, sql } from 'drizzle-orm'
-import { db, chunks as chunksTable } from '@repo/db'
+import { db, chunks as chunksTable, tickets, type Ticket } from '@repo/db'
 import type { EmbeddedChunk } from '../embeddings/types'
 import { embedQuery } from '../embeddings'
 
@@ -85,4 +86,76 @@ export async function similaritySearch(
     metadata: row.metadata ?? {},
     score: row.score,
   }))
+}
+
+function buildTicketChunkContent(ticket: Ticket): string {
+  return [
+    `Title: ${ticket.title ?? 'N/A'}`,
+    `Issue Summary: ${ticket.issueSummary ?? 'N/A'}`,
+    `Repro Steps: ${ticket.reproSteps ?? 'N/A'}`,
+    `Root Cause: ${ticket.hypothesizedRootCause ?? 'N/A'}`,
+    `Next Action: ${ticket.nextAction ?? 'N/A'}`,
+    `Severity: ${ticket.severity ?? 'N/A'}`,
+    `Product Area: ${ticket.productArea}`,
+  ].join('\n')
+}
+
+export async function syncTicketChunk(
+  ticket: Ticket,
+): Promise<'embedded' | 'deleted' | 'unchanged' | 'skipped'> {
+  const qualifies =
+    ticket.status === 'done' && ticket.reviewedBy !== null && ticket.usefulness === 'useful'
+
+  const [existing] = await db
+    .select({ id: chunksTable.id, contentHash: chunksTable.contentHash })
+    .from(chunksTable)
+    .where(eq(chunksTable.ticketId, ticket.id))
+    .limit(1)
+
+  if (!qualifies) {
+    if (!existing) return 'skipped'
+    await db.delete(chunksTable).where(eq(chunksTable.ticketId, ticket.id))
+    return 'deleted'
+  }
+
+  const content = buildTicketChunkContent(ticket)
+  const contentHash = createHash('sha256').update(content).digest('hex')
+
+  if (existing && existing.contentHash === contentHash) {
+    return 'unchanged'
+  }
+
+  const embedding = await embedQuery(content)
+
+  await db.delete(chunksTable).where(eq(chunksTable.ticketId, ticket.id))
+  await db.insert(chunksTable).values({
+    ticketId: ticket.id,
+    documentId: null,
+    workspaceId: ticket.workspaceId,
+    content,
+    contentHash,
+    embedding,
+    metadata: { ticketId: ticket.id, workspaceId: ticket.workspaceId, source: 'ticket' },
+  })
+
+  return 'embedded'
+}
+
+export async function backfillTicketEmbeddings(): Promise<{
+  processed: number
+  embedded: number
+  deleted: number
+  skipped: number
+  unchanged: number
+}> {
+  const allTickets = await db.select().from(tickets)
+  const result = { processed: 0, embedded: 0, deleted: 0, skipped: 0, unchanged: 0 }
+
+  for (const ticket of allTickets) {
+    const outcome = await syncTicketChunk(ticket)
+    result.processed += 1
+    result[outcome] += 1
+  }
+
+  return result
 }

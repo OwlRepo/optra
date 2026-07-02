@@ -1,7 +1,7 @@
 import { HumanMessage, SystemMessage } from '@langchain/core/messages'
 import { ChatOpenAI } from '@langchain/openai'
 import { Annotation, END, START, StateGraph } from '@langchain/langgraph'
-import { db, documents } from '@repo/db'
+import { db, documents, tickets } from '@repo/db'
 import { inArray } from 'drizzle-orm'
 import { similaritySearch } from '../vectorstore'
 import type { AnswerResult, ChatSource } from './index'
@@ -51,21 +51,30 @@ function buildContext(chunks: Awaited<ReturnType<typeof similaritySearch>>): str
 async function buildSources(
   chunks: Awaited<ReturnType<typeof similaritySearch>>,
 ): Promise<ChatSource[]> {
-  const bestChunkByDocumentId = new Map<string, (typeof chunks)[number]>()
+  type RetrievedChunk = (typeof chunks)[number]
+  const bestDocumentChunkById = new Map<string, RetrievedChunk>()
+  const bestTicketChunkById = new Map<string, RetrievedChunk>()
 
   for (const chunk of chunks) {
+    const ticketId =
+      typeof chunk.metadata?.ticketId === 'string' ? chunk.metadata.ticketId : null
     const documentId =
       typeof chunk.metadata?.documentId === 'string' ? chunk.metadata.documentId : null
 
-    if (!documentId) continue
-
-    const current = bestChunkByDocumentId.get(documentId)
-    if (!current || chunk.score > current.score) {
-      bestChunkByDocumentId.set(documentId, chunk)
+    if (ticketId) {
+      const current = bestTicketChunkById.get(ticketId)
+      if (!current || chunk.score > current.score) {
+        bestTicketChunkById.set(ticketId, chunk)
+      }
+    } else if (documentId) {
+      const current = bestDocumentChunkById.get(documentId)
+      if (!current || chunk.score > current.score) {
+        bestDocumentChunkById.set(documentId, chunk)
+      }
     }
   }
 
-  const documentIds = [...bestChunkByDocumentId.keys()]
+  const documentIds = [...bestDocumentChunkById.keys()]
   const documentRows =
     documentIds.length > 0
       ? await db
@@ -79,14 +88,25 @@ async function buildSources(
       : []
 
   const documentMap = new Map(documentRows.map((row) => [row.id, row]))
-  return documentIds.flatMap((documentId) => {
-    const chunk = bestChunkByDocumentId.get(documentId)
+  const ticketIds = [...bestTicketChunkById.keys()]
+  const ticketRows =
+    ticketIds.length > 0
+      ? await db
+          .select({ id: tickets.id, title: tickets.title })
+          .from(tickets)
+          .where(inArray(tickets.id, ticketIds))
+      : []
+  const ticketMap = new Map(ticketRows.map((row) => [row.id, row]))
+
+  const documentSources: ChatSource[] = documentIds.flatMap((documentId) => {
+    const chunk = bestDocumentChunkById.get(documentId)
     const row = documentMap.get(documentId)
 
     if (!chunk || !row) return []
 
     return [
       {
+        sourceType: 'document' as const,
         documentId,
         title: row.title,
         sourceUrl: row.sourceUrl,
@@ -95,6 +115,25 @@ async function buildSources(
       },
     ]
   })
+
+  const ticketSources: ChatSource[] = ticketIds.flatMap((ticketId) => {
+    const chunk = bestTicketChunkById.get(ticketId)
+    const row = ticketMap.get(ticketId)
+
+    if (!chunk || !row) return []
+
+    return [
+      {
+        sourceType: 'ticket' as const,
+        ticketId,
+        title: row.title ?? 'Ticket draft',
+        score: chunk.score,
+        snippet: chunk.content.slice(0, 200),
+      },
+    ]
+  })
+
+  return [...documentSources, ...ticketSources]
 }
 
 async function collectAnswer(

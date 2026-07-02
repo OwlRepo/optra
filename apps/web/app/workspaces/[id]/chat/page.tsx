@@ -33,9 +33,11 @@ import { getWorkspace } from '@/lib/api/workspaces'
 import { WorkspaceNav } from '@/components/workspace-nav'
 
 type ChatSource = {
-  documentId: string
+  sourceType?: 'document' | 'ticket'
+  documentId?: string
+  ticketId?: string
   title: string
-  sourceUrl: string | null
+  sourceUrl?: string | null
   score: number
   snippet: string
 }
@@ -577,28 +579,35 @@ export default function WorkspaceChatPage({ params }: { params: { id: string } }
 
           <div className="mt-4 space-y-3">
             {latestAssistantSources ? (
-              messageSources[latestAssistantSources.id]?.map((source) => (
-                <div key={`${latestAssistantSources.id}-${source.documentId}`} className="rounded-2xl border border-border/70 bg-background px-3 py-3 text-sm">
-                  <div className="flex items-center justify-between gap-3">
-                    {source.sourceUrl ? (
-                      <a
-                        href={source.sourceUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="font-medium text-primary underline-offset-4 hover:underline"
-                      >
-                        {source.title}
-                      </a>
-                    ) : (
-                      <p className="font-medium">{source.title}</p>
-                    )}
-                    <Badge variant="outline">{source.score.toFixed(2)}</Badge>
+              messageSources[latestAssistantSources.id]?.map((source) => {
+                const key = source.sourceType === 'ticket' ? source.ticketId : source.documentId
+                const sourceUrl = source.sourceType === 'ticket' ? null : source.sourceUrl
+                return (
+                  <div
+                    key={`${latestAssistantSources.id}-${key}`}
+                    className="rounded-2xl border border-border/70 bg-background px-3 py-3 text-sm"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      {sourceUrl ? (
+                        <a
+                          href={sourceUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="font-medium text-primary underline-offset-4 hover:underline"
+                        >
+                          {source.title}
+                        </a>
+                      ) : (
+                        <p className="font-medium">{source.title}</p>
+                      )}
+                      <Badge variant="outline">{source.score.toFixed(2)}</Badge>
+                    </div>
+                    <p className="mt-2 line-clamp-4 text-xs leading-6 text-muted-foreground">
+                      {source.snippet}
+                    </p>
                   </div>
-                  <p className="mt-2 line-clamp-4 text-xs leading-6 text-muted-foreground">
-                    {source.snippet}
-                  </p>
-                </div>
-              ))
+                )
+              })
             ) : (
               <EmptyState
                 icon={<FileStack className="size-5" />}

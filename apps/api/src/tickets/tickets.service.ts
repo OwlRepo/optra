@@ -16,6 +16,7 @@ import {
   type TicketFieldConfidence,
   tickets,
 } from '@repo/db'
+import { syncTicketChunk } from '@repo/ai'
 import { ListQueryDto } from '../common/dto/list-query.dto'
 import type { UpdateTicketDto } from './dto/update-ticket.dto'
 
@@ -203,6 +204,22 @@ export class TicketsService implements OnModuleInit {
 
     if (!updated) {
       throw new NotFoundException('Ticket not found')
+    }
+
+    const shouldSyncTicketChunk =
+      updated.status === 'done' &&
+      (
+        (updated.reviewedBy !== null && updated.usefulness === 'useful') ||
+        existing.usefulness === 'useful' ||
+        existing.reviewedBy !== null
+      )
+
+    if (shouldSyncTicketChunk) {
+      await syncTicketChunk(updated).catch((err: unknown) => {
+        this.logger.warn(
+          `Ticket chunk sync failed ticketId=${ticketId}: ${err instanceof Error ? err.message : String(err)}`,
+        )
+      })
     }
 
     return updated

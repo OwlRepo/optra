@@ -14,6 +14,12 @@ import {
   workspaces,
 } from '@repo/db'
 import { AppModule } from '../src/app.module'
+import { syncTicketChunk } from '@repo/ai'
+
+jest.mock('@repo/ai', () => ({
+  ...jest.requireActual('@repo/ai'),
+  syncTicketChunk: jest.fn().mockResolvedValue('embedded'),
+}))
 
 async function cleanupUsers(prefix: string) {
   const matches = await db
@@ -202,6 +208,7 @@ describe('Tickets flow (e2e)', () => {
     expect(patched.body.title).toBe('OTP verification login loop')
     expect(patched.body.usefulness).toBe('useful')
     expect(patched.body.reviewedBy).toBe(owner.user.id)
+    expect(syncTicketChunk).toHaveBeenCalledWith(expect.objectContaining({ id: created.body.id }))
 
     const readBack = await request(app.getHttpServer())
       .get(`/workspaces/${workspaceId}/tickets/${created.body.id}`)

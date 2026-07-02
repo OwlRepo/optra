@@ -12,6 +12,11 @@ import {
   workspaces,
 } from '@repo/db'
 import { TicketsService } from './tickets.service'
+import { syncTicketChunk } from '@repo/ai'
+
+jest.mock('@repo/ai', () => ({
+  syncTicketChunk: jest.fn().mockResolvedValue('embedded'),
+}))
 
 async function cleanupTicketFixtures(prefix: string) {
   const testUsers = await db
@@ -157,6 +162,10 @@ describe('TicketsService', () => {
       'Tickets Spec Patch',
     )
     const created = await service.create(workspace.id, 'Patch transcript')
+    await db
+      .update(tickets)
+      .set({ status: 'done', updatedAt: new Date() })
+      .where(eq(tickets.id, created.ticket.id))
 
     const updated = await service.update(workspace.id, created.ticket.id, user.id, {
       title: 'Patched title',
@@ -172,6 +181,71 @@ describe('TicketsService', () => {
     expect(updated.reviewedBy).toBe(user.id)
     expect(updated.reviewedAt).toBeInstanceOf(Date)
     expect(updated.fieldConfidence.title).toBeGreaterThan(0)
+    expect(syncTicketChunk).toHaveBeenCalledWith(expect.objectContaining({ id: created.ticket.id }))
+  })
+
+  it('patch on non-qualifying state does not sync chunk', async () => {
+    const { workspace, user } = await seedWorkspaceFixture(
+      `${prefix}patch-nonqual@example.com`,
+      'Tickets Spec Patch Nonqual',
+    )
+    const created = await service.create(workspace.id, 'Patch transcript nonqual')
+
+    await service.update(workspace.id, created.ticket.id, user.id, {
+      title: 'Patched title',
+      editState: 'accepted',
+    })
+
+    expect(syncTicketChunk).not.toHaveBeenCalled()
+  })
+
+  it('patch transitioning useful to not_useful still syncs chunk for deletion path', async () => {
+    const { workspace, user } = await seedWorkspaceFixture(
+      `${prefix}patch-toggle@example.com`,
+      'Tickets Spec Patch Toggle',
+    )
+    const [ticket] = await db
+      .insert(tickets)
+      .values({
+        workspaceId: workspace.id,
+        transcript: 'Reviewed transcript',
+        transcriptHash: `reviewed-${Date.now()}`,
+        status: 'done',
+        title: 'Reviewed ticket',
+        productArea: 'general',
+        fieldConfidence: {},
+        usefulness: 'useful',
+        reviewedBy: user.id,
+        reviewedAt: new Date(),
+      })
+      .returning()
+
+    await service.update(workspace.id, ticket.id, user.id, {
+      usefulness: 'not_useful',
+    })
+
+    expect(syncTicketChunk).toHaveBeenCalledWith(expect.objectContaining({ id: ticket.id }))
+  })
+
+  it('patch survives sync failure and still returns updated row', async () => {
+    const { workspace, user } = await seedWorkspaceFixture(
+      `${prefix}patch-syncfail@example.com`,
+      'Tickets Spec Patch Sync Fail',
+    )
+    const created = await service.create(workspace.id, 'Patch transcript sync fail')
+    await db
+      .update(tickets)
+      .set({ status: 'done', updatedAt: new Date() })
+      .where(eq(tickets.id, created.ticket.id))
+    ;(syncTicketChunk as jest.Mock).mockRejectedValueOnce(new Error('embed broke'))
+
+    const updated = await service.update(workspace.id, created.ticket.id, user.id, {
+      usefulness: 'useful',
+      editState: 'accepted',
+    })
+
+    expect(updated.id).toBe(created.ticket.id)
+    expect(updated.usefulness).toBe('useful')
   })
 
   it('wraps insert failures in typed Nest exception', async () => {

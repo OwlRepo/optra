@@ -98,6 +98,13 @@ Ticket copilot note as of 2026-07-01:
 - `python3 scripts/eval/test_extraction_dataset_schema.py` validates extraction-eval dataset shape and `evaluate_extraction.py` field list without network.
 - `python3 scripts/eval/evaluate_extraction.py` is manual/live verification only; it requires `OPENAI_API_KEY` and Python deps from `scripts/eval/requirements.txt`.
 
+Ticket embedding note as of 2026-07-02:
+- `packages/ai/src/vectorstore/index.spec.ts` covers qualifying embed, unchanged skip, content-change re-embed, non-qualifying delete/skip, `backfillTicketEmbeddings()` tallies, and the live DB `chunks_exactly_one_parent_check`.
+- `apps/api/src/tickets/tickets.service.spec.ts` covers review-save sync trigger, useful→not_useful deletion trigger, non-qualifying no-op, and caught/logged sync failures.
+- `packages/ai/src/chains/index.spec.ts` and `packages/ai/src/chains/graph.spec.ts` cover mixed document/ticket citations and ticket-source hydration in both chat paths.
+- `apps/web/app/workspaces/[id]/chat/page.spec.ts` covers ticket citation rendering without link plus legacy persisted sources with no `sourceType`.
+- `apps/api/test/tickets.e2e-spec.ts` covers PATCH review-save calling the mocked `syncTicketChunk` side effect through the real HTTP path.
+
 `packages/db`/`packages/ai` still have no test commands — only `type-check`/`build`/`lint`. Playwright e2e for `apps/web` is still a known gap — deferred until there's a real multi-page flow worth driving a browser through (Priority 2 web pages).
 Confirmed from `packages/ai/package.json` as of 2026-06-30:
 

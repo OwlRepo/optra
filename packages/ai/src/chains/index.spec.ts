@@ -19,6 +19,10 @@ vi.mock('@repo/db', () => ({
     title: 'title',
     sourceUrl: 'sourceUrl',
   },
+  tickets: {
+    id: 'id',
+    title: 'title',
+  },
 }))
 
 vi.mock('@langchain/openai', () => ({
@@ -76,6 +80,7 @@ describe('answerQuestion', () => {
 
     expect(result.sources).toEqual([
       {
+        sourceType: 'document',
         documentId: 'doc-1',
         title: 'Doc One',
         sourceUrl: 'https://example.com/one',
@@ -83,6 +88,7 @@ describe('answerQuestion', () => {
         snippet: 'First chunk content is long enough to become snippet for first source.',
       },
       {
+        sourceType: 'document',
         documentId: 'doc-2',
         title: 'Doc Two',
         sourceUrl: null,
@@ -91,6 +97,63 @@ describe('answerQuestion', () => {
       },
     ])
     expect(tokens.join('')).toBe('hello world')
+  })
+
+  it('returns mixed document and ticket citations, deduped by kind', async () => {
+    similaritySearchMock.mockResolvedValue([
+      {
+        id: 'chunk-1',
+        content: 'Document chunk content.',
+        metadata: { documentId: 'doc-1' },
+        score: 0.91,
+      },
+      {
+        id: 'chunk-2',
+        content: 'Ticket chunk better score.',
+        metadata: { ticketId: 'ticket-1' },
+        score: 0.89,
+      },
+      {
+        id: 'chunk-3',
+        content: 'Ticket chunk lower score duplicate.',
+        metadata: { ticketId: 'ticket-1' },
+        score: 0.4,
+      },
+    ])
+    whereMock
+      .mockResolvedValueOnce([{ id: 'doc-1', title: 'Doc One', sourceUrl: 'https://example.com/one' }])
+      .mockResolvedValueOnce([{ id: 'ticket-1', title: 'Ticket One' }])
+    streamMock.mockResolvedValue(
+      (async function* () {
+        yield { content: 'answer' }
+      })(),
+    )
+
+    const { answerQuestion } = await import('./index')
+    const result = await answerQuestion('question', 'ws-1')
+    const tokens: string[] = []
+    for await (const token of result.stream) {
+      tokens.push(token)
+    }
+
+    expect(result.sources).toEqual([
+      {
+        sourceType: 'document',
+        documentId: 'doc-1',
+        title: 'Doc One',
+        sourceUrl: 'https://example.com/one',
+        score: 0.91,
+        snippet: 'Document chunk content.',
+      },
+      {
+        sourceType: 'ticket',
+        ticketId: 'ticket-1',
+        title: 'Ticket One',
+        score: 0.89,
+        snippet: 'Ticket chunk better score.',
+      },
+    ])
+    expect(tokens).toEqual(['answer'])
   })
 
   it('returns fallback when retrieval empty', async () => {

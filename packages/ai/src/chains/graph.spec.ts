@@ -30,6 +30,10 @@ vi.mock('@repo/db', () => ({
     title: 'title',
     sourceUrl: 'sourceUrl',
   },
+  tickets: {
+    id: 'id',
+    title: 'title',
+  },
 }))
 
 vi.mock('@langchain/openai', () => ({
@@ -182,5 +186,34 @@ describe('answerQuestionWithGraph', () => {
     expect(tokens).toEqual(['regenerated answer'])
     expect(streamMock).toHaveBeenCalledTimes(2)
     expect(invokeMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('returns ticket citations from graph retrieval path', async () => {
+    similaritySearchMock.mockResolvedValue([
+      {
+        id: 'chunk-1',
+        content: 'Ticket context.',
+        metadata: { ticketId: 'ticket-1' },
+        score: 0.91,
+      },
+    ])
+    whereMock.mockResolvedValueOnce([{ id: 'ticket-1', title: 'Ticket One' }])
+    streamMock.mockResolvedValue(
+      (async function* () {
+        yield { content: 'answer' }
+      })(),
+    )
+
+    const result = await answerQuestionWithGraph('question', 'ws-1')
+
+    expect(result.sources).toEqual([
+      {
+        sourceType: 'ticket',
+        ticketId: 'ticket-1',
+        title: 'Ticket One',
+        score: 0.91,
+        snippet: 'Ticket context.',
+      },
+    ])
   })
 })

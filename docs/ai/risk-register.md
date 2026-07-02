@@ -111,6 +111,8 @@ If risk area is missing, mark `UNMAPPED RISK`.
   - session/message reads filter by both `workspaceId` and owning `userId`
   - web proxy never forwards raw OpenAI credentials or calls OpenAI from browser-facing API routes
   - plain-text stream keeps citations out of token body; sources persist on assistant message for reload-safe history
+  - citations correctly discriminate document vs ticket sources in both straight-line and LangGraph paths
+  - legacy persisted `sources` without `sourceType` still render as document citations in FE history/cache reads
 
 - Answer caching on workspace chat is a live tenant-isolation + staleness risk as of 2026-06-30.
   Required checks:
@@ -153,6 +155,8 @@ If risk area is missing, mark `UNMAPPED RISK`.
   - extraction completion never overwrites a row that already left `pending|processing` due to human review or future retries
   - extraction failures surface as ticket `failed` state and web failure banner, never raw 500 to user
   - patch/save stamps `reviewedBy` and `reviewedAt`, preserving auditability for copied Linear tickets
+  - review-save embedding sync only qualifies `done + reviewedBy + usefulness='useful'` tickets, and useful→not_useful transitions remove the ticket chunk
+  - `syncTicketChunk` failures never fail the review-save request; backfill re-run stays idempotent
   - PATCH validators cap large free-text fields before they can bloat row size or API memory
   - usefulness/edit-state feedback stays queryable for dashboard usefulness-rate observability
 

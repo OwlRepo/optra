@@ -16,6 +16,8 @@
 
 ## Create a formal DESIGN.md
 
+**Done.** `DESIGN.md` was written 2026-07-01 via `/design-consultation` during the sidebar-shell revamp — not by this QA pass, noting here since this file is already open for other updates.
+
 **What:** Document the design system (colors, typography, spacing, component conventions) that currently only exists implicitly across `packages/ui/src/globals.css` and component usage patterns in `apps/web`.
 
 **Why:** Future design reviews (including this one) have to reverse-engineer the system from code instead of reading a spec, costing review time and risking inconsistent interpretation.
@@ -69,6 +71,22 @@
 **Context:** Surfaced during `/plan-ceo-review` on 2026-07-01 as a lower-priority expansion candidate, deferred rather than cherry-picked into v1 scope.
 
 **Depends on / blocked by:** Nothing.
+
+## apps/api must run via `bun run dev`, not the compiled build
+
+**What:** Running the API as `node dist/main` (the compiled production build, `nest build` output) causes scrape-queue and ticket-extraction-queue jobs to crash instantly with `Cannot read properties of undefined (reading 'Socket')` — Bull records the job as failed (empty stack trace, ~20-30ms runtime), but the crash happens before the processor's own first DB write, so the source row is left stuck in a non-terminal state (`pending`/`queued`) forever, with no `last_error` to explain why. The ingest-queue is unaffected. Running the exact same code via `nest start --watch` (what `bun run dev` runs) works correctly — verified live: a scrape and a ticket extraction both completed their full pipeline (including a legitimate model-validation failure reaching `status='failed'` with a real error message) with zero errors.
+
+**Why:** This is a real trap for local dev — nothing prevents someone from running `bun run build && node dist/main` instead of `bun run dev`, and the failure mode (silently stuck `pending` rows, no error surfaced anywhere in the UI) is confusing to debug without checking Bull's own job records directly in Redis.
+
+**Root cause not found.** Isolated repros (a bare `db.update()` call, and `db.update()` after importing `@repo/ai`) both succeeded standalone — the failure only reproduces inside the actual long-running NestJS+Bull worker process, and only under the compiled build. Candidate angle for a future investigation: Node v25.0.0 + the compiled CommonJS output (SWC/tsc via `nest build`) vs. `nest start --watch`'s transpilation — something in that specific combination breaks a fresh low-level socket creation (likely inside `pg`'s connection-open path) the first time a queue job needs one, but only reachable through the compiled bundle's module resolution.
+
+**Pros of fixing properly:** Removes a silent-failure trap; compiled builds should behave identically to dev mode.
+
+**Cons:** Real investigation effort into build-tooling internals (SWC/tsc output differences, Node version compatibility) for a bug that has a trivial workaround (use `bun run dev`).
+
+**Context:** Found during `/qa` on 2026-07-02 while investigating a stuck-pending ticket the user reported (`.gstack/qa-reports/qa-report-localhost-2026-07-02.md`). Confirmed reproducible on 2 separate runs against 2 separate queues (scrape, ticket-extraction) under the compiled build, and confirmed NOT reproducing under `bun run dev` on the same code.
+
+**Depends on / blocked by:** Nothing — can be picked up anytime. Start by getting a real stack trace via `node --enable-source-maps --stack-trace-limit=100 dist/main`, since Bull's own stored `failedReason` has an empty `stacktrace` array.
 
 ## Generalize extraction chain for non-transcript inputs
 

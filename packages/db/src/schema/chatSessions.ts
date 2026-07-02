@@ -2,13 +2,9 @@ import { pgEnum, pgTable, text, timestamp, uuid, varchar, jsonb } from 'drizzle-
 import { workspaces } from './workspaces'
 import { users } from './users'
 
-export interface ChatMessageSource {
-  documentId: string
-  title: string
-  sourceUrl: string | null
-  score: number
-  snippet: string
-}
+export type ChatMessageSource =
+  | { sourceType: 'document'; documentId: string; title: string; sourceUrl: string | null; score: number; snippet: string }
+  | { sourceType: 'ticket'; ticketId: string; title: string; score: number; snippet: string }
 
 export const chatMessageRoleEnum = pgEnum('chat_message_role', ['user', 'assistant'])
 
