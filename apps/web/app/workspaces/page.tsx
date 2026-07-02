@@ -163,12 +163,6 @@ export default function WorkspacesPage() {
       <AppHeader
         title="Workspaces"
         description="Create a workspace, review your access, and jump into knowledge operations."
-        badge={<Badge variant="secondary">P2 ready</Badge>}
-        navigation={
-          <Button asChild variant="ghost" size="sm">
-            <Link href="/dashboard">Dashboard</Link>
-          </Button>
-        }
         actions={
           <Button size="sm" onClick={() => setIsModalOpen(true)}>
             <Plus className="size-4" />

@@ -5,8 +5,8 @@ export default function ChatLoading() {
   return (
     <PageShell contentClassName="pb-16">
       <AppHeader
-        className="mt-4 rounded-[calc(var(--radius)+0.5rem)] border border-border/70 bg-background/75"
-        brand={<div className="flex size-11 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-[var(--shadow-md)]"><Sparkles className="size-5" /></div>}
+        className="mt-4 rounded-2xl border border-border/70 bg-background/75"
+        brand={<div className="flex size-11 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-md"><Sparkles className="size-5" /></div>}
         title="Assistant workspace"
         description="Loading conversation surface."
         badge={<Badge variant="secondary">Connecting</Badge>}
