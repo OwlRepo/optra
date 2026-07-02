@@ -6,6 +6,8 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { Button, Card, Input, PageShell, StatusBanner } from '@repo/ui'
+import { Sparkles } from 'lucide-react'
 import { register } from '@/lib/api/auth'
 
 const schema = z.object({
@@ -39,62 +41,50 @@ export default function RegisterPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4">
-      <div className="w-full max-w-sm space-y-6">
-        <div>
-          <h1 className="text-2xl font-semibold">Create your account</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Already have an account?{' '}
-            <Link href="/login" className="underline">
-              Sign in
-            </Link>
-          </p>
+    <PageShell contentClassName="flex min-h-screen items-center justify-center px-4 py-16">
+      <Card variant="elevated" className="w-full max-w-sm space-y-6 p-8">
+        <div className="space-y-4">
+          <Link href="/" className="flex items-center gap-2 text-sm font-semibold">
+            <span className="flex size-9 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-md">
+              <Sparkles className="size-4" />
+            </span>
+            Second Brain
+          </Link>
+          <div>
+            <h1 className="text-2xl font-semibold">Create your account</h1>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Already have an account?{' '}
+              <Link href="/login" className="text-primary underline-offset-4 hover:underline">
+                Sign in
+              </Link>
+            </p>
+          </div>
         </div>
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-          <div>
+          <div className="space-y-2">
             <label htmlFor="email" className="text-sm font-medium">
               Email
             </label>
-            <input
-              id="email"
-              type="email"
-              autoComplete="email"
-              className="mt-1 w-full border rounded-md px-3 py-2 text-sm"
-              {...field('email')}
-            />
-            {errors.email && (
-              <p className="text-xs text-red-500 mt-1">{errors.email.message}</p>
-            )}
+            <Input id="email" type="email" autoComplete="email" {...field('email')} />
+            {errors.email ? <p className="text-xs text-destructive">{errors.email.message}</p> : null}
           </div>
 
-          <div>
+          <div className="space-y-2">
             <label htmlFor="password" className="text-sm font-medium">
               Password
             </label>
-            <input
-              id="password"
-              type="password"
-              autoComplete="new-password"
-              className="mt-1 w-full border rounded-md px-3 py-2 text-sm"
-              {...field('password')}
-            />
-            {errors.password && (
-              <p className="text-xs text-red-500 mt-1">{errors.password.message}</p>
-            )}
+            <Input id="password" type="password" autoComplete="new-password" {...field('password')} />
+            {errors.password ? <p className="text-xs text-destructive">{errors.password.message}</p> : null}
           </div>
 
-          {serverError && <p className="text-sm text-red-500">{serverError}</p>}
+          {serverError ? <StatusBanner variant="error" title={serverError} /> : null}
 
-          <button
-            type="submit"
-            disabled={isSubmitting}
-            className="w-full bg-primary text-primary-foreground rounded-md py-2 text-sm font-medium disabled:opacity-50"
-          >
-            {isSubmitting ? 'Creating account…' : 'Create account'}
-          </button>
+          <Button type="submit" className="w-full" size="lg" isLoading={isSubmitting} loadingText="Creating account">
+            Create account
+          </Button>
         </form>
-      </div>
-    </div>
+      </Card>
+    </PageShell>
   )
 }

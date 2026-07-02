@@ -35,9 +35,9 @@
 Replaces the current pattern where every one of the 6 authenticated pages (dashboard, workspaces list, workspace detail, knowledge-base detail, chat, tickets) independently builds its own `AppHeader` with bespoke `navigation` links.
 
 - **Structure:** persistent, collapsible left sidebar (248px expanded, icon-only collapsed) containing:
-  1. Workspace switcher at top (avatar + name + chevron, opens a workspace-switch menu)
+  1. Workspace switcher at top (avatar + name, links back to `/workspaces` to switch — no inline dropdown-menu primitive exists in `packages/ui` yet, deferred)
   2. Search entry point (`⌘K` style — ties to the "Search" proactive API feature)
-  3. Primary nav: Chat, Knowledge Bases, Tickets, Members, Settings — one shared nav-items model, not per-page ad-hoc links
+  3. Primary nav: Overview, Knowledge Bases, Members, Chat, Tickets, Settings — one shared nav-items model, not per-page ad-hoc links
   4. Active section indicated by a filled dot + lighter card-colored background — not a color change
   5. Collapse toggle + current-user chip pinned to the bottom
 - **Visual weight:** sidebar background uses `--secondary` (dimmer than `--card`), deliberately less prominent than the main content pane — the risk called out in the consultation: users' eyes should land on the actual work, not the chrome.
@@ -62,3 +62,7 @@ Replaces the current pattern where every one of the 6 authenticated pages (dashb
 | 2026-07-01 | Colors, typography, spacing scale kept unchanged | Design review confirmed the existing oklch token system is already disciplined; user explicitly did not want a new color system |
 | 2026-07-01 | Icon-in-colored-circle decoration dropped, not reduced | Design review flagged 13 repeated instances as the strongest AI-slop signal in the app |
 | 2026-07-01 | Sidebar dimmed relative to main content | Deliberate risk — reinforces "efficient tool, not a dashboard you admire," matches the "serious tool for serious support work" memorable-thing answer |
+| 2026-07-01 | Workspace detail split into Overview/Knowledge Bases/Members/Settings routes | Nav model needs real destinations per item; extracted from one overloaded page rather than inventing new backend endpoints |
+| 2026-07-01 | `/dashboard` retired, folded into workspace Overview | Had zero workspace-specific data; `/workspaces` already served as the picker, so a separate global landing page was redundant |
+| 2026-07-02 | Landing page copy rewritten, dead `/dashboard` links fixed | Design audit flagged 4 sections describing the UI/design process instead of the product; E1's dashboard retirement made the old links a real 404, not just stale copy |
+| 2026-07-02 | Auth pages restyled with @repo/ui primitives | QA and design-review both flagged unstyled auth pages as the most visibly unfinished part of the app; zero logic changed, pure component swap |

@@ -5,6 +5,9 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useRouter, useSearchParams } from 'next/navigation'
+import Link from 'next/link'
+import { Button, Card, Input, PageShell, StatusBanner } from '@repo/ui'
+import { Sparkles } from 'lucide-react'
 import { verifyOtp } from '@/lib/api/auth'
 import { markLoggedIn } from '@/lib/auth'
 
@@ -34,7 +37,7 @@ export default function VerifyOtpPage() {
     try {
       await verifyOtp(email, data.code)
       markLoggedIn()
-      router.push('/dashboard')
+      router.push('/workspaces')
     } catch (err: unknown) {
       const message = err && typeof err === 'object' && 'message' in err
         ? String((err as { message: unknown }).message)
@@ -44,45 +47,47 @@ export default function VerifyOtpPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4">
-      <div className="w-full max-w-sm space-y-6">
-        <div>
-          <h1 className="text-2xl font-semibold">Check your email</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            We sent a 6-digit code to <strong>{email}</strong>
-          </p>
+    <PageShell contentClassName="flex min-h-screen items-center justify-center px-4 py-16">
+      <Card variant="elevated" className="w-full max-w-sm space-y-6 p-8">
+        <div className="space-y-4">
+          <Link href="/" className="flex items-center gap-2 text-sm font-semibold">
+            <span className="flex size-9 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-md">
+              <Sparkles className="size-4" />
+            </span>
+            Second Brain
+          </Link>
+          <div>
+            <h1 className="text-2xl font-semibold">Check your email</h1>
+            <p className="mt-1 text-sm text-muted-foreground">
+              We sent a 6-digit code to <strong>{email}</strong>
+            </p>
+          </div>
         </div>
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-          <div>
+          <div className="space-y-2">
             <label htmlFor="code" className="text-sm font-medium">
               Verification code
             </label>
-            <input
+            <Input
               id="code"
               type="text"
               inputMode="numeric"
               maxLength={6}
               autoComplete="one-time-code"
-              className="mt-1 w-full border rounded-md px-3 py-2 text-sm tracking-widest text-center"
+              className="text-center text-lg tracking-widest"
               {...register('code')}
             />
-            {errors.code && (
-              <p className="text-xs text-red-500 mt-1">{errors.code.message}</p>
-            )}
+            {errors.code ? <p className="text-xs text-destructive">{errors.code.message}</p> : null}
           </div>
 
-          {serverError && <p className="text-sm text-red-500">{serverError}</p>}
+          {serverError ? <StatusBanner variant="error" title={serverError} /> : null}
 
-          <button
-            type="submit"
-            disabled={isSubmitting}
-            className="w-full bg-primary text-primary-foreground rounded-md py-2 text-sm font-medium disabled:opacity-50"
-          >
-            {isSubmitting ? 'Verifying…' : 'Verify email'}
-          </button>
+          <Button type="submit" className="w-full" size="lg" isLoading={isSubmitting} loadingText="Verifying">
+            Verify email
+          </Button>
         </form>
-      </div>
-    </div>
+      </Card>
+    </PageShell>
   )
 }
