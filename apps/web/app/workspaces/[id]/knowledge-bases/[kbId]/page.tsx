@@ -709,21 +709,21 @@ export default function KnowledgeBasePage({
             />
           ) : (
             <>
+              <div className="flex items-center justify-between gap-2 rounded-2xl border border-border/70 bg-card p-5">
+                <div className="text-sm font-medium">
+                  {inFlightDocumentCount} document
+                  {inFlightDocumentCount === 1 ? "" : "s"} in flight
+                </div>
+                <div className="text-sm text-muted-foreground">
+                  {hasInFlightDocuments
+                    ? `${documentProgressPercent}% indexed · ${pendingDocumentCount} pending · ${processingDocumentCount} processing · ${failedDocumentCount} failed`
+                    : failedDocumentCount > 0
+                      ? `${doneDocumentCount} done · ${failedDocumentCount} failed`
+                      : `All ${doneDocumentCount} documents indexed.`}
+                </div>
+              </div>
               <Table>
                 <TableHeader>
-                  <div className="flex items-center justify-between gap-2 p-5">
-                    <div className="text-sm font-medium">
-                      {inFlightDocumentCount} document
-                      {inFlightDocumentCount === 1 ? "" : "s"} in flight
-                    </div>
-                    <div className="text-sm text-muted-foreground">
-                      {hasInFlightDocuments
-                        ? `${documentProgressPercent}% indexed · ${pendingDocumentCount} pending · ${processingDocumentCount} processing · ${failedDocumentCount} failed`
-                        : failedDocumentCount > 0
-                          ? `${doneDocumentCount} done · ${failedDocumentCount} failed`
-                          : `All ${doneDocumentCount} documents indexed.`}
-                    </div>
-                  </div>
                   <TableRow>
                     <TableHead>Title</TableHead>
                     <TableHead>Status</TableHead>

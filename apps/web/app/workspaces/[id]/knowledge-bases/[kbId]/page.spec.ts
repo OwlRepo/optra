@@ -361,6 +361,31 @@ describe('KnowledgeBasePage', () => {
     expect(rows[2]?.textContent).toContain('Pending.txt')
   })
 
+  // Regression: ISSUE-002 — document queue summary rendered as a <div> inside
+  // <TableHeader> (<thead>), which only permits <tr> children. Caused a React
+  // hydration warning ("In HTML, %s cannot be a child of <%s>") on every render.
+  // Found by /qa on 2026-07-02
+  // Report: .gstack/qa-reports/qa-report-localhost-2026-07-02.md
+  it('renders the document queue summary outside the table head, not as an invalid child', async () => {
+    listDocumentsMock.mockResolvedValue({
+      items: [
+        { id: 'doc-done', title: 'Done.txt', status: 'done', createdAt: '2026-06-30T00:00:00.000Z', updatedAt: '2026-06-30T00:00:05.000Z' },
+        { id: 'doc-pending', title: 'Pending.txt', status: 'pending', createdAt: '2026-06-30T00:00:01.000Z', updatedAt: '2026-06-30T00:00:10.000Z' },
+      ],
+      nextCursor: null,
+    })
+    listScrapeRunsMock.mockResolvedValue([])
+
+    const { container } = renderPage()
+
+    await screen.findByText('1 document in flight')
+
+    const thead = container.querySelector('thead')
+    expect(thead).not.toBeNull()
+    expect(Array.from(thead!.children).every((child) => child.tagName === 'TR')).toBe(true)
+    expect(thead!.textContent).not.toContain('in flight')
+  })
+
   it('deletes a document after confirmation', async () => {
     listDocumentsMock
       .mockResolvedValueOnce({
