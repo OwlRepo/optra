@@ -123,6 +123,7 @@ If risk area is missing, mark `UNMAPPED RISK`.
   - first cache version bootstraps to `1`; invalidation bumps move to `2+` so old exact keys go dark
   - document ingest `done` and document delete both call `cache.bumpVersion(workspaceId)`
   - ticket-driven chunk changes (`syncTicketChunk` outcomes `embedded`/`deleted`) also bump workspace cache version, including backfill path once per changed workspace
+  - fallback/insufficient-info responses (`isFallback: true`) never get written to either cache layer, in both straight-line and LangGraph paths
   - semantic-cache writes opportunistically delete that workspace's expired rows without blocking successful cache writes if cleanup fails
   - Redis/cache failures fail soft to normal chat answers; cache outage must not 500 chat
   - optional `X-Chat-Cache` header reflects `exact|semantic|miss` for observability/tests

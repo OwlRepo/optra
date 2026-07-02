@@ -1,5 +1,33 @@
 # TODOS
 
+## Detect model-generated fallback phrase on real retrieval path
+
+**What:** Distinguish the softer edge case where the model itself returns the same fallback phrase even though real chunks were retrieved and a real generate path ran.
+
+**Why:** Current `isFallback` fix only blocks caching for deterministic fallback branches (`chunks.length === 0` or LangGraph fallback node). It does not catch the case where retrieval succeeded but the LLM still answered with fallback wording.
+
+**Pros:** Closes the remaining path where an effectively non-answer could still be cached despite real retrieval.
+
+**Cons:** Not cheap or obvious. String-matching the fallback phrase is brittle; adding a second grading/model call adds cost and latency. Needs a deliberate product/quality decision, not a rushed patch.
+
+**Context:** Surfaced during cache-poisoning RCA on 2026-07-02 while fixing deterministic fallback caching. Documented explicitly in `.ai-scratchpad.md` for "fallback/non-answers get cached as if they were real answers".
+
+**Depends on / blocked by:** Decision on whether to accept brittle phrase matching, add a separate grading signal, or leave this path intentionally allowed.
+
+## Calibrate `RETRIEVAL_SCORE_THRESHOLD=0.45` with eval data
+
+**What:** Validate and tune `RETRIEVAL_SCORE_THRESHOLD=0.45` using `scripts/eval/evaluate.py` and real/support-like evaluation sets instead of leaving it as an operational estimate.
+
+**Why:** The current threshold fixed live behavior, but it is still an estimate. Bad calibration risks either false fallback (too high) or low-quality grounded answers (too low).
+
+**Pros:** Moves retrieval routing from gut-feel to measured thresholding.
+
+**Cons:** Requires real eval runs, representative dataset quality, and time to compare outcomes across candidate thresholds.
+
+**Context:** Surfaced during 2026-07-02 chat fallback investigation. The operational threshold change was already applied before this code fix; this follow-up makes that number evidence-backed.
+
+**Depends on / blocked by:** Usable eval dataset and time to run `scripts/eval/evaluate.py` with meaningful samples.
+
 ## Live Linear API integration for ticket export
 
 **What:** Real OAuth + ticket-create API call to Linear, replacing the v1 manual copy/paste export.

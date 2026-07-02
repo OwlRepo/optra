@@ -68,7 +68,7 @@ export class ChatService {
 
     const version = await this.cache.getVersion(workspaceId)
     await this.usage.assertWithinBudget(workspaceId)
-    const { sources, stream } = await answerQuestion(message, workspaceId)
+    const { sources, stream, isFallback } = await answerQuestion(message, workspaceId)
 
     return {
       sessionId: session.id,
@@ -81,15 +81,17 @@ export class ChatService {
           countTokens(message) + countTokens(fullText),
         )
         await this.persistAssistant(session.id, fullText, sources)
-        await this.cache.setExact(workspaceId, message, fullText, sources)
-        await this.cache.saveSemantic(
-          workspaceId,
-          version,
-          message,
-          embedding,
-          fullText,
-          sources,
-        )
+        if (!isFallback) {
+          await this.cache.setExact(workspaceId, message, fullText, sources)
+          await this.cache.saveSemantic(
+            workspaceId,
+            version,
+            message,
+            embedding,
+            fullText,
+            sources,
+          )
+        }
       },
     }
   }

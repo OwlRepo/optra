@@ -79,6 +79,7 @@ describe('answerQuestion', () => {
       tokens.push(token)
     }
 
+    expect(result.isFallback).toBe(false)
     expect(result.sources).toEqual([
       {
         sourceType: 'document',
@@ -167,6 +168,7 @@ describe('answerQuestion', () => {
       tokens.push(token)
     }
 
+    expect(result.isFallback).toBe(true)
     expect(result.sources).toEqual([])
     expect(tokens).toEqual(["I don't have enough information to answer that."])
   })

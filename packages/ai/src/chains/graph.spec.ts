@@ -88,6 +88,7 @@ describe('answerQuestionWithGraph', () => {
       tokens.push(token)
     }
 
+    expect(result.isFallback).toBe(false)
     expect(tokens).toEqual(['answer'])
     expect(similaritySearchMock).toHaveBeenCalledTimes(1)
     expect(streamMock).toHaveBeenCalledTimes(1)
@@ -148,6 +149,7 @@ describe('answerQuestionWithGraph', () => {
       tokens.push(token)
     }
 
+    expect(result.isFallback).toBe(true)
     expect(tokens).toEqual([
       "I don't have enough information to answer that. Consider escalating to a human.",
     ])

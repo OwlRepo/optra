@@ -131,7 +131,7 @@ describe('ChatService', () => {
     usage.addUsage.mockResolvedValue(undefined)
     ;(embedQuery as jest.Mock).mockResolvedValue([0.1, 0.2, 0.3])
     ;(countTokens as jest.Mock).mockImplementation((text: string) => text.length)
-    ;(answerQuestion as jest.Mock).mockResolvedValue({ sources, stream })
+    ;(answerQuestion as jest.Mock).mockResolvedValue({ sources, stream, isFallback: false })
 
     const result = await service.answer(workspace.id, user.id, 'Hello assistant')
 
@@ -180,6 +180,44 @@ describe('ChatService', () => {
     expect(messages[1]?.sources).toEqual(sources)
   })
 
+  it('skips cache writes for fallback miss answers but still persists assistant message', async () => {
+    const { user, workspace } = await seedWorkspaceFixture(
+      `${prefix}fallback@example.com`,
+      'Chat Spec Fallback',
+    )
+    const stream = (async function* () {
+      yield "I don't have enough information to answer that."
+    })()
+    cache.getExact.mockResolvedValue(null)
+    cache.getSemantic.mockResolvedValue(null)
+    cache.getVersion.mockResolvedValue(1)
+    usage.assertWithinBudget.mockResolvedValue(undefined)
+    usage.addUsage.mockResolvedValue(undefined)
+    ;(embedQuery as jest.Mock).mockResolvedValue([0.1, 0.2, 0.3])
+    ;(countTokens as jest.Mock).mockImplementation((text: string) => text.length)
+    ;(answerQuestion as jest.Mock).mockResolvedValue({ sources: [], stream, isFallback: true })
+
+    const result = await service.answer(workspace.id, user.id, 'Unknown question')
+    const body: string[] = []
+    for await (const token of result.stream) {
+      body.push(token)
+    }
+
+    await result.onComplete(body.join(''))
+
+    expect(cache.setExact).not.toHaveBeenCalled()
+    expect(cache.saveSemantic).not.toHaveBeenCalled()
+    const messages = await db
+      .select()
+      .from(chatMessages)
+      .where(eq(chatMessages.sessionId, result.sessionId))
+      .orderBy(asc(chatMessages.createdAt))
+
+    expect(messages).toHaveLength(2)
+    expect(messages[1]?.role).toBe('assistant')
+    expect(messages[1]?.content).toBe("I don't have enough information to answer that.")
+  })
+
   it('reuses existing sessionId and scopes listSessions to user + workspace', async () => {
     const mine = await seedWorkspaceFixture(`${prefix}mine@example.com`, 'Chat Spec Mine')
     const other = await seedWorkspaceFixture(`${prefix}other@example.com`, 'Chat Spec Other')
@@ -199,6 +237,7 @@ describe('ChatService', () => {
       stream: (async function* () {
         yield 'second'
       })(),
+      isFallback: false,
     })
     ;(embedQuery as jest.Mock).mockResolvedValue([0.7])
     ;(countTokens as jest.Mock).mockImplementation((text: string) => text.length)
@@ -218,6 +257,7 @@ describe('ChatService', () => {
       stream: (async function* () {
         yield 'other'
       })(),
+      isFallback: false,
     })
     ;(embedQuery as jest.Mock).mockResolvedValue([0.5])
     ;(countTokens as jest.Mock).mockImplementation((text: string) => text.length)
@@ -284,6 +324,7 @@ describe('ChatService', () => {
       stream: (async function* () {
         yield 'answer'
       })(),
+      isFallback: false,
     })
 
     const mineTurn = await service.answer(mine.workspace.id, mine.user.id, 'Need answer')

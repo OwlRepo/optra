@@ -27,6 +27,7 @@ export type ChatSource =
 export interface AnswerResult {
   sources: ChatSource[]
   stream: AsyncGenerator<string>
+  isFallback: boolean
 }
 
 export async function answerQuestion(
@@ -44,6 +45,7 @@ export async function answerQuestion(
   if (chunks.length === 0) {
     return {
       sources: [],
+      isFallback: true,
       stream: (async function* () {
         yield "I don't have enough information to answer that."
       })(),
@@ -136,6 +138,7 @@ export async function answerQuestion(
 
   return {
     sources,
+    isFallback: false,
     stream: (async function* () {
       const context = buildContext(chunks)
       const stream = await llm.stream([

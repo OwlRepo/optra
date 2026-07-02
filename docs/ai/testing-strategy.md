@@ -77,6 +77,7 @@ Chat UI note as of 2026-06-30:
 Chat cache note as of 2026-06-30:
 - `apps/api/src/cache/cache.service.spec.ts` covers Redis exact cache versioning + semantic thresholding.
 - `apps/api/src/cache/cache.service.spec.ts` now also covers semantic TTL query filtering (`SEMANTIC_CACHE_TTL_HOURS`) and expired-row cleanup-on-write without masking successful inserts.
+- `packages/ai/src/chains/index.spec.ts`, `packages/ai/src/chains/graph.spec.ts`, and `apps/api/src/chat/chat.service.spec.ts` now cover `isFallback` propagation plus the "fallback answers never write exact/semantic cache entries" rule.
 - `apps/api/src/chat/chat.service.spec.ts` covers exact-hit, semantic-hit, miss-to-cache, and single-embed behavior.
 - `apps/api/test/chat.e2e-spec.ts` covers repeat-question cache hits and version-bump invalidation after KB mutation.
 

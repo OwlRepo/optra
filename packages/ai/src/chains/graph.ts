@@ -41,6 +41,7 @@ const GraphState = Annotation.Root({
   grounded: Annotation<boolean | undefined>,
   regenerated: Annotation<boolean>,
   answerText: Annotation<string | undefined>,
+  isFallback: Annotation<boolean>,
 })
 
 function buildContext(chunks: Awaited<ReturnType<typeof similaritySearch>>): string {
@@ -251,6 +252,7 @@ async function fallbackNode() {
   return {
     answerText: FALLBACK_MESSAGE,
     sources: [],
+    isFallback: true,
   }
 }
 
@@ -283,10 +285,12 @@ export async function answerQuestionWithGraph(
     chunks: [],
     sources: [],
     regenerated: false,
+    isFallback: false,
   })
 
   return {
     sources: result.sources ?? [],
+    isFallback: result.isFallback ?? false,
     stream: (async function* () {
       yield result.answerText ?? FALLBACK_MESSAGE
     })(),
