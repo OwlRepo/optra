@@ -178,7 +178,7 @@ describe('WorkspaceChatPage', () => {
   })
 
   it('renders sessions and sources from response header/persisted messages', async () => {
-    renderPage()
+    const { container } = renderPage()
 
     fireEvent.click(await screen.findByRole('button', { name: 'Show history' }))
     expect(await screen.findByText('Billing help')).toBeDefined()
@@ -187,6 +187,8 @@ describe('WorkspaceChatPage', () => {
       expect(screen.getByText('Support SOP')).toBeDefined()
       expect(screen.getByText('Grounded excerpt')).toBeDefined()
     })
+    expect(container.querySelector('svg.lucide-search.size-5.text-primary')).not.toBeNull()
+    expect(container.querySelector('.rounded-2xl.bg-primary\\/10.text-primary')).toBeNull()
   })
 
   it('loads session history and new chat clears session body', async () => {

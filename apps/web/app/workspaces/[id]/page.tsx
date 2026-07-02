@@ -146,15 +146,15 @@ export default function WorkspaceOverviewPage({ params }: { params: { id: string
     switch (type) {
       case 'document_ingested':
       case 'document_failed':
-        return <FileText className="size-4" />
+        return <FileText className="size-5" />
       case 'scrape_completed':
       case 'scrape_failed':
-        return <Globe className="size-4" />
+        return <Globe className="size-5" />
       case 'ticket_extracted':
       case 'ticket_failed':
-        return <Ticket className="size-4" />
+        return <Ticket className="size-5" />
       default:
-        return <CircleAlert className="size-4" />
+        return <CircleAlert className="size-5" />
     }
   }, [])
 
@@ -187,7 +187,7 @@ export default function WorkspaceOverviewPage({ params }: { params: { id: string
             {quickLinks(workspaceId).map((link) => (
               <Link key={link.href} href={link.href}>
                 <Card variant="elevated" className="flex items-start gap-4 p-6 transition-colors hover:bg-card/80">
-                  <span className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-accent/20 text-accent-foreground">{link.icon}</span>
+                  <span className="shrink-0 text-accent-foreground">{link.icon}</span>
                   <div>
                     <h3 className="text-lg font-semibold">{link.label}</h3>
                     <p className="mt-1 text-sm text-muted-foreground">{link.description}</p>
@@ -210,9 +210,7 @@ export default function WorkspaceOverviewPage({ params }: { params: { id: string
               <div className="space-y-3">
                 {events.map((event) => (
                   <Card key={event.id} variant="elevated" className="flex items-start gap-4 p-5">
-                    <span className="flex size-10 shrink-0 items-center justify-center rounded-2xl bg-secondary text-secondary-foreground">
-                      {eventIcon(event.type)}
-                    </span>
+                    <span className="shrink-0 text-secondary-foreground">{eventIcon(event.type)}</span>
                     <div className="min-w-0 flex-1 space-y-1">
                       <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
                         <h3 className="font-medium">{event.title}</h3>

@@ -568,9 +568,7 @@ export default function WorkspaceChatPage({ params }: { params: { id: string } }
 
         <Card variant="subtle" className="p-4">
           <div className="flex items-center gap-3">
-            <div className="flex size-10 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-              <Search className="size-5" />
-            </div>
+            <Search className="size-5 text-primary" />
             <div>
               <p className="text-sm font-semibold text-primary">Sources</p>
               <p className="text-xs text-muted-foreground">Latest assistant citations</p>

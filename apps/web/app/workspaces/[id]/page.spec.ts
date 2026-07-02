@@ -84,7 +84,7 @@ describe('WorkspaceOverviewPage', () => {
     getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
     listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'member' }], nextCursor: null })
 
-    renderPage()
+    const { container } = renderPage()
 
     const kbLink = await screen.findByRole('link', { name: 'Knowledge Bases' })
     expect(kbLink.getAttribute('href')).toBe('/workspaces/ws-1/knowledge-bases')
@@ -92,6 +92,8 @@ describe('WorkspaceOverviewPage', () => {
     expect(screen.getByRole('link', { name: 'Chat' }).getAttribute('href')).toBe('/workspaces/ws-1/chat')
     expect(screen.getByRole('link', { name: 'Tickets' }).getAttribute('href')).toBe('/workspaces/ws-1/tickets')
     expect(screen.getByRole('link', { name: 'Settings' }).getAttribute('href')).toBe('/workspaces/ws-1/settings')
+    expect(container.querySelector('span.shrink-0.text-accent-foreground')).not.toBeNull()
+    expect(container.querySelector('.rounded-2xl.bg-accent\\/20.text-accent-foreground')).toBeNull()
   })
 
   it('redirects to login on unauthorized load error', async () => {
@@ -137,10 +139,12 @@ describe('WorkspaceOverviewPage', () => {
       nextCursor: null,
     })
 
-    renderPage()
+    const { container } = renderPage()
 
     expect(await screen.findByText('Imported guide')).toBeDefined()
     expect(screen.getByText('Jul 2, 2026, 9:00 AM')).toBeDefined()
+    expect(container.querySelector('span.shrink-0.text-secondary-foreground')).not.toBeNull()
+    expect(container.querySelector('.rounded-2xl.bg-secondary.text-secondary-foreground')).toBeNull()
     await waitFor(() => {
       expect(markEventsSeenMock).toHaveBeenCalledTimes(1)
       expect(markEventsSeenMock).toHaveBeenCalledWith('ws-1')

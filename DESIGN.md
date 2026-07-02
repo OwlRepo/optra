@@ -60,7 +60,7 @@ Replaces the current pattern where every one of the 6 authenticated pages (dashb
 |------|----------|-----------|
 | 2026-07-01 | Sidebar shell replaces per-page headers | Design review found no shared nav model across 6 pages — critical structural gap, not a polish item |
 | 2026-07-01 | Colors, typography, spacing scale kept unchanged | Design review confirmed the existing oklch token system is already disciplined; user explicitly did not want a new color system |
-| 2026-07-01 | Icon-in-colored-circle decoration dropped, not reduced | Design review flagged 13 repeated instances as the strongest AI-slop signal in the app |
+| 2026-07-01 | Icon-in-colored-circle decoration dropped, not reduced | Design review flagged 13 repeated instances as the strongest AI-slop signal in the app. Implemented 2026-07-02 across the 6 live instances found in the current codebase (landing page hero/pillars/features, workspace Overview quick-links/activity feed, chat Sources panel); brand/logo marks and identity avatars were intentionally excluded because they are identity, not decorative filler. |
 | 2026-07-01 | Sidebar dimmed relative to main content | Deliberate risk — reinforces "efficient tool, not a dashboard you admire," matches the "serious tool for serious support work" memorable-thing answer |
 | 2026-07-01 | Workspace detail split into Overview/Knowledge Bases/Members/Settings routes | Nav model needs real destinations per item; extracted from one overloaded page rather than inventing new backend endpoints |
 | 2026-07-01 | `/dashboard` retired, folded into workspace Overview | Had zero workspace-specific data; `/workspaces` already served as the picker, so a separate global landing page was redundant |

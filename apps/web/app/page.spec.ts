@@ -40,4 +40,20 @@ describe('Home', () => {
     expect(screen.queryAllByText('Dashboard surfaces empty states, onboarding checklist, and confidence-building feedback patterns.')).toHaveLength(0)
     expect(screen.getAllByText('Workspace overview surfaces empty states, onboarding checklist, and confidence-building feedback patterns.').length).toBeGreaterThan(0)
   })
+
+  it('keeps landing content icons visible while removing the colored-circle wrappers', () => {
+    const { container } = render(React.createElement(Home))
+
+    expect(screen.getAllByText('Agent question').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Find right answer instantly').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('One place for support context').length).toBeGreaterThan(0)
+
+    expect(container.querySelector('svg.lucide-message-square-text.size-5.text-primary')).not.toBeNull()
+    expect(container.querySelector('svg.lucide-file-stack.mt-6.size-5.text-accent-foreground')).not.toBeNull()
+    expect(container.querySelector('svg.lucide-search.size-5.text-primary')).not.toBeNull()
+
+    expect(container.querySelector('.size-10.rounded-2xl.bg-primary.text-primary-foreground')).toBeNull()
+    expect(container.querySelector('.size-12.rounded-2xl.bg-primary\\/10.text-primary')).toBeNull()
+    expect(container.querySelector('.size-12.rounded-2xl.bg-accent\\/20.text-accent-foreground')).toBeNull()
+  })
 })

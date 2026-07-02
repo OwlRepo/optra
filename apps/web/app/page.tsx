@@ -143,9 +143,7 @@ export default function Home() {
             </div>
             <div className="space-y-4 rounded-xl border border-border/60 bg-background/80 p-5 shadow-md">
               <div className="flex items-center gap-3">
-                <div className="flex size-10 items-center justify-center rounded-2xl bg-primary text-primary-foreground">
-                  <MessageSquareText className="size-4" />
-                </div>
+                <MessageSquareText className="size-5 text-primary" />
                 <div>
                   <p className="text-sm font-semibold">Agent question</p>
                   <p className="text-sm text-muted-foreground">“Customer cannot update billing email. What should I do?”</p>
@@ -181,9 +179,7 @@ export default function Home() {
         <div className="grid gap-5 lg:grid-cols-3">
           {pillars.map(({ icon: Icon, title, description }) => (
             <Card key={title} variant="elevated" className="group p-6 hover:-translate-y-1 hover:border-primary/20">
-              <div className="flex size-12 items-center justify-center rounded-2xl bg-primary/10 text-primary shadow-sm">
-                <Icon className="size-5" />
-              </div>
+              <Icon className="size-5 text-primary" />
               <h3 className="mt-6 text-2xl font-semibold">{title}</h3>
               <p className="mt-3 text-sm leading-7 text-muted-foreground">{description}</p>
             </Card>
@@ -201,9 +197,7 @@ export default function Home() {
           {features.map(({ eyebrow, title, description, icon: Icon }) => (
             <Card key={title} variant="subtle" className="p-6 hover:-translate-y-1 hover:shadow-lg">
               <Badge variant="outline" className="w-fit">{eyebrow}</Badge>
-              <div className="mt-6 flex size-12 items-center justify-center rounded-2xl bg-accent/20 text-accent-foreground">
-                <Icon className="size-5" />
-              </div>
+              <Icon className="mt-6 size-5 text-accent-foreground" />
               <h3 className="mt-6 text-2xl font-semibold">{title}</h3>
               <p className="mt-3 text-sm leading-7 text-muted-foreground">{description}</p>
             </Card>
