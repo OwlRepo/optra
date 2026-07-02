@@ -8,6 +8,7 @@ const whereMock = vi.fn()
 
 vi.mock('../vectorstore', () => ({
   similaritySearch: similaritySearchMock,
+  similaritySearchWithTicketSlot: similaritySearchMock,
 }))
 
 vi.mock('@repo/db', () => ({

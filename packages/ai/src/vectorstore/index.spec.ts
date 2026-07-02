@@ -101,6 +101,47 @@ async function seedTicket(workspaceId: string, reviewedBy: string, overrides: Pa
   return ticket
 }
 
+async function seedDocumentChunk(workspaceId: string, kbId: string, embedding: number[]) {
+  const [document] = await db
+    .insert(documents)
+    .values({
+      workspaceId,
+      knowledgeBaseId: kbId,
+      title: 'Doc',
+      storageKey: `doc-${crypto.randomUUID()}.txt`,
+      status: 'done',
+    })
+    .returning()
+
+  const [chunk] = await db
+    .insert(chunks)
+    .values({
+      workspaceId,
+      documentId: document.id,
+      content: 'doc content',
+      contentHash: crypto.randomUUID().replace(/-/g, ''),
+      embedding,
+    })
+    .returning()
+
+  return { document, chunk }
+}
+
+async function seedTicketChunk(workspaceId: string, ticketId: string, embedding: number[]) {
+  const [chunk] = await db
+    .insert(chunks)
+    .values({
+      workspaceId,
+      ticketId,
+      content: 'ticket content',
+      contentHash: crypto.randomUUID().replace(/-/g, ''),
+      embedding,
+    })
+    .returning()
+
+  return chunk
+}
+
 describe('ticket vector sync', () => {
   const prefix = `vectorstore-ticket-spec-${Date.now()}`
 
@@ -111,10 +152,6 @@ describe('ticket vector sync', () => {
 
   afterEach(async () => {
     await cleanupFixtures(prefix)
-  })
-
-  afterAll(async () => {
-    await pool.end()
   })
 
   it('qualifying ticket with no existing chunk embeds one ticket chunk', async () => {
@@ -255,4 +292,121 @@ describe('ticket vector sync', () => {
     expect(result.embedded).toBeGreaterThanOrEqual(1)
     expect(result.skipped + result.deleted + result.unchanged + result.embedded).toBe(result.processed)
   })
+})
+
+describe('similaritySearchWithTicketSlot', () => {
+  const prefix = `vectorstore-search-spec-${Date.now()}`
+  const HIGH = new Array(1536).fill(1)
+  const MID = new Array(1536).fill(1).map((value, index) => (index < 768 ? value : -1))
+  const LOW = new Array(1536).fill(-1)
+  const OVERRIDE = new Array(1536).fill(1).map((value, index) => (index < 1150 ? value : -1))
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    delete process.env.TICKET_SLOT_MIN_SCORE
+    delete process.env.TICKET_SLOT_RESERVE
+  })
+
+  afterEach(async () => {
+    delete process.env.TICKET_SLOT_MIN_SCORE
+    delete process.env.TICKET_SLOT_RESERVE
+    await cleanupFixtures(prefix)
+  })
+
+  it('qualifying ticket takes reserved slot and ranks first', async () => {
+    const { workspace, user, kb } = await seedWorkspace(prefix)
+    await seedDocumentChunk(workspace.id, kb.id, MID)
+    const ticket = await seedTicket(workspace.id, user.id)
+    const ticketChunk = await seedTicketChunk(workspace.id, ticket.id, HIGH)
+    const { similaritySearchWithTicketSlot } = await import('./index')
+    embedQueryMock.mockResolvedValueOnce(new Array(1536).fill(1))
+
+    const result = await similaritySearchWithTicketSlot('question', workspace.id, 5)
+
+    expect(result[0]?.id).toBe(ticketChunk.id)
+    expect(result.some((entry) => entry.id === ticketChunk.id)).toBe(true)
+  })
+
+  it('below-floor ticket gets excluded and falls back to document results', async () => {
+    const { workspace, user, kb } = await seedWorkspace(prefix)
+    const { chunk: documentChunk } = await seedDocumentChunk(workspace.id, kb.id, MID)
+    const ticket = await seedTicket(workspace.id, user.id)
+    const ticketChunk = await seedTicketChunk(workspace.id, ticket.id, LOW)
+    const { similaritySearchWithTicketSlot } = await import('./index')
+    embedQueryMock.mockResolvedValueOnce(new Array(1536).fill(1))
+
+    const result = await similaritySearchWithTicketSlot('question', workspace.id, 5)
+
+    expect(result.some((entry) => entry.id === ticketChunk.id)).toBe(false)
+    expect(result).toEqual([
+      expect.objectContaining({
+        id: documentChunk.id,
+        content: 'doc content',
+      }),
+    ])
+  })
+
+  it('with zero ticket chunks behaves like document-only retrieval', async () => {
+    const { workspace, kb } = await seedWorkspace(prefix)
+    const { chunk: documentChunk } = await seedDocumentChunk(workspace.id, kb.id, MID)
+    const { similaritySearchWithTicketSlot } = await import('./index')
+    embedQueryMock.mockResolvedValueOnce(new Array(1536).fill(1))
+
+    const result = await similaritySearchWithTicketSlot('question', workspace.id, 5)
+
+    expect(result).toEqual([
+      expect.objectContaining({
+        id: documentChunk.id,
+        content: 'doc content',
+      }),
+    ])
+  })
+
+  it('reserved slot shrinks document budget and never exceeds limit', async () => {
+    const { workspace, user, kb } = await seedWorkspace(prefix)
+    const docChunks = await Promise.all([
+      seedDocumentChunk(workspace.id, kb.id, MID),
+      seedDocumentChunk(workspace.id, kb.id, MID),
+      seedDocumentChunk(workspace.id, kb.id, MID),
+      seedDocumentChunk(workspace.id, kb.id, MID),
+    ])
+    const ticket = await seedTicket(workspace.id, user.id)
+    const ticketChunk = await seedTicketChunk(workspace.id, ticket.id, HIGH)
+    const { similaritySearchWithTicketSlot } = await import('./index')
+    embedQueryMock.mockResolvedValueOnce(new Array(1536).fill(1))
+
+    const result = await similaritySearchWithTicketSlot('question', workspace.id, 3)
+
+    expect(result).toHaveLength(3)
+    expect(result.filter((entry) => entry.id === ticketChunk.id)).toHaveLength(1)
+    expect(
+      result.filter((entry) =>
+        docChunks.some(({ chunk }) => chunk.id === entry.id),
+      ),
+    ).toHaveLength(2)
+  })
+
+  it('respects TICKET_SLOT_MIN_SCORE override', async () => {
+    const { workspace, user, kb } = await seedWorkspace(prefix)
+    const ticket = await seedTicket(workspace.id, user.id)
+    const ticketChunk = await seedTicketChunk(workspace.id, ticket.id, OVERRIDE)
+    await seedDocumentChunk(workspace.id, kb.id, MID)
+    const { similaritySearchWithTicketSlot } = await import('./index')
+    embedQueryMock.mockResolvedValueOnce(new Array(1536).fill(1))
+
+    const defaultResult = await similaritySearchWithTicketSlot('question', workspace.id, 5)
+
+    expect(defaultResult.some((entry) => entry.id === ticketChunk.id)).toBe(true)
+
+    process.env.TICKET_SLOT_MIN_SCORE = '0.99'
+    embedQueryMock.mockResolvedValueOnce(new Array(1536).fill(1))
+
+    const overrideResult = await similaritySearchWithTicketSlot('question', workspace.id, 5)
+
+    expect(overrideResult.some((entry) => entry.id === ticketChunk.id)).toBe(false)
+  })
+})
+
+afterAll(async () => {
+  await pool.end()
 })

@@ -2,7 +2,7 @@ import { ChatOpenAI } from '@langchain/openai'
 import { SystemMessage, HumanMessage } from '@langchain/core/messages'
 import { db, documents, tickets } from '@repo/db'
 import { inArray } from 'drizzle-orm'
-import { similaritySearch } from '../vectorstore'
+import { similaritySearch, similaritySearchWithTicketSlot } from '../vectorstore'
 
 const llm = new ChatOpenAI({
   modelName: process.env.OPENAI_CHAT_MODEL ?? 'gpt-4-turbo',
@@ -39,7 +39,7 @@ export async function answerQuestion(
     return answerQuestionWithGraph(question, workspaceId, limit)
   }
 
-  const chunks = await similaritySearch(question, workspaceId, limit)
+  const chunks = await similaritySearchWithTicketSlot(question, workspaceId, limit)
 
   if (chunks.length === 0) {
     return {

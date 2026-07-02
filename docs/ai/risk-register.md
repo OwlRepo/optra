@@ -108,6 +108,7 @@ If risk area is missing, mark `UNMAPPED RISK`.
   Required checks:
   - backend route stays nested under `:workspaceId` with `JwtAuthGuard` + `WorkspaceMemberGuard`
   - retrieval only uses guarded route `workspaceId`, never body-supplied tenant identifiers
+  - ticket chunks below `TICKET_SLOT_MIN_SCORE` never get force-included, reserved ticket chunks never exceed `TICKET_SLOT_RESERVE`, and total retrieved chunk count never exceeds caller `limit`
   - session/message reads filter by both `workspaceId` and owning `userId`
   - web proxy never forwards raw OpenAI credentials or calls OpenAI from browser-facing API routes
   - plain-text stream keeps citations out of token body; sources persist on assistant message for reload-safe history

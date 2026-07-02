@@ -3,7 +3,7 @@ import { ChatOpenAI } from '@langchain/openai'
 import { Annotation, END, START, StateGraph } from '@langchain/langgraph'
 import { db, documents, tickets } from '@repo/db'
 import { inArray } from 'drizzle-orm'
-import { similaritySearch } from '../vectorstore'
+import { similaritySearch, similaritySearchWithTicketSlot } from '../vectorstore'
 import type { AnswerResult, ChatSource } from './index'
 
 const llm = new ChatOpenAI({
@@ -165,7 +165,11 @@ function retrievalThreshold() {
 }
 
 async function retrieveNode(state: typeof GraphState.State) {
-  const chunks = await similaritySearch(state.question, state.workspaceId, state.limit)
+  const chunks = await similaritySearchWithTicketSlot(
+    state.question,
+    state.workspaceId,
+    state.limit,
+  )
   const sources = await buildSources(chunks)
   return { chunks, sources }
 }

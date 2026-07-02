@@ -88,6 +88,84 @@ export async function similaritySearch(
   }))
 }
 
+function ticketSlotReserve(): number {
+  return Number.parseInt(process.env.TICKET_SLOT_RESERVE ?? '1', 10)
+}
+
+function ticketSlotMinScore(): number {
+  return Number.parseFloat(process.env.TICKET_SLOT_MIN_SCORE ?? '0.3')
+}
+
+export async function similaritySearchWithTicketSlot(
+  query: string,
+  workspaceId: string,
+  limit = 5
+): Promise<SearchResult[]> {
+  const queryVector = await embedQuery(query)
+  const vectorString = `[${queryVector.join(',')}]`
+  const reserve = ticketSlotReserve()
+  const minScore = ticketSlotMinScore()
+
+  const documentRows = await db.execute<{
+    id: string
+    content: string
+    metadata: Record<string, unknown>
+    score: number
+  }>(sql`
+    SELECT
+      id,
+      content,
+      metadata,
+      1 - (embedding <=> ${vectorString}::vector) AS score
+    FROM chunks
+    WHERE workspace_id = ${workspaceId}::uuid AND document_id IS NOT NULL
+    ORDER BY embedding <=> ${vectorString}::vector
+    LIMIT ${limit}
+  `)
+
+  const ticketRows = await db.execute<{
+    id: string
+    content: string
+    metadata: Record<string, unknown>
+    score: number
+  }>(sql`
+    SELECT
+      id,
+      content,
+      metadata,
+      1 - (embedding <=> ${vectorString}::vector) AS score
+    FROM chunks
+    WHERE workspace_id = ${workspaceId}::uuid AND ticket_id IS NOT NULL
+    ORDER BY embedding <=> ${vectorString}::vector
+    LIMIT ${reserve}
+  `)
+
+  const documentResults: SearchResult[] = documentRows.rows.map(row => ({
+    id: row.id,
+    content: row.content,
+    metadata: row.metadata ?? {},
+    score: row.score,
+  }))
+
+  const qualifyingTicketResults: SearchResult[] = ticketRows.rows
+    .filter(row => row.score >= minScore)
+    .map(row => ({
+      id: row.id,
+      content: row.content,
+      metadata: row.metadata ?? {},
+      score: row.score,
+    }))
+
+  if (qualifyingTicketResults.length === 0) {
+    return documentResults.slice(0, limit)
+  }
+
+  const documentBudget = Math.max(limit - qualifyingTicketResults.length, 0)
+  const merged = [...documentResults.slice(0, documentBudget), ...qualifyingTicketResults]
+
+  return merged.sort((a, b) => b.score - a.score)
+}
+
 function buildTicketChunkContent(ticket: Ticket): string {
   return [
     `Title: ${ticket.title ?? 'N/A'}`,

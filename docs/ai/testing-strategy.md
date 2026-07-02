@@ -99,7 +99,7 @@ Ticket copilot note as of 2026-07-01:
 - `python3 scripts/eval/evaluate_extraction.py` is manual/live verification only; it requires `OPENAI_API_KEY` and Python deps from `scripts/eval/requirements.txt`.
 
 Ticket embedding note as of 2026-07-02:
-- `packages/ai/src/vectorstore/index.spec.ts` covers qualifying embed, unchanged skip, content-change re-embed, non-qualifying delete/skip, `backfillTicketEmbeddings()` tallies, and the live DB `chunks_exactly_one_parent_check`.
+- `packages/ai/src/vectorstore/index.spec.ts` covers qualifying embed, unchanged skip, content-change re-embed, non-qualifying delete/skip, `backfillTicketEmbeddings()` tallies, the live DB `chunks_exactly_one_parent_check`, and `similaritySearchWithTicketSlot()` ticket-slot reservation/floor behavior.
 - `apps/api/src/tickets/tickets.service.spec.ts` covers review-save sync trigger, useful→not_useful deletion trigger, non-qualifying no-op, and caught/logged sync failures.
 - `packages/ai/src/chains/index.spec.ts` and `packages/ai/src/chains/graph.spec.ts` cover mixed document/ticket citations and ticket-source hydration in both chat paths.
 - `apps/web/app/workspaces/[id]/chat/page.spec.ts` covers ticket citation rendering without link plus legacy persisted sources with no `sourceType`.
