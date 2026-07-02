@@ -119,8 +119,11 @@ If risk area is missing, mark `UNMAPPED RISK`.
   Required checks:
   - exact cache keys include `workspaceId` and current version
   - semantic cache lookup filters by both `workspaceId` and `version`
+  - semantic cache rows older than `SEMANTIC_CACHE_TTL_HOURS` are never served as hits even when version still matches
   - first cache version bootstraps to `1`; invalidation bumps move to `2+` so old exact keys go dark
   - document ingest `done` and document delete both call `cache.bumpVersion(workspaceId)`
+  - ticket-driven chunk changes (`syncTicketChunk` outcomes `embedded`/`deleted`) also bump workspace cache version, including backfill path once per changed workspace
+  - semantic-cache writes opportunistically delete that workspace's expired rows without blocking successful cache writes if cleanup fails
   - Redis/cache failures fail soft to normal chat answers; cache outage must not 500 chat
   - optional `X-Chat-Cache` header reflects `exact|semantic|miss` for observability/tests
 

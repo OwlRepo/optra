@@ -281,9 +281,11 @@ describe('ticket vector sync', () => {
   })
 
   it('backfill processes all tickets and tallies outcomes', async () => {
-    const { workspace, user } = await seedWorkspace(prefix)
-    await seedTicket(workspace.id, user.id)
-    await seedTicket(workspace.id, user.id, { usefulness: 'not_useful' })
+    const first = await seedWorkspace(prefix)
+    const second = await seedWorkspace(prefix)
+    await seedTicket(first.workspace.id, first.user.id)
+    await seedTicket(first.workspace.id, first.user.id, { usefulness: 'not_useful' })
+    await seedTicket(second.workspace.id, second.user.id, { usefulness: 'not_useful' })
 
     const { backfillTicketEmbeddings } = await import('./index')
     const result = await backfillTicketEmbeddings()
@@ -291,6 +293,9 @@ describe('ticket vector sync', () => {
     expect(result.processed).toBeGreaterThanOrEqual(2)
     expect(result.embedded).toBeGreaterThanOrEqual(1)
     expect(result.skipped + result.deleted + result.unchanged + result.embedded).toBe(result.processed)
+    expect(result.changedWorkspaceIds).toContain(first.workspace.id)
+    expect(result.changedWorkspaceIds.filter((id) => id === first.workspace.id)).toHaveLength(1)
+    expect(result.changedWorkspaceIds).not.toContain(second.workspace.id)
   })
 })
 

@@ -76,6 +76,7 @@ Chat UI note as of 2026-06-30:
 
 Chat cache note as of 2026-06-30:
 - `apps/api/src/cache/cache.service.spec.ts` covers Redis exact cache versioning + semantic thresholding.
+- `apps/api/src/cache/cache.service.spec.ts` now also covers semantic TTL query filtering (`SEMANTIC_CACHE_TTL_HOURS`) and expired-row cleanup-on-write without masking successful inserts.
 - `apps/api/src/chat/chat.service.spec.ts` covers exact-hit, semantic-hit, miss-to-cache, and single-embed behavior.
 - `apps/api/test/chat.e2e-spec.ts` covers repeat-question cache hits and version-bump invalidation after KB mutation.
 
@@ -99,8 +100,8 @@ Ticket copilot note as of 2026-07-01:
 - `python3 scripts/eval/evaluate_extraction.py` is manual/live verification only; it requires `OPENAI_API_KEY` and Python deps from `scripts/eval/requirements.txt`.
 
 Ticket embedding note as of 2026-07-02:
-- `packages/ai/src/vectorstore/index.spec.ts` covers qualifying embed, unchanged skip, content-change re-embed, non-qualifying delete/skip, `backfillTicketEmbeddings()` tallies, the live DB `chunks_exactly_one_parent_check`, and `similaritySearchWithTicketSlot()` ticket-slot reservation/floor behavior.
-- `apps/api/src/tickets/tickets.service.spec.ts` covers review-save sync trigger, useful→not_useful deletion trigger, non-qualifying no-op, and caught/logged sync failures.
+- `packages/ai/src/vectorstore/index.spec.ts` covers qualifying embed, unchanged skip, content-change re-embed, non-qualifying delete/skip, `backfillTicketEmbeddings()` tallies plus `changedWorkspaceIds`, the live DB `chunks_exactly_one_parent_check`, and `similaritySearchWithTicketSlot()` ticket-slot reservation/floor behavior.
+- `apps/api/src/tickets/tickets.service.spec.ts` covers review-save sync trigger, cache-version bump on `embedded`/`deleted`, no bump on `unchanged`/`skipped`, useful→not_useful deletion trigger, non-qualifying no-op, and caught/logged sync failures.
 - `packages/ai/src/chains/index.spec.ts` and `packages/ai/src/chains/graph.spec.ts` cover mixed document/ticket citations and ticket-source hydration in both chat paths.
 - `apps/web/app/workspaces/[id]/chat/page.spec.ts` covers ticket citation rendering without link plus legacy persisted sources with no `sourceType`.
 - `apps/api/test/tickets.e2e-spec.ts` covers PATCH review-save calling the mocked `syncTicketChunk` side effect through the real HTTP path.

@@ -17,6 +17,7 @@ import {
   tickets,
 } from '@repo/db'
 import { syncTicketChunk } from '@repo/ai'
+import { CacheService } from '../cache/cache.service'
 import { ListQueryDto } from '../common/dto/list-query.dto'
 import type { UpdateTicketDto } from './dto/update-ticket.dto'
 
@@ -52,6 +53,7 @@ export class TicketsService implements OnModuleInit {
 
   constructor(
     @InjectQueue('ticket-extraction-queue') private readonly ticketQueue: Queue,
+    private readonly cache: CacheService,
   ) {}
 
   async onModuleInit() {
@@ -215,11 +217,16 @@ export class TicketsService implements OnModuleInit {
       )
 
     if (shouldSyncTicketChunk) {
-      await syncTicketChunk(updated).catch((err: unknown) => {
+      const syncOutcome = await syncTicketChunk(updated).catch((err: unknown) => {
         this.logger.warn(
           `Ticket chunk sync failed ticketId=${ticketId}: ${err instanceof Error ? err.message : String(err)}`,
         )
+        return null
       })
+
+      if (syncOutcome === 'embedded' || syncOutcome === 'deleted') {
+        await this.cache.bumpVersion(workspaceId)
+      }
     }
 
     return updated

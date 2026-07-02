@@ -98,6 +98,7 @@ export class CacheService implements OnModuleDestroy {
       const threshold = Number.parseFloat(
         this.config.get<string>('SEMANTIC_CACHE_THRESHOLD', '0.95'),
       )
+      const ttlHours = this.semanticCacheTtlHours()
       const vectorLiteral = this.vectorLiteral(embedding)
       const result = await db.execute(sql`
         select
@@ -107,6 +108,7 @@ export class CacheService implements OnModuleDestroy {
         from chat_cache
         where workspace_id = ${workspaceId}
           and version = ${version}
+          and created_at > now() - make_interval(hours => ${ttlHours})
         order by question_embedding <=> ${vectorLiteral}
         limit 1
       `)
@@ -149,6 +151,15 @@ export class CacheService implements OnModuleDestroy {
       })
     } catch (error) {
       this.logger.warn(`Failed semantic chat cache write for workspace ${workspaceId}: ${this.message(error)}`)
+      return
+    }
+
+    try {
+      await this.deleteExpiredSemanticCache(workspaceId)
+    } catch (error) {
+      this.logger.warn(
+        `Failed expired semantic chat cache cleanup for workspace ${workspaceId}: ${this.message(error)}`,
+      )
     }
   }
 
@@ -166,6 +177,19 @@ export class CacheService implements OnModuleDestroy {
 
   private vectorLiteral(embedding: number[]) {
     return sql.raw(`'[${embedding.join(',')}]'::vector`)
+  }
+
+  private semanticCacheTtlHours() {
+    return Number.parseInt(this.config.get<string>('SEMANTIC_CACHE_TTL_HOURS', '24'), 10)
+  }
+
+  private async deleteExpiredSemanticCache(workspaceId: string): Promise<void> {
+    const ttlHours = this.semanticCacheTtlHours()
+    await db.execute(sql`
+      delete from chat_cache
+      where workspace_id = ${workspaceId}
+        and created_at <= now() - make_interval(hours => ${ttlHours})
+    `)
   }
 
   private message(error: unknown) {

@@ -10,6 +10,7 @@ jest.mock('@repo/db', () => {
     ...actual,
     db: {
       execute: jest.fn(),
+      insert: jest.fn(),
     },
   }
 })
@@ -105,6 +106,7 @@ describe('CacheService', () => {
   it('semantic hit requires score threshold and workspace scope', async () => {
     config.get.mockImplementation((key: string, fallback?: string | number) => {
       if (key === 'SEMANTIC_CACHE_THRESHOLD') return '0.95'
+      if (key === 'SEMANTIC_CACHE_TTL_HOURS') return '48'
       return fallback
     })
     redis.get.mockResolvedValue('5')
@@ -142,8 +144,51 @@ describe('CacheService', () => {
         queryChunks: expect.arrayContaining([
           expect.objectContaining({ value: [expect.stringContaining('where workspace_id = ')] }),
           expect.objectContaining({ value: [expect.stringContaining('and version = ')] }),
+          expect.objectContaining({
+            value: [expect.stringContaining('and created_at > now() - make_interval(hours => ')],
+          }),
         ]),
       }),
     )
+    expect(config.get).toHaveBeenCalledWith('SEMANTIC_CACHE_TTL_HOURS', '24')
+  })
+
+  it('saveSemantic inserts then cleans up expired rows for workspace', async () => {
+    const values = jest.fn().mockResolvedValue(undefined)
+    ;(db.insert as jest.Mock).mockReturnValue({ values })
+    ;(db.execute as jest.Mock).mockResolvedValue({ rows: [] })
+
+    await service.saveSemantic('ws-semantic', 2, 'question', [0.1, 0.2], 'answer', [])
+
+    expect(db.insert).toHaveBeenCalled()
+    expect(values).toHaveBeenCalledWith(
+      expect.objectContaining({
+        workspaceId: 'ws-semantic',
+        version: 2,
+        question: 'question',
+        answer: 'answer',
+      }),
+    )
+    expect(db.execute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        queryChunks: expect.arrayContaining([
+          expect.objectContaining({ value: [expect.stringContaining('delete from chat_cache')] }),
+          expect.objectContaining({ value: [expect.stringContaining('created_at <= now() - make_interval(hours => ')] }),
+        ]),
+      }),
+    )
+  })
+
+  it('saveSemantic swallows cleanup failure after successful insert', async () => {
+    const values = jest.fn().mockResolvedValue(undefined)
+    ;(db.insert as jest.Mock).mockReturnValue({ values })
+    ;(db.execute as jest.Mock).mockRejectedValueOnce(new Error('cleanup failed'))
+
+    await expect(
+      service.saveSemantic('ws-semantic', 2, 'question', [0.1, 0.2], 'answer', []),
+    ).resolves.toBeUndefined()
+
+    expect(values).toHaveBeenCalled()
+    expect(db.execute).toHaveBeenCalledTimes(1)
   })
 })

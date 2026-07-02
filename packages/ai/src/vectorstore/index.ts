@@ -225,15 +225,20 @@ export async function backfillTicketEmbeddings(): Promise<{
   deleted: number
   skipped: number
   unchanged: number
+  changedWorkspaceIds: string[]
 }> {
   const allTickets = await db.select().from(tickets)
   const result = { processed: 0, embedded: 0, deleted: 0, skipped: 0, unchanged: 0 }
+  const changedWorkspaceIds = new Set<string>()
 
   for (const ticket of allTickets) {
     const outcome = await syncTicketChunk(ticket)
     result.processed += 1
     result[outcome] += 1
+    if (outcome === 'embedded' || outcome === 'deleted') {
+      changedWorkspaceIds.add(ticket.workspaceId)
+    }
   }
 
-  return result
+  return { ...result, changedWorkspaceIds: [...changedWorkspaceIds] }
 }

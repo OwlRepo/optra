@@ -11,6 +11,7 @@ import {
   workspaceMembers,
   workspaces,
 } from '@repo/db'
+import { CacheService } from '../cache/cache.service'
 import { TicketsService } from './tickets.service'
 import { syncTicketChunk } from '@repo/ai'
 
@@ -59,6 +60,7 @@ async function seedWorkspaceFixture(email: string, workspaceName: string) {
 describe('TicketsService', () => {
   let service: TicketsService
   let queue: { add: jest.Mock; getJob: jest.Mock; on: jest.Mock }
+  let cache: { bumpVersion: jest.Mock }
   const prefix = `tickets-service-spec-${Date.now()}-`
 
   beforeAll(async () => {
@@ -67,11 +69,15 @@ describe('TicketsService', () => {
       getJob: jest.fn().mockResolvedValue({ id: 'ticket:job-1' }),
       on: jest.fn(),
     }
+    cache = {
+      bumpVersion: jest.fn().mockResolvedValue(undefined),
+    }
 
     const moduleRef = await Test.createTestingModule({
       providers: [
         TicketsService,
         { provide: getQueueToken('ticket-extraction-queue'), useValue: queue },
+        { provide: CacheService, useValue: cache },
       ],
     }).compile()
 
@@ -182,6 +188,7 @@ describe('TicketsService', () => {
     expect(updated.reviewedAt).toBeInstanceOf(Date)
     expect(updated.fieldConfidence.title).toBeGreaterThan(0)
     expect(syncTicketChunk).toHaveBeenCalledWith(expect.objectContaining({ id: created.ticket.id }))
+    expect(cache.bumpVersion).toHaveBeenCalledWith(workspace.id)
   })
 
   it('patch on non-qualifying state does not sync chunk', async () => {
@@ -225,6 +232,47 @@ describe('TicketsService', () => {
     })
 
     expect(syncTicketChunk).toHaveBeenCalledWith(expect.objectContaining({ id: ticket.id }))
+    expect(cache.bumpVersion).toHaveBeenCalledWith(workspace.id)
+  })
+
+  it('patch does not bump cache when sync outcome is unchanged', async () => {
+    const { workspace, user } = await seedWorkspaceFixture(
+      `${prefix}patch-unchanged@example.com`,
+      'Tickets Spec Patch Unchanged',
+    )
+    const created = await service.create(workspace.id, 'Patch transcript unchanged')
+    await db
+      .update(tickets)
+      .set({ status: 'done', updatedAt: new Date() })
+      .where(eq(tickets.id, created.ticket.id))
+    ;(syncTicketChunk as jest.Mock).mockResolvedValueOnce('unchanged')
+
+    await service.update(workspace.id, created.ticket.id, user.id, {
+      usefulness: 'useful',
+      editState: 'accepted',
+    })
+
+    expect(cache.bumpVersion).not.toHaveBeenCalled()
+  })
+
+  it('patch does not bump cache when sync outcome is skipped', async () => {
+    const { workspace, user } = await seedWorkspaceFixture(
+      `${prefix}patch-skipped@example.com`,
+      'Tickets Spec Patch Skipped',
+    )
+    const created = await service.create(workspace.id, 'Patch transcript skipped')
+    await db
+      .update(tickets)
+      .set({ status: 'done', updatedAt: new Date() })
+      .where(eq(tickets.id, created.ticket.id))
+    ;(syncTicketChunk as jest.Mock).mockResolvedValueOnce('skipped')
+
+    await service.update(workspace.id, created.ticket.id, user.id, {
+      usefulness: 'useful',
+      editState: 'accepted',
+    })
+
+    expect(cache.bumpVersion).not.toHaveBeenCalled()
   })
 
   it('patch survives sync failure and still returns updated row', async () => {
@@ -246,6 +294,7 @@ describe('TicketsService', () => {
 
     expect(updated.id).toBe(created.ticket.id)
     expect(updated.usefulness).toBe('useful')
+    expect(cache.bumpVersion).not.toHaveBeenCalled()
   })
 
   it('wraps insert failures in typed Nest exception', async () => {
