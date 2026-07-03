@@ -50,4 +50,30 @@ describe('Modal', () => {
 
     expect(onClose).toHaveBeenCalledTimes(2)
   })
+
+  it('does not steal focus from active input on rerender', () => {
+    function FocusHarness() {
+      const [value, setValue] = React.useState('')
+
+      return React.createElement(Modal, {
+        open: true,
+        onClose: () => undefined,
+        title: 'Focus modal',
+        children: React.createElement('input', {
+          'aria-label': 'Modal input',
+          value,
+          onChange: (event: React.ChangeEvent<HTMLInputElement>) => setValue(event.target.value),
+        }),
+      })
+    }
+
+    render(React.createElement(FocusHarness))
+
+    const input = screen.getByLabelText('Modal input') as HTMLInputElement
+    input.focus()
+    fireEvent.change(input, { target: { value: 'hello' } })
+
+    expect(document.activeElement).toBe(input)
+    expect(input.value).toBe('hello')
+  })
 })

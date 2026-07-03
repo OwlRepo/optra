@@ -68,7 +68,14 @@ export class ChatService {
 
     const version = await this.cache.getVersion(workspaceId)
     await this.usage.assertWithinBudget(workspaceId)
-    const { sources, stream, isFallback } = await answerQuestion(message, workspaceId)
+    // Reuse the embedding computed for the semantic-cache lookup so retrieval
+    // does not embed the same message a second time on a cache miss.
+    const { sources, stream, isFallback } = await answerQuestion(
+      message,
+      workspaceId,
+      undefined,
+      embedding,
+    )
 
     return {
       sessionId: session.id,

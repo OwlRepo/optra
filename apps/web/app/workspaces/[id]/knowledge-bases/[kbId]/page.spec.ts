@@ -149,7 +149,7 @@ describe('KnowledgeBasePage', () => {
     expect(listDocumentsMock).toHaveBeenCalledTimes(callCount)
   })
 
-  it('submits scrape form and renders runs table', async () => {
+  it('submits scrape form and renders runs table with in-progress status', async () => {
     listDocumentsMock.mockResolvedValue({ items: [], nextCursor: null })
     listScrapeRunsMock
       .mockResolvedValueOnce({ items: [], nextCursor: null })
@@ -195,8 +195,29 @@ describe('KnowledgeBasePage', () => {
 
     await waitFor(() => {
       expect(screen.getByText('https://example.com/docs')).toBeDefined()
-      expect(screen.getAllByText('queued').length).toBeGreaterThan(0)
+      expect(screen.getAllByText('In progress').length).toBeGreaterThan(0)
     })
+  })
+
+  it('autofocuses scrape url input and keeps focus while typing', async () => {
+    listDocumentsMock.mockResolvedValue({ items: [], nextCursor: null })
+
+    renderPage()
+
+    expect(await screen.findByText('No documents yet')).toBeDefined()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Scrape website' }))
+    const input = screen.getByLabelText('Website URL') as HTMLInputElement
+
+    await waitFor(() => {
+      expect(document.activeElement).toBe(input)
+    })
+
+    fireEvent.change(input, { target: { value: 'https://example.com/d' } })
+    expect(document.activeElement).toBe(input)
+
+    fireEvent.change(input, { target: { value: 'https://example.com/docs' } })
+    expect(document.activeElement).toBe(input)
   })
 
   it('disables the crawl submit button while the request is in flight and shows duplicate-run feedback', async () => {
@@ -307,7 +328,7 @@ describe('KnowledgeBasePage', () => {
     expect(listScrapeRunsMock).toHaveBeenCalledTimes(callCount)
   })
 
-  it('shows discovered-page progress text for running and completed crawls', async () => {
+  it('shows in-progress crawl status separately from labeled page counts', async () => {
     listDocumentsMock.mockResolvedValue({ items: [], nextCursor: null })
     listScrapeRunsMock.mockResolvedValue({
       items: [
@@ -322,6 +343,15 @@ describe('KnowledgeBasePage', () => {
         },
         {
           id: 'run-2',
+          seedUrl: 'https://example.com/queued',
+          status: 'queued',
+          pagesFound: 0,
+          pagesSucceeded: 0,
+          pagesFailed: 0,
+          createdAt: '2026-06-30T00:00:00.000Z',
+        },
+        {
+          id: 'run-3',
           seedUrl: 'https://example.com/done',
           status: 'completed',
           pagesFound: 3,
@@ -335,7 +365,12 @@ describe('KnowledgeBasePage', () => {
 
     renderPage()
 
-    expect(await screen.findByText('50% of discovered pages processed')).toBeDefined()
+    expect(await screen.findAllByText('In progress')).toHaveLength(2)
+    expect(screen.getByText('Completed')).toBeDefined()
+    expect(screen.getByText('Found 10 · Queued 4 · Page errors 1')).toBeDefined()
+    expect(screen.getByText('Found 0 · Queued 0 · Page errors 0')).toBeDefined()
+    expect(screen.getByText('Found 3 · Queued 3 · Page errors 0')).toBeDefined()
+    expect(screen.getByText('50% of discovered pages processed')).toBeDefined()
     expect(screen.getByText('100% of discovered pages processed')).toBeDefined()
   })
 

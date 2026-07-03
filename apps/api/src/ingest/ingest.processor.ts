@@ -61,10 +61,14 @@ export class IngestProcessor {
       const loaded = await loadDocument(tempPath)
       const chunked = await chunkDocument(loaded)
 
+      // Crawled documents carry a sourceUrl; uploaded files do not. This drives
+      // the sourceType filter column on each chunk.
+      const sourceType = document.sourceUrl ? 'web' : 'document'
       for (const chunk of chunked) {
         chunk.metadata.workspaceId = document.workspaceId
         chunk.metadata.knowledgeBaseId = document.knowledgeBaseId
         chunk.metadata.documentId = documentId
+        chunk.metadata.sourceType = sourceType
       }
 
       const embedded = await embedChunks(chunked)

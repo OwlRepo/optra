@@ -95,6 +95,8 @@ If risk area is missing, mark `UNMAPPED RISK`.
   - recrawl of same page upserts one `documents` row by `(knowledge_base_id, source_url)` and reuses ingest safely
   - web page polls crawl runs every 3 seconds only while a run is `queued` or `running`
   - web page disables crawl submit while the POST is in flight and surfaces duplicate-run reuse clearly
+  - crawl-row UI must keep terminal status separate from page-level counts (`Found` / `Queued` / `Page errors`) so ongoing runs are not mistaken for failed runs
+  - scrape modal must autofocus URL input and keep focus while typing through rerenders
   - document queue UI must show truthful in-flight counts (`pending`/`processing`) rather than total documents as “in queue”
 
 - Document upload ingress is a live DoS + parser-safety risk as of 2026-07-01.
@@ -114,6 +116,8 @@ If risk area is missing, mark `UNMAPPED RISK`.
   - plain-text stream keeps citations out of token body; sources persist on assistant message for reload-safe history
   - citations correctly discriminate document vs ticket sources in both straight-line and LangGraph paths
   - legacy persisted `sources` without `sourceType` still render as document citations in FE history/cache reads
+  - markdown rendering stays safe (no raw HTML execution) while preserving basic formatting such as bold text, lists, links, and code blocks
+  - full-width chat rows still cap inner text width for readability rather than stretching prose edge-to-edge
 
 - Answer caching on workspace chat is a live tenant-isolation + staleness risk as of 2026-06-30.
   Required checks:
@@ -127,6 +131,16 @@ If risk area is missing, mark `UNMAPPED RISK`.
   - semantic-cache writes opportunistically delete that workspace's expired rows without blocking successful cache writes if cleanup fails
   - Redis/cache failures fail soft to normal chat answers; cache outage must not 500 chat
   - optional `X-Chat-Cache` header reflects `exact|semantic|miss` for observability/tests
+
+- RAG performance changes (2026-07-03) carry answer-quality regression risk; each is behind an env flag defaulting to prior behavior, roll out one at a time.
+  Required checks:
+  - streaming vs grading: confident answers stream and skip self-grade; only low-confidence (top score < `SELF_GRADE_MIN_SCORE`) take buffered generate→grade→regenerate. Unset `SELF_GRADE_MIN_SCORE` = grade every answer (legacy)
+  - query routing: `classifyQuery()` must not send troubleshooting/procedural questions down the light path; simple path uses `SIMPLE_QUERY_CHUNK_LIMIT` and skips rewrite/grade
+  - question integrity: generation/grading use `originalQuestion`; only `retrievalQuery` is rewritten
+  - embedding reuse: `precomputedEmbedding` is only reused for the first retrieval; a rewrite re-embeds the new query
+  - context budget: `buildEvidencePack()` output token count stays within `RAG_CONTEXT_TOKEN_BUDGET`, highest-scored chunks kept
+  - migration `0011_sticky_scream` is additive (columns + btree/hnsw indexes + backfill), reversible by dropping them; hnsw requires pgvector ≥ 0.5 (installed 0.8.3)
+  - retrieval metadata filters are NOT yet exposed via `ChatDto` because the exact/semantic cache key does not include filters — must be added to the cache key before exposing per-request filters
 
 - Chat rate/budget controls are a live abuse + cost risk as of 2026-07-01.
   Required checks:
@@ -179,3 +193,4 @@ If risk area is missing, mark `UNMAPPED RISK`.
   - ticket full-text search filters `tickets.workspace_id = :workspaceId`
   - chat full-text search joins `chat_sessions` because `chat_messages` has no `workspace_id`
   - response shape stays `{documents, tickets, chatMessages}` and never becomes one merged ranking
+  - shared search modal autofocuses query input on open and never steals focus back while results rerender

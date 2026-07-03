@@ -90,7 +90,7 @@ CREATE TABLE IF NOT EXISTS "chunks" (
 	"workspace_id" uuid NOT NULL,
 	"content" text NOT NULL,
 	"content_hash" varchar(64) NOT NULL,
-	"embedding" "vector(1536)",
+	"embedding" vector(1536),
 	"metadata" jsonb,
 	"section_id" varchar(255),
 	"section_title" text,

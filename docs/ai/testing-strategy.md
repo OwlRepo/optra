@@ -59,7 +59,7 @@ Queue reliability note as of 2026-07-01:
 - `apps/api/src/scrape/scrape.service.spec.ts` covers scrape enqueue failure, duplicate in-flight reuse, default subtree scope derivation, and stale `queued`/`running` reconciliation.
 - `apps/api/src/scrape/scrape.processor.spec.ts` covers live page-count / success / failure counter updates while crawl pages stream in.
 - `apps/api/test/scrape.e2e-spec.ts` covers `202` for a new crawl and `200` when the same in-flight crawl is reused.
-- `apps/web/src/lib/api/scrape.spec.ts` covers reused-run detection from HTTP status, and `apps/web/app/workspaces/[id]/knowledge-bases/[kbId]/page.spec.ts` covers disabled crawl submit + duplicate-run UI feedback plus truthful document-queue summary rendering.
+- `apps/web/src/lib/api/scrape.spec.ts` covers reused-run detection from HTTP status, and `apps/web/app/workspaces/[id]/knowledge-bases/[kbId]/page.spec.ts` covers disabled crawl submit + duplicate-run UI feedback, truthful document-queue summary rendering, and separating run status from labeled page-level counts.
 
 Workspace package sync note as of 2026-07-01:
 - After schema changes in `packages/db/src/schema/*`, run `bun run --cwd packages/db build` before API e2e or runtime verification so `@repo/db` `dist/*` stays aligned with the source schema used by Nest runtime and e2e Jest config.
@@ -71,8 +71,13 @@ Confirmed from `apps/web/package.json` as of 2026-06-29:
 
 Chat UI note as of 2026-06-30:
 - `apps/web/app/api/workspaces/[id]/chat/**/*.spec.ts` covers streaming proxy + history proxies.
-- `apps/web/app/workspaces/[id]/chat/page.spec.ts` covers session list/history loading and source rendering from chat headers/persisted messages.
+- `apps/web/app/workspaces/[id]/chat/page.spec.ts` covers session list/history loading, source rendering from chat headers/persisted messages, safe Markdown rendering, and full-width bubble layout.
 - `apps/web/app/chat/page.spec.ts` covers legacy `/chat` redirect to first workspace chat.
+
+Shared modal/search UX note as of 2026-07-03:
+- `apps/web/src/lib/ui/modal.spec.ts` covers rerender focus retention so modal panels do not steal focus back from active inputs on each keystroke.
+- `apps/web/src/components/workspace-search.spec.ts` covers `⌘K` autofocus plus no focus loss while typing into workspace search.
+- `apps/web/app/workspaces/[id]/knowledge-bases/[kbId]/page.spec.ts` covers scrape-modal autofocus/focus retention and crawl-row labeling (`In progress`, labeled page counts).
 
 Chat cache note as of 2026-06-30:
 - `apps/api/src/cache/cache.service.spec.ts` covers Redis exact cache versioning + semantic thresholding.

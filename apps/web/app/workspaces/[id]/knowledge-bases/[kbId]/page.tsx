@@ -79,6 +79,22 @@ const statusVariant: Record<
   failed: "destructive",
 };
 
+function getScrapeStatusLabel(run: ScrapeRunRow) {
+  if (run.status === "completed") {
+    return "Completed";
+  }
+
+  if (run.status === "failed") {
+    return "Failed";
+  }
+
+  return "In progress";
+}
+
+function getScrapeCountLabel(run: ScrapeRunRow) {
+  return `Found ${run.pagesFound} · Queued ${run.pagesSucceeded} · Page errors ${run.pagesFailed}`;
+}
+
 function getScrapeProgressLabel(run: ScrapeRunRow) {
   if (
     run.pagesFound <= 0 ||
@@ -148,6 +164,7 @@ export default function KnowledgeBasePage({
   const [scrapeMaxDepth, setScrapeMaxDepth] = React.useState("3");
   const [scrapeMaxPages, setScrapeMaxPages] = React.useState("100");
   const fileInputRef = React.useRef<HTMLInputElement>(null);
+  const scrapeUrlInputRef = React.useRef<HTMLInputElement>(null);
 
   const canManage =
     membership?.role === "owner" || membership?.role === "admin";
@@ -364,6 +381,20 @@ export default function KnowledgeBasePage({
   const hasInFlightRuns = scrapeRuns.some(
     (run) => run.status === "queued" || run.status === "running",
   );
+
+  React.useEffect(() => {
+    if (!isScrapeModalOpen) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      scrapeUrlInputRef.current?.focus();
+    }, 0);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [isScrapeModalOpen]);
 
   React.useEffect(() => {
     if (!hasInFlightDocuments) {
@@ -651,12 +682,12 @@ export default function KnowledgeBasePage({
                                 : "secondary"
                           }
                         >
-                          {run.status}
+                          {getScrapeStatusLabel(run)}
                         </Badge>
                       </TableCell>
                       <TableCell>
                         <div className="space-y-1">
-                          <div>{`${run.pagesFound}/${run.pagesSucceeded}/${run.pagesFailed}`}</div>
+                          <div>{getScrapeCountLabel(run)}</div>
                           {getScrapeProgressLabel(run) ? (
                             <div className="text-xs text-muted-foreground">
                               {getScrapeProgressLabel(run)}
@@ -791,6 +822,7 @@ export default function KnowledgeBasePage({
           <label className="block space-y-2">
             <span className="text-sm font-medium">Website URL</span>
             <Input
+              ref={scrapeUrlInputRef}
               aria-label="Website URL"
               type="url"
               value={scrapeUrl}

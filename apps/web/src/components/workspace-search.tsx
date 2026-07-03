@@ -38,6 +38,7 @@ const emptyResults: SearchResponse = { documents: [], tickets: [], chatMessages:
 
 export function WorkspaceSearch({ workspaceId, collapsed }: { workspaceId: string; collapsed: boolean }) {
   const router = useRouter()
+  const inputRef = React.useRef<HTMLInputElement>(null)
   const [open, setOpen] = React.useState(false)
   const [query, setQuery] = React.useState('')
   const [results, setResults] = React.useState<SearchResponse>(emptyResults)
@@ -53,6 +54,16 @@ export function WorkspaceSearch({ workspaceId, collapsed }: { workspaceId: strin
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [])
+
+  React.useEffect(() => {
+    if (!open) return
+
+    const timeout = window.setTimeout(() => {
+      inputRef.current?.focus()
+    }, 0)
+
+    return () => window.clearTimeout(timeout)
+  }, [open])
 
   React.useEffect(() => {
     if (!open) return
@@ -110,6 +121,7 @@ export function WorkspaceSearch({ workspaceId, collapsed }: { workspaceId: strin
               Search query
             </label>
             <Input
+              ref={inputRef}
               id="workspace-search-query"
               value={query}
               onChange={(event) => setQuery(event.target.value)}

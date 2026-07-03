@@ -28,19 +28,34 @@ describe('WorkspaceSearch', () => {
     vi.restoreAllMocks()
   })
 
-  it('pressing cmd+k opens the search modal', () => {
+  it('pressing cmd+k opens the search modal and autofocuses query input', async () => {
     render(React.createElement(WorkspaceSearch, { workspaceId: 'ws-1', collapsed: false }))
 
     fireEvent.keyDown(window, { key: 'k', metaKey: true })
 
     expect(screen.getByRole('dialog', { name: 'Search workspace' })).toBeTruthy()
+
+    await waitFor(() => {
+      expect(document.activeElement).toBe(screen.getByLabelText('Search query'))
+    })
   })
 
-  it('typing a query calls the search client after debounce', async () => {
+  it('typing keeps focus on the search input and calls search after debounce', async () => {
     render(React.createElement(WorkspaceSearch, { workspaceId: 'ws-1', collapsed: false }))
 
     fireEvent.click(screen.getByRole('button', { name: 'Search workspace' }))
-    fireEvent.change(screen.getByLabelText('Search query'), { target: { value: 'otp' } })
+    const input = screen.getByLabelText('Search query') as HTMLInputElement
+
+    await waitFor(() => {
+      expect(document.activeElement).toBe(input)
+    })
+
+    fireEvent.change(input, { target: { value: 'o' } })
+    expect(document.activeElement).toBe(input)
+
+    fireEvent.change(input, { target: { value: 'otp' } })
+    expect(document.activeElement).toBe(input)
+
     await new Promise((resolve) => setTimeout(resolve, 350))
 
     await waitFor(() => {

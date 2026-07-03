@@ -3,13 +3,31 @@ import { ChatOpenAI } from '@langchain/openai'
 import { Annotation, END, START, StateGraph } from '@langchain/langgraph'
 import { db, documents, tickets } from '@repo/db'
 import { inArray } from 'drizzle-orm'
-import { similaritySearch, similaritySearchWithTicketSlot } from '../vectorstore'
+import {
+  similaritySearch,
+  similaritySearchWithTicketSlot,
+  type RetrievalFilters,
+} from '../vectorstore'
+import { resolveModel } from './models'
+import { buildEvidencePack } from './context'
 import type { AnswerResult, ChatSource } from './index'
 
-const llm = new ChatOpenAI({
-  modelName: process.env.OPENAI_CHAT_MODEL ?? 'gpt-4-turbo',
+// Answering streams and is quality-critical; rewrite/grade are cheap classification
+// calls that can run on a faster/cheaper model. See resolveModel for the fallback chain.
+const answerLlm = new ChatOpenAI({
+  modelName: resolveModel('answer'),
   temperature: 0,
   streaming: true,
+})
+
+const rewriteLlm = new ChatOpenAI({
+  modelName: resolveModel('rewrite'),
+  temperature: 0,
+})
+
+const gradeLlm = new ChatOpenAI({
+  modelName: resolveModel('grade'),
+  temperature: 0,
 })
 
 const FALLBACK_MESSAGE =
@@ -32,7 +50,10 @@ const GRADE_SYSTEM_PROMPT = `Answer "yes" if the answer is fully grounded in the
 Answer "no" if any part is unsupported or missing from the context.`
 
 const GraphState = Annotation.Root({
-  question: Annotation<string>,
+  // The user's real question — used for generation/grading, never mutated.
+  originalQuestion: Annotation<string>,
+  // The query used for vector retrieval — rewrites mutate THIS, not the original.
+  retrievalQuery: Annotation<string>,
   workspaceId: Annotation<string>,
   limit: Annotation<number>,
   rewrites: Annotation<number>,
@@ -42,11 +63,16 @@ const GraphState = Annotation.Root({
   regenerated: Annotation<boolean>,
   answerText: Annotation<string | undefined>,
   isFallback: Annotation<boolean>,
+  shouldStream: Annotation<boolean>,
+  // Embedding of the original question, reused for the FIRST retrieval so the
+  // caller's cache-lookup embedding isn't recomputed. Rewrites re-embed.
+  precomputedEmbedding: Annotation<number[] | undefined>,
+  // Optional metadata filters applied to retrieval.
+  filters: Annotation<RetrievalFilters | undefined>,
 })
 
 function buildContext(chunks: Awaited<ReturnType<typeof similaritySearch>>): string {
-  if (chunks.length === 0) return ''
-  return chunks.map((chunk) => chunk.content).join('\n---\n')
+  return buildEvidencePack(chunks)
 }
 
 async function buildSources(
@@ -142,7 +168,7 @@ async function collectAnswer(
   chunks: Awaited<ReturnType<typeof similaritySearch>>,
   systemPrompt: string,
 ): Promise<string> {
-  const stream = await llm.stream([
+  const stream = await answerLlm.stream([
     new SystemMessage(systemPrompt),
     new HumanMessage(`Context:\n${buildContext(chunks)}\n\nQuestion: ${question}`),
   ])
@@ -157,6 +183,25 @@ async function collectAnswer(
   return parts.join('')
 }
 
+// Confident-answer path: stream generation tokens straight to the caller so
+// time-to-first-token is one LLM token, not the whole buffered answer (+ grade).
+async function* streamAnswer(
+  question: string,
+  chunks: Awaited<ReturnType<typeof similaritySearch>>,
+  systemPrompt: string,
+): AsyncGenerator<string> {
+  const stream = await answerLlm.stream([
+    new SystemMessage(systemPrompt),
+    new HumanMessage(`Context:\n${buildContext(chunks)}\n\nQuestion: ${question}`),
+  ])
+
+  for await (const chunk of stream) {
+    if (typeof chunk.content === 'string' && chunk.content.length > 0) {
+      yield chunk.content
+    }
+  }
+}
+
 function maxQueryRewrites() {
   return Number.parseInt(process.env.MAX_QUERY_REWRITES ?? '2', 10)
 }
@@ -166,20 +211,37 @@ function retrievalThreshold() {
 }
 
 async function retrieveNode(state: typeof GraphState.State) {
+  // Reuse the caller's embedding only on the first pass; a rewrite changes the
+  // query text, so that must be embedded fresh.
+  const embedding =
+    state.rewrites === 0 ? (state.precomputedEmbedding ?? undefined) : undefined
   const chunks = await similaritySearchWithTicketSlot(
-    state.question,
+    state.retrievalQuery,
     state.workspaceId,
     state.limit,
+    embedding,
+    state.filters ?? undefined,
   )
   const sources = await buildSources(chunks)
   return { chunks, sources }
+}
+
+// Grade only low-confidence answers. Grading needs the full answer up front, so
+// it is incompatible with streaming; confident answers skip it and stream.
+function shouldGradeAtScore(topScore: number): boolean {
+  if (process.env.SELF_GRADE_ENABLED !== 'true') return false
+  const minScore = selfGradeMinScore()
+  if (minScore === undefined) return true
+  return topScore < minScore
 }
 
 function routeAfterRetrieve(state: typeof GraphState.State) {
   const topScore = Math.max(0, ...state.chunks.map((chunk) => chunk.score))
 
   if (topScore >= retrievalThreshold()) {
-    return 'generate'
+    // Confident retrieval + no grading needed -> stream. Otherwise fall into the
+    // buffered generate -> grade -> maybe regenerate path.
+    return shouldGradeAtScore(topScore) ? 'generate' : 'prepareStream'
   }
 
   if (state.rewrites < maxQueryRewrites()) {
@@ -189,33 +251,49 @@ function routeAfterRetrieve(state: typeof GraphState.State) {
   return 'fallback'
 }
 
+// Marks the confident streaming branch; generation itself happens in the
+// streaming layer (streamAnswer), not inside the graph, so tokens are not buffered.
+function prepareStreamNode() {
+  return { shouldStream: true }
+}
+
 async function rewriteNode(state: typeof GraphState.State) {
-  const response = await llm.invoke([
+  const response = await rewriteLlm.invoke([
     new SystemMessage(REWRITE_SYSTEM_PROMPT),
-    new HumanMessage(state.question),
+    new HumanMessage(state.retrievalQuery),
   ])
 
+  // Rewrite only the retrieval query. The original question is left untouched so
+  // generation still answers what the user actually asked.
   return {
-    question:
+    retrievalQuery:
       typeof response.content === 'string' && response.content.trim().length > 0
         ? response.content.trim()
-        : state.question,
+        : state.retrievalQuery,
     rewrites: state.rewrites + 1,
   }
 }
 
 async function generateNode(state: typeof GraphState.State) {
   return {
-    answerText: await collectAnswer(state.question, state.chunks, ANSWER_SYSTEM_PROMPT),
+    answerText: await collectAnswer(state.originalQuestion, state.chunks, ANSWER_SYSTEM_PROMPT),
   }
 }
 
-function routeAfterGenerate() {
-  return process.env.SELF_GRADE_ENABLED === 'true' ? 'gradeAnswer' : END
+function selfGradeMinScore(): number | undefined {
+  const raw = process.env.SELF_GRADE_MIN_SCORE
+  if (raw === undefined || raw.trim() === '') return undefined
+  const parsed = Number.parseFloat(raw)
+  return Number.isNaN(parsed) ? undefined : parsed
+}
+
+function routeAfterGenerate(state: typeof GraphState.State) {
+  const topScore = Math.max(0, ...state.chunks.map((chunk) => chunk.score))
+  return shouldGradeAtScore(topScore) ? 'gradeAnswer' : END
 }
 
 async function gradeAnswerNode(state: typeof GraphState.State) {
-  const response = await llm.invoke([
+  const response = await gradeLlm.invoke([
     new SystemMessage(GRADE_SYSTEM_PROMPT),
     new HumanMessage(
       `Context:\n${buildContext(state.chunks)}\n\nAnswer:\n${state.answerText ?? ''}`,
@@ -243,7 +321,7 @@ function routeAfterGrade(state: typeof GraphState.State) {
 
 async function regenerateNode(state: typeof GraphState.State) {
   return {
-    answerText: await collectAnswer(state.question, state.chunks, REGENERATE_SYSTEM_PROMPT),
+    answerText: await collectAnswer(state.originalQuestion, state.chunks, REGENERATE_SYSTEM_PROMPT),
     regenerated: true,
   }
 }
@@ -259,6 +337,7 @@ async function fallbackNode() {
 const graph = new StateGraph(GraphState)
   .addNode('retrieve', retrieveNode)
   .addNode('rewrite', rewriteNode)
+  .addNode('prepareStream', prepareStreamNode)
   .addNode('generate', generateNode)
   .addNode('gradeAnswer', gradeAnswerNode)
   .addNode('regenerate', regenerateNode)
@@ -266,6 +345,7 @@ const graph = new StateGraph(GraphState)
   .addEdge(START, 'retrieve')
   .addConditionalEdges('retrieve', routeAfterRetrieve)
   .addEdge('rewrite', 'retrieve')
+  .addEdge('prepareStream', END)
   .addConditionalEdges('generate', routeAfterGenerate)
   .addConditionalEdges('gradeAnswer', routeAfterGrade)
   .addEdge('regenerate', END)
@@ -276,9 +356,12 @@ export async function answerQuestionWithGraph(
   question: string,
   workspaceId: string,
   limit = 5,
+  precomputedEmbedding?: number[],
+  filters?: RetrievalFilters,
 ): Promise<AnswerResult> {
   const result = await graph.invoke({
-    question,
+    originalQuestion: question,
+    retrievalQuery: question,
     workspaceId,
     limit,
     rewrites: 0,
@@ -286,11 +369,34 @@ export async function answerQuestionWithGraph(
     sources: [],
     regenerated: false,
     isFallback: false,
+    shouldStream: false,
+    precomputedEmbedding,
+    filters,
   })
+
+  if (result.isFallback) {
+    return {
+      sources: result.sources ?? [],
+      isFallback: true,
+      stream: (async function* () {
+        yield FALLBACK_MESSAGE
+      })(),
+    }
+  }
+
+  // Confident path: stream tokens live. Low-confidence graded path: the graph
+  // already produced a buffered (possibly regenerated) answer; yield it as one chunk.
+  if (result.shouldStream) {
+    return {
+      sources: result.sources ?? [],
+      isFallback: false,
+      stream: streamAnswer(result.originalQuestion, result.chunks, ANSWER_SYSTEM_PROMPT),
+    }
+  }
 
   return {
     sources: result.sources ?? [],
-    isFallback: result.isFallback ?? false,
+    isFallback: false,
     stream: (async function* () {
       yield result.answerText ?? FALLBACK_MESSAGE
     })(),

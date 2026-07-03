@@ -1,5 +1,6 @@
 import {
   check,
+  index,
   pgTable,
   uuid,
   text,
@@ -34,12 +35,26 @@ export const chunks = pgTable('chunks', {
   metadata: jsonb('metadata').$type<Record<string, unknown>>(),
   sectionId: varchar('section_id', { length: 255 }),
   sectionTitle: text('section_title'),
+  // Filterable retrieval metadata, promoted to columns + indexed so search can
+  // narrow candidates cheaply instead of scanning every workspace chunk.
+  sourceType: varchar('source_type', { length: 32 }), // 'document' | 'ticket' | 'web'
+  docType: varchar('doc_type', { length: 64 }), // file type for docs: pdf, md, html, ...
+  productArea: text('product_area'), // for ticket-derived chunks
   createdAt: timestamp('created_at').defaultNow().notNull(),
 }, (table) => ({
   ticketIdUniqueIdx: uniqueIndex('chunks_ticket_id_unique_idx').on(table.ticketId),
   exactlyOneParentCheck: check(
     'chunks_exactly_one_parent_check',
     sql`(${table.documentId} IS NOT NULL) <> (${table.ticketId} IS NOT NULL)`,
+  ),
+  workspaceSourceTypeIdx: index('chunks_workspace_source_type_idx').on(
+    table.workspaceId,
+    table.sourceType,
+  ),
+  workspaceDocTypeIdx: index('chunks_workspace_doc_type_idx').on(table.workspaceId, table.docType),
+  workspaceProductAreaIdx: index('chunks_workspace_product_area_idx').on(
+    table.workspaceId,
+    table.productArea,
   ),
 }))
 

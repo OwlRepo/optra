@@ -159,6 +159,7 @@ describe('IngestProcessor', () => {
           workspaceId: workspace.id,
           knowledgeBaseId: knowledgeBase.id,
           documentId: document.id,
+          sourceType: 'document',
         },
       },
     ])
@@ -176,6 +177,7 @@ describe('IngestProcessor', () => {
             workspaceId: workspace.id,
             knowledgeBaseId: knowledgeBase.id,
             documentId: document.id,
+            sourceType: 'document',
           },
           embedding: [0.1, 0.2],
         },

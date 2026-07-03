@@ -11,6 +11,24 @@ export interface SearchResult {
   score: number
 }
 
+// Optional metadata filters, applied as indexed WHERE clauses so retrieval
+// searches a narrower candidate set instead of the whole workspace.
+export interface RetrievalFilters {
+  sourceType?: string
+  docType?: string
+  productArea?: string
+  sectionId?: string
+}
+
+function buildFilterSql(filters?: RetrievalFilters) {
+  const conds = []
+  if (filters?.sourceType) conds.push(sql`AND source_type = ${filters.sourceType}`)
+  if (filters?.docType) conds.push(sql`AND doc_type = ${filters.docType}`)
+  if (filters?.productArea) conds.push(sql`AND product_area = ${filters.productArea}`)
+  if (filters?.sectionId) conds.push(sql`AND section_id = ${filters.sectionId}`)
+  return conds.length > 0 ? sql.join(conds, sql` `) : sql``
+}
+
 export async function syncChunks(
   embeddedChunks: EmbeddedChunk[],
   documentId: string,
@@ -50,6 +68,10 @@ export async function syncChunks(
         metadata: chunk.metadata,
         sectionId: chunk.metadata.sectionId as string | undefined,
         sectionTitle: chunk.metadata.sectionTitle as string | undefined,
+        // Promote filterable metadata to indexed columns. sourceType is set by
+        // the ingest pipeline ('web' for crawled docs, else 'document').
+        sourceType: (chunk.metadata.sourceType as string | undefined) ?? 'document',
+        docType: chunk.metadata.fileType as string | undefined,
       }))
     )
   }
@@ -58,10 +80,13 @@ export async function syncChunks(
 export async function similaritySearch(
   query: string,
   workspaceId: string,
-  limit = 5
+  limit = 5,
+  precomputedEmbedding?: number[],
+  filters?: RetrievalFilters
 ): Promise<SearchResult[]> {
-  const queryVector = await embedQuery(query)
+  const queryVector = precomputedEmbedding ?? (await embedQuery(query))
   const vectorString = `[${queryVector.join(',')}]`
+  const filterSql = buildFilterSql(filters)
 
   const rows = await db.execute<{
     id: string
@@ -75,7 +100,7 @@ export async function similaritySearch(
       metadata,
       1 - (embedding <=> ${vectorString}::vector) AS score
     FROM chunks
-    WHERE workspace_id = ${workspaceId}::uuid
+    WHERE workspace_id = ${workspaceId}::uuid ${filterSql}
     ORDER BY embedding <=> ${vectorString}::vector
     LIMIT ${limit}
   `)
@@ -99,12 +124,15 @@ function ticketSlotMinScore(): number {
 export async function similaritySearchWithTicketSlot(
   query: string,
   workspaceId: string,
-  limit = 5
+  limit = 5,
+  precomputedEmbedding?: number[],
+  filters?: RetrievalFilters
 ): Promise<SearchResult[]> {
-  const queryVector = await embedQuery(query)
+  const queryVector = precomputedEmbedding ?? (await embedQuery(query))
   const vectorString = `[${queryVector.join(',')}]`
   const reserve = ticketSlotReserve()
   const minScore = ticketSlotMinScore()
+  const filterSql = buildFilterSql(filters)
 
   const documentRows = await db.execute<{
     id: string
@@ -118,7 +146,7 @@ export async function similaritySearchWithTicketSlot(
       metadata,
       1 - (embedding <=> ${vectorString}::vector) AS score
     FROM chunks
-    WHERE workspace_id = ${workspaceId}::uuid AND document_id IS NOT NULL
+    WHERE workspace_id = ${workspaceId}::uuid AND document_id IS NOT NULL ${filterSql}
     ORDER BY embedding <=> ${vectorString}::vector
     LIMIT ${limit}
   `)
@@ -213,7 +241,17 @@ export async function syncTicketChunk(
     content,
     contentHash,
     embedding,
-    metadata: { ticketId: ticket.id, workspaceId: ticket.workspaceId, source: 'ticket' },
+    metadata: {
+      ticketId: ticket.id,
+      workspaceId: ticket.workspaceId,
+      source: 'ticket',
+      sourceType: 'ticket',
+      productArea: ticket.productArea,
+      severity: ticket.severity ?? undefined,
+    },
+    // Filterable columns for ticket-derived chunks.
+    sourceType: 'ticket',
+    productArea: ticket.productArea,
   })
 
   return 'embedded'

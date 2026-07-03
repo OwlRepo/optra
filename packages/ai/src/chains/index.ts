@@ -2,10 +2,19 @@ import { ChatOpenAI } from '@langchain/openai'
 import { SystemMessage, HumanMessage } from '@langchain/core/messages'
 import { db, documents, tickets } from '@repo/db'
 import { inArray } from 'drizzle-orm'
-import { similaritySearch, similaritySearchWithTicketSlot } from '../vectorstore'
+import { similaritySearch, similaritySearchWithTicketSlot, type RetrievalFilters } from '../vectorstore'
+import { resolveModel } from './models'
+import { buildEvidencePack } from './context'
+import { classifyQuery } from './classify'
+
+function simpleQueryLimit(): number {
+  const raw = process.env.SIMPLE_QUERY_CHUNK_LIMIT
+  const parsed = raw ? Number.parseInt(raw, 10) : Number.NaN
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 3
+}
 
 const llm = new ChatOpenAI({
-  modelName: process.env.OPENAI_CHAT_MODEL ?? 'gpt-4-turbo',
+  modelName: resolveModel('answer'),
   temperature: 0,
   streaming: true,
 })
@@ -16,8 +25,7 @@ If the answer is not in the context, say: "I don't have enough information to an
 Be concise, accurate, and do not make up information.`
 
 function buildContext(chunks: Awaited<ReturnType<typeof similaritySearch>>): string {
-  if (chunks.length === 0) return ''
-  return chunks.map(c => c.content).join('\n---\n')
+  return buildEvidencePack(chunks)
 }
 
 export type ChatSource =
@@ -33,14 +41,27 @@ export interface AnswerResult {
 export async function answerQuestion(
   question: string,
   workspaceId: string,
-  limit = 5
+  limit = 5,
+  precomputedEmbedding?: number[],
+  filters?: RetrievalFilters
 ): Promise<AnswerResult> {
-  if (process.env.LANGGRAPH_ENABLED === 'true') {
+  // Route by complexity: simple lookups skip the heavy graph (rewrite/grade) and
+  // retrieve fewer chunks; complex/procedural queries keep the full graph flow.
+  const queryClass = classifyQuery(question)
+  const effectiveLimit = queryClass === 'simple' ? Math.min(limit, simpleQueryLimit()) : limit
+
+  if (process.env.LANGGRAPH_ENABLED === 'true' && queryClass === 'complex') {
     const { answerQuestionWithGraph } = await import('./graph')
-    return answerQuestionWithGraph(question, workspaceId, limit)
+    return answerQuestionWithGraph(question, workspaceId, effectiveLimit, precomputedEmbedding, filters)
   }
 
-  const chunks = await similaritySearchWithTicketSlot(question, workspaceId, limit)
+  const chunks = await similaritySearchWithTicketSlot(
+    question,
+    workspaceId,
+    effectiveLimit,
+    precomputedEmbedding,
+    filters,
+  )
 
   if (chunks.length === 0) {
     return {

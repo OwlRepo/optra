@@ -192,6 +192,26 @@ describe('WorkspaceChatPage', () => {
     expect(container.querySelector('.rounded-2xl.bg-primary\\/10.text-primary')).toBeNull()
   })
 
+  it('renders markdown formatting and full-width chat bubble', async () => {
+    mockMessages = [
+      {
+        id: 'assistant-1',
+        role: 'assistant',
+        content: '**Bold answer**\n\n- First item\n- Second item',
+      },
+    ]
+    shouldEmitAssistantReply = false
+
+    renderPage()
+
+    expect(await screen.findByText('Bold answer', { selector: 'strong' })).toBeDefined()
+    expect(screen.getAllByRole('listitem').map((item) => item.textContent)).toEqual([
+      'First item',
+      'Second item',
+    ])
+    expect(screen.getByText('assistant').parentElement?.className).toContain('w-full')
+  })
+
   it('renders ticket citation without link', async () => {
     getChatMessagesMock.mockResolvedValueOnce({
       items: [

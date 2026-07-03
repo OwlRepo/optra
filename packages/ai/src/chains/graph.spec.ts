@@ -191,6 +191,135 @@ describe('answerQuestionWithGraph', () => {
     expect(invokeMock).toHaveBeenCalledTimes(1)
   })
 
+  it('generates from the original question after a retrieval rewrite', async () => {
+    process.env.SELF_GRADE_ENABLED = 'false'
+    similaritySearchMock
+      .mockResolvedValueOnce([
+        { id: 'c1', content: 'weak', metadata: { documentId: 'doc-1' }, score: 0.3 },
+      ])
+      .mockResolvedValueOnce([
+        { id: 'c2', content: 'better', metadata: { documentId: 'doc-1' }, score: 0.9 },
+      ])
+    invokeMock.mockResolvedValue({ content: 'rewritten retrieval query' })
+    streamMock.mockResolvedValue(
+      (async function* () {
+        yield { content: 'answer' }
+      })(),
+    )
+
+    const result = await answerQuestionWithGraph('ORIGINAL user question', 'ws-1')
+    for await (const _token of result.stream) {
+      // drain
+    }
+
+    // Retrieval used the rewritten query on the second pass (re-embedded: no
+    // precomputed vector after a rewrite).
+    expect(similaritySearchMock).toHaveBeenNthCalledWith(
+      2,
+      'rewritten retrieval query',
+      'ws-1',
+      5,
+      undefined,
+      undefined,
+    )
+    // Generation used the ORIGINAL user question, not the rewritten retrieval query.
+    const generateMessages = streamMock.mock.calls[0][0]
+    const humanMessage = generateMessages[1]
+    expect(humanMessage.content).toContain('ORIGINAL user question')
+    expect(humanMessage.content).not.toContain('rewritten retrieval query')
+  })
+
+  it('confident path streams generation as multiple token chunks', async () => {
+    process.env.SELF_GRADE_ENABLED = 'false'
+    similaritySearchMock.mockResolvedValue([
+      {
+        id: 'chunk-1',
+        content: 'Grounded context.',
+        metadata: { documentId: 'doc-1' },
+        score: 0.91,
+      },
+    ])
+    streamMock.mockResolvedValue(
+      (async function* () {
+        yield { content: 'Hello ' }
+        yield { content: 'world' }
+      })(),
+    )
+
+    const result = await answerQuestionWithGraph('question', 'ws-1')
+    const tokens: string[] = []
+    for await (const token of result.stream) {
+      tokens.push(token)
+    }
+
+    expect(tokens).toEqual(['Hello ', 'world'])
+    expect(streamMock).toHaveBeenCalledTimes(1)
+    expect(invokeMock).not.toHaveBeenCalled()
+  })
+
+  it('self-grade skips grading when top score >= SELF_GRADE_MIN_SCORE', async () => {
+    process.env.SELF_GRADE_ENABLED = 'true'
+    process.env.SELF_GRADE_MIN_SCORE = '0.85'
+    similaritySearchMock.mockResolvedValue([
+      {
+        id: 'chunk-1',
+        content: 'Grounded context.',
+        metadata: { documentId: 'doc-1' },
+        score: 0.91,
+      },
+    ])
+    streamMock.mockResolvedValue(
+      (async function* () {
+        yield { content: 'answer' }
+      })(),
+    )
+
+    const result = await answerQuestionWithGraph('question', 'ws-1')
+    const tokens: string[] = []
+    for await (const token of result.stream) {
+      tokens.push(token)
+    }
+
+    expect(tokens).toEqual(['answer'])
+    expect(invokeMock).not.toHaveBeenCalled()
+    expect(streamMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('self-grade still grades when top score < SELF_GRADE_MIN_SCORE', async () => {
+    process.env.SELF_GRADE_ENABLED = 'true'
+    process.env.SELF_GRADE_MIN_SCORE = '0.95'
+    similaritySearchMock.mockResolvedValue([
+      {
+        id: 'chunk-1',
+        content: 'Grounded context.',
+        metadata: { documentId: 'doc-1' },
+        score: 0.91,
+      },
+    ])
+    streamMock
+      .mockResolvedValueOnce(
+        (async function* () {
+          yield { content: 'first answer' }
+        })(),
+      )
+      .mockResolvedValueOnce(
+        (async function* () {
+          yield { content: 'regenerated answer' }
+        })(),
+      )
+    invokeMock.mockResolvedValueOnce({ content: 'no' })
+
+    const result = await answerQuestionWithGraph('question', 'ws-1')
+    const tokens: string[] = []
+    for await (const token of result.stream) {
+      tokens.push(token)
+    }
+
+    expect(tokens).toEqual(['regenerated answer'])
+    expect(invokeMock).toHaveBeenCalledTimes(1)
+    expect(streamMock).toHaveBeenCalledTimes(2)
+  })
+
   it('returns ticket citations from graph retrieval path', async () => {
     similaritySearchMock.mockResolvedValue([
       {

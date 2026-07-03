@@ -35,6 +35,7 @@ vi.mock('@langchain/openai', () => ({
 describe('answerQuestion', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    delete process.env.LANGGRAPH_ENABLED
     selectMock.mockReturnValue({ from: fromMock })
     fromMock.mockReturnValue({ where: whereMock })
   })
@@ -156,6 +157,30 @@ describe('answerQuestion', () => {
       },
     ])
     expect(tokens).toEqual(['answer'])
+  })
+
+  it('routes simple queries to the light path with fewer chunks even in graph mode', async () => {
+    process.env.LANGGRAPH_ENABLED = 'true'
+    similaritySearchMock.mockResolvedValue([
+      { id: 'c1', content: 'x', metadata: { documentId: 'doc-1' }, score: 0.9 },
+    ])
+    whereMock.mockResolvedValue([{ id: 'doc-1', title: 'D', sourceUrl: null }])
+    streamMock.mockResolvedValue(
+      (async function* () {
+        yield { content: 'a' }
+      })(),
+    )
+
+    const { answerQuestion } = await import('./index')
+    const result = await answerQuestion('What is SSO?', 'ws-1', 5)
+    const tokens: string[] = []
+    for await (const token of result.stream) {
+      tokens.push(token)
+    }
+
+    // Simple query: light path with reduced chunk limit (3), no graph rewrite/grade.
+    expect(similaritySearchMock).toHaveBeenCalledWith('What is SSO?', 'ws-1', 3, undefined, undefined)
+    expect(tokens).toEqual(['a'])
   })
 
   it('returns fallback when retrieval empty', async () => {

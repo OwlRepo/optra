@@ -5,6 +5,8 @@ import Link from 'next/link'
 import { type Message } from 'ai'
 import { useChat } from 'ai/react'
 import { useRouter } from 'next/navigation'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import {
   AppShell,
   Badge,
@@ -72,6 +74,49 @@ const suggestedPrompts = [
   'What is our refund policy for annual plans?',
   'Customer cannot access invoices after SSO migration. What should support do?',
 ]
+
+const markdownComponents = {
+  p: ({ children }: React.ComponentPropsWithoutRef<'p'>) => (
+    <p className="mb-3 last:mb-0">{children}</p>
+  ),
+  ul: ({ children }: React.ComponentPropsWithoutRef<'ul'>) => (
+    <ul className="mb-3 list-disc space-y-1 pl-5 last:mb-0">{children}</ul>
+  ),
+  ol: ({ children }: React.ComponentPropsWithoutRef<'ol'>) => (
+    <ol className="mb-3 list-decimal space-y-1 pl-5 last:mb-0">{children}</ol>
+  ),
+  li: ({ children }: React.ComponentPropsWithoutRef<'li'>) => <li className="pl-1">{children}</li>,
+  a: ({ children, href }: React.ComponentPropsWithoutRef<'a'>) =>
+    href ? (
+      <a
+        href={href}
+        target="_blank"
+        rel="noreferrer"
+        className="font-medium underline underline-offset-4"
+      >
+        {children}
+      </a>
+    ) : (
+      <span>{children}</span>
+    ),
+  code: ({ children, className }: React.ComponentPropsWithoutRef<'code'>) => (
+    <code
+      className={
+        className ?? 'rounded bg-black/5 px-1 py-0.5 font-mono text-[0.92em] dark:bg-white/10'
+      }
+    >
+      {children}
+    </code>
+  ),
+  pre: ({ children }: React.ComponentPropsWithoutRef<'pre'>) => (
+    <pre className="mb-3 overflow-x-auto rounded-2xl bg-black/5 p-3 text-[0.92em] last:mb-0 dark:bg-white/10">
+      {children}
+    </pre>
+  ),
+  strong: ({ children }: React.ComponentPropsWithoutRef<'strong'>) => (
+    <strong className="font-semibold">{children}</strong>
+  ),
+}
 
 function parseSourcesHeader(value: string | null): ChatSource[] {
   if (!value) return []
@@ -523,18 +568,25 @@ export default function WorkspaceChatPage({ params }: { params: { id: string } }
                 ) : null}
 
                 {messages.map((message) => (
-                  <div
-                    key={message.id}
-                    className={`rounded-[calc(var(--radius)+0.25rem)] border px-4 py-3 text-sm shadow-[var(--shadow-sm)] ${
-                      message.role === 'user'
-                        ? 'border-primary/20 bg-primary/5'
-                        : 'border-border/70 bg-secondary/40'
-                    }`}
-                  >
-                    <p className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                      {message.role}
-                    </p>
-                    <p className="whitespace-pre-wrap leading-7">{message.content}</p>
+                  <div key={message.id} className="w-full">
+                    <div
+                      className={`w-full rounded-[calc(var(--radius)+0.25rem)] border px-4 py-4 text-sm shadow-[var(--shadow-sm)] sm:px-5 ${
+                        message.role === 'user'
+                          ? 'border-primary/20 bg-primary/5'
+                          : 'border-border/70 bg-secondary/40'
+                      }`}
+                    >
+                      <div className={`w-full ${message.role === 'user' ? 'ml-auto max-w-3xl' : 'max-w-3xl'}`}>
+                        <p className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                          {message.role}
+                        </p>
+                        <div className="leading-7 text-foreground/95">
+                          <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+                            {message.content}
+                          </ReactMarkdown>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 ))}
               </div>

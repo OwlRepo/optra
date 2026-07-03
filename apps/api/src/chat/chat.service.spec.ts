@@ -135,7 +135,10 @@ describe('ChatService', () => {
 
     const result = await service.answer(workspace.id, user.id, 'Hello assistant')
 
-    expect(answerQuestion).toHaveBeenCalledWith('Hello assistant', workspace.id)
+    // The cache-lookup embedding is reused for retrieval (no second embed on miss).
+    expect(answerQuestion).toHaveBeenCalledWith('Hello assistant', workspace.id, undefined, [
+      0.1, 0.2, 0.3,
+    ])
     expect(result.sessionId).toBeDefined()
 
     const body: string[] = []

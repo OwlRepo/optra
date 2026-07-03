@@ -3,7 +3,7 @@ CREATE TABLE IF NOT EXISTS "chat_cache" (
 	"workspace_id" uuid NOT NULL,
 	"version" integer NOT NULL,
 	"question" text NOT NULL,
-	"question_embedding" "vector(1536)" NOT NULL,
+	"question_embedding" vector(1536) NOT NULL,
 	"answer" text NOT NULL,
 	"sources" jsonb NOT NULL,
 	"created_at" timestamp DEFAULT now() NOT NULL

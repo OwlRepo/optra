@@ -171,7 +171,12 @@ describe('ticket vector sync', () => {
       ticketId: ticket.id,
       workspaceId: workspace.id,
       source: 'ticket',
+      sourceType: 'ticket',
+      productArea: 'auth',
     })
+    // Enrichment: filterable columns populated for ticket-derived chunks.
+    expect(rows[0]?.sourceType).toBe('ticket')
+    expect(rows[0]?.productArea).toBe('auth')
   })
 
   it('qualifying ticket with unchanged content skips embedding', async () => {
@@ -409,6 +414,80 @@ describe('similaritySearchWithTicketSlot', () => {
     const overrideResult = await similaritySearchWithTicketSlot('question', workspace.id, 5)
 
     expect(overrideResult.some((entry) => entry.id === ticketChunk.id)).toBe(false)
+  })
+})
+
+describe('metadata filters (#8 S-META)', () => {
+  const prefix = `vectorstore-filter-spec-${Date.now()}`
+  const VEC = new Array(1536).fill(1)
+
+  async function seedTypedDocChunk(
+    workspaceId: string,
+    kbId: string,
+    docType: string,
+  ) {
+    const [document] = await db
+      .insert(documents)
+      .values({
+        workspaceId,
+        knowledgeBaseId: kbId,
+        title: `Doc ${docType}`,
+        storageKey: `doc-${crypto.randomUUID()}.${docType}`,
+        status: 'done',
+      })
+      .returning()
+
+    const [chunk] = await db
+      .insert(chunks)
+      .values({
+        workspaceId,
+        documentId: document.id,
+        content: `content for ${docType}`,
+        contentHash: crypto.randomUUID().replace(/-/g, ''),
+        embedding: VEC,
+        sourceType: 'document',
+        docType,
+      })
+      .returning()
+
+    return chunk
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    embedQueryMock.mockResolvedValue(VEC)
+  })
+
+  afterEach(async () => {
+    await cleanupFixtures(prefix)
+  })
+
+  it('similaritySearch returns only chunks matching a docType filter', async () => {
+    const { workspace, kb } = await seedWorkspace(prefix)
+    const pdfChunk = await seedTypedDocChunk(workspace.id, kb.id, 'pdf')
+    const mdChunk = await seedTypedDocChunk(workspace.id, kb.id, 'md')
+    const { similaritySearch } = await import('./index')
+
+    const result = await similaritySearch('question', workspace.id, 5, undefined, {
+      docType: 'pdf',
+    })
+
+    const ids = result.map((r) => r.id)
+    expect(ids).toContain(pdfChunk.id)
+    expect(ids).not.toContain(mdChunk.id)
+  })
+
+  it('similaritySearch without a filter returns both docTypes', async () => {
+    const { workspace, kb } = await seedWorkspace(prefix)
+    const pdfChunk = await seedTypedDocChunk(workspace.id, kb.id, 'pdf')
+    const mdChunk = await seedTypedDocChunk(workspace.id, kb.id, 'md')
+    const { similaritySearch } = await import('./index')
+
+    const result = await similaritySearch('question', workspace.id, 5)
+
+    const ids = result.map((r) => r.id)
+    expect(ids).toContain(pdfChunk.id)
+    expect(ids).toContain(mdChunk.id)
   })
 })
 
