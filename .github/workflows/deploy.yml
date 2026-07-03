@@ -23,15 +23,19 @@ jobs:
           key: ${{ secrets.VPS_SSH_KEY }}
           port: ${{ secrets.VPS_PORT }}
           command_timeout: 25m
-          envs: DEPLOY_DOMAIN
           script: |
             set -eu
-            cd /apps/mnemra
+            cd /home/deploy/apps/mnemra
 
             command -v docker >/dev/null
             docker compose version >/dev/null
             test -f docker-compose.prod.yml
-            test -f .env.prod
+            test -f .env
+
+            # Load .env: gives compose ${VAR} interpolation + DOMAIN for the smoke test
+            set -a
+            . ./.env
+            set +a
 
             git fetch origin
             git checkout main
@@ -82,7 +86,7 @@ jobs:
             fi
 
             html="$(mktemp)"
-            curl -fsS --max-time 15 "https://${DEPLOY_DOMAIN}/" -o "$html" || { echo "public smoke fetch failed"; exit 1; }
+            curl -fsS --max-time 15 "https://${DOMAIN}/" -o "$html" || { echo "public smoke fetch failed"; exit 1; }
             if grep -Eq 'hmr-client|next-devtools|\.next/dev|localhost:3001' "$html"; then
               echo "public smoke check found dev artifacts"; exit 1
             fi

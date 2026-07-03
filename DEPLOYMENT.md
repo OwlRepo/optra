@@ -93,11 +93,11 @@ dig your-domain.com +short
 On your **local machine**:
 
 ```bash
-# Copy production template
-cp .env.production .env.prod
+# Copy the committed template
+cp .env.example .env
 
 # Edit with your values
-nano .env.prod
+nano .env
 ```
 
 Required values:
@@ -108,7 +108,7 @@ OPENAI_API_KEY=sk-your-production-key     # Production OpenAI key
 LANGSMITH_API_KEY=ls__your-key            # Optional
 ```
 
-Also provision the SeaweedFS prod credentials file (not covered by `.env.prod`):
+Also provision the SeaweedFS prod credentials file (not covered by `.env`):
 ```bash
 cp docker/seaweedfs/s3.prod.json.example docker/seaweedfs/s3.prod.json
 nano docker/seaweedfs/s3.prod.json  # Fill in real accessKey/secretKey, matching whatever you use for S3_ACCESS_KEY/S3_SECRET_KEY
@@ -125,7 +125,7 @@ nano docker/seaweedfs/s3.prod.json  # Fill in real accessKey/secretKey, matching
 
 This will:
 - Sync code to server
-- Copy `.env.prod`
+- Copy `.env`
 - Build Docker images
 - Run migrations
 - Start all services
@@ -141,8 +141,8 @@ cd /opt/mnemra
 git clone YOUR_REPO .
 
 # Copy environment
-cp .env.production .env.prod
-nano .env.prod  # Fill in values
+cp .env.example .env
+nano .env  # Fill in values
 cp docker/seaweedfs/s3.prod.json.example docker/seaweedfs/s3.prod.json
 nano docker/seaweedfs/s3.prod.json  # Fill in values
 
@@ -154,7 +154,7 @@ nano docker/seaweedfs/s3.prod.json  # Fill in values
 
 `.github/workflows/deploy.yml` deploys automatically on every push to `main` (or via manual `workflow_dispatch`). It SSHes into the VPS, pulls latest, backs up Postgres, rebuilds `api`/`web`, brings the stack up, and runs a healthcheck + smoke-test before declaring success.
 
-This assumes `/opt/mnemra` already has a working checkout with `.env.prod` and `docker/seaweedfs/s3.prod.json` in place (i.e. you've already done Option A or B once) — the workflow does not provision secrets on the VPS itself.
+This assumes the deploy directory already has a working checkout with `.env` and `docker/seaweedfs/s3.prod.json` in place (i.e. you've already done Option A or B once) — the workflow does not provision secrets on the VPS itself. The post-deploy smoke test reads `DOMAIN` directly from that `.env`, so no separate domain secret is needed.
 
 Configure these **GitHub Secrets** on the repo (`Settings → Secrets and variables → Actions`):
 | Secret | Value |
@@ -163,7 +163,6 @@ Configure these **GitHub Secrets** on the repo (`Settings → Secrets and variab
 | `VPS_USER` | SSH user (e.g. `deploy`) |
 | `VPS_SSH_KEY` | Private key with access to that user |
 | `VPS_PORT` | SSH port (usually `22`) |
-| `DEPLOY_DOMAIN` | Same value as `DOMAIN` in `.env.prod`, used for the post-deploy smoke test |
 
 ### 5. Verify Deployment
 
@@ -347,7 +346,7 @@ docker compose -f docker-compose.prod.yml logs api
 docker compose -f docker-compose.prod.yml logs web
 
 # Common causes: missing/invalid OPENAI_API_KEY, POSTGRES_PASSWORD, or DOMAIN in
-# .env.prod, or docker/seaweedfs/s3.prod.json was never created from the .example.
+# .env, or docker/seaweedfs/s3.prod.json was never created from the .example.
 ```
 
 ### Out of memory
@@ -363,8 +362,8 @@ docker stats
 
 ## Security Checklist
 
-- [ ] Strong `POSTGRES_PASSWORD` in `.env.prod`
-- [ ] `.env.prod` is in `.gitignore` (never committed)
+- [ ] Strong `POSTGRES_PASSWORD` in `.env`
+- [ ] `.env` is in `.gitignore` (never committed)
 - [ ] `docker/seaweedfs/s3.prod.json` is in `.gitignore` (never committed)
 - [ ] Firewall configured (only ports 80, 443, 22 open)
 - [ ] SSH key authentication enabled (disable password auth)

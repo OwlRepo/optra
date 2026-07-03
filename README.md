@@ -41,8 +41,8 @@ See [DEPLOYMENT.md](./DEPLOYMENT.md) for complete guide.
 
 ```bash
 # Configure production environment
-cp .env.example .env.production
-nano .env.production  # Fill in production secrets
+cp .env.example .env
+nano .env  # Fill in production secrets
 
 # Verify setup
 bash scripts/verify-env.sh

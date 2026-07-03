@@ -82,8 +82,8 @@ Everything runs in Docker:
 **From local machine:**
 ```bash
 # First time setup
-cp .env.production .env.prod
-nano .env.prod  # Fill in DOMAIN, passwords, API keys
+cp .env.example .env
+nano .env  # Fill in DOMAIN, passwords, API keys
 cp docker/seaweedfs/s3.prod.json.example docker/seaweedfs/s3.prod.json
 nano docker/seaweedfs/s3.prod.json  # Fill in real S3 credentials
 
@@ -97,7 +97,7 @@ cd /opt/mnemra
 ./scripts/deploy.sh
 ```
 
-**Automatically on push to `main`:** see `.github/workflows/deploy.yml` — requires `/opt/mnemra` to already have `.env.prod` and `docker/seaweedfs/s3.prod.json` in place from a prior manual deploy, plus `VPS_HOST`/`VPS_USER`/`VPS_SSH_KEY`/`VPS_PORT`/`DEPLOY_DOMAIN` configured as GitHub Secrets.
+**Automatically on push to `main`:** see `.github/workflows/deploy.yml` — requires the deploy dir to already have `.env` and `docker/seaweedfs/s3.prod.json` in place from a prior manual deploy, plus `VPS_HOST`/`VPS_USER`/`VPS_SSH_KEY`/`VPS_PORT` configured as GitHub Secrets. The smoke test reads `DOMAIN` from `.env`, so no domain secret is needed.
 
 ### What Happens
 
@@ -244,7 +244,7 @@ Local development:
 
 Production:
 - `S3_ENDPOINT=http://seaweedfs:8333`
-- prod must provide `docker/seaweedfs/s3.prod.json` with real credentials matching `.env.prod` — copy it from the committed `docker/seaweedfs/s3.prod.json.example` template before first deploy (the file itself is gitignored, same as `.env.prod`)
+- prod must provide `docker/seaweedfs/s3.prod.json` with real credentials matching `.env` — copy it from the committed `docker/seaweedfs/s3.prod.json.example` template before first deploy (the file itself is gitignored, same as `.env`)
 
 ---
 
@@ -375,7 +375,7 @@ services:
 - [x] Redis not exposed to internet
 - [x] SSL auto-managed by Caddy
 - [x] Security headers configured (Caddyfile)
-- [x] Secrets in .env.prod (not in images)
+- [x] Secrets in .env (not in images)
 - [x] `api`/`web` have real HEALTHCHECKs; `web`/`caddy` wait on them before starting
 - [ ] Regular image updates (`docker compose pull`)
 - [ ] Database backups automated (GitHub Actions deploy does a pre-deploy backup; no separate schedule yet)
@@ -400,11 +400,10 @@ docker compose -f docker-compose.prod.yml up -d
 
 `.github/workflows/deploy.yml` deploys automatically on push to `main` (or manual `workflow_dispatch`). It SSHes into the VPS, backs up Postgres, rebuilds `api`/`web`, brings the stack up with `docker compose -f docker-compose.prod.yml up -d --remove-orphans`, polls `GET /health` and the web root until healthy, then fetches the public site and fails the deploy if it finds dev-mode artifacts (HMR client scripts, `.next/dev`, a `localhost` API URL) in the served HTML — a guard against accidentally shipping a dev build.
 
-It assumes `/opt/mnemra` already has a working checkout with `.env.prod` and `docker/seaweedfs/s3.prod.json` in place; it does not provision those itself.
+It assumes the deploy dir already has a working checkout with `.env` and `docker/seaweedfs/s3.prod.json` in place; it does not provision those itself. The smoke test reads `DOMAIN` from `.env`.
 
 **Required GitHub Secrets** (`Settings → Secrets and variables → Actions`):
 - `VPS_HOST` — server IP or hostname
 - `VPS_USER` — SSH user
 - `VPS_SSH_KEY` — private key for that user
 - `VPS_PORT` — SSH port
-- `DEPLOY_DOMAIN` — same value as `DOMAIN` in `.env.prod`, used for the post-deploy smoke test

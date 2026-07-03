@@ -48,9 +48,12 @@ If risk area is missing, mark `UNMAPPED RISK`.
   documentation drift: (1) `apps/api/Dockerfile`/`apps/web/Dockerfile` referenced a nonexistent
   `bun.lockb` instead of the repo's actual `bun.lock`, silently breaking every prod image build;
   (2) `docker/seaweedfs/s3.prod.json` was bind-mounted but never existed on disk, breaking a fresh
-  `docker compose -f docker-compose.prod.yml up`; (3) `env_file:` pointed at the committed template
-  `.env.production` instead of the operator-provisioned real-secrets `.env.prod`, risking a deploy
-  running with placeholder values (`CHANGE_ME_STRONG_PASSWORD`, `your-domain.com`). Added
+  `docker compose -f docker-compose.prod.yml up`; (3) `env_file:` pointed at a template rather than a
+  real-secrets file, risking a deploy running with placeholder values (`CHANGE_ME_STRONG_PASSWORD`,
+  `your-domain.com`). Env model has since been unified: dev and prod compose both `env_file: .env`
+  (single gitignored file, `cp .env.example .env`), which Compose also auto-reads for `${VAR}`
+  interpolation; the deploy workflow sources `.env` for `DOMAIN` in its smoke test, so the former
+  `DEPLOY_DOMAIN` GitHub Secret is no longer used. Added
   `depends_on: condition: service_healthy` wiring for api/web/caddy (previously only infra services
   had healthchecks) plus a dependency-free `GET /health` endpoint
   (`apps/api/src/health/health.controller.ts`) consumed by both the new prod `HEALTHCHECK`

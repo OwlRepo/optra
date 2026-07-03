@@ -13,16 +13,10 @@ echo ""
 
 # Check root .env files
 echo "📁 Checking root environment files:"
-if [ -f .env.local ]; then
-    echo -e "${GREEN}✓${NC} .env.local exists"
+if [ -f .env ]; then
+    echo -e "${GREEN}✓${NC} .env exists (dev + prod runtime, gitignored)"
 else
-    echo -e "${YELLOW}⚠${NC}  .env.local missing (needed for local dev)"
-fi
-
-if [ -f .env.production ]; then
-    echo -e "${GREEN}✓${NC} .env.production exists"
-else
-    echo -e "${YELLOW}⚠${NC}  .env.production missing (needed for prod deployment)"
+    echo -e "${YELLOW}⚠${NC}  .env missing (copy from .env.example)"
 fi
 
 if [ -f .env.example ]; then
@@ -62,21 +56,21 @@ echo "🐳 Checking docker-compose.prod.yml:"
 if grep -q "env_file:" docker-compose.prod.yml; then
     echo -e "${GREEN}✓${NC} env_file directive present"
     COUNT=$(grep -c "env_file:" docker-compose.prod.yml || true)
-    echo "   → $COUNT services configured to load .env.production"
+    echo "   → $COUNT services configured to load .env"
 else
     echo -e "${RED}✗${NC} env_file directive missing"
 fi
 
 echo ""
 
-# Check required variables in .env.local
-if [ -f .env.local ]; then
-    echo "🔑 Checking required variables in .env.local:"
+# Check required variables in .env
+if [ -f .env ]; then
+    echo "🔑 Checking required variables in .env:"
     REQUIRED_VARS=("DATABASE_URL" "REDIS_HOST" "REDIS_PORT" "OPENAI_API_KEY" "NEXT_PUBLIC_API_URL")
-    
+
     for VAR in "${REQUIRED_VARS[@]}"; do
-        if grep -q "^${VAR}=" .env.local; then
-            VALUE=$(grep "^${VAR}=" .env.local | cut -d= -f2-)
+        if grep -q "^${VAR}=" .env; then
+            VALUE=$(grep "^${VAR}=" .env | cut -d= -f2-)
             if [[ "$VALUE" == *"your-key-here"* ]] || [[ "$VALUE" == *"sk-..."* ]]; then
                 echo -e "${YELLOW}⚠${NC}  $VAR: placeholder value (needs update)"
             else

@@ -6,10 +6,8 @@ All applications in `apps/` share environment variables from a **single root `.e
 
 ```
 /
-├── .env.example           # Template with all variables
-├── .env                    # Local development, full Docker stack (gitignored)
-├── .env.production        # Production template/reference (gitignored)
-├── .env.prod              # Production, real secrets (gitignored)
+├── .env.example           # Template with all variables (committed)
+├── .env                    # Real secrets — dev AND prod (gitignored)
 ├── apps/
 │   ├── api/              # ❌ NO .env files here
 │   └── web/              # ❌ NO .env files here
@@ -43,14 +41,14 @@ NEXT_PUBLIC_API_URL=http://localhost:3001
 
 Note: inside the `api`/`web` containers, `docker-compose.yml`'s `environment:` block overrides `DATABASE_URL`/`REDIS_HOST`/etc. to point at the `postgres`/`redis`/`seaweedfs` service names rather than `localhost` — the `.env` file's `localhost`-based values are for anything you run directly on the host (e.g. `psql` against the exposed `54321` port).
 
-### `.env.production` / `.env.prod` (Production Docker)
+### `.env` (Production Docker)
 
-`docker-compose.prod.yml` loads `.env.prod` (not `.env.production`) via `env_file:`. `.env.production` is the reference template — copy it to `.env.prod` and fill in real values; `.env.prod` is what's actually read at deploy time.
+`docker-compose.prod.yml` loads the same `.env` file via `env_file:`, and Compose also auto-reads it for `${VAR}` interpolation in the compose file. On the VPS, create `.env` from the committed `.env.example` template and fill in production values.
 
 **Setup:**
 ```bash
-cp .env.production .env.prod
-# Edit .env.prod with production values
+cp .env.example .env
+# Edit .env with production values
 ```
 
 **Variables:**
@@ -95,14 +93,14 @@ graph LR
 services:
   api:
     env_file:
-      - .env.prod  # ← Loads all real secrets
+      - .env  # ← Loads all real secrets
     environment:
       DATABASE_URL: postgresql://...  # Override if needed
 ```
 
-- All services load `.env.prod`
+- All services load `.env`
 - `environment:` section can override specific vars
-- Variable interpolation: `${VAR_NAME}`
+- Variable interpolation: `${VAR_NAME}` (Compose auto-reads `.env` in the project dir for this)
 
 ## TurboRepo Integration
 
@@ -146,8 +144,8 @@ docker compose exec web printenv NEXT_PUBLIC_API_URL
 
 ### Check Production Setup
 ```bash
-# Validate .env.prod
-cat .env.prod
+# Validate .env
+cat .env
 
 # Test variable substitution
 docker compose -f docker-compose.prod.yml config | grep -A5 environment
@@ -168,8 +166,8 @@ docker compose -f docker-compose.prod.yml up -d
 - ✅ From the host, port is `54321` (not `5432`); from inside a container, use service name `postgres:5432`
 
 ### Production env vars not loaded
-- ✅ Check `env_file: .env.prod` in docker-compose.prod.yml (not `.env.production` — that's the template)
-- ✅ Check `.env.prod` exists at root on the VPS
+- ✅ Check `env_file: .env` in docker-compose.prod.yml
+- ✅ Check `.env` exists at root on the VPS
 - ✅ Run `docker compose -f docker-compose.prod.yml config` to verify
 
 ### Next.js build-time vars missing
@@ -181,26 +179,24 @@ docker compose -f docker-compose.prod.yml up -d
 
 **Never commit:**
 - `.env`
-- `.env.prod`
 - Any file with real API keys
 
 **Safe to commit:**
 - `.env.example` (template only)
-- `.env.production` (template only)
 - `turbo.json` (var names only, no values)
 
 **Deployment:**
 ```bash
 # On server
-cp .env.production .env.prod
-nano .env.prod  # Fill in secrets
+cp .env.example .env
+nano .env  # Fill in secrets
 docker compose -f docker-compose.prod.yml up -d
 ```
 
 ## Adding New Variables
 
 1. Add to `.env.example` (with placeholder)
-2. Add to `.env` and `.env.prod` (with real values)
+2. Add to `.env` (with real values)
 3. Add to `turbo.json` → `globalEnv`
 4. Add to task-specific `env` arrays if needed
 5. Add to `docker-compose.prod.yml` `environment:` if needs interpolation

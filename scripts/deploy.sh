@@ -5,31 +5,31 @@ set -e
 
 echo "🚀 Deploying to production..."
 
-# Check if .env.prod exists
-if [ ! -f .env.prod ]; then
-    echo "❌ .env.prod not found"
-    echo "📝 Copy .env.production to .env.prod and fill in values"
+# Check if .env exists
+if [ ! -f .env ]; then
+    echo "❌ .env not found"
+    echo "📝 Copy .env.example to .env and fill in values"
     exit 1
 fi
 
 # Load environment
 set -a
-source .env.prod
+source .env
 set +a
 
 # Validate required vars
 if [ -z "$DOMAIN" ]; then
-    echo "❌ DOMAIN not set in .env.prod"
+    echo "❌ DOMAIN not set in .env"
     exit 1
 fi
 
 if [ -z "$POSTGRES_PASSWORD" ]; then
-    echo "❌ POSTGRES_PASSWORD not set in .env.prod"
+    echo "❌ POSTGRES_PASSWORD not set in .env"
     exit 1
 fi
 
 if [ -z "$OPENAI_API_KEY" ]; then
-    echo "❌ OPENAI_API_KEY not set in .env.prod"
+    echo "❌ OPENAI_API_KEY not set in .env"
     exit 1
 fi
 

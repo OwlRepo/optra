@@ -6,7 +6,7 @@ services:
     container_name: mnemra-db-prod
     restart: unless-stopped
     env_file:
-      - .env.prod
+      - .env
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD required}
@@ -27,7 +27,7 @@ services:
     container_name: mnemra-redis-prod
     restart: unless-stopped
     env_file:
-      - .env.prod
+      - .env
     volumes:
       - redis_data:/data
     networks:
@@ -43,7 +43,7 @@ services:
     container_name: mnemra-seaweedfs-prod
     restart: unless-stopped
     env_file:
-      - .env.prod
+      - .env
     command: server -s3 -s3.config=/etc/seaweedfs/s3.json -dir=/data
     volumes:
       - seaweedfs_data:/data
@@ -65,7 +65,7 @@ services:
     container_name: mnemra-api
     restart: unless-stopped
     env_file:
-      - .env.prod
+      - .env
     depends_on:
       postgres:
         condition: service_healthy
@@ -100,7 +100,7 @@ services:
     container_name: mnemra-web
     restart: unless-stopped
     env_file:
-      - .env.prod
+      - .env
     depends_on:
       api:
         condition: service_healthy
@@ -126,7 +126,7 @@ services:
     container_name: mnemra-caddy
     restart: unless-stopped
     env_file:
-      - .env.prod
+      - .env
     ports:
       - "80:80"
       - "443:443"

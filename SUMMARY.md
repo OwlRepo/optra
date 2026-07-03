@@ -71,8 +71,8 @@ ssh root@YOUR_SERVER_IP
 curl -fsSL https://get.docker.com -o get-docker.sh && sh get-docker.sh
 
 # 2. Configure environment (local machine)
-cp .env.production .env.prod
-nano .env.prod  # Fill DOMAIN, POSTGRES_PASSWORD, OPENAI_API_KEY
+cp .env.example .env
+nano .env  # Fill DOMAIN, POSTGRES_PASSWORD, OPENAI_API_KEY
 
 # 3. Deploy
 bun run deploy:remote user@YOUR_SERVER_IP
@@ -342,7 +342,7 @@ Single source of truth in `packages/ui`.
 - Database not exposed to internet
 - Automatic SSL with Caddy
 - Security headers configured
-- Secrets managed via .env.prod (gitignored)
+- Secrets managed via .env (gitignored)
 
 ### 📦 Monorepo-First
 Shared packages (`@repo/*`) used consistently.  

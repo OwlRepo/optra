@@ -25,11 +25,11 @@ rsync -avz --exclude 'node_modules' \
     ./ $SERVER:$APP_DIR/
 
 # Copy production env
-if [ -f .env.prod ]; then
+if [ -f .env ]; then
     echo "📝 Copying production environment..."
-    scp .env.prod $SERVER:$APP_DIR/.env.prod
+    scp .env $SERVER:$APP_DIR/.env
 else
-    echo "⚠️  .env.prod not found locally - make sure it exists on server"
+    echo "⚠️  .env not found locally - make sure it exists on server"
 fi
 
 # Run deployment on server
