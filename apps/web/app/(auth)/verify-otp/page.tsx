@@ -54,7 +54,7 @@ export default function VerifyOtpPage() {
             <span className="flex size-9 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-md">
               <Sparkles className="size-4" />
             </span>
-            Second Brain
+            Mnemra
           </Link>
           <div>
             <h1 className="text-2xl font-semibold">Check your email</h1>

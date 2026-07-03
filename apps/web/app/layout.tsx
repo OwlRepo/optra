@@ -23,20 +23,20 @@ const mono = JetBrains_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: 'Second Brain',
-    template: '%s · Second Brain',
+    default: 'Mnemra',
+    template: '%s · Mnemra',
   },
   description: 'Modern support intelligence platform for faster answers, cleaner knowledge operations, and happier customers.',
-  metadataBase: new URL('https://second-brain.local'),
+  metadataBase: new URL('https://mnemra.com'),
   openGraph: {
-    title: 'Second Brain',
+    title: 'Mnemra',
     description: 'Support intelligence platform for modern teams.',
-    siteName: 'Second Brain',
+    siteName: 'Mnemra',
     type: 'website',
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Second Brain',
+    title: 'Mnemra',
     description: 'Support intelligence platform for modern teams.',
   },
 }

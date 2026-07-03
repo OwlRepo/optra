@@ -45,7 +45,7 @@ sleep 5
 
 # Run migrations (temporary container)
 docker compose -f docker-compose.prod.yml run --rm \
-    -e DATABASE_URL="postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-support_brain}" \
+    -e DATABASE_URL="postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-mnemra}" \
     api sh -c "cd packages/db && bun run db:push"
 
 echo "🚀 Starting production services..."

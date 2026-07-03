@@ -7,8 +7,9 @@ All applications in `apps/` share environment variables from a **single root `.e
 ```
 /
 ├── .env.example           # Template with all variables
-├── .env.local            # Local development (gitignored)
-├── .env.production       # Production deployment (gitignored)
+├── .env                    # Local development, full Docker stack (gitignored)
+├── .env.production        # Production template/reference (gitignored)
+├── .env.prod              # Production, real secrets (gitignored)
 ├── apps/
 │   ├── api/              # ❌ NO .env files here
 │   └── web/              # ❌ NO .env files here
@@ -19,37 +20,37 @@ All applications in `apps/` share environment variables from a **single root `.e
 
 ## Environment Files
 
-### `.env.local` (Local Development)
+### `.env` (Local Development)
 
-Used when running:
-- `bun run dev` (Turbo + host apps)
-- `bun docker:dev` (infrastructure only)
+Used by `docker compose up` (`bun run docker:dev:up`) — every service, including `api` and `web`, loads this via `env_file:`.
 
 **Setup:**
 ```bash
-cp .env.example .env.local
-# Edit .env.local with your keys
+cp .env.example .env
+# Edit .env with your keys
 ```
 
 **Variables:**
 ```bash
-DATABASE_URL=postgresql://postgres:postgres@localhost:54321/support_brain
+DATABASE_URL=postgresql://postgres:postgres@localhost:54321/mnemra
 REDIS_HOST=localhost
 REDIS_PORT=6379
 OPENAI_API_KEY=sk-your-key-here
 LANGSMITH_API_KEY=ls__your-key-here
-LANGSMITH_PROJECT=support-second-brain
+LANGSMITH_PROJECT=mnemra
 NEXT_PUBLIC_API_URL=http://localhost:3001
 ```
 
-### `.env.production` (Production Docker)
+Note: inside the `api`/`web` containers, `docker-compose.yml`'s `environment:` block overrides `DATABASE_URL`/`REDIS_HOST`/etc. to point at the `postgres`/`redis`/`seaweedfs` service names rather than `localhost` — the `.env` file's `localhost`-based values are for anything you run directly on the host (e.g. `psql` against the exposed `54321` port).
 
-Used by `docker-compose.prod.yml` via `env_file:` directive.
+### `.env.production` / `.env.prod` (Production Docker)
+
+`docker-compose.prod.yml` loads `.env.prod` (not `.env.production`) via `env_file:`. `.env.production` is the reference template — copy it to `.env.prod` and fill in real values; `.env.prod` is what's actually read at deploy time.
 
 **Setup:**
 ```bash
-cp .env.example .env.production
-# Edit .env.production with production values
+cp .env.production .env.prod
+# Edit .env.prod with production values
 ```
 
 **Variables:**
@@ -60,56 +61,46 @@ DOMAIN=your-domain.com
 # Database credentials
 POSTGRES_USER=postgres
 POSTGRES_PASSWORD=STRONG_RANDOM_PASSWORD
-POSTGRES_DB=support_brain
+POSTGRES_DB=mnemra
 
 # OpenAI
 OPENAI_API_KEY=sk-prod-key
 
 # LangSmith (optional)
 LANGSMITH_API_KEY=ls__prod-key
-LANGSMITH_PROJECT=support-second-brain-prod
+LANGSMITH_PROJECT=mnemra-prod
 ```
 
 ## How It Works
 
-### 1. Local Development (`bun run dev`)
+### 1. Local Development (`docker compose up`)
 
 ```mermaid
 graph LR
-    A[.env.local] --> B[Turbo]
-    B --> C[apps/api]
-    B --> D[apps/web]
-    B --> E[packages/*]
+    A[.env] --> B[docker compose]
+    B --> C[api container]
+    B --> D[web container]
+    C --> E[packages/* built in-image]
+    D --> E
 ```
 
-- **TurboRepo** loads `.env.local` at root
-- `globalEnv` in `turbo.json` passes vars to all tasks
-- **NestJS** (`@nestjs/config`) auto-loads from root
-- **Next.js** auto-loads from root (`.env*` files)
+- `docker-compose.yml`'s `env_file: .env` injects the file's vars into the `api`/`web` containers as real environment variables
+- Container-specific `environment:` overrides (`DATABASE_URL`, `REDIS_HOST`, `S3_ENDPOINT`, `API_URL`) point at Docker service names instead of `localhost`
+- **NestJS** (`@nestjs/config`) reads `process.env` as normal — no dotenv file loading needed inside the container, Compose already injected everything
+- **Next.js** likewise reads injected `process.env` vars at runtime; `NEXT_PUBLIC_*` vars are baked in at container build/dev-start time
 
-### 2. Local Docker (`docker-compose.yml`)
-
-```bash
-docker compose up -d  # Infrastructure only
-bun run dev           # Apps on host, use .env.local
-```
-
-- Postgres: `localhost:54321`
-- Redis: `localhost:6379`
-- Apps run on host with `.env.local`
-
-### 3. Production Docker (`docker-compose.prod.yml`)
+### 2. Production Docker (`docker-compose.prod.yml`)
 
 ```yaml
 services:
   api:
     env_file:
-      - .env.production  # ← Loads all vars
+      - .env.prod  # ← Loads all real secrets
     environment:
       DATABASE_URL: postgresql://...  # Override if needed
 ```
 
-- All services load `.env.production`
+- All services load `.env.prod`
 - `environment:` section can override specific vars
 - Variable interpolation: `${VAR_NAME}`
 
@@ -145,21 +136,18 @@ services:
 
 ### Check Local Setup
 ```bash
-# Infrastructure running?
-docker ps | grep support-brain
+# Full stack running?
+docker compose ps | grep mnemra
 
 # Vars loaded?
-cd apps/api
-bun run dev  # Should connect to localhost:54321
-
-cd ../web
-bun run dev  # Should see NEXT_PUBLIC_API_URL
+docker compose exec api printenv DATABASE_URL
+docker compose exec web printenv NEXT_PUBLIC_API_URL
 ```
 
 ### Check Production Setup
 ```bash
-# Validate .env.production
-cat .env.production
+# Validate .env.prod
+cat .env.prod
 
 # Test variable substitution
 docker compose -f docker-compose.prod.yml config | grep -A5 environment
@@ -171,18 +159,17 @@ docker compose -f docker-compose.prod.yml up -d
 ## Troubleshooting
 
 ### "DATABASE_URL is not defined"
-- ✅ Check `.env.local` exists at root
+- ✅ Check `.env` exists at root
 - ✅ Check `DATABASE_URL` is in `turbo.json` globalEnv
-- ✅ Restart dev server after adding var
+- ✅ `docker compose up --build` after adding a var (env changes need a rebuild, not just a restart, if they affect a build-time value like `NEXT_PUBLIC_*`)
 
 ### "Connection refused" to Postgres
-- ✅ Check `docker compose ps` shows healthy
-- ✅ Port is `54321` for local (not `5432`)
-- ✅ Use `localhost` not `postgres` (host networking)
+- ✅ Check `docker compose ps` shows `mnemra-db` healthy
+- ✅ From the host, port is `54321` (not `5432`); from inside a container, use service name `postgres:5432`
 
 ### Production env vars not loaded
-- ✅ Check `env_file: .env.production` in docker-compose.prod.yml
-- ✅ Check `.env.production` exists at root
+- ✅ Check `env_file: .env.prod` in docker-compose.prod.yml (not `.env.production` — that's the template)
+- ✅ Check `.env.prod` exists at root on the VPS
 - ✅ Run `docker compose -f docker-compose.prod.yml config` to verify
 
 ### Next.js build-time vars missing
@@ -193,26 +180,27 @@ docker compose -f docker-compose.prod.yml up -d
 ## Security
 
 **Never commit:**
-- `.env.local`
-- `.env.production`
+- `.env`
+- `.env.prod`
 - Any file with real API keys
 
 **Safe to commit:**
 - `.env.example` (template only)
+- `.env.production` (template only)
 - `turbo.json` (var names only, no values)
 
 **Deployment:**
 ```bash
 # On server
-cp .env.example .env.production
-nano .env.production  # Fill in secrets
+cp .env.production .env.prod
+nano .env.prod  # Fill in secrets
 docker compose -f docker-compose.prod.yml up -d
 ```
 
 ## Adding New Variables
 
 1. Add to `.env.example` (with placeholder)
-2. Add to `.env.local` and `.env.production` (with real values)
+2. Add to `.env` and `.env.prod` (with real values)
 3. Add to `turbo.json` → `globalEnv`
 4. Add to task-specific `env` arrays if needed
 5. Add to `docker-compose.prod.yml` `environment:` if needs interpolation

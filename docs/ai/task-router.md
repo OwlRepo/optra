@@ -33,6 +33,7 @@ Claude must not require user to name a lane.
 | New capability, enhancement, new workflow, new UI behavior, new API behavior, product behavior change                                 | Feature Plan      | `docs/ai/prompts/feature-plan.md`  |
 | Cleanup, rename, restructure, internal code quality change, no intended behavior change                                               | Refactor Plan     | `docs/ai/prompts/refactor-plan.md` |
 | Question, explanation, code review, architecture review, discovery only                                                               | Read-only         | No scratchpad unless user asks     |
+| Infra, Docker, deployment, CI/CD, VPS, container, compose, Dockerfile, hosting configuration change                                   | Infra Plan        | No dedicated template — treat as Feature Plan discovery depth, but consult `docs/ai/risk-register.md`'s "Production Deployment" row (Deep by default) and `docs/ai/testing-strategy.md`'s operational-verification checklist instead of unit-test-first flow for non-code files |
 
 ## Ambiguity Rules
 
@@ -155,6 +156,7 @@ Deep by default:
 - webhooks
 - migrations
 - transactions
+- infrastructure / deployment / CI-CD
 
 Only downgrade Deep if repository evidence proves task is isolated and low-risk.
 

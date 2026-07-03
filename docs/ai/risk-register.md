@@ -41,6 +41,29 @@ If risk area is missing, mark `UNMAPPED RISK`.
 
 ## Current Notes
 
+- Docker/CI hardening + Mnemra rebrand (2026-07-04): local dev is now fully containerized
+  (`docker compose up` runs postgres/redis/seaweedfs/api/web with hot reload, replacing the
+  former host-based `bun run dev` + infra-only-Docker split via the now-deleted `scripts/dev.sh`).
+  Production `docker-compose.prod.yml` fixed three real bugs found during discovery, not just
+  documentation drift: (1) `apps/api/Dockerfile`/`apps/web/Dockerfile` referenced a nonexistent
+  `bun.lockb` instead of the repo's actual `bun.lock`, silently breaking every prod image build;
+  (2) `docker/seaweedfs/s3.prod.json` was bind-mounted but never existed on disk, breaking a fresh
+  `docker compose -f docker-compose.prod.yml up`; (3) `env_file:` pointed at the committed template
+  `.env.production` instead of the operator-provisioned real-secrets `.env.prod`, risking a deploy
+  running with placeholder values (`CHANGE_ME_STRONG_PASSWORD`, `your-domain.com`). Added
+  `depends_on: condition: service_healthy` wiring for api/web/caddy (previously only infra services
+  had healthchecks) plus a dependency-free `GET /health` endpoint
+  (`apps/api/src/health/health.controller.ts`) consumed by both the new prod `HEALTHCHECK`
+  directives and the new `.github/workflows/deploy.yml` auto-deploy healthcheck-poll. Also
+  completed the in-progress "Second Brain" → "Mnemra" rebrand across browser UI, docs, and
+  Docker/DB naming (`support_brain` → `mnemra`).
+  Required checks:
+  - `docker compose -f docker-compose.prod.yml build` succeeds locally as a dry run before trusting a live VPS deploy
+  - `apps/api`'s `/health` returns `200 {"status":"ok"}` with zero dependencies reachable (verifies it never false-fails the container `HEALTHCHECK` during startup race windows)
+  - GitHub Actions `deploy.yml` requires `VPS_HOST`/`VPS_USER`/`VPS_SSH_KEY`/`VPS_PORT`/`DEPLOY_DOMAIN` secrets configured on `OwlRepo/mnemra` before the auto-deploy path can run; until configured, `scripts/deploy.sh`/`deploy-remote.sh` remain the only working deploy path
+  - `docker/seaweedfs/s3.prod.json` must be manually created from `docker/seaweedfs/s3.prod.json.example` on the VPS before first prod deploy, or the `seaweedfs` service bind-mount fails at container start
+  - no live production data existed anywhere under the old `support_brain` name at the time of this change (confirmed with the project owner) — if that assumption is ever wrong for a specific deploy target, stop and reconcile via `pg_dump`/restore before cutting over, per the rollback notes in the implementation plan
+
 - SeaweedFS / S3-compatible storage is a live external-integration risk as of Slice 3A.
   Required checks:
   - container comes up and S3 endpoint responds

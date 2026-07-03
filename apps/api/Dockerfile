@@ -1,64 +1,54 @@
 # syntax=docker/dockerfile:1
+# API app: NestJS 10
+# Targets: dev (watch mode, bind-mount source) | prod (standalone image)
 
-# Base stage with Bun
-FROM oven/bun:1.1.0-alpine AS base
+FROM oven/bun:1.2.22-alpine AS base
 WORKDIR /app
 
-# Dependencies stage
+# --- deps stage: install workspace deps ---
 FROM base AS deps
-# Copy root package files
-COPY package.json bun.lockb ./
+COPY package.json bun.lock turbo.json ./
+COPY apps/web/package.json ./apps/web/
 COPY apps/api/package.json ./apps/api/
-COPY packages/ai/package.json ./packages/ai/
-COPY packages/db/package.json ./packages/db/
 COPY packages/types/package.json ./packages/types/
+COPY packages/db/package.json ./packages/db/
+COPY packages/ai/package.json ./packages/ai/
+COPY packages/ui/package.json ./packages/ui/
+RUN bun install --frozen-lockfile
 
-# Install dependencies
-RUN bun install --frozen-lockfile --production=false
+# --- dev target: run nest start --watch with bind-mounted source ---
+FROM base AS dev
+COPY --from=deps /app/node_modules ./node_modules
+COPY package.json bun.lock turbo.json tsconfig.base.json ./
+COPY apps/api/package.json ./apps/api/
+COPY apps/web/package.json ./apps/web/
+COPY packages/ ./packages/
 
-# Builder stage
-FROM base AS builder
+# Build packages only (skip db:push during image build; done by entrypoint)
+RUN bunx turbo run build --filter=@repo/types --filter=@repo/db --filter=@repo/ai || true
+
 WORKDIR /app
 
-# Copy dependencies
-COPY --from=deps /app/node_modules ./node_modules
-COPY --from=deps /app/apps/api/node_modules ./apps/api/node_modules
-
-# Copy source
-COPY . .
-
-# Build shared packages first
-WORKDIR /app/packages/types
-RUN bun run build
-
-WORKDIR /app/packages/db
-RUN bun run build
-
-WORKDIR /app/packages/ai
-RUN bun run build
-
-# Build NestJS API
-WORKDIR /app/apps/api
-RUN bun run build
-
-# Production stage
-FROM base AS runner
-WORKDIR /app
-
-ENV NODE_ENV=production
-
-RUN addgroup --system --gid 1001 nodejs
-RUN adduser --system --uid 1001 nestjs
-
-# Copy built files and dependencies
-COPY --from=builder --chown=nestjs:nodejs /app/apps/api/dist ./apps/api/dist
-COPY --from=builder --chown=nestjs:nodejs /app/packages ./packages
-COPY --from=deps /app/node_modules ./node_modules
-COPY --from=deps /app/apps/api/node_modules ./apps/api/node_modules
-
-USER nestjs
+# Chokidar polling for reliable watch in Docker (macOS/Windows)
+ENV CHOKIDAR_USEPOLLING=true
+ENV CHOKIDAR_INTERVAL=500
 
 EXPOSE 3001
-ENV PORT=3001
 
-CMD ["node", "apps/api/dist/main.js"]
+# Ensure deps exist (handles named-volume mount race), run migrations, then start api dev.
+ENTRYPOINT ["sh", "-c", "cd /app && (test -d node_modules/@nestjs/core || bun install) && cd packages/db && bun run db:push && cd /app/apps/api && exec bun run dev"]
+
+# --- prod target: build and serve ---
+FROM base AS prod
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+
+ENV NODE_ENV=production
+RUN bunx turbo run build --filter=@repo/api...
+
+WORKDIR /app
+EXPOSE 3001
+HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
+  CMD ["sh", "-c", "wget -q -O /dev/null \"http://127.0.0.1:${PORT:-3001}/health\" || exit 1"]
+
+CMD ["sh", "-c", "cd packages/db && bun run db:push && cd /app/apps/api && exec bun run start"]

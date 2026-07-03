@@ -1,16 +1,16 @@
-# Production deployment with Caddy reverse proxy
+name: mnemra-prod
 
 services:
   postgres:
     image: pgvector/pgvector:pg16
-    container_name: support-brain-db-prod
+    container_name: mnemra-db-prod
     restart: unless-stopped
     env_file:
-      - .env.production
+      - .env.prod
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD required}
-      POSTGRES_DB: ${POSTGRES_DB:-support_brain}
+      POSTGRES_DB: ${POSTGRES_DB:-mnemra}
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./docker/init-db.sql:/docker-entrypoint-initdb.d/init.sql
@@ -24,10 +24,10 @@ services:
 
   redis:
     image: redis:7-alpine
-    container_name: support-brain-redis-prod
+    container_name: mnemra-redis-prod
     restart: unless-stopped
     env_file:
-      - .env.production
+      - .env.prod
     volumes:
       - redis_data:/data
     networks:
@@ -40,10 +40,10 @@ services:
 
   seaweedfs:
     image: chrislusf/seaweedfs
-    container_name: support-brain-seaweedfs-prod
+    container_name: mnemra-seaweedfs-prod
     restart: unless-stopped
     env_file:
-      - .env.production
+      - .env.prod
     command: server -s3 -s3.config=/etc/seaweedfs/s3.json -dir=/data
     volumes:
       - seaweedfs_data:/data
@@ -61,10 +61,11 @@ services:
     build:
       context: .
       dockerfile: apps/api/Dockerfile
-    container_name: support-brain-api
+      target: prod
+    container_name: mnemra-api
     restart: unless-stopped
     env_file:
-      - .env.production
+      - .env.prod
     depends_on:
       postgres:
         condition: service_healthy
@@ -74,43 +75,58 @@ services:
         condition: service_healthy
     environment:
       NODE_ENV: production
-      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-support_brain}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-mnemra}
       REDIS_HOST: redis
       REDIS_PORT: 6379
+      S3_ENDPOINT: http://seaweedfs:8333
       OPENAI_API_KEY: ${OPENAI_API_KEY:?OPENAI_API_KEY required}
       LANGSMITH_API_KEY: ${LANGSMITH_API_KEY:-}
-      LANGSMITH_PROJECT: ${LANGSMITH_PROJECT:-support-second-brain}
+      LANGSMITH_PROJECT: ${LANGSMITH_PROJECT:-mnemra-prod}
     networks:
       - internal
       - web
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:3001/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
 
   web:
     build:
       context: .
       dockerfile: apps/web/Dockerfile
-    container_name: support-brain-web
+      target: prod
+    container_name: mnemra-web
     restart: unless-stopped
     env_file:
-      - .env.production
+      - .env.prod
     depends_on:
-      - api
+      api:
+        condition: service_healthy
     environment:
       NODE_ENV: production
       NEXT_PUBLIC_API_URL: https://${DOMAIN}/api
-      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-support_brain}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-mnemra}
       OPENAI_API_KEY: ${OPENAI_API_KEY:?OPENAI_API_KEY required}
       LANGSMITH_API_KEY: ${LANGSMITH_API_KEY:-}
-      LANGSMITH_PROJECT: ${LANGSMITH_PROJECT:-support-second-brain}
+      LANGSMITH_PROJECT: ${LANGSMITH_PROJECT:-mnemra-prod}
     networks:
       - internal
       - web
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:3000/"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
 
   caddy:
     image: caddy:2-alpine
-    container_name: support-brain-caddy
+    container_name: mnemra-caddy
     restart: unless-stopped
     env_file:
-      - .env.production
+      - .env.prod
     ports:
       - "80:80"
       - "443:443"
@@ -124,8 +140,10 @@ services:
     networks:
       - web
     depends_on:
-      - web
-      - api
+      web:
+        condition: service_healthy
+      api:
+        condition: service_healthy
 
 networks:
   internal:

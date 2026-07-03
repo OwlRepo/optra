@@ -199,8 +199,8 @@ $ bun run type-check
 ```bash
 $ docker compose ps
 NAME                  STATUS
-support-brain-db      Up (healthy)
-support-brain-redis   Up (healthy)
+mnemra-db      Up (healthy)
+mnemra-redis   Up (healthy)
 ```
 
 ### ✅ Monorepo structure

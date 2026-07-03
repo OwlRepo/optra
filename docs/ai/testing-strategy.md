@@ -124,6 +124,46 @@ LangGraph note as of 2026-07-01:
 
 Note: a plain `vitest.config.ts` failed to load in this repo with `ERR_REQUIRE_ESM` (a transitive dep, `std-env`, is ESM-only and the config got loaded as CJS). Fixed by naming it `vitest.config.mts` instead — forces Vite to treat it as ESM regardless of the package's default module type. If `apps/web` ever adds `"type": "module"` to its `package.json`, re-check whether this workaround is still needed.
 
+## Infrastructure / Docker / Deployment Verification
+
+Infra/config/script changes (Dockerfiles, compose files, CI workflows, deploy shell scripts) are not
+Jest-unit-testable in the traditional sense — there is no application behavior inside YAML or a
+Dockerfile stage list to assert against. TDD's "failing test first" rule does not apply to these files;
+the one exception is `apps/api/src/health/health.controller.ts`, which is real application code
+(a NestJS controller) and was TDD'd normally (`health.controller.spec.ts` written first).
+
+For everything else infra-shaped, the pragmatic verification checklist is:
+
+1. `docker compose build` (dev) and `docker compose -f docker-compose.prod.yml build` (prod) both
+   succeed with no errors — catches Dockerfile syntax errors, missing COPY paths, and lockfile
+   mismatches before ever touching a real VPS.
+2. `docker compose up` brings up all services; `docker compose ps` shows every service `healthy`
+   or `running` with no restart loops.
+3. Edit a source file in `apps/api/src` or `apps/web/app` while the dev stack is running; confirm
+   the corresponding container's logs show a rebuild/reload (`nest start --watch` recompile log for
+   api, Fast Refresh log for web) within a few seconds — this is the hot-reload verification the
+   bind-mount + polling setup exists to guarantee.
+4. `curl http://localhost:3001/health` returns `200 {"status":"ok"}` (dev) — confirms the endpoint
+   and the api container's port mapping both work.
+5. `curl http://localhost:3000` returns `200` with the Next.js app HTML (dev).
+6. Run each app's existing test suite (`cd apps/api && bun run test`, `cd apps/web && bun run test`,
+   plus `packages/db`/`packages/ai`/`packages/ui`'s `bun run test` where defined) to confirm
+   infra/rebrand changes did not silently break any test that happened to assert on old
+   brand strings or the `support_brain` database name.
+7. For prod-readiness without a live VPS: `docker compose -f docker-compose.prod.yml build` succeeding
+   locally is the required pre-flight dry run before trusting an actual Hetzner deploy — this catches
+   lockfile/env-file/missing-mount-source class bugs without needing SSH access.
+8. GitHub Actions workflow (`deploy.yml`) cannot be fully verified without live VPS secrets (by
+   design — Claude does not hold VPS SSH credentials). What CAN be verified without secrets: YAML
+   syntax validity, `shellcheck` on the embedded script block, and that every command/path/service
+   name the script references matches the real `docker-compose.prod.yml` (service names, `/health`
+   endpoint, `/opt/mnemra` path).
+
+This is the Deep-task testing strategy for infra changes: no unit tests are force-fitted onto YAML/
+Dockerfiles, but the operational checklist above is mandatory before considering infra/Docker/CI
+work verified, and is the basis for the manual QA runbook in the implementation plan for any such
+change.
+
 ## Command Discovery Rules
 
 Claude must verify commands from:

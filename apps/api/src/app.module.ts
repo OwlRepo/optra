@@ -14,8 +14,10 @@ import { ScrapeModule } from './scrape/scrape.module'
 import { TicketsModule } from './tickets/tickets.module'
 import { EventsModule } from './events/events.module'
 import { SearchModule } from './search/search.module'
+import { HealthController } from './health/health.controller'
 
 @Module({
+  controllers: [HealthController],
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     BullModule.forRoot({

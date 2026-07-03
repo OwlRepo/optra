@@ -75,7 +75,7 @@ export default function Home() {
             <Sparkles className="size-5" />
           </Link>
         }
-        title="Second Brain"
+        title="Mnemra"
         description="Support intelligence for modern customer teams"
         navigation={
           <>
@@ -105,7 +105,7 @@ export default function Home() {
               <span className="text-gradient block">expert-level context</span>
             </h1>
             <p className="max-w-2xl text-lg leading-8 text-muted-foreground md:text-xl">
-              Second Brain turns scattered documentation into fast, confident answers. It looks polished, feels easy, and helps non-technical teams solve customer issues without digging through tabs.
+              Mnemra turns scattered documentation into fast, confident answers. It looks polished, feels easy, and helps non-technical teams solve customer issues without digging through tabs.
             </p>
           </div>
           <div className="flex flex-col gap-3 sm:flex-row">

@@ -3,37 +3,32 @@
 ## Local Development
 
 ### Prerequisites
-- Bun installed
 - Docker & Docker Compose installed
+- Bun installed (only needed if you want to run commands outside Docker, e.g. `bun run type-check`)
 
 ### Quick Start
 
 ```bash
-# Start infrastructure + dev servers
-./scripts/dev.sh
-
-# Or manually:
-docker compose up -d           # Start Postgres + Redis
-cp .env.example .env.local     # Configure environment
-bun install                     # Install dependencies
-cd packages/db && bun run db:push && cd ../..  # Run migrations
-bun run dev                     # Start all apps
+cp .env.example .env    # Configure environment
+bun run docker:dev:up   # Start the full stack, build images on first run
 ```
+
+Everything — Postgres, Redis, SeaweedFS, the API, and the web app — runs in Docker. Migrations run automatically inside each container on start. No separate `bun install`/`db:push`/`bun run dev` steps needed.
 
 **Apps running:**
 - 🌐 Web: http://localhost:3000
 - 🔌 API: http://localhost:3001
 - 🐘 Postgres: localhost:54321 (mapped to avoid conflicts)
 - 🔴 Redis: localhost:6379
+- 📦 SeaweedFS: localhost:8333 (S3), localhost:8888 (filer), localhost:9333 (master)
 
-**Hot reload:** Edit any file in `apps/` or `packages/` → changes reflect immediately (no Docker rebuild)
+**Hot reload:** Edit any file in `apps/` or `packages/` → changes reflect within a few seconds (bind-mounted source, polling-based file watch, no image rebuild needed)
 
 ### Stop Development
 
 ```bash
-# Stop apps (Ctrl+C in terminal)
-# Stop infrastructure
-docker compose down
+bun run docker:dev:down     # Stop the stack, keep volumes
+bun run docker:dev:down -v  # Stop and wipe volumes (fresh DB next start)
 ```
 
 ---
@@ -64,8 +59,8 @@ sh get-docker.sh
 apt install docker-compose-plugin -y
 
 # Create app directory
-mkdir -p /opt/support-brain
-chown -R $USER:$USER /opt/support-brain
+mkdir -p /opt/mnemra
+chown -R $USER:$USER /opt/mnemra
 
 # Create non-root user (optional but recommended)
 adduser deploy
@@ -113,6 +108,12 @@ OPENAI_API_KEY=sk-your-production-key     # Production OpenAI key
 LANGSMITH_API_KEY=ls__your-key            # Optional
 ```
 
+Also provision the SeaweedFS prod credentials file (not covered by `.env.prod`):
+```bash
+cp docker/seaweedfs/s3.prod.json.example docker/seaweedfs/s3.prod.json
+nano docker/seaweedfs/s3.prod.json  # Fill in real accessKey/secretKey, matching whatever you use for S3_ACCESS_KEY/S3_SECRET_KEY
+```
+
 ### 4. Deploy
 
 **Option A: Deploy from local machine**
@@ -134,7 +135,7 @@ This will:
 
 ```bash
 # On server
-cd /opt/support-brain
+cd /opt/mnemra
 
 # Clone repo or upload code
 git clone YOUR_REPO .
@@ -142,10 +143,27 @@ git clone YOUR_REPO .
 # Copy environment
 cp .env.production .env.prod
 nano .env.prod  # Fill in values
+cp docker/seaweedfs/s3.prod.json.example docker/seaweedfs/s3.prod.json
+nano docker/seaweedfs/s3.prod.json  # Fill in values
 
 # Deploy
 ./scripts/deploy.sh
 ```
+
+**Option C: Automatic deploy via GitHub Actions**
+
+`.github/workflows/deploy.yml` deploys automatically on every push to `main` (or via manual `workflow_dispatch`). It SSHes into the VPS, pulls latest, backs up Postgres, rebuilds `api`/`web`, brings the stack up, and runs a healthcheck + smoke-test before declaring success.
+
+This assumes `/opt/mnemra` already has a working checkout with `.env.prod` and `docker/seaweedfs/s3.prod.json` in place (i.e. you've already done Option A or B once) — the workflow does not provision secrets on the VPS itself.
+
+Configure these **GitHub Secrets** on the repo (`Settings → Secrets and variables → Actions`):
+| Secret | Value |
+|---|---|
+| `VPS_HOST` | Server IP or hostname |
+| `VPS_USER` | SSH user (e.g. `deploy`) |
+| `VPS_SSH_KEY` | Private key with access to that user |
+| `VPS_PORT` | SSH port (usually `22`) |
+| `DEPLOY_DOMAIN` | Same value as `DOMAIN` in `.env.prod`, used for the post-deploy smoke test |
 
 ### 5. Verify Deployment
 
@@ -158,8 +176,9 @@ docker compose -f docker-compose.prod.yml ps
 Should show:
 - ✅ postgres (healthy)
 - ✅ redis (healthy)
-- ✅ api (running)
-- ✅ web (running)
+- ✅ seaweedfs (healthy)
+- ✅ api (healthy)
+- ✅ web (healthy)
 - ✅ caddy (running)
 
 **Check logs:**
@@ -170,6 +189,12 @@ docker compose -f docker-compose.prod.yml logs -f
 # Specific service
 docker compose -f docker-compose.prod.yml logs -f web
 docker compose -f docker-compose.prod.yml logs -f api
+```
+
+**Test health endpoint:**
+```bash
+curl http://localhost:3001/health
+# {"status":"ok"}
 ```
 
 **Test SSL:**
@@ -207,9 +232,11 @@ docker compose -f docker-compose.prod.yml logs caddy | grep -i certificate
 ./scripts/deploy-remote.sh deploy@YOUR_SERVER_IP
 
 # Or on server
-cd /opt/support-brain
+cd /opt/mnemra
 git pull  # or re-sync code
 ./scripts/deploy.sh
+
+# Or just push to main and let GitHub Actions do it (Option C above)
 ```
 
 ### Database Migrations
@@ -225,15 +252,17 @@ docker compose -f docker-compose.prod.yml run --rm api \
 ```bash
 # On server
 docker compose -f docker-compose.prod.yml exec postgres \
-  pg_dump -U postgres support_brain > backup_$(date +%Y%m%d_%H%M%S).sql
+  pg_dump -U postgres mnemra > backup_$(date +%Y%m%d_%H%M%S).sql
 ```
+
+The GitHub Actions deploy workflow also takes an automatic backup before every deploy, stored in `/opt/mnemra-backups/`, retained 14 days.
 
 ### Restore Database
 
 ```bash
 # On server
 docker compose -f docker-compose.prod.yml exec -T postgres \
-  psql -U postgres support_brain < backup.sql
+  psql -U postgres mnemra < backup.sql
 ```
 
 ### View Logs
@@ -307,7 +336,18 @@ docker compose -f docker-compose.prod.yml logs postgres
 
 # Test connection
 docker compose -f docker-compose.prod.yml exec postgres \
-  psql -U postgres -d support_brain -c "SELECT 1"
+  psql -U postgres -d mnemra -c "SELECT 1"
+```
+
+### `api`/`web` never becomes healthy
+```bash
+# api and web now have real HEALTHCHECKs (GET /health, GET /) — a container stuck
+# "starting" or "unhealthy" usually means the app crashed on boot. Check:
+docker compose -f docker-compose.prod.yml logs api
+docker compose -f docker-compose.prod.yml logs web
+
+# Common causes: missing/invalid OPENAI_API_KEY, POSTGRES_PASSWORD, or DOMAIN in
+# .env.prod, or docker/seaweedfs/s3.prod.json was never created from the .example.
 ```
 
 ### Out of memory
@@ -325,6 +365,7 @@ docker stats
 
 - [ ] Strong `POSTGRES_PASSWORD` in `.env.prod`
 - [ ] `.env.prod` is in `.gitignore` (never committed)
+- [ ] `docker/seaweedfs/s3.prod.json` is in `.gitignore` (never committed)
 - [ ] Firewall configured (only ports 80, 443, 22 open)
 - [ ] SSH key authentication enabled (disable password auth)
 - [ ] Regular database backups scheduled
@@ -348,20 +389,15 @@ ufw status
 
 ### Local Development
 ```
-┌─────────────┐
-│ Your Machine│
-├─────────────┤
-│ apps/web    │ :3000  (hot reload)
-│ apps/api    │ :3001  (hot reload)
-└─────────────┘
-       │
-       ▼
-┌─────────────┐
-│   Docker    │
-├─────────────┤
-│ PostgreSQL  │ :5432
-│ Redis       │ :6379
-└─────────────┘
+┌──────────────────────────┐
+│         Docker            │
+├──────────────────────────┤
+│ apps/web    :3000  (hot reload, bind-mounted) │
+│ apps/api    :3001  (hot reload, bind-mounted) │
+│ PostgreSQL  :5432  (54321 on host)            │
+│ Redis       :6379                             │
+│ SeaweedFS   :8333/:8888/:9333                 │
+└──────────────────────────┘
 ```
 
 ### Production
@@ -373,14 +409,15 @@ Internet
 │  Caddy (SSL)       │  :80, :443
 └────────────────────┘
    │
-   ├──▶ apps/web      :3000
-   └──▶ apps/api      :3001
+   ├──▶ apps/web      :3000  (healthchecked)
+   └──▶ apps/api      :3001  (healthchecked)
           │
           ▼
    ┌──────────────┐
    │ PostgreSQL   │
    │ Redis        │
+   │ SeaweedFS    │
    └──────────────┘
 ```
 
-All in Docker network, SSL auto-managed by Caddy.
+All in Docker network, SSL auto-managed by Caddy. `web`/`caddy` wait on real healthchecks before starting/routing traffic.

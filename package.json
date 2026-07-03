@@ -1,7 +1,7 @@
 {
-  "name": "support-second-brain",
+  "name": "mnemra",
   "private": true,
-  "packageManager": "bun@1.1.0",
+  "packageManager": "bun@1.2.22",
   "workspaces": [
     "apps/*",
     "packages/*"
@@ -11,9 +11,12 @@
     "build": "turbo build",
     "lint": "turbo lint",
     "type-check": "turbo type-check",
-    "docker:dev": "./scripts/dev.sh",
-    "docker:stop": "./scripts/stop.sh",
-    "docker:logs": "docker compose logs -f",
+    "docker:dev:up": "docker compose up -d",
+    "docker:dev:build": "docker compose -f docker-compose.yml build",
+    "docker:dev:down": "docker compose down",
+    "docker:dev:logs": "docker compose logs -f",
+    "docker:prod:build": "docker compose -f docker-compose.prod.yml build",
+    "docker:prod:up": "docker compose -f docker-compose.prod.yml up -d",
     "deploy": "./scripts/deploy.sh",
     "deploy:remote": "./scripts/deploy-remote.sh"
   },

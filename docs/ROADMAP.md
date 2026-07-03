@@ -1,7 +1,7 @@
 # Mnemra — Implementation Roadmap
 
 > Your support team's institutional memory, on demand.
-> AI-powered second brain for customer support teams. Ingests past tickets, product docs, runbooks, internal wikis — makes all of it instantly queryable for agents.
+> AI-powered knowledge memory for customer support teams. Ingests past tickets, product docs, runbooks, internal wikis — makes all of it instantly queryable for agents.
 
 ---
 
@@ -275,7 +275,7 @@ OPENAI_CHAT_MODEL=gpt-4-turbo                   # optional
 LANGSMITH_TRACING=true
 LANGSMITH_ENDPOINT=https://api.smith.langchain.com
 LANGSMITH_API_KEY=
-LANGSMITH_PROJECT=second-brain
+LANGSMITH_PROJECT=mnemra
 
 # Auth
 JWT_SECRET=
