@@ -41,16 +41,16 @@ jobs:
             git checkout main
             git pull --ff-only origin main
 
-            mkdir -p /opt/mnemra-backups
+            mkdir -p /home/deploy/apps/mnemra-backups
             postgres_container_id="$(docker compose -f docker-compose.prod.yml ps -q postgres || true)"
 
             if [ -n "$postgres_container_id" ]; then
-              backup_file=/opt/mnemra-backups/mnemra-$(date +%F-%H%M%S).sql
+              backup_file=/home/deploy/apps/mnemra-backups/mnemra-$(date +%F-%H%M%S).sql
               echo "creating PostgreSQL backup: $backup_file"
               docker compose -f docker-compose.prod.yml exec -T postgres \
                 pg_dump -U postgres -d mnemra > "$backup_file"
               test -s "$backup_file"
-              find /opt/mnemra-backups -type f -name 'mnemra-*.sql' -mtime +14 -delete
+              find /home/deploy/apps/mnemra-backups -type f -name 'mnemra-*.sql' -mtime +14 -delete
             else
               echo "skipping backup: postgres container not running yet"
             fi

@@ -3,6 +3,7 @@
 ## Local Development
 
 ### Prerequisites
+
 - Docker & Docker Compose installed
 - Bun installed (only needed if you want to run commands outside Docker, e.g. `bun run type-check`)
 
@@ -16,6 +17,7 @@ bun run docker:dev:up   # Start the full stack, build images on first run
 Everything — Postgres, Redis, SeaweedFS, the API, and the web app — runs in Docker. Migrations run automatically inside each container on start. No separate `bun install`/`db:push`/`bun run dev` steps needed.
 
 **Apps running:**
+
 - 🌐 Web: http://localhost:3000
 - 🔌 API: http://localhost:3001
 - 🐘 Postgres: localhost:54321 (mapped to avoid conflicts)
@@ -38,12 +40,14 @@ bun run docker:dev:down -v  # Stop and wipe volumes (fresh DB next start)
 ### 1. VPS Setup
 
 **Create Hetzner VPS:**
+
 1. Go to https://www.hetzner.com/cloud
 2. Create project
 3. Deploy Ubuntu 24.04 server (CX21 or higher)
 4. Note the IP address
 
 **Initial server setup:**
+
 ```bash
 # SSH into server
 ssh root@YOUR_SERVER_IP
@@ -70,6 +74,7 @@ usermod -aG docker deploy
 ### 2. Domain Setup (Squarespace)
 
 **Configure DNS:**
+
 1. Log into Squarespace
 2. Go to Settings → Domains → your-domain.com → DNS Settings
 3. Add **A Record**:
@@ -82,6 +87,7 @@ usermod -aG docker deploy
    - TTL: 3600
 
 **Wait for DNS propagation** (5-60 minutes)
+
 ```bash
 # Check DNS
 dig your-domain.com +short
@@ -101,6 +107,7 @@ nano .env
 ```
 
 Required values:
+
 ```bash
 DOMAIN=your-domain.com                    # Your Squarespace domain
 POSTGRES_PASSWORD=STRONG_RANDOM_PASSWORD  # Generate strong password
@@ -109,6 +116,7 @@ LANGSMITH_API_KEY=ls__your-key            # Optional
 ```
 
 Also provision the SeaweedFS prod credentials file (not covered by `.env`):
+
 ```bash
 cp docker/seaweedfs/s3.prod.json.example docker/seaweedfs/s3.prod.json
 nano docker/seaweedfs/s3.prod.json  # Fill in real accessKey/secretKey, matching whatever you use for S3_ACCESS_KEY/S3_SECRET_KEY
@@ -124,6 +132,7 @@ nano docker/seaweedfs/s3.prod.json  # Fill in real accessKey/secretKey, matching
 ```
 
 This will:
+
 - Sync code to server
 - Copy `.env`
 - Build Docker images
@@ -167,12 +176,14 @@ Configure these **GitHub Secrets** on the repo (`Settings → Secrets and variab
 ### 5. Verify Deployment
 
 **Check services:**
+
 ```bash
 # On server
 docker compose -f docker-compose.prod.yml ps
 ```
 
 Should show:
+
 - ✅ postgres (healthy)
 - ✅ redis (healthy)
 - ✅ seaweedfs (healthy)
@@ -181,6 +192,7 @@ Should show:
 - ✅ caddy (running)
 
 **Check logs:**
+
 ```bash
 # All services
 docker compose -f docker-compose.prod.yml logs -f
@@ -191,18 +203,21 @@ docker compose -f docker-compose.prod.yml logs -f api
 ```
 
 **Test health endpoint:**
+
 ```bash
 curl http://localhost:3001/health
 # {"status":"ok"}
 ```
 
 **Test SSL:**
+
 ```bash
 curl -I https://your-domain.com
 # Should return 200 OK with HTTPS
 ```
 
 **Visit your app:**
+
 - 🌐 https://your-domain.com
 
 ### 6. SSL Certificate
@@ -210,11 +225,13 @@ curl -I https://your-domain.com
 Caddy automatically obtains and renews Let's Encrypt SSL certificates.
 
 **First request takes ~30 seconds** while Caddy:
+
 1. Validates domain ownership
 2. Requests certificate from Let's Encrypt
 3. Configures HTTPS
 
 **Check SSL:**
+
 ```bash
 # View Caddy logs
 docker compose -f docker-compose.prod.yml logs caddy | grep -i certificate
@@ -254,7 +271,7 @@ docker compose -f docker-compose.prod.yml exec postgres \
   pg_dump -U postgres mnemra > backup_$(date +%Y%m%d_%H%M%S).sql
 ```
 
-The GitHub Actions deploy workflow also takes an automatic backup before every deploy, stored in `/opt/mnemra-backups/`, retained 14 days.
+The GitHub Actions deploy workflow also takes an automatic backup before every deploy, stored in `/home/deploy/apps/mnemra-backups/`, retained 14 days.
 
 ### Restore Database
 
@@ -306,6 +323,7 @@ docker compose -f docker-compose.prod.yml down -v
 ## Troubleshooting
 
 ### Port conflicts
+
 ```bash
 # Check what's using ports
 sudo lsof -i :80
@@ -317,6 +335,7 @@ sudo systemctl stop nginx  # if nginx is running
 ```
 
 ### SSL not working
+
 ```bash
 # Check Caddy logs
 docker compose -f docker-compose.prod.yml logs caddy
@@ -329,6 +348,7 @@ curl -vI https://your-domain.com
 ```
 
 ### Database connection errors
+
 ```bash
 # Check Postgres logs
 docker compose -f docker-compose.prod.yml logs postgres
@@ -339,6 +359,7 @@ docker compose -f docker-compose.prod.yml exec postgres \
 ```
 
 ### `api`/`web` never becomes healthy
+
 ```bash
 # api and web now have real HEALTHCHECKs (GET /health, GET /) — a container stuck
 # "starting" or "unhealthy" usually means the app crashed on boot. Check:
@@ -350,6 +371,7 @@ docker compose -f docker-compose.prod.yml logs web
 ```
 
 ### Out of memory
+
 ```bash
 # Check usage
 docker stats
@@ -387,6 +409,7 @@ ufw status
 ## Architecture
 
 ### Local Development
+
 ```
 ┌──────────────────────────┐
 │         Docker            │
@@ -400,6 +423,7 @@ ufw status
 ```
 
 ### Production
+
 ```
 Internet
    │
