@@ -39,11 +39,15 @@ ENTRYPOINT ["sh", "-c", "cd /app && (test -d node_modules/next || bun install) &
 
 # --- prod target: build, then stage standalone output ---
 FROM base AS prod
+# NEXT_PUBLIC_* must be present at BUILD time — Next inlines it into the client bundle.
+# Passed via build.args in docker-compose.prod.yml (web.build.args.NEXT_PUBLIC_API_URL).
+ARG NEXT_PUBLIC_API_URL
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
+ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
 RUN bunx turbo run build --filter=@repo/web...
 
 RUN cp -r /app/apps/web/public /app/prod-public && \

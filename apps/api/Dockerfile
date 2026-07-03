@@ -35,8 +35,11 @@ ENV CHOKIDAR_INTERVAL=500
 
 EXPOSE 3001
 
-# Ensure deps exist (handles named-volume mount race), run migrations, then start api dev.
-ENTRYPOINT ["sh", "-c", "cd /app && (test -d node_modules/@nestjs/core || bun install) && cd packages/db && bun run db:push && cd /app/apps/api && exec bun run dev"]
+# Ensure deps + workspace dist exist, run migrations, then start api dev.
+# api imports runtime values from @repo/ai and @repo/db (main -> ./dist). The bind-mount
+# (.:/app) hides the image-built dist, so on a fresh clone the host has none -> build them
+# here (writes to the bind-mounted host, persists; turbo-cached so warm restarts are fast).
+ENTRYPOINT ["sh", "-c", "cd /app && (test -d node_modules/@nestjs/core || bun install) && bunx turbo run build --filter=@repo/db --filter=@repo/ai && cd packages/db && bun run db:push && cd /app/apps/api && exec bun run dev"]
 
 # --- prod target: build and serve ---
 FROM base AS prod

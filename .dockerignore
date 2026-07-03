@@ -18,6 +18,7 @@ coverage
 .DS_Store
 *.swp
 *.swo
+*.tsbuildinfo
 Dockerfile
 docker-compose*.yml
 scripts
