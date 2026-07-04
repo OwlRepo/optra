@@ -171,6 +171,8 @@ For everything else infra-shaped, the pragmatic verification checklist is:
    `docker compose -f docker-compose.prod.yml exec -T api wget -q -O /dev/null http://127.0.0.1:3001/health`,
    `docker compose -f docker-compose.prod.yml exec -T web wget -q -O /dev/null http://127.0.0.1:3000/`,
    and the deploy-path S3 round-trip Node check inside the `api` container.
+   Public HTTPS smoke runs only when `COMPOSE_PROFILES=public` enables bundled Caddy,
+   because shared VPS hosts may already have another service bound to `80`/`443`.
 10. GitHub Actions workflow (`deploy.yml`) cannot be fully verified without live VPS secrets (by
    design — Claude does not hold VPS SSH credentials). What CAN be verified without secrets: YAML
    syntax validity, `shellcheck` on the embedded script block, and that every command/path/service

@@ -19,6 +19,8 @@ read_env() {
 DOMAIN="$(read_env DOMAIN)"
 POSTGRES_PASSWORD="$(read_env POSTGRES_PASSWORD)"
 OPENAI_API_KEY="$(read_env OPENAI_API_KEY)"
+COMPOSE_PROFILES_VALUE="$(read_env COMPOSE_PROFILES | tr -d '[:space:]')"
+export COMPOSE_PROFILES="$COMPOSE_PROFILES_VALUE"
 
 # Validate required vars
 if [ -z "$DOMAIN" ]; then
@@ -38,10 +40,21 @@ fi
 
 sh scripts/ensure-seaweedfs-s3-config.sh
 
+public_ingress_enabled=0
+case ",$COMPOSE_PROFILES_VALUE," in
+    *",public,"*)
+        public_ingress_enabled=1
+        ;;
+esac
+
 echo "📦 Building production images..."
 docker compose -f docker-compose.prod.yml build api web
 
 echo "🚀 Starting production services..."
+if [ "$public_ingress_enabled" -ne 1 ]; then
+    echo "ℹ️  Bundled Caddy profile disabled; removing old Caddy container if present"
+    docker rm -f mnemra-prod-caddy >/dev/null 2>&1 || true
+fi
 docker compose -f docker-compose.prod.yml up -d --remove-orphans --force-recreate
 
 echo "🔍 Checking production API health..."
@@ -68,7 +81,11 @@ for i in $(seq 1 10); do
 done
 if [ "$web_ok" -ne 1 ]; then
     echo "❌ web health check failed"
-    docker compose -f docker-compose.prod.yml logs --tail=120 api web postgres seaweedfs caddy
+    if [ "$public_ingress_enabled" -eq 1 ]; then
+        docker compose -f docker-compose.prod.yml logs --tail=120 api web postgres seaweedfs caddy
+    else
+        docker compose -f docker-compose.prod.yml logs --tail=120 api web postgres seaweedfs
+    fi
     exit 1
 fi
 
@@ -139,9 +156,25 @@ main().catch((error) => {
 })
 NODE
 
+if [ "$public_ingress_enabled" -eq 1 ]; then
+    echo "🔍 Checking public HTTPS route..."
+    html="$(mktemp)"
+    curl -fsS --max-time 15 "https://${DOMAIN}/" -o "$html" || { echo "❌ public smoke fetch failed"; exit 1; }
+    if grep -Eq 'hmr-client|next-devtools|\.next/dev|localhost:[0-9]+|127\.0\.0\.1' "$html"; then
+        echo "❌ public smoke check found dev artifacts"
+        exit 1
+    fi
+else
+    echo "ℹ️  Skipping public HTTPS smoke; set COMPOSE_PROFILES=public only when Mnemra owns 80/443"
+fi
+
 echo "✅ Deployment complete!"
 echo ""
-echo "🌐 Your app is now running at: https://${DOMAIN}"
+if [ "$public_ingress_enabled" -eq 1 ]; then
+    echo "🌐 Your app is now running at: https://${DOMAIN}"
+else
+    echo "🌐 Internal app stack is healthy; configure your existing host ingress to route to the web container."
+fi
 echo ""
 echo "📊 Check logs:"
 echo "  docker compose -f docker-compose.prod.yml logs -f"

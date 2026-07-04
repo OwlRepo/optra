@@ -77,7 +77,9 @@ If risk area is missing, mark `UNMAPPED RISK`.
   copies the filtered web `node_modules` from the deps stage because Bun workspace installs do not
   leave `next` inside `.next/standalone`, and `server.js` requires it at runtime. Bun and Turbo cache
   mounts use locked app-specific ids so a corrupt package tarball in one cache does not poison another service build. Prod compose keeps `api`/`web` ports internal to Compose,
-  scopes `env_file: .env` to app services only, and leaves Caddy as the only public ingress.
+  scopes `env_file: .env` to app services only. Bundled Caddy is now opt-in with
+  `COMPOSE_PROFILES=public` so the app can deploy on a shared VPS where another service already
+  owns host ports `80`/`443`.
   Deploy scripts preserve cache, do not `docker compose down` before replacement, and use
   `--remove-orphans --force-recreate` so regenerated env/config bind mounts are actually reloaded
   by long-running containers.
@@ -85,8 +87,8 @@ If risk area is missing, mark `UNMAPPED RISK`.
   (`mnemra-local` / `mnemra-local-secret`) so production S3 keys in `.env` cannot break local
   SeaweedFS authentication.
   Prod compose must never publish app/internal service host ports (`3000`, `3001`, `5432`, `6379`,
-  `8333`, `8888`, `9333`) because Suki already uses `3000`/`3001` on the same target class; Caddy
-  is the only host-published ingress (`80`, `443`). Local Mnemra dev publishes web/API on
+  `8333`, `8888`, `9333`) because Suki/Tyvera already uses `3000`/`3001` on the same target class;
+  bundled Caddy must stay disabled unless this app owns host `80`/`443`. Local Mnemra dev publishes web/API on
   `3100`/`3101` by default (`MNEMRA_WEB_PORT`/`MNEMRA_API_PORT`) to avoid Suki's local ports.
   Required checks:
   - Turbo dry graph for web is exactly `@repo/web`, `@repo/ui`; Turbo dry graph for API is exactly `@repo/api`, `@repo/ai`, `@repo/db`
@@ -95,7 +97,8 @@ If risk area is missing, mark `UNMAPPED RISK`.
   - `apps/api`'s `/health` returns `200 {"status":"ok"}` with zero dependencies reachable (verifies it never false-fails the container `HEALTHCHECK` during startup race windows)
   - GitHub Actions `deploy.yml` requires `VPS_HOST`/`VPS_USER`/`VPS_SSH_KEY`/`VPS_PORT` secrets configured on `OwlRepo/mnemra` before the auto-deploy path can run; it reads `DOMAIN` from the VPS `.env`, not a separate domain secret
   - prod API/Web health checks must run inside containers (`docker compose exec -T api/web wget ...`) because their ports are not host-published
-  - public Caddy routes must send all browser traffic to `web:3000`; Next.js owns same-origin `/api/*` proxy route handlers and forwards server-side to `api:3001`
+  - when `COMPOSE_PROFILES=public` enables bundled Caddy, public Caddy routes must send all browser traffic to `web:3000`; Next.js owns same-origin `/api/*` proxy route handlers and forwards server-side to `api:3001`
+  - when `COMPOSE_PROFILES` does not include `public`, deploy scripts must remove any stale `mnemra-prod-caddy` container before `up` so a previous Caddy run cannot keep colliding with shared host ingress
   - `scripts/ensure-seaweedfs-s3-config.sh` must rewrite `docker/seaweedfs/s3.prod.json` from non-placeholder `S3_ACCESS_KEY`/`S3_SECRET_KEY` in `.env` before prod `up`, and the deploy path must force-recreate services plus run an S3 round-trip from inside `api`, or the `seaweedfs` service bind-mount/auth can drift from the API env
   - generated prod SeaweedFS identity JSON must remain container-readable (`0644` today) because the `chrislusf/seaweedfs` image runs the service as uid/gid `1000` and Docker Desktop may mount host files as `root:root`
   - no live production data existed anywhere under the old `support_brain` name at the time of this change (confirmed with the project owner) — if that assumption is ever wrong for a specific deploy target, stop and reconcile via `pg_dump`/restore before cutting over, per the rollback notes in the implementation plan

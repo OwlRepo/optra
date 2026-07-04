@@ -131,8 +131,8 @@ This will:
 - Sync code to server
 - Copy `.env`
 - Build Docker images
-- Start all services; the API container runs `db:migrate` during startup
-- Configure SSL automatically (Caddy)
+- Start the app services; the API container runs `db:migrate` during startup
+- Optionally start bundled Caddy only when `COMPOSE_PROFILES=public` is set
 
 **Option B: Deploy on server directly**
 
@@ -153,9 +153,9 @@ nano .env  # Fill in values
 
 **Option C: Automatic deploy via GitHub Actions**
 
-`.github/workflows/deploy.yml` deploys automatically on every push to `main` (or via manual `workflow_dispatch`). It SSHes into the VPS, pulls latest, backs up Postgres, rebuilds `api`/`web`, brings the stack up, and runs a healthcheck + smoke-test before declaring success.
+`.github/workflows/deploy.yml` deploys automatically on every push to `main` (or via manual `workflow_dispatch`). It SSHes into the VPS, pulls latest, backs up Postgres, rebuilds `api`/`web`, brings the stack up, and runs internal API/Web/S3 checks before declaring success.
 
-This assumes the deploy directory already has a working checkout with `.env` in place (i.e. you've already done Option A or B once). If `docker/seaweedfs/s3.prod.json` is missing, the workflow creates it from `S3_ACCESS_KEY`/`S3_SECRET_KEY` in `.env`. The post-deploy smoke test reads `DOMAIN` directly from that `.env`, so no separate domain secret is needed.
+This assumes the deploy directory already has a working checkout with `.env` in place (i.e. you've already done Option A or B once). If `docker/seaweedfs/s3.prod.json` is missing, the workflow creates it from `S3_ACCESS_KEY`/`S3_SECRET_KEY` in `.env`. Set `COMPOSE_PROFILES=public` only when Mnemra's bundled Caddy should own host ports `80`/`443`; otherwise the workflow skips the public HTTPS smoke and leaves ingress to an external host proxy.
 
 Configure these **GitHub Secrets** on the repo (`Settings → Secrets and variables → Actions`):
 | Secret | Value |
@@ -181,7 +181,7 @@ Should show:
 - ✅ seaweedfs (healthy)
 - ✅ api (healthy)
 - ✅ web (healthy)
-- ✅ caddy (running)
+- ✅ caddy (running) only when `COMPOSE_PROFILES=public`
 
 **Check logs:**
 
@@ -204,9 +204,9 @@ docker compose -f docker-compose.prod.yml exec -T web \
   wget -q -O /dev/null http://127.0.0.1:3000/
 ```
 
-Production does not publish the `api` or `web` ports on the host. Caddy is the only public ingress.
+Production does not publish the `api` or `web` ports on the host. The bundled Caddy service is opt-in via `COMPOSE_PROFILES=public`; leave it unset on a shared VPS where another service already owns ports `80`/`443`.
 
-**Test SSL:**
+**Test SSL when bundled Caddy is enabled:**
 
 ```bash
 curl -I https://your-domain.com
@@ -219,7 +219,7 @@ curl -I https://your-domain.com
 
 ### 6. SSL Certificate
 
-Caddy automatically obtains and renews Let's Encrypt SSL certificates.
+When enabled with `COMPOSE_PROFILES=public`, Caddy automatically obtains and renews Let's Encrypt SSL certificates.
 
 **First request takes ~30 seconds** while Caddy:
 
@@ -329,8 +329,8 @@ sudo lsof -i :80
 sudo lsof -i :443
 sudo lsof -i :5432
 
-# Stop conflicting services
-sudo systemctl stop nginx  # if nginx is running
+# On a shared VPS, leave COMPOSE_PROFILES unset so bundled Caddy does not bind 80/443.
+# Enable COMPOSE_PROFILES=public only when Mnemra owns those ports.
 ```
 
 ### SSL not working
@@ -386,7 +386,7 @@ docker stats
 - [ ] Strong `POSTGRES_PASSWORD` in `.env`
 - [ ] `.env` is in `.gitignore` (never committed)
 - [ ] `docker/seaweedfs/s3.prod.json` is in `.gitignore` (never committed)
-- [ ] Firewall configured (only ports 80, 443, 22 open)
+- [ ] Firewall configured (`22`, plus `80`/`443` only for the public ingress that owns them)
 - [ ] SSH key authentication enabled (disable password auth)
 - [ ] Regular database backups scheduled
 - [ ] API keys rotated periodically
@@ -397,8 +397,8 @@ docker stats
 ```bash
 # On server
 ufw allow 22/tcp    # SSH
-ufw allow 80/tcp    # HTTP
-ufw allow 443/tcp   # HTTPS
+ufw allow 80/tcp    # HTTP, only if this host's public ingress needs it
+ufw allow 443/tcp   # HTTPS, only if this host's public ingress needs it
 ufw enable
 ufw status
 ```
@@ -428,7 +428,8 @@ Internet
    │
    ▼
 ┌────────────────────┐
-│  Caddy (SSL)       │  :80, :443
+│  Public ingress    │  :80, :443
+│  Caddy is optional │  COMPOSE_PROFILES=public
 └────────────────────┘
    │
    └──▶ apps/web      :3000  (healthchecked; serves UI + /api/* proxy routes)
@@ -443,4 +444,4 @@ Internet
    └──────────────┘
 ```
 
-All in Docker network, SSL auto-managed by Caddy. `web`/`caddy` wait on real healthchecks before starting/routing traffic.
+All app services run in the Docker network. API/Web healthchecks and the S3 round-trip run on every deploy. SSL is owned by either an external host proxy or, when explicitly enabled, bundled Caddy.

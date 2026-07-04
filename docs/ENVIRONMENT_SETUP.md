@@ -151,7 +151,7 @@ cat .env
 docker compose -f docker-compose.prod.yml config | grep -A5 environment
 
 # Deploy
-docker compose -f docker-compose.prod.yml up -d
+./scripts/deploy.sh
 ```
 
 ## Troubleshooting
@@ -190,8 +190,12 @@ docker compose -f docker-compose.prod.yml up -d
 # On server
 cp .env.example .env
 nano .env  # Fill in secrets
-docker compose -f docker-compose.prod.yml up -d
+./scripts/deploy.sh
 ```
+
+Leave `COMPOSE_PROFILES` unset on shared VPS hosts where another service already owns
+ports `80`/`443`. Set `COMPOSE_PROFILES=public` only when Mnemra's bundled Caddy
+should be the public ingress.
 
 ## Adding New Variables
 

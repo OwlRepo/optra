@@ -36,6 +36,12 @@ jobs:
             # Only DOMAIN is needed here (smoke test). Do NOT source .env — values may
             # contain shell metacharacters like '(' and would break `. ./.env`.
             DOMAIN="$(grep -m1 '^DOMAIN=' .env | cut -d= -f2- | tr -d '\r')"
+            COMPOSE_PROFILES="$(grep -m1 '^COMPOSE_PROFILES=' .env | cut -d= -f2- | tr -d '\r' | tr -d '[:space:]' || true)"
+            export COMPOSE_PROFILES
+            public_ingress_enabled=0
+            case ",$COMPOSE_PROFILES," in
+              *",public,"*) public_ingress_enabled=1 ;;
+            esac
 
             echo "syncing repository"
             git fetch --prune origin main
@@ -68,6 +74,10 @@ jobs:
             docker compose -f docker-compose.prod.yml build web
 
             echo "starting production containers"
+            if [ "$public_ingress_enabled" -ne 1 ]; then
+              echo "bundled Caddy profile disabled; removing old Caddy container if present"
+              docker rm -f mnemra-prod-caddy >/dev/null 2>&1 || true
+            fi
             docker compose -f docker-compose.prod.yml up -d --remove-orphans --force-recreate
             docker compose -f docker-compose.prod.yml ps
 
@@ -91,7 +101,11 @@ jobs:
             done
             if [ "$web_ok" -ne 1 ]; then
               echo "web health check failed"
-              docker compose -f docker-compose.prod.yml logs --tail=120 api web postgres seaweedfs caddy
+              if [ "$public_ingress_enabled" -eq 1 ]; then
+                docker compose -f docker-compose.prod.yml logs --tail=120 api web postgres seaweedfs caddy
+              else
+                docker compose -f docker-compose.prod.yml logs --tail=120 api web postgres seaweedfs
+              fi
               exit 1
             fi
 
@@ -162,10 +176,14 @@ jobs:
             })
             NODE
 
-            html="$(mktemp)"
-            curl -fsS --max-time 15 "https://${DOMAIN}/" -o "$html" || { echo "public smoke fetch failed"; exit 1; }
-            if grep -Eq 'hmr-client|next-devtools|\.next/dev|localhost:[0-9]+|127\.0\.0\.1' "$html"; then
-              echo "public smoke check found dev artifacts"; exit 1
+            if [ "$public_ingress_enabled" -eq 1 ]; then
+              html="$(mktemp)"
+              curl -fsS --max-time 15 "https://${DOMAIN}/" -o "$html" || { echo "public smoke fetch failed"; exit 1; }
+              if grep -Eq 'hmr-client|next-devtools|\.next/dev|localhost:[0-9]+|127\.0\.0\.1' "$html"; then
+                echo "public smoke check found dev artifacts"; exit 1
+              fi
+            else
+              echo "skipping public HTTPS smoke; set COMPOSE_PROFILES=public only when Mnemra owns 80/443"
             fi
 
             echo "deployment completed successfully"

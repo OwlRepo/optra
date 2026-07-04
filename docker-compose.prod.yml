@@ -131,6 +131,7 @@ services:
   caddy:
     image: caddy:2-alpine
     container_name: mnemra-prod-caddy
+    profiles: ["public"]
     restart: unless-stopped
     ports:
       - "80:80"
