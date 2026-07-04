@@ -104,6 +104,8 @@ services:
         NEXT_PUBLIC_API_URL: https://${DOMAIN}/api
     container_name: mnemra-prod-web
     restart: unless-stopped
+    ports:
+      - "127.0.0.1:3100:3000"
     env_file:
       - .env
     environment:
