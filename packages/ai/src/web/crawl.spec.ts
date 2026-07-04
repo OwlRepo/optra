@@ -5,7 +5,7 @@ import { canonicalizeUrl, crawlSite, extractContent, isInScope } from './crawl'
 
 describe('crawl module packaging', () => {
   it('loads p-limit through the native import helper so CommonJS build does not require ESM', () => {
-    const source = readFileSync(new URL('./crawl.ts', import.meta.url), 'utf8')
+    const source = readFileSync('src/web/crawl.ts', 'utf8')
 
     expect(source).toContain('loadPLimit')
     expect(source).not.toContain("await import('p-limit')")
