@@ -67,10 +67,10 @@ ENV PORT=3000
 
 RUN addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 nextjs
 
-COPY --from=prod /app/prod-public ./apps/web/public
+COPY --from=prod /app/prod-public ./public
 COPY --from=deps --chown=nextjs:nodejs /app/node_modules ./node_modules
 COPY --from=prod --chown=nextjs:nodejs /app/prod-standalone ./
-COPY --from=prod --chown=nextjs:nodejs /app/prod-static ./apps/web/.next/static
+COPY --from=prod --chown=nextjs:nodejs /app/prod-static ./.next/static
 
 USER nextjs
 EXPOSE 3000

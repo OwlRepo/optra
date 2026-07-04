@@ -116,6 +116,11 @@ If risk area is missing, mark `UNMAPPED RISK`.
   - Caddyfile edits on the VPS get a timestamped backup before editing and a graceful `caddy reload` (never `systemctl restart`), validated first with `caddy validate`, since it's a single unversioned file serving both apps
   - secrets typed in plaintext into an agent chat session (API keys, sudo passwords) should be treated as exposed and rotated regardless of whether they were ever committed to git
 
+- **Bug found and fixed 2026-07-04**: `apps/web/Dockerfile`'s `runner` stage copied `public/` and `.next/static/` to `./apps/web/public` / `./apps/web/.next/static`, but the standalone `server.js` lands flat at `/app/server.js` and expects those directories directly beside it (`/app/public`, `/app/.next/static`) — the standard Next.js standalone layout. Effect: the homepage HTML rendered fine (SSR doesn't need the asset files), so every existing healthcheck/smoke test (`GET /` only) passed, but every real page was served with zero CSS and broken JS (`_next/static/*` 404). Not caught until manually loading the deployed site in a browser.
+  Required checks going forward:
+  - after any `apps/web/Dockerfile` change, actually fetch a `/_next/static/*` asset path from the running container (not just `/`) and confirm `200`, e.g. `curl -o /dev/null -w '%{http_code}' http://127.0.0.1:<port>/_next/static/css/<hash>.css` — a healthcheck hitting only `/` cannot catch this class of bug
+  - `docker compose exec web sh -c "find / -maxdepth 4 -name server.js"` then confirm `public/` and `.next/static/` exist as siblings of wherever `server.js` actually landed, not nested under `apps/web/`
+
 - SeaweedFS / S3-compatible storage is a live external-integration risk as of Slice 3A.
   Required checks:
   - container comes up and S3 endpoint responds
