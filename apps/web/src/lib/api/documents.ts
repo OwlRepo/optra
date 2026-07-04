@@ -33,6 +33,13 @@ export function deleteDocument(workspaceId: string, kbId: string, documentId: st
   })
 }
 
+export function deleteDocuments(workspaceId: string, kbId: string, documentIds: string[]) {
+  return apiFetch(`/api/workspaces/${workspaceId}/knowledge-bases/${kbId}/documents/delete`, {
+    method: 'POST',
+    body: JSON.stringify({ documentIds }),
+  })
+}
+
 export function downloadDocument(workspaceId: string, kbId: string, documentId: string) {
   return fetchDownload(
     `/api/workspaces/${workspaceId}/knowledge-bases/${kbId}/documents/${documentId}/download`,

@@ -296,6 +296,31 @@ describe('Documents flow (e2e)', () => {
       .expect(201)
 
     await request(app.getHttpServer())
+      .post(`/workspaces/${ownerWorkspaceId}/knowledge-bases/${kbId}/documents/delete`)
+      .set('Authorization', `Bearer ${member.accessToken}`)
+      .send({ documentIds: [secondUpload.body.id] })
+      .expect(403)
+
+    await request(app.getHttpServer())
+      .post(`/workspaces/${ownerWorkspaceId}/knowledge-bases/${kbId}/documents/delete`)
+      .set('Authorization', `Bearer ${owner.accessToken}`)
+      .send({ documentIds: ['not-a-uuid'] })
+      .expect(400)
+
+    const [secondSaved] = await db.select().from(documents).where(eq(documents.id, secondUpload.body.id)).limit(1)
+    const [thirdSaved] = await db.select().from(documents).where(eq(documents.id, thirdUpload.body.id)).limit(1)
+
+    const bulkDelete = await request(app.getHttpServer())
+      .post(`/workspaces/${ownerWorkspaceId}/knowledge-bases/${kbId}/documents/delete`)
+      .set('Authorization', `Bearer ${owner.accessToken}`)
+      .send({ documentIds: [secondUpload.body.id, thirdUpload.body.id, foreignUpload.body.id] })
+      .expect(200)
+
+    expect(bulkDelete.body).toEqual({ deleted: 2, skipped: 1 })
+    await expect(storage.getToTempFile(secondSaved.storageKey!)).rejects.toThrow()
+    await expect(storage.getToTempFile(thirdSaved.storageKey!)).rejects.toThrow()
+
+    await request(app.getHttpServer())
       .delete(`/workspaces/${ownerWorkspaceId}/knowledge-bases/${kbId}/documents/${foreignUpload.body.id}`)
       .set('Authorization', `Bearer ${owner.accessToken}`)
       .expect(404)

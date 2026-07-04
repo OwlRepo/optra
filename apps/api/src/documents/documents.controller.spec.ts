@@ -15,13 +15,14 @@ function fakeRes(): MockResponse {
 const flush = () => new Promise((resolve) => setImmediate(resolve))
 
 describe('DocumentsController downloads', () => {
-  let service: { getDownloadable: jest.Mock; getManyDownloadable: jest.Mock }
+  let service: { getDownloadable: jest.Mock; getManyDownloadable: jest.Mock; removeMany: jest.Mock }
   let controller: DocumentsController
 
   beforeEach(() => {
     service = {
       getDownloadable: jest.fn(),
       getManyDownloadable: jest.fn(),
+      removeMany: jest.fn(),
     }
     controller = new DocumentsController(service as unknown as DocumentsService)
   })
@@ -71,5 +72,14 @@ describe('DocumentsController downloads', () => {
     const out = Buffer.concat(chunks)
     expect(out.length).toBeGreaterThan(0)
     expect(out.subarray(0, 2).toString()).toBe('PK')
+  })
+
+  it('bulk delete returns selected document deletion counts', async () => {
+    service.removeMany.mockResolvedValue({ deleted: 2, skipped: 1 })
+
+    await expect(
+      controller.deleteMany('ws', 'kb', { documentIds: ['a', 'b', 'c'] }),
+    ).resolves.toEqual({ deleted: 2, skipped: 1 })
+    expect(service.removeMany).toHaveBeenCalledWith('ws', 'kb', ['a', 'b', 'c'])
   })
 })

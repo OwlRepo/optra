@@ -1,7 +1,7 @@
 /** @vitest-environment jsdom */
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { downloadDocument, downloadDocuments, listDocuments } from './documents'
+import { deleteDocuments, downloadDocument, downloadDocuments, listDocuments } from './documents'
 
 function stubJsonFetch() {
   const fetchMock = vi.fn().mockResolvedValue({
@@ -82,6 +82,20 @@ describe('documents api client', () => {
       expect.objectContaining({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ documentIds: ['doc-1', 'doc-2'] }),
+      }),
+    )
+  })
+
+  it('deleteDocuments posts selected ids to the bulk delete endpoint', async () => {
+    const fetchMock = stubJsonFetch()
+
+    await deleteDocuments('ws-1', 'kb-1', ['doc-1', 'doc-2'])
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/workspaces/ws-1/knowledge-bases/kb-1/documents/delete',
+      expect.objectContaining({
+        method: 'POST',
         body: JSON.stringify({ documentIds: ['doc-1', 'doc-2'] }),
       }),
     )

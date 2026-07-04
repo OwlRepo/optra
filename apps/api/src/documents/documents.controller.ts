@@ -27,6 +27,7 @@ import { Roles } from '../auth/decorators/roles.decorator'
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard'
 import { RolesGuard } from '../auth/guards/roles.guard'
 import { WorkspaceMemberGuard } from '../auth/guards/workspace-member.guard'
+import { DeleteManyDto } from './dto/delete-many.dto'
 import { DownloadManyDto } from './dto/download-many.dto'
 import { ListDocumentsQueryDto } from './dto/list-documents-query.dto'
 import { DocumentsService } from './documents.service'
@@ -185,6 +186,18 @@ export class DocumentsController {
     }
 
     await archive.finalize()
+  }
+
+  @Post('delete')
+  @HttpCode(200)
+  @UseGuards(JwtAuthGuard, WorkspaceMemberGuard, RolesGuard)
+  @Roles('owner', 'admin')
+  deleteMany(
+    @Param('workspaceId') workspaceId: string,
+    @Param('kbId') kbId: string,
+    @Body() body: DeleteManyDto,
+  ) {
+    return this.documentsService.removeMany(workspaceId, kbId, body.documentIds)
   }
 
   @Get(':documentId/download')

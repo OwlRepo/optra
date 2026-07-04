@@ -390,4 +390,91 @@ describe('DocumentsService', () => {
       NotFoundException,
     )
   })
+
+  it('removeMany deletes scoped documents, skips stale or foreign ids, cascades chunks, and bumps cache once', async () => {
+    const mine = await seedWorkspaceFixture(`${prefix}remove-many@example.com`, 'Documents Spec WS Remove Many')
+    const other = await seedWorkspaceFixture(`${prefix}remove-many-other@example.com`, 'Documents Spec WS Remove Many Other')
+
+    const [first, second, foreignDocument] = await db
+      .insert(documents)
+      .values([
+        {
+          workspaceId: mine.workspace.id,
+          knowledgeBaseId: mine.knowledgeBase.id,
+          title: 'first.txt',
+          status: 'done',
+          storageKey: `${mine.workspace.id}/${mine.knowledgeBase.id}/first.txt`,
+        },
+        {
+          workspaceId: mine.workspace.id,
+          knowledgeBaseId: mine.knowledgeBase.id,
+          title: 'second.txt',
+          status: 'done',
+          storageKey: `${mine.workspace.id}/${mine.knowledgeBase.id}/second.txt`,
+        },
+        {
+          workspaceId: other.workspace.id,
+          knowledgeBaseId: other.knowledgeBase.id,
+          title: 'foreign.txt',
+          status: 'done',
+          storageKey: `${other.workspace.id}/${other.knowledgeBase.id}/foreign.txt`,
+        },
+      ])
+      .returning()
+
+    await db.insert(chunks).values([
+      {
+        documentId: first.id,
+        workspaceId: mine.workspace.id,
+        content: 'first chunk',
+        contentHash: 'first-chunk-hash',
+        metadata: { documentId: first.id },
+      },
+      {
+        documentId: second.id,
+        workspaceId: mine.workspace.id,
+        content: 'second chunk',
+        contentHash: 'second-chunk-hash',
+        metadata: { documentId: second.id },
+      },
+    ])
+
+    storage.delete.mockImplementation(async (key: string) => {
+      if (key.endsWith('/second.txt')) {
+        throw new Error('object already missing')
+      }
+    })
+
+    const result = await service.removeMany(mine.workspace.id, mine.knowledgeBase.id, [
+      first.id,
+      second.id,
+      foreignDocument.id,
+      '00000000-0000-4000-8000-000000000000',
+    ])
+
+    expect(result).toEqual({ deleted: 2, skipped: 2 })
+    expect(storage.delete).toHaveBeenCalledWith(first.storageKey)
+    expect(storage.delete).toHaveBeenCalledWith(second.storageKey)
+    expect(cache.bumpVersion).toHaveBeenCalledTimes(1)
+    expect(cache.bumpVersion).toHaveBeenCalledWith(mine.workspace.id)
+
+    const deletedDocs = await db.select().from(documents).where(eq(documents.workspaceId, mine.workspace.id))
+    const deletedChunks = await db.select().from(chunks).where(eq(chunks.workspaceId, mine.workspace.id))
+    const [foreignStillExists] = await db.select().from(documents).where(eq(documents.id, foreignDocument.id)).limit(1)
+    expect(deletedDocs).toHaveLength(0)
+    expect(deletedChunks).toHaveLength(0)
+    expect(foreignStillExists).toBeDefined()
+  })
+
+  it('removeMany skips every id and does not bump cache when no scoped documents match', async () => {
+    const mine = await seedWorkspaceFixture(`${prefix}remove-many-empty@example.com`, 'Documents Spec WS Remove Many Empty')
+
+    const result = await service.removeMany(mine.workspace.id, mine.knowledgeBase.id, [
+      '00000000-0000-4000-8000-000000000000',
+    ])
+
+    expect(result).toEqual({ deleted: 0, skipped: 1 })
+    expect(storage.delete).not.toHaveBeenCalled()
+    expect(cache.bumpVersion).not.toHaveBeenCalled()
+  })
 })

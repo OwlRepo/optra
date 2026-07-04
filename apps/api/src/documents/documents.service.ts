@@ -1,6 +1,6 @@
 import { randomUUID } from 'crypto'
 import { Injectable, Logger, NotFoundException } from '@nestjs/common'
-import { and, count, desc, eq, ilike } from 'drizzle-orm'
+import { and, count, desc, eq, ilike, inArray } from 'drizzle-orm'
 import { buildOffsetResult, db, documents, knowledgeBases, resolveOffsetPage } from '@repo/db'
 import { IngestService } from '../ingest/ingest.service'
 import { StorageService } from '../storage/storage.service'
@@ -160,6 +160,72 @@ export class DocumentsService {
     await this.cache.bumpVersion(workspaceId)
 
     return { message: 'Document deleted' }
+  }
+
+  async removeMany(
+    workspaceId: string,
+    kbId: string,
+    documentIds: string[],
+  ): Promise<{ deleted: number; skipped: number }> {
+    await this.assertKbInWorkspace(workspaceId, kbId)
+
+    const uniqueIds = [...new Set(documentIds)]
+    if (uniqueIds.length === 0) {
+      return { deleted: 0, skipped: 0 }
+    }
+
+    const scopedDocuments = await db
+      .select({
+        id: documents.id,
+        storageKey: documents.storageKey,
+      })
+      .from(documents)
+      .where(
+        and(
+          eq(documents.workspaceId, workspaceId),
+          eq(documents.knowledgeBaseId, kbId),
+          inArray(documents.id, uniqueIds),
+        ),
+      )
+
+    for (const document of scopedDocuments) {
+      if (!document.storageKey) {
+        continue
+      }
+
+      await this.storage.delete(document.storageKey).catch((error: unknown) => {
+        this.logger.warn(
+          `Failed to delete storage object ${document.storageKey}: ${error instanceof Error ? error.message : String(error)}`,
+        )
+      })
+    }
+
+    if (scopedDocuments.length === 0) {
+      return { deleted: 0, skipped: uniqueIds.length }
+    }
+
+    const deletedDocuments = await db
+      .delete(documents)
+      .where(
+        and(
+          eq(documents.workspaceId, workspaceId),
+          eq(documents.knowledgeBaseId, kbId),
+          inArray(
+            documents.id,
+            scopedDocuments.map((document) => document.id),
+          ),
+        ),
+      )
+      .returning({ id: documents.id })
+
+    if (deletedDocuments.length > 0) {
+      await this.cache.bumpVersion(workspaceId)
+    }
+
+    return {
+      deleted: deletedDocuments.length,
+      skipped: uniqueIds.length - deletedDocuments.length,
+    }
   }
 
   private async assertKbInWorkspace(workspaceId: string, kbId: string) {

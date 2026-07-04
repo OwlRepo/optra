@@ -13,6 +13,7 @@ const listScrapeRunsMock = vi.fn()
 const scrapeSiteMock = vi.fn()
 const uploadDocumentMock = vi.fn()
 const deleteDocumentMock = vi.fn()
+const deleteDocumentsMock = vi.fn()
 const downloadDocumentMock = vi.fn()
 const downloadDocumentsMock = vi.fn()
 const listWorkspacesMock = vi.fn()
@@ -28,6 +29,7 @@ vi.mock('@/lib/api/documents', () => ({
   listDocuments: (...args: unknown[]) => listDocumentsMock(...args),
   uploadDocument: (...args: unknown[]) => uploadDocumentMock(...args),
   deleteDocument: (...args: unknown[]) => deleteDocumentMock(...args),
+  deleteDocuments: (...args: unknown[]) => deleteDocumentsMock(...args),
   downloadDocument: (...args: unknown[]) => downloadDocumentMock(...args),
   downloadDocuments: (...args: unknown[]) => downloadDocumentsMock(...args),
 }))
@@ -74,6 +76,7 @@ describe('KnowledgeBasePage', () => {
     scrapeSiteMock.mockReset()
     uploadDocumentMock.mockReset()
     deleteDocumentMock.mockReset()
+    deleteDocumentsMock.mockReset()
     downloadDocumentMock.mockReset()
     downloadDocumentsMock.mockReset()
     listWorkspacesMock.mockReset()
@@ -551,6 +554,44 @@ describe('KnowledgeBasePage', () => {
     await waitFor(() => {
       expect(downloadDocumentsMock).toHaveBeenCalledWith('ws-1', 'kb-1', ['doc-1', 'doc-2'])
     })
+  })
+
+  it('bulk deletes selected documents after confirmation and clears selection', async () => {
+    listDocumentsMock
+      .mockResolvedValueOnce(offsetResponse([
+        { id: 'doc-1', title: 'Guide.pdf', status: 'done', createdAt: '2026-06-30T00:00:00.000Z' },
+        { id: 'doc-2', title: 'Notes.txt', status: 'done', createdAt: '2026-06-30T00:00:01.000Z' },
+      ]))
+      .mockResolvedValueOnce(offsetResponse([]))
+    deleteDocumentsMock.mockResolvedValue({ deleted: 2, skipped: 0 })
+
+    renderPage()
+
+    expect(await screen.findByText('Guide.pdf')).toBeDefined()
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select Guide.pdf' }))
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select Notes.txt' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Delete selected' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Delete selected documents' }))
+
+    await waitFor(() => {
+      expect(deleteDocumentsMock).toHaveBeenCalledWith('ws-1', 'kb-1', ['doc-1', 'doc-2'])
+    })
+    await waitFor(() => {
+      expect(screen.queryByRole('checkbox', { name: 'Select Guide.pdf' })).toBeNull()
+    })
+  })
+
+  it('keeps selected document delete controls hidden from members', async () => {
+    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'member' }], nextCursor: null })
+    listDocumentsMock.mockResolvedValue(offsetResponse([
+      { id: 'doc-1', title: 'Guide.pdf', status: 'done', createdAt: '2026-06-30T00:00:00.000Z' },
+    ]))
+
+    renderPage()
+
+    expect(await screen.findByText('Guide.pdf')).toBeDefined()
+    expect(screen.queryByRole('button', { name: 'Delete selected' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Download selected' })).toBeDefined()
   })
 
   it('renders workspace nav and keeps knowledge bases active', async () => {

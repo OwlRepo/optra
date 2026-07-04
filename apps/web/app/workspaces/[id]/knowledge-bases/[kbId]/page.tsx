@@ -26,6 +26,7 @@ import {
 import { Download, FileUp, Search, Trash2 } from "lucide-react";
 import {
   deleteDocument,
+  deleteDocuments,
   downloadDocument,
   downloadDocuments,
   listDocuments,
@@ -172,10 +173,12 @@ export default function KnowledgeBasePage({
   const [pendingDelete, setPendingDelete] = React.useState<DocumentRow | null>(
     null,
   );
+  const [pendingBulkDelete, setPendingBulkDelete] = React.useState(false);
   const [isScrapeModalOpen, setIsScrapeModalOpen] = React.useState(false);
   const [isSubmittingScrape, setIsSubmittingScrape] = React.useState(false);
   const [isDocumentsRefreshing, setIsDocumentsRefreshing] = React.useState(false);
   const [isDownloadingSelected, setIsDownloadingSelected] = React.useState(false);
+  const [isDeletingSelected, setIsDeletingSelected] = React.useState(false);
   const [dragActive, setDragActive] = React.useState(false);
   const [scrapeUrl, setScrapeUrl] = React.useState("");
   const [scrapeMaxDepth, setScrapeMaxDepth] = React.useState("3");
@@ -612,6 +615,57 @@ export default function KnowledgeBasePage({
     }
   }, [knowledgeBaseId, router, selectedDocumentIdList, toast, workspaceId]);
 
+  const confirmBulkDelete = React.useCallback(async () => {
+    if (selectedDocumentIdList.length === 0) {
+      return;
+    }
+
+    setIsDeletingSelected(true);
+    try {
+      const result = (await deleteDocuments(
+        workspaceId,
+        knowledgeBaseId,
+        selectedDocumentIdList,
+      )) as { deleted: number; skipped: number };
+      toast({
+        variant: "success",
+        title: "Documents deleted",
+        description:
+          result.skipped > 0
+            ? `${result.deleted} deleted · ${result.skipped} skipped.`
+            : `${result.deleted} deleted.`,
+      });
+      setPendingBulkDelete(false);
+      setSelectedDocumentIds(new Set());
+      await loadDocuments();
+    } catch (err) {
+      if (isUnauthorized(err)) {
+        router.push("/login");
+        return;
+      }
+
+      const message =
+        err && typeof err === "object" && "message" in err
+          ? String((err as { message: unknown }).message)
+          : "Try again in a moment.";
+
+      toast({
+        variant: "error",
+        title: "Failed to delete selected documents",
+        description: message,
+      });
+    } finally {
+      setIsDeletingSelected(false);
+    }
+  }, [
+    knowledgeBaseId,
+    loadDocuments,
+    router,
+    selectedDocumentIdList,
+    toast,
+    workspaceId,
+  ]);
+
   const submitScrape = React.useCallback(async () => {
     setIsSubmittingScrape(true);
 
@@ -893,6 +947,19 @@ export default function KnowledgeBasePage({
                 <Download className="size-4" />
                 Download selected
               </Button>
+              {canManage ? (
+                <Button
+                  type="button"
+                  variant="destructive"
+                  onClick={() => setPendingBulkDelete(true)}
+                  disabled={selectedDocumentIdList.length === 0}
+                  isLoading={isDeletingSelected}
+                  loadingText="Deleting"
+                >
+                  <Trash2 className="size-4" />
+                  Delete selected
+                </Button>
+              ) : null}
             </div>
 
             {isLoading && documents.length === 0 ? (
@@ -1105,6 +1172,37 @@ export default function KnowledgeBasePage({
               onClick={() => void confirmDelete()}
             >
               Delete document
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        open={pendingBulkDelete}
+        onClose={() => setPendingBulkDelete(false)}
+        title="Delete selected documents"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Delete {selectedDocumentIdList.length} selected document
+            {selectedDocumentIdList.length === 1 ? "" : "s"}? This removes source files and indexed chunks.
+          </p>
+          <div className="flex justify-end gap-3">
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => setPendingBulkDelete(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={() => void confirmBulkDelete()}
+              isLoading={isDeletingSelected}
+              loadingText="Deleting"
+            >
+              Delete selected documents
             </Button>
           </div>
         </div>
