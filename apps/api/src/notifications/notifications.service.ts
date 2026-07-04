@@ -1,9 +1,10 @@
-import { Injectable } from '@nestjs/common'
+import { Injectable, InternalServerErrorException, Logger } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { Resend } from 'resend'
 
 @Injectable()
 export class NotificationsService {
+  private readonly logger = new Logger(NotificationsService.name)
   private resend: Resend | null = null
   private fromEmail: string
 
@@ -16,7 +17,11 @@ export class NotificationsService {
 
   async sendOtp(email: string, code: string): Promise<void> {
     if (this.resend) {
-      await this.resend.emails.send({
+      // resend@6.16.0 never rejects on API-level failures (bad key, unverified
+      // domain, rate limit) — it always resolves `{ data, error }`. The `error`
+      // field must be checked explicitly or a failed send is indistinguishable
+      // from a successful one to every caller.
+      const { error } = await this.resend.emails.send({
         from: this.fromEmail,
         to: email,
         subject: 'Your Mnemra verification code',
@@ -26,6 +31,10 @@ export class NotificationsService {
           <p>This code expires in 10 minutes.</p>
         `,
       })
+      if (error) {
+        this.logger.error(`Failed to send OTP email to ${email}: ${error.message}`)
+        throw new InternalServerErrorException('Failed to send verification email')
+      }
     } else {
       console.log(`[DEV OTP] ${email} → ${code}`)
     }
@@ -33,7 +42,7 @@ export class NotificationsService {
 
   async sendInvite(email: string, inviteUrl: string): Promise<void> {
     if (this.resend) {
-      await this.resend.emails.send({
+      const { error } = await this.resend.emails.send({
         from: this.fromEmail,
         to: email,
         subject: "You're invited to a Mnemra workspace",
@@ -42,6 +51,10 @@ export class NotificationsService {
           <p><a href="${inviteUrl}">Accept your invite</a></p>
         `,
       })
+      if (error) {
+        this.logger.error(`Failed to send invite email to ${email}: ${error.message}`)
+        throw new InternalServerErrorException('Failed to send invite email')
+      }
     } else {
       console.log('[DEV INVITE] ' + email + ' -> ' + inviteUrl)
     }

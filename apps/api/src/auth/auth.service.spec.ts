@@ -1,4 +1,10 @@
-import { ConflictException, ForbiddenException, NotFoundException, UnauthorizedException } from '@nestjs/common'
+import {
+  ConflictException,
+  ForbiddenException,
+  InternalServerErrorException,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common'
 import { Test } from '@nestjs/testing'
 import { JwtModule } from '@nestjs/jwt'
 import { ConfigModule } from '@nestjs/config'
@@ -33,7 +39,15 @@ describe('AuthService', () => {
         ConfigModule.forRoot({ isGlobal: true }),
         JwtModule.register({ secret: 'test-secret-only', signOptions: { expiresIn: '15m' } }),
       ],
-      providers: [AuthService, NotificationsService],
+      providers: [
+        AuthService,
+        // Stubbed, not the real NotificationsService: these tests exercise auth
+        // business logic (DB state, tokens, guards), not email delivery — that has
+        // its own coverage in notifications.service.spec.ts and the dedicated
+        // "email send failure" block below. Using the real service here would make
+        // every test in this file depend on a live Resend account/domain.
+        { provide: NotificationsService, useValue: { sendOtp: jest.fn().mockResolvedValue(undefined) } },
+      ],
     }).compile()
 
     service = moduleRef.get(AuthService)
@@ -69,6 +83,43 @@ describe('AuthService', () => {
       await expect(
         service.register({ email: email.toUpperCase(), password: 'password123' }),
       ).rejects.toThrow(ConflictException)
+    })
+  })
+
+  describe('register — email send failure', () => {
+    // Regression test for the silent-swallow bug: NotificationsService.sendOtp()
+    // used to discard Resend's `{ data, error }` return value entirely, so a failed
+    // send looked identical to success (register() returned 201 with no OTP ever sent,
+    // and no error anywhere). It now throws on failure, and that must propagate here.
+    const email = `svc-register-email-fail-${Date.now()}@example.com`
+    let failingService: AuthService
+
+    beforeAll(async () => {
+      const moduleRef = await Test.createTestingModule({
+        imports: [
+          ConfigModule.forRoot({ isGlobal: true }),
+          JwtModule.register({ secret: 'test-secret-only', signOptions: { expiresIn: '15m' } }),
+        ],
+        providers: [
+          AuthService,
+          {
+            provide: NotificationsService,
+            useValue: {
+              sendOtp: jest.fn().mockRejectedValue(new InternalServerErrorException('Failed to send verification email')),
+            },
+          },
+        ],
+      }).compile()
+
+      failingService = moduleRef.get(AuthService)
+    })
+
+    afterAll(() => cleanupUser(email))
+
+    it('propagates the send failure instead of returning a false-positive success', async () => {
+      await expect(failingService.register({ email, password: 'password123' })).rejects.toThrow(
+        InternalServerErrorException,
+      )
     })
   })
 
