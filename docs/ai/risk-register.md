@@ -67,14 +67,23 @@ If risk area is missing, mark `UNMAPPED RISK`.
   the build context. Web's build graph is source-verified as `@repo/web` + `@repo/ui`; API's graph
   is `@repo/api` + `@repo/ai` + `@repo/db`. Dockerfiles use Bun install cache mounts, Turbo build
   cache mounts, and filtered installs. Dev images no longer prebuild package `dist` files that
-  bind mounts hide at runtime; API dev instead conditionally rebuilds only stale/missing
-  `@repo/db`/`@repo/ai` package output before `db:migrate`. The Bun Alpine base image has no real
+  bind mounts hide at runtime; API/Web dev entrypoints now repair stale named `node_modules`
+  volumes by rerunning filtered `bun install` when lockfile/package manifests are newer than
+  app-specific stamp files, or when required runtime deps such as `archiver`/`next` are missing.
+  API dev also conditionally rebuilds only stale/missing `@repo/db`/`@repo/ai` package output
+  before `db:migrate`. The Bun Alpine base image has no real
   `node`; container repro showed `nest build`/`swc` hanging under Bun's Node shim, so API/Web
-  Dockerfiles install `nodejs` and production uses Node for API/Next standalone startup. Bun and
-  Turbo cache mounts use locked app-specific ids so a corrupt package tarball in one cache does
-  not poison another service build. Prod compose keeps `api`/`web` ports internal to Compose,
+  Dockerfiles install `nodejs` and production uses Node for API/Next standalone startup. Web runner
+  copies the filtered web `node_modules` from the deps stage because Bun workspace installs do not
+  leave `next` inside `.next/standalone`, and `server.js` requires it at runtime. Bun and Turbo cache
+  mounts use locked app-specific ids so a corrupt package tarball in one cache does not poison another service build. Prod compose keeps `api`/`web` ports internal to Compose,
   scopes `env_file: .env` to app services only, and leaves Caddy as the only public ingress.
-  Deploy scripts preserve cache, do not `docker compose down` before replacement, and use `--remove-orphans`.
+  Deploy scripts preserve cache, do not `docker compose down` before replacement, and use
+  `--remove-orphans --force-recreate` so regenerated env/config bind mounts are actually reloaded
+  by long-running containers.
+  Local `docker-compose.yml` overrides API `S3_*` values to match `docker/seaweedfs/s3.json`
+  (`mnemra-local` / `mnemra-local-secret`) so production S3 keys in `.env` cannot break local
+  SeaweedFS authentication.
   Prod compose must never publish app/internal service host ports (`3000`, `3001`, `5432`, `6379`,
   `8333`, `8888`, `9333`) because Suki already uses `3000`/`3001` on the same target class; Caddy
   is the only host-published ingress (`80`, `443`). Local Mnemra dev publishes web/API on
@@ -87,7 +96,8 @@ If risk area is missing, mark `UNMAPPED RISK`.
   - GitHub Actions `deploy.yml` requires `VPS_HOST`/`VPS_USER`/`VPS_SSH_KEY`/`VPS_PORT` secrets configured on `OwlRepo/mnemra` before the auto-deploy path can run; it reads `DOMAIN` from the VPS `.env`, not a separate domain secret
   - prod API/Web health checks must run inside containers (`docker compose exec -T api/web wget ...`) because their ports are not host-published
   - public Caddy routes must send all browser traffic to `web:3000`; Next.js owns same-origin `/api/*` proxy route handlers and forwards server-side to `api:3001`
-  - `scripts/ensure-seaweedfs-s3-config.sh` must create `docker/seaweedfs/s3.prod.json` from non-placeholder `S3_ACCESS_KEY`/`S3_SECRET_KEY` in `.env` before first prod `up`, or the `seaweedfs` service bind-mount fails at container start
+  - `scripts/ensure-seaweedfs-s3-config.sh` must rewrite `docker/seaweedfs/s3.prod.json` from non-placeholder `S3_ACCESS_KEY`/`S3_SECRET_KEY` in `.env` before prod `up`, and the deploy path must force-recreate services plus run an S3 round-trip from inside `api`, or the `seaweedfs` service bind-mount/auth can drift from the API env
+  - generated prod SeaweedFS identity JSON must remain container-readable (`0644` today) because the `chrislusf/seaweedfs` image runs the service as uid/gid `1000` and Docker Desktop may mount host files as `root:root`
   - no live production data existed anywhere under the old `support_brain` name at the time of this change (confirmed with the project owner) — if that assumption is ever wrong for a specific deploy target, stop and reconcile via `pg_dump`/restore before cutting over, per the rollback notes in the implementation plan
 
 - SeaweedFS / S3-compatible storage is a live external-integration risk as of Slice 3A.

@@ -25,6 +25,7 @@ COPY package.json bun.lock turbo.json tsconfig.base.json ./
 COPY apps/web/package.json ./apps/web/
 COPY apps/api/package.json ./apps/api/
 COPY packages/ ./packages/
+COPY docker/web-dev-entrypoint.sh ./docker/web-dev-entrypoint.sh
 
 WORKDIR /app
 
@@ -34,7 +35,7 @@ ENV CHOKIDAR_USEPOLLING=true
 
 EXPOSE 3000
 
-ENTRYPOINT ["sh", "-c", "cd /app && (test -d node_modules/next || bun install --frozen-lockfile --filter './' --filter '@repo/web' --filter '@repo/ui') && cd apps/web && exec bun run dev"]
+ENTRYPOINT ["sh", "/app/docker/web-dev-entrypoint.sh"]
 
 # --- prod target: build, then stage standalone output ---
 FROM base AS prod
@@ -67,6 +68,7 @@ ENV PORT=3000
 RUN addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 nextjs
 
 COPY --from=prod /app/prod-public ./apps/web/public
+COPY --from=deps --chown=nextjs:nodejs /app/node_modules ./node_modules
 COPY --from=prod --chown=nextjs:nodejs /app/prod-standalone ./
 COPY --from=prod --chown=nextjs:nodejs /app/prod-static ./apps/web/.next/static
 
@@ -75,4 +77,4 @@ EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
   CMD ["sh", "-c", "wget -q -O /dev/null \"http://127.0.0.1:${PORT:-3000}/\" || exit 1"]
 
-CMD ["node", "apps/web/server.js"]
+CMD ["node", "server.js"]

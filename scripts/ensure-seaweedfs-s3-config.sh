@@ -28,10 +28,6 @@ if [ ! -f "$ENV_FILE" ]; then
     exit 1
 fi
 
-if [ -f "$OUTPUT_FILE" ] && ! grep -Eq 'REPLACE_WITH|your-key-here|mnemra-local' "$OUTPUT_FILE"; then
-    exit 0
-fi
-
 S3_ACCESS_KEY="$(read_env S3_ACCESS_KEY)"
 S3_SECRET_KEY="$(read_env S3_SECRET_KEY)"
 
@@ -62,5 +58,5 @@ cat > "$OUTPUT_FILE" <<EOF
 }
 EOF
 
-chmod 600 "$OUTPUT_FILE"
+chmod 644 "$OUTPUT_FILE"
 echo "created $OUTPUT_FILE from $ENV_FILE"

@@ -65,6 +65,11 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: 6379
       S3_ENDPOINT: http://seaweedfs:8333
+      S3_REGION: us-east-1
+      S3_ACCESS_KEY: mnemra-local
+      S3_SECRET_KEY: mnemra-local-secret
+      S3_BUCKET: mnemra-documents
+      S3_FORCE_PATH_STYLE: "true"
       WEB_URL: http://localhost:${MNEMRA_WEB_PORT:-3100}
     volumes:
       - .:/app

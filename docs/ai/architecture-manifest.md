@@ -151,6 +151,9 @@ SeaweedFS is the current object storage backend for local development and produc
 - Bucket name: `mnemra-documents`
 
 SeaweedFS uses S3-compatible auth from env (`S3_*`) plus an identities JSON file mounted into the container.
+Production deploys generate that identity JSON from `.env`, keep it readable by the SeaweedFS
+container user, and force-recreate containers so changed credentials are reloaded before API/Web
+health and S3 round-trip checks pass.
 
 ### Storage Service
 

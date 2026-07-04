@@ -144,7 +144,7 @@ For everything else infra-shaped, the pragmatic verification checklist is:
    `bunx turbo run build --filter=@repo/web... --dry=json` includes only `@repo/web` + `@repo/ui`;
    `bunx turbo run build --filter=@repo/api... --dry=json` includes only `@repo/api` + `@repo/ai` + `@repo/db`.
 2. Shell/config checks must pass:
-   `sh -n docker/api-dev-entrypoint.sh scripts/deploy.sh scripts/verify-env.sh`,
+   `sh -n docker/api-dev-entrypoint.sh docker/web-dev-entrypoint.sh scripts/deploy.sh scripts/deploy-remote.sh scripts/ensure-seaweedfs-s3-config.sh`,
    `docker compose config --quiet`, and
    `POSTGRES_PASSWORD=postgres DOMAIN=localhost OPENAI_API_KEY=test docker compose -f docker-compose.prod.yml config --quiet`.
 3. `docker compose build api web` (dev) and
@@ -168,7 +168,9 @@ For everything else infra-shaped, the pragmatic verification checklist is:
    pre-flight dry run before trusting an actual Hetzner deploy — this catches lockfile/env-file,
    missing-mount-source, stage-target, and app graph class bugs without needing SSH access. Prod
    `api`/`web` ports are not host-published, so prod smoke checks must use
-   `docker compose -f docker-compose.prod.yml exec -T api/web wget ...` or the public Caddy URL.
+   `docker compose -f docker-compose.prod.yml exec -T api wget -q -O /dev/null http://127.0.0.1:3001/health`,
+   `docker compose -f docker-compose.prod.yml exec -T web wget -q -O /dev/null http://127.0.0.1:3000/`,
+   and the deploy-path S3 round-trip Node check inside the `api` container.
 10. GitHub Actions workflow (`deploy.yml`) cannot be fully verified without live VPS secrets (by
    design — Claude does not hold VPS SSH credentials). What CAN be verified without secrets: YAML
    syntax validity, `shellcheck` on the embedded script block, and that every command/path/service
