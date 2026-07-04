@@ -25,6 +25,7 @@ function stubDownloadFetch(filename = 'documents.zip') {
     createObjectURL: vi.fn(() => 'blob:test'),
     revokeObjectURL: vi.fn(),
   })
+  vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined)
   vi.spyOn(document.body, 'appendChild')
   vi.spyOn(document.body, 'removeChild')
   return fetchMock

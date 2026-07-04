@@ -18,7 +18,7 @@ describe('GET /api/workspaces/[id]/knowledge-bases/[kbId]/scrape-runs proxy', ()
     const fetchMock = vi.fn().mockResolvedValue(mockBackendResponse(200, [{ id: 'run-1', status: 'running' }]))
     vi.stubGlobal('fetch', fetchMock)
 
-    const request = new NextRequest('http://localhost:3000/api/workspaces/ws-1/knowledge-bases/kb-1/scrape-runs', {
+    const request = new NextRequest('http://localhost:3000/api/workspaces/ws-1/knowledge-bases/kb-1/scrape-runs?page=2&pageSize=5&q=docs&status=running', {
       method: 'GET',
       headers: { cookie: 'mnemra_at=test-access-token' },
     })
@@ -27,13 +27,16 @@ describe('GET /api/workspaces/[id]/knowledge-bases/[kbId]/scrape-runs proxy', ()
       params: Promise.resolve({ id: 'ws-1', kbId: 'kb-1' }),
     })
 
-    expect(fetchMock).toHaveBeenCalledWith('http://localhost:3001/workspaces/ws-1/knowledge-bases/kb-1/scrape-runs', {
-      method: 'GET',
-      headers: {
-        Authorization: 'Bearer test-access-token',
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://localhost:3001/workspaces/ws-1/knowledge-bases/kb-1/scrape-runs?page=2&pageSize=5&q=docs&status=running',
+      {
+        method: 'GET',
+        headers: {
+          Authorization: 'Bearer test-access-token',
+        },
+        body: undefined,
       },
-      body: undefined,
-    })
+    )
     expect(response.status).toBe(200)
     await expect(response.json()).resolves.toEqual([{ id: 'run-1', status: 'running' }])
   })

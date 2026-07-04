@@ -13,6 +13,8 @@ const listScrapeRunsMock = vi.fn()
 const scrapeSiteMock = vi.fn()
 const uploadDocumentMock = vi.fn()
 const deleteDocumentMock = vi.fn()
+const downloadDocumentMock = vi.fn()
+const downloadDocumentsMock = vi.fn()
 const listWorkspacesMock = vi.fn()
 const getWorkspaceMock = vi.fn()
 const logoutMock = vi.fn()
@@ -26,6 +28,8 @@ vi.mock('@/lib/api/documents', () => ({
   listDocuments: (...args: unknown[]) => listDocumentsMock(...args),
   uploadDocument: (...args: unknown[]) => uploadDocumentMock(...args),
   deleteDocument: (...args: unknown[]) => deleteDocumentMock(...args),
+  downloadDocument: (...args: unknown[]) => downloadDocumentMock(...args),
+  downloadDocuments: (...args: unknown[]) => downloadDocumentsMock(...args),
 }))
 
 vi.mock('@/lib/api/scrape', () => ({
@@ -54,6 +58,14 @@ function renderPage() {
   )
 }
 
+function offsetResponse<T>(items: T[], overrides?: Partial<{ page: number; pageSize: number; total: number; totalPages: number }>) {
+  const page = overrides?.page ?? 1
+  const pageSize = overrides?.pageSize ?? 20
+  const total = overrides?.total ?? items.length
+  const totalPages = overrides?.totalPages ?? (total === 0 ? 0 : Math.ceil(total / pageSize))
+  return { items, page, pageSize, total, totalPages }
+}
+
 describe('KnowledgeBasePage', () => {
   beforeEach(() => {
     pushMock.mockReset()
@@ -62,6 +74,8 @@ describe('KnowledgeBasePage', () => {
     scrapeSiteMock.mockReset()
     uploadDocumentMock.mockReset()
     deleteDocumentMock.mockReset()
+    downloadDocumentMock.mockReset()
+    downloadDocumentsMock.mockReset()
     listWorkspacesMock.mockReset()
     getWorkspaceMock.mockReset()
     logoutMock.mockReset()
@@ -109,6 +123,25 @@ describe('KnowledgeBasePage', () => {
       expect(uploadDocumentMock).toHaveBeenCalledWith('ws-1', 'kb-1', file)
       expect(screen.getByText('Upload.txt')).toBeDefined()
       expect(screen.getByText('pending')).toBeDefined()
+    })
+  })
+
+  it('uploads a dropped file through the same upload handler', async () => {
+    listDocumentsMock.mockResolvedValue(offsetResponse([]))
+    uploadDocumentMock.mockResolvedValue({ id: 'doc-3', title: 'Dropped.txt', status: 'pending' })
+
+    renderPage()
+
+    expect(await screen.findByText('No documents yet')).toBeDefined()
+
+    const file = new File(['hello'], 'Dropped.txt', { type: 'text/plain' })
+    fireEvent.drop(screen.getByTestId('document-dropzone'), {
+      dataTransfer: { files: [file] },
+    })
+
+    await waitFor(() => {
+      expect(uploadDocumentMock).toHaveBeenCalledWith('ws-1', 'kb-1', file)
+      expect(screen.getByText('Dropped.txt')).toBeDefined()
     })
   })
 
@@ -374,13 +407,13 @@ describe('KnowledgeBasePage', () => {
     expect(screen.getByText('100% of discovered pages processed')).toBeDefined()
   })
 
-  it('shows truthful document queue summary and surfaces in-flight docs first', async () => {
+  it('shows truthful document queue summary and keeps backend newest-first order', async () => {
     listDocumentsMock.mockResolvedValue({
       items: [
-        { id: 'doc-done', title: 'Done.txt', status: 'done', createdAt: '2026-06-30T00:00:00.000Z', updatedAt: '2026-06-30T00:00:05.000Z' },
-        { id: 'doc-pending', title: 'Pending.txt', status: 'pending', createdAt: '2026-06-30T00:00:01.000Z', updatedAt: '2026-06-30T00:00:10.000Z' },
-        { id: 'doc-processing', title: 'Processing.txt', status: 'processing', createdAt: '2026-06-30T00:00:02.000Z', updatedAt: '2026-06-30T00:00:15.000Z' },
         { id: 'doc-failed', title: 'Failed.txt', status: 'failed', createdAt: '2026-06-30T00:00:03.000Z', updatedAt: '2026-06-30T00:00:20.000Z' },
+        { id: 'doc-processing', title: 'Processing.txt', status: 'processing', createdAt: '2026-06-30T00:00:02.000Z', updatedAt: '2026-06-30T00:00:15.000Z' },
+        { id: 'doc-pending', title: 'Pending.txt', status: 'pending', createdAt: '2026-06-30T00:00:01.000Z', updatedAt: '2026-06-30T00:00:10.000Z' },
+        { id: 'doc-done', title: 'Done.txt', status: 'done', createdAt: '2026-06-30T00:00:00.000Z', updatedAt: '2026-06-30T00:00:05.000Z' },
       ],
       nextCursor: null,
     })
@@ -392,8 +425,8 @@ describe('KnowledgeBasePage', () => {
     expect(screen.getByText('25% indexed · 1 pending · 1 processing · 1 failed')).toBeDefined()
 
     const rows = screen.getAllByRole('row')
-    expect(rows[1]?.textContent).toContain('Processing.txt')
-    expect(rows[2]?.textContent).toContain('Pending.txt')
+    expect(rows[1]?.textContent).toContain('Failed.txt')
+    expect(rows[2]?.textContent).toContain('Processing.txt')
   })
 
   // Regression: ISSUE-002 — document queue summary rendered as a <div> inside
@@ -444,47 +477,80 @@ describe('KnowledgeBasePage', () => {
     })
   })
 
-  it('renders load more button and appends next page rows', async () => {
-    listDocumentsMock
-      .mockResolvedValueOnce({
-        items: [
+  it('paginates documents through the backend', async () => {
+    listDocumentsMock.mockResolvedValue(
+      offsetResponse(
+        [
           { id: 'doc-1', title: 'Guide.pdf', status: 'done', createdAt: '2026-06-30T00:00:00.000Z' },
-          { id: 'doc-2', title: 'Notes.txt', status: 'done', createdAt: '2026-06-30T00:00:01.000Z' },
         ],
-        nextCursor: 'cursor-1',
-      })
-      .mockResolvedValueOnce({
-        items: [
-          { id: 'doc-3', title: 'Appendix.txt', status: 'done', createdAt: '2026-06-30T00:00:02.000Z' },
-        ],
-        nextCursor: null,
-      })
+        { page: 1, pageSize: 20, total: 40, totalPages: 2 },
+      ),
+    )
 
     renderPage()
 
     expect(await screen.findByText('Guide.pdf')).toBeDefined()
-    expect(screen.getByRole('button', { name: 'Load more documents' })).toBeDefined()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Load more documents' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Next page' }))
 
     await waitFor(() => {
-      expect(listDocumentsMock).toHaveBeenNthCalledWith(2, 'ws-1', 'kb-1', { cursor: 'cursor-1' })
-      expect(screen.getByText('Appendix.txt')).toBeDefined()
+      expect(listDocumentsMock).toHaveBeenCalledWith('ws-1', 'kb-1', expect.objectContaining({ page: 2 }))
     })
   })
 
-  it('hides load more button when documents nextCursor is null', async () => {
-    listDocumentsMock.mockResolvedValue({
-      items: [
-        { id: 'doc-1', title: 'Guide.pdf', status: 'done', createdAt: '2026-06-30T00:00:00.000Z' },
-      ],
-      nextCursor: null,
-    })
+  it('searches and filters documents through the backend', async () => {
+    listDocumentsMock.mockResolvedValue(offsetResponse([
+      { id: 'doc-1', title: 'Guide.pdf', status: 'done', createdAt: '2026-06-30T00:00:00.000Z' },
+    ]))
 
     renderPage()
 
     expect(await screen.findByText('Guide.pdf')).toBeDefined()
-    expect(screen.queryByRole('button', { name: 'Load more documents' })).toBeNull()
+    fireEvent.change(screen.getByLabelText('Search documents'), { target: { value: 'guide' } })
+
+    await waitFor(() => {
+      expect(listDocumentsMock).toHaveBeenCalledWith('ws-1', 'kb-1', expect.objectContaining({ q: 'guide' }))
+    })
+
+    fireEvent.change(screen.getByLabelText('Filter documents by status'), { target: { value: 'done' } })
+
+    await waitFor(() => {
+      expect(listDocumentsMock).toHaveBeenCalledWith('ws-1', 'kb-1', expect.objectContaining({ status: 'done' }))
+    })
+  })
+
+  it('downloads a single document from the row action', async () => {
+    listDocumentsMock.mockResolvedValue(offsetResponse([
+      { id: 'doc-1', title: 'Guide.pdf', status: 'done', createdAt: '2026-06-30T00:00:00.000Z' },
+    ]))
+    downloadDocumentMock.mockResolvedValue(undefined)
+
+    renderPage()
+
+    expect(await screen.findByText('Guide.pdf')).toBeDefined()
+    fireEvent.click(screen.getByRole('button', { name: 'Download Guide.pdf' }))
+
+    await waitFor(() => {
+      expect(downloadDocumentMock).toHaveBeenCalledWith('ws-1', 'kb-1', 'doc-1')
+    })
+  })
+
+  it('downloads selected documents in bulk', async () => {
+    listDocumentsMock.mockResolvedValue(offsetResponse([
+      { id: 'doc-1', title: 'Guide.pdf', status: 'done', createdAt: '2026-06-30T00:00:00.000Z' },
+      { id: 'doc-2', title: 'Notes.txt', status: 'done', createdAt: '2026-06-30T00:00:01.000Z' },
+    ]))
+    downloadDocumentsMock.mockResolvedValue(undefined)
+
+    renderPage()
+
+    expect(await screen.findByText('Guide.pdf')).toBeDefined()
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select Guide.pdf' }))
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select Notes.txt' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Download selected' }))
+
+    await waitFor(() => {
+      expect(downloadDocumentsMock).toHaveBeenCalledWith('ws-1', 'kb-1', ['doc-1', 'doc-2'])
+    })
   })
 
   it('renders workspace nav and keeps knowledge bases active', async () => {
@@ -518,76 +584,63 @@ describe('KnowledgeBasePage', () => {
     })
   })
 
-  it('renders load more crawl runs and polling refresh resets to first page', async () => {
-    vi.useFakeTimers()
-    listDocumentsMock.mockResolvedValue({ items: [], nextCursor: null })
-    listScrapeRunsMock
-      .mockResolvedValueOnce({
-        items: [
+  it('paginates crawl runs through the backend', async () => {
+    listDocumentsMock.mockResolvedValue(offsetResponse([]))
+    listScrapeRunsMock.mockResolvedValue(
+      offsetResponse(
+        [
           {
             id: 'run-1',
             seedUrl: 'https://example.com/newest',
-            status: 'running',
-            pagesFound: 3,
-            pagesSucceeded: 1,
-            pagesFailed: 0,
-            createdAt: '2026-06-30T00:00:02.000Z',
-          },
-        ],
-        nextCursor: 'run-cursor-1',
-      })
-      .mockResolvedValueOnce({
-        items: [
-          {
-            id: 'run-2',
-            seedUrl: 'https://example.com/older',
             status: 'completed',
             pagesFound: 3,
             pagesSucceeded: 3,
             pagesFailed: 0,
-            createdAt: '2026-06-30T00:00:01.000Z',
-          },
-        ],
-        nextCursor: null,
-      })
-      .mockResolvedValue({
-        items: [
-          {
-            id: 'run-1',
-            seedUrl: 'https://example.com/newest',
-            status: 'running',
-            pagesFound: 4,
-            pagesSucceeded: 2,
-            pagesFailed: 0,
             createdAt: '2026-06-30T00:00:02.000Z',
           },
         ],
-        nextCursor: 'run-cursor-1',
-      })
+        { page: 1, pageSize: 5, total: 10, totalPages: 2 },
+      ),
+    )
 
     renderPage()
 
-    await Promise.resolve()
-    await Promise.resolve()
+    expect(await screen.findByText('https://example.com/newest')).toBeDefined()
+    fireEvent.click(screen.getAllByRole('button', { name: 'Next page' })[0])
 
-    expect(screen.getByText('https://example.com/newest')).toBeDefined()
-    expect(screen.getByRole('button', { name: 'Load more crawl runs' })).toBeDefined()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Load more crawl runs' }))
-
-    await Promise.resolve()
-    await Promise.resolve()
-
-    expect(listScrapeRunsMock).toHaveBeenNthCalledWith(2, 'ws-1', 'kb-1', {
-      cursor: 'run-cursor-1',
+    await waitFor(() => {
+      expect(listScrapeRunsMock).toHaveBeenCalledWith('ws-1', 'kb-1', expect.objectContaining({ page: 2 }))
     })
-    expect(screen.getByText('https://example.com/older')).toBeDefined()
+  })
 
-    await vi.advanceTimersByTimeAsync(3000)
-    await Promise.resolve()
-    await Promise.resolve()
+  it('searches and filters crawl runs through the backend', async () => {
+    listDocumentsMock.mockResolvedValue(offsetResponse([]))
+    listScrapeRunsMock.mockResolvedValue(offsetResponse([
+      {
+        id: 'run-1',
+        seedUrl: 'https://example.com/newest',
+        status: 'running',
+        pagesFound: 3,
+        pagesSucceeded: 1,
+        pagesFailed: 0,
+        createdAt: '2026-06-30T00:00:02.000Z',
+      },
+    ]))
 
-    expect(listScrapeRunsMock).toHaveBeenNthCalledWith(3, 'ws-1', 'kb-1')
+    renderPage()
+
+    expect(await screen.findByText('https://example.com/newest')).toBeDefined()
+    fireEvent.change(screen.getByLabelText('Search crawl runs'), { target: { value: 'example' } })
+
+    await waitFor(() => {
+      expect(listScrapeRunsMock).toHaveBeenCalledWith('ws-1', 'kb-1', expect.objectContaining({ q: 'example' }))
+    })
+
+    fireEvent.change(screen.getByLabelText('Filter crawl runs by status'), { target: { value: 'running' } })
+
+    await waitFor(() => {
+      expect(listScrapeRunsMock).toHaveBeenCalledWith('ws-1', 'kb-1', expect.objectContaining({ status: 'running' }))
+    })
   })
 
   it('renders real workspace name in sidebar header', async () => {

@@ -30,16 +30,29 @@ export async function scrapeSite(workspaceId: string, kbId: string, payload: Scr
 export function listScrapeRuns(
   workspaceId: string,
   kbId: string,
-  options?: { cursor?: string; limit?: number },
+  options?: {
+    page?: number
+    pageSize?: number
+    q?: string
+    status?: 'queued' | 'running' | 'completed' | 'failed'
+  },
 ) {
   const search = new URLSearchParams()
 
-  if (options?.cursor) {
-    search.set('cursor', options.cursor)
+  if (options?.page) {
+    search.set('page', String(options.page))
   }
 
-  if (options?.limit) {
-    search.set('limit', String(options.limit))
+  if (options?.pageSize) {
+    search.set('pageSize', String(options.pageSize))
+  }
+
+  if (options?.q) {
+    search.set('q', options.q)
+  }
+
+  if (options?.status) {
+    search.set('status', options.status)
   }
 
   const query = search.toString()

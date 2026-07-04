@@ -54,3 +54,34 @@ export async function proxyMultipart(request: NextRequest, backendPath: string) 
   const data = await response.json().catch(() => ({}))
   return NextResponse.json(data, { status: response.status })
 }
+
+export async function proxyRaw(
+  request: NextRequest,
+  backendPath: string,
+  options: { method: string; body?: unknown },
+) {
+  const bearer = getBearer(request)
+
+  if (!bearer) {
+    return NextResponse.json({ message: 'Unauthorized' }, { status: 401 })
+  }
+
+  const response = await fetch(`${API_URL}${backendPath}${request.nextUrl.search}`, {
+    method: options.method,
+    headers: {
+      Authorization: `Bearer ${bearer}`,
+      ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+    },
+    body: options.body ? JSON.stringify(options.body) : undefined,
+  })
+
+  const headers = new Headers()
+  for (const name of ['Content-Type', 'Content-Disposition', 'Content-Length']) {
+    const value = response.headers.get(name)
+    if (value) {
+      headers.set(name, value)
+    }
+  }
+
+  return new Response(response.body, { status: response.status, headers })
+}

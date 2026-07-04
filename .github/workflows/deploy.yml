@@ -37,9 +37,15 @@ jobs:
             # contain shell metacharacters like '(' and would break `. ./.env`.
             DOMAIN="$(grep -m1 '^DOMAIN=' .env | cut -d= -f2- | tr -d '\r')"
 
-            git fetch origin
-            git checkout main
-            git pull --ff-only origin main
+            echo "syncing repository"
+            git fetch --prune origin main
+            git switch main
+            if [ -n "$(git status --porcelain --untracked-files=normal)" ]; then
+              echo "stashing local deploy checkout changes before update"
+              git stash push --include-untracked -m "pre-deploy-$(date +%Y%m%d%H%M%S)"
+            fi
+            git merge --ff-only origin/main
+            echo "checked out $(git rev-parse --short HEAD)"
 
             sh scripts/ensure-seaweedfs-s3-config.sh
 

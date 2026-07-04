@@ -46,6 +46,11 @@ type QueueEntry = {
 
 const DEFAULT_USER_AGENT = 'MnemraBot/1.0 (+https://mnemra.com/bot)'
 const MIN_CONTENT_LENGTH = 50
+type PLimit = typeof import('p-limit').default
+
+const loadPLimit = new Function('specifier', 'return import(specifier)') as (
+  specifier: string,
+) => Promise<{ default: PLimit }>
 
 export function canonicalizeUrl(raw: string, base?: string): string {
   const url = new URL(raw, base)
@@ -171,7 +176,7 @@ export async function crawlSite(seedUrl: string, options: CrawlOptions = {}): Pr
   const results: CrawledPage[] = []
   const progress = { pagesFound: 0 }
   const queue: QueueEntry[] = [{ url: canonicalSeed, depth: 0 }]
-  const { default: pLimit } = await import('p-limit')
+  const { default: pLimit } = await loadPLimit('p-limit')
   const limit = pLimit(concurrency)
   const waitForTurn = makeRequestScheduler(effectiveDelayMs)
 

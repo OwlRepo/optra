@@ -12,6 +12,8 @@ import {
   Input,
   Modal,
   PageSection,
+  Pagination,
+  Select,
   Skeleton,
   Table,
   TableBody,
@@ -21,9 +23,11 @@ import {
   TableRow,
   useToast,
 } from "@repo/ui";
-import { FileUp, Trash2 } from "lucide-react";
+import { Download, FileUp, Search, Trash2 } from "lucide-react";
 import {
   deleteDocument,
+  downloadDocument,
+  downloadDocuments,
   listDocuments,
   uploadDocument,
 } from "@/lib/api/documents";
@@ -43,7 +47,10 @@ type DocumentRow = {
 
 type DocumentListResponse = {
   items: DocumentRow[];
-  nextCursor: string | null;
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
 };
 
 type WorkspaceMembership = {
@@ -66,8 +73,14 @@ type ScrapeRunRow = {
 
 type ScrapeRunListResponse = {
   items: ScrapeRunRow[];
-  nextCursor: string | null;
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
 };
+
+type DocumentStatusFilter = "" | DocumentRow["status"];
+type ScrapeStatusFilter = "" | ScrapeRunRow["status"];
 
 const statusVariant: Record<
   DocumentRow["status"],
@@ -109,25 +122,6 @@ function getScrapeProgressLabel(run: ScrapeRunRow) {
   return `${percent}% of discovered pages processed`;
 }
 
-function sortDocumentsForQueue(left: DocumentRow, right: DocumentRow) {
-  const priority: Record<DocumentRow["status"], number> = {
-    processing: 0,
-    pending: 1,
-    failed: 2,
-    done: 3,
-  };
-
-  const priorityDelta = priority[left.status] - priority[right.status];
-  if (priorityDelta !== 0) {
-    return priorityDelta;
-  }
-
-  const leftTime = Date.parse(left.updatedAt ?? left.createdAt ?? "") || 0;
-  const rightTime = Date.parse(right.updatedAt ?? right.createdAt ?? "") || 0;
-
-  return rightTime - leftTime;
-}
-
 export default function KnowledgeBasePage({
   params,
 }: {
@@ -139,10 +133,34 @@ export default function KnowledgeBasePage({
   const workspaceId = params.id;
   const knowledgeBaseId = params.kbId;
   const [documents, setDocuments] = React.useState<DocumentRow[]>([]);
-  const [nextCursor, setNextCursor] = React.useState<string | null>(null);
+  const [documentMeta, setDocumentMeta] = React.useState({
+    page: 1,
+    pageSize: 20,
+    total: 0,
+    totalPages: 0,
+  });
+  const [documentPage, setDocumentPage] = React.useState(1);
+  const [documentPageSize, setDocumentPageSize] = React.useState(20);
+  const [documentSearch, setDocumentSearch] = React.useState("");
+  const [debouncedDocumentSearch, setDebouncedDocumentSearch] = React.useState("");
+  const [documentStatusFilter, setDocumentStatusFilter] =
+    React.useState<DocumentStatusFilter>("");
+  const [selectedDocumentIds, setSelectedDocumentIds] = React.useState<Set<string>>(
+    () => new Set(),
+  );
   const [scrapeRuns, setScrapeRuns] = React.useState<ScrapeRunRow[]>([]);
-  const [nextScrapeRunCursor, setNextScrapeRunCursor] =
-    React.useState<string | null>(null);
+  const [scrapeRunMeta, setScrapeRunMeta] = React.useState({
+    page: 1,
+    pageSize: 5,
+    total: 0,
+    totalPages: 0,
+  });
+  const [scrapeRunPage, setScrapeRunPage] = React.useState(1);
+  const [scrapeRunPageSize, setScrapeRunPageSize] = React.useState(5);
+  const [scrapeRunSearch, setScrapeRunSearch] = React.useState("");
+  const [debouncedScrapeRunSearch, setDebouncedScrapeRunSearch] = React.useState("");
+  const [scrapeRunStatusFilter, setScrapeRunStatusFilter] =
+    React.useState<ScrapeStatusFilter>("");
   const [membership, setMembership] =
     React.useState<WorkspaceMembership | null>(null);
   const [workspace, setWorkspace] = React.useState<{
@@ -156,10 +174,9 @@ export default function KnowledgeBasePage({
   );
   const [isScrapeModalOpen, setIsScrapeModalOpen] = React.useState(false);
   const [isSubmittingScrape, setIsSubmittingScrape] = React.useState(false);
-  const [isLoadingMoreDocuments, setIsLoadingMoreDocuments] =
-    React.useState(false);
-  const [isLoadingMoreScrapeRuns, setIsLoadingMoreScrapeRuns] =
-    React.useState(false);
+  const [isDocumentsRefreshing, setIsDocumentsRefreshing] = React.useState(false);
+  const [isDownloadingSelected, setIsDownloadingSelected] = React.useState(false);
+  const [dragActive, setDragActive] = React.useState(false);
   const [scrapeUrl, setScrapeUrl] = React.useState("");
   const [scrapeMaxDepth, setScrapeMaxDepth] = React.useState("3");
   const [scrapeMaxPages, setScrapeMaxPages] = React.useState("100");
