@@ -1,6 +1,7 @@
 import {
   ArgumentsHost,
   BadRequestException,
+  Body,
   Catch,
   Controller,
   Delete,
@@ -11,6 +12,7 @@ import {
   PayloadTooLargeException,
   Post,
   Query,
+  Res,
   UploadedFile,
   UseGuards,
   UseFilters,
@@ -18,14 +20,20 @@ import {
 } from '@nestjs/common'
 import { FileInterceptor } from '@nestjs/platform-express'
 import type { Response } from 'express'
+import archiver from 'archiver'
 import { extname } from 'path'
 import { MulterError } from 'multer'
 import { Roles } from '../auth/decorators/roles.decorator'
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard'
 import { RolesGuard } from '../auth/guards/roles.guard'
 import { WorkspaceMemberGuard } from '../auth/guards/workspace-member.guard'
+import { DownloadManyDto } from './dto/download-many.dto'
 import { ListDocumentsQueryDto } from './dto/list-documents-query.dto'
 import { DocumentsService } from './documents.service'
+
+function safeFilename(name: string): string {
+  return name.replace(/["\r\n]/g, '_')
+}
 
 const MAX_UPLOAD_MB = Number(process.env.MAX_UPLOAD_MB ?? 25)
 const MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024
@@ -142,6 +150,59 @@ export class DocumentsController {
     @Query() query: ListDocumentsQueryDto,
   ) {
     return this.documentsService.listForKnowledgeBase(workspaceId, kbId, query)
+  }
+
+  @Post('download')
+  @HttpCode(200)
+  @UseGuards(JwtAuthGuard, WorkspaceMemberGuard)
+  async downloadMany(
+    @Param('workspaceId') workspaceId: string,
+    @Param('kbId') kbId: string,
+    @Body() body: DownloadManyDto,
+    @Res() res: Response,
+  ) {
+    const files = await this.documentsService.getManyDownloadable(workspaceId, kbId, body.documentIds)
+
+    res.set({
+      'Content-Type': 'application/zip',
+      'Content-Disposition': 'attachment; filename="documents.zip"',
+    })
+
+    const archive = archiver('zip', { zlib: { level: 9 } })
+    archive.on('error', (error) => res.destroy(error))
+    archive.pipe(res)
+
+    const usedNames = new Set<string>()
+    for (const file of files) {
+      let name = file.title
+      let suffix = 1
+      while (usedNames.has(name)) {
+        name = `${suffix}-${file.title}`
+        suffix += 1
+      }
+      usedNames.add(name)
+      archive.append(file.buffer, { name })
+    }
+
+    await archive.finalize()
+  }
+
+  @Get(':documentId/download')
+  @UseGuards(JwtAuthGuard, WorkspaceMemberGuard)
+  async download(
+    @Param('workspaceId') workspaceId: string,
+    @Param('kbId') kbId: string,
+    @Param('documentId') documentId: string,
+    @Res() res: Response,
+  ) {
+    const { title, buffer } = await this.documentsService.getDownloadable(workspaceId, kbId, documentId)
+
+    res.set({
+      'Content-Type': 'application/octet-stream',
+      'Content-Disposition': `attachment; filename="${safeFilename(title)}"`,
+      'Content-Length': String(buffer.length),
+    })
+    res.send(buffer)
   }
 
   @Delete(':documentId')

@@ -1,6 +1,23 @@
 import { describe, expect, it, vi } from 'vitest'
+import { readFileSync } from 'fs'
+import ts from 'typescript'
 
 import { canonicalizeUrl, crawlSite, extractContent, isInScope } from './crawl'
+
+describe('crawl module packaging', () => {
+  it('does not compile the p-limit load into a CommonJS require', () => {
+    const source = readFileSync(new URL('./crawl.ts', import.meta.url), 'utf8')
+    const output = ts.transpileModule(source, {
+      compilerOptions: {
+        module: ts.ModuleKind.CommonJS,
+        target: ts.ScriptTarget.ES2021,
+        esModuleInterop: true,
+      },
+    }).outputText
+
+    expect(output).not.toMatch(/require\(["']p-limit["']\)/)
+  })
+})
 
 type MockResponseInit = {
   body: string
