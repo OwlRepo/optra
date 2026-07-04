@@ -31,7 +31,6 @@ jobs:
             docker compose version >/dev/null
             test -f docker-compose.prod.yml
             test -f .env
-            test -f docker/seaweedfs/s3.prod.json
 
             # Compose auto-reads .env for ${VAR} interpolation on its own.
             # Only DOMAIN is needed here (smoke test). Do NOT source .env — values may
@@ -41,6 +40,8 @@ jobs:
             git fetch origin
             git checkout main
             git pull --ff-only origin main
+
+            sh scripts/ensure-seaweedfs-s3-config.sh
 
             mkdir -p /home/deploy/apps/mnemra-backups
             postgres_container_id="$(docker compose -f docker-compose.prod.yml ps -q postgres || true)"

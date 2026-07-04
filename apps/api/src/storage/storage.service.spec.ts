@@ -34,6 +34,16 @@ describeStorage('StorageService', () => {
     await expect(service.getToTempFile(key)).rejects.toThrow()
   })
 
+  it('getBuffer returns the exact stored bytes', async () => {
+    const key = `spec/${randomUUID()}.txt`
+    const body = Buffer.from('buffer roundtrip bytes')
+
+    await service.save(key, body, 'text/plain')
+    await expect(service.getBuffer(key)).resolves.toEqual(body)
+
+    await service.delete(key)
+  })
+
   it('ensureBucket is idempotent', async () => {
     await expect(service.onModuleInit()).resolves.toBeUndefined()
   })

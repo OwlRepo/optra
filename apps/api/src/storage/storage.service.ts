@@ -48,6 +48,26 @@ export class StorageService implements OnModuleInit {
     return key
   }
 
+  async getBuffer(key: string): Promise<Buffer> {
+    const response = await this.getClient().send(
+      new GetObjectCommand({
+        Bucket: this.getBucket(),
+        Key: key,
+      }),
+    )
+
+    if (!response.Body) {
+      throw new Error(`No object body returned for ${key}`)
+    }
+
+    const chunks: Buffer[] = []
+    for await (const chunk of this.toReadable(response.Body)) {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as Uint8Array))
+    }
+
+    return Buffer.concat(chunks)
+  }
+
   async getToTempFile(key: string): Promise<string> {
     const response = await this.getClient().send(
       new GetObjectCommand({

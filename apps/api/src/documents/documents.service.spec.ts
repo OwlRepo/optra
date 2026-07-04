@@ -1,4 +1,4 @@
-import { BadRequestException, NotFoundException } from '@nestjs/common'
+import { NotFoundException } from '@nestjs/common'
 import { Test } from '@nestjs/testing'
 import { and, asc, eq, like } from 'drizzle-orm'
 import { db, chunks, documents, knowledgeBases, pool, users, workspaceMembers, workspaces } from '@repo/db'
@@ -61,7 +61,7 @@ async function seedWorkspaceFixture(email: string, workspaceName: string) {
 
 describe('DocumentsService', () => {
   let service: DocumentsService
-  let storage: { save: jest.Mock; delete: jest.Mock }
+  let storage: { save: jest.Mock; delete: jest.Mock; getBuffer: jest.Mock }
   let ingest: { queueDocument: jest.Mock }
   let cache: { bumpVersion: jest.Mock }
   const prefix = `documents-spec-${Date.now()}-`
@@ -70,6 +70,7 @@ describe('DocumentsService', () => {
     storage = {
       save: jest.fn(),
       delete: jest.fn(),
+      getBuffer: jest.fn(),
     }
     ingest = {
       queueDocument: jest.fn(),
@@ -172,7 +173,7 @@ describe('DocumentsService', () => {
     expect(saved.lastError).toContain('Redis unavailable')
   })
 
-  it('listForKnowledgeBase is scoped to workspace and knowledge base', async () => {
+  it('listForKnowledgeBase returns the offset page shape scoped to workspace and knowledge base', async () => {
     const mine = await seedWorkspaceFixture(`${prefix}list@example.com`, 'Documents Spec WS List')
     const other = await seedWorkspaceFixture(`${prefix}list-other@example.com`, 'Documents Spec WS List Other')
 
@@ -195,13 +196,17 @@ describe('DocumentsService', () => {
 
     expect(list.items).toHaveLength(1)
     expect(list.items[0]?.title).toBe('visible.txt')
-    expect(list.nextCursor).toBeNull()
+    expect(list.page).toBe(1)
+    expect(list.pageSize).toBe(20)
+    expect(list.total).toBe(1)
+    expect(list.totalPages).toBe(1)
   })
 
-  it('paginates documents by createdAt cursor and survives concurrent inserts', async () => {
+  it('paginates documents newest-indexed first (updatedAt DESC) with page/pageSize', async () => {
     const mine = await seedWorkspaceFixture(`${prefix}paginate@example.com`, 'Documents Spec WS Paginate')
     const base = new Date('2026-07-01T00:00:00.000Z')
 
+    // updatedAt: first=+1000, second=+2000, third=+3000 -> newest-first: third, second, first
     await db.insert(documents).values([
       {
         workspaceId: mine.workspace.id,
@@ -232,42 +237,106 @@ describe('DocumentsService', () => {
       },
     ])
 
-    const firstPage = await service.listForKnowledgeBase(mine.workspace.id, mine.knowledgeBase.id, { limit: 2 })
+    const firstPage = await service.listForKnowledgeBase(mine.workspace.id, mine.knowledgeBase.id, { page: '1', pageSize: '2' })
+    expect(firstPage.items.map((item) => item.title)).toEqual(['third.txt', 'second.txt'])
+    expect(firstPage.total).toBe(3)
+    expect(firstPage.totalPages).toBe(2)
 
-    expect(firstPage.items.map((item) => item.title)).toEqual(['first.txt', 'second.txt'])
-    expect(firstPage.nextCursor).toEqual(expect.any(String))
-
-    await db.insert(documents).values({
-      workspaceId: mine.workspace.id,
-      knowledgeBaseId: mine.knowledgeBase.id,
-      title: 'between-pages.txt',
-      status: 'done',
-      storageKey: `${mine.workspace.id}/${mine.knowledgeBase.id}/between-pages.txt`,
-      createdAt: new Date(base.getTime() + 2500),
-      updatedAt: new Date(base.getTime() + 2500),
-    })
-
-    const secondPage = await service.listForKnowledgeBase(mine.workspace.id, mine.knowledgeBase.id, {
-      limit: 2,
-      cursor: firstPage.nextCursor!,
-    })
-
-    const combinedTitles = [...firstPage.items, ...secondPage.items].map((item) => item.title)
-
-    expect(combinedTitles.filter((title) => title === 'first.txt')).toHaveLength(1)
-    expect(combinedTitles.filter((title) => title === 'second.txt')).toHaveLength(1)
-    expect(combinedTitles.filter((title) => title === 'third.txt')).toHaveLength(1)
-    expect(secondPage.nextCursor).toBeNull()
+    const secondPage = await service.listForKnowledgeBase(mine.workspace.id, mine.knowledgeBase.id, { page: '2', pageSize: '2' })
+    expect(secondPage.items.map((item) => item.title)).toEqual(['first.txt'])
+    expect(secondPage.page).toBe(2)
   })
 
-  it('rejects invalid document cursor', async () => {
-    const mine = await seedWorkspaceFixture(`${prefix}bad-cursor@example.com`, 'Documents Spec WS Bad Cursor')
+  it('searches documents by title and filters by status', async () => {
+    const mine = await seedWorkspaceFixture(`${prefix}filter@example.com`, 'Documents Spec WS Filter')
+    await db.insert(documents).values([
+      {
+        workspaceId: mine.workspace.id,
+        knowledgeBaseId: mine.knowledgeBase.id,
+        title: 'alpha-report.txt',
+        status: 'done',
+        storageKey: `${mine.workspace.id}/${mine.knowledgeBase.id}/alpha-report.txt`,
+      },
+      {
+        workspaceId: mine.workspace.id,
+        knowledgeBaseId: mine.knowledgeBase.id,
+        title: 'beta-notes.txt',
+        status: 'failed',
+        storageKey: `${mine.workspace.id}/${mine.knowledgeBase.id}/beta-notes.txt`,
+      },
+    ])
+
+    const searched = await service.listForKnowledgeBase(mine.workspace.id, mine.knowledgeBase.id, { q: 'alpha' })
+    expect(searched.items.map((item) => item.title)).toEqual(['alpha-report.txt'])
+    expect(searched.total).toBe(1)
+
+    const failed = await service.listForKnowledgeBase(mine.workspace.id, mine.knowledgeBase.id, { status: 'failed' })
+    expect(failed.items.map((item) => item.title)).toEqual(['beta-notes.txt'])
+    expect(failed.total).toBe(1)
+  })
+
+  it('getDownloadable returns the stored bytes for a document in the workspace/KB', async () => {
+    const mine = await seedWorkspaceFixture(`${prefix}download@example.com`, 'Documents Spec WS Download')
+    const [doc] = await db
+      .insert(documents)
+      .values({
+        workspaceId: mine.workspace.id,
+        knowledgeBaseId: mine.knowledgeBase.id,
+        title: 'download-me.txt',
+        status: 'done',
+        storageKey: `${mine.workspace.id}/${mine.knowledgeBase.id}/download-me.txt`,
+      })
+      .returning()
+    storage.getBuffer.mockResolvedValue(Buffer.from('file bytes'))
+
+    const result = await service.getDownloadable(mine.workspace.id, mine.knowledgeBase.id, doc.id)
+
+    expect(storage.getBuffer).toHaveBeenCalledWith(doc.storageKey)
+    expect(result.title).toBe('download-me.txt')
+    expect(result.buffer).toEqual(Buffer.from('file bytes'))
+  })
+
+  it('getDownloadable 404s for a document in another workspace', async () => {
+    const mine = await seedWorkspaceFixture(`${prefix}dl-mine@example.com`, 'Documents Spec WS DL Mine')
+    const other = await seedWorkspaceFixture(`${prefix}dl-other@example.com`, 'Documents Spec WS DL Other')
+    const [otherDoc] = await db
+      .insert(documents)
+      .values({
+        workspaceId: other.workspace.id,
+        knowledgeBaseId: other.knowledgeBase.id,
+        title: 'secret.txt',
+        status: 'done',
+        storageKey: `${other.workspace.id}/${other.knowledgeBase.id}/secret.txt`,
+      })
+      .returning()
 
     await expect(
-      service.listForKnowledgeBase(mine.workspace.id, mine.knowledgeBase.id, {
-        cursor: '%%%bad%%%',
-      }),
-    ).rejects.toThrow(BadRequestException)
+      service.getDownloadable(mine.workspace.id, mine.knowledgeBase.id, otherDoc.id),
+    ).rejects.toThrow(NotFoundException)
+    expect(storage.getBuffer).not.toHaveBeenCalled()
+  })
+
+  it('getManyDownloadable returns bytes for valid ids and skips missing ones', async () => {
+    const mine = await seedWorkspaceFixture(`${prefix}dl-many@example.com`, 'Documents Spec WS DL Many')
+    const [a] = await db
+      .insert(documents)
+      .values({
+        workspaceId: mine.workspace.id,
+        knowledgeBaseId: mine.knowledgeBase.id,
+        title: 'a.txt',
+        status: 'done',
+        storageKey: `${mine.workspace.id}/${mine.knowledgeBase.id}/a.txt`,
+      })
+      .returning()
+    storage.getBuffer.mockResolvedValue(Buffer.from('a-bytes'))
+
+    const results = await service.getManyDownloadable(mine.workspace.id, mine.knowledgeBase.id, [
+      a.id,
+      '00000000-0000-0000-0000-000000000000',
+    ])
+
+    expect(results).toHaveLength(1)
+    expect(results[0]?.title).toBe('a.txt')
   })
 
   it('remove deletes document, cascades chunks, calls storage.delete, and 404s cross-workspace ids', async () => {

@@ -36,11 +36,7 @@ if [ -z "$OPENAI_API_KEY" ]; then
     exit 1
 fi
 
-if [ ! -f docker/seaweedfs/s3.prod.json ]; then
-    echo "❌ docker/seaweedfs/s3.prod.json not found"
-    echo "📝 Copy docker/seaweedfs/s3.prod.json.example and fill in production S3 credentials"
-    exit 1
-fi
+sh scripts/ensure-seaweedfs-s3-config.sh
 
 echo "📦 Building production images..."
 docker compose -f docker-compose.prod.yml build api web

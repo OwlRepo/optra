@@ -86,7 +86,7 @@ If risk area is missing, mark `UNMAPPED RISK`.
   - GitHub Actions `deploy.yml` requires `VPS_HOST`/`VPS_USER`/`VPS_SSH_KEY`/`VPS_PORT` secrets configured on `OwlRepo/mnemra` before the auto-deploy path can run; it reads `DOMAIN` from the VPS `.env`, not a separate domain secret
   - prod API/Web health checks must run inside containers (`docker compose exec -T api/web wget ...`) because their ports are not host-published
   - public Caddy routes must send all browser traffic to `web:3000`; Next.js owns same-origin `/api/*` proxy route handlers and forwards server-side to `api:3001`
-  - `docker/seaweedfs/s3.prod.json` must be manually created from `docker/seaweedfs/s3.prod.json.example` on the VPS before first prod deploy, or the `seaweedfs` service bind-mount fails at container start
+  - `scripts/ensure-seaweedfs-s3-config.sh` must create `docker/seaweedfs/s3.prod.json` from non-placeholder `S3_ACCESS_KEY`/`S3_SECRET_KEY` in `.env` before first prod `up`, or the `seaweedfs` service bind-mount fails at container start
   - no live production data existed anywhere under the old `support_brain` name at the time of this change (confirmed with the project owner) — if that assumption is ever wrong for a specific deploy target, stop and reconcile via `pg_dump`/restore before cutting over, per the rollback notes in the implementation plan
 
 - SeaweedFS / S3-compatible storage is a live external-integration risk as of Slice 3A.

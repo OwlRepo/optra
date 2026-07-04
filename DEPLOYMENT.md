@@ -115,12 +115,7 @@ OPENAI_API_KEY=sk-your-production-key     # Production OpenAI key
 LANGSMITH_API_KEY=ls__your-key            # Optional
 ```
 
-Also provision the SeaweedFS prod credentials file (not covered by `.env`):
-
-```bash
-cp docker/seaweedfs/s3.prod.json.example docker/seaweedfs/s3.prod.json
-nano docker/seaweedfs/s3.prod.json  # Fill in real accessKey/secretKey, matching whatever you use for S3_ACCESS_KEY/S3_SECRET_KEY
-```
+`scripts/ensure-seaweedfs-s3-config.sh` creates the SeaweedFS prod credentials file from `S3_ACCESS_KEY`/`S3_SECRET_KEY` during deploy, so keep those `.env` values real and non-placeholder.
 
 ### 4. Deploy
 
@@ -151,8 +146,6 @@ git clone YOUR_REPO .
 # Copy environment
 cp .env.example .env
 nano .env  # Fill in values
-cp docker/seaweedfs/s3.prod.json.example docker/seaweedfs/s3.prod.json
-nano docker/seaweedfs/s3.prod.json  # Fill in values
 
 # Deploy
 ./scripts/deploy.sh
@@ -162,7 +155,7 @@ nano docker/seaweedfs/s3.prod.json  # Fill in values
 
 `.github/workflows/deploy.yml` deploys automatically on every push to `main` (or via manual `workflow_dispatch`). It SSHes into the VPS, pulls latest, backs up Postgres, rebuilds `api`/`web`, brings the stack up, and runs a healthcheck + smoke-test before declaring success.
 
-This assumes the deploy directory already has a working checkout with `.env` and `docker/seaweedfs/s3.prod.json` in place (i.e. you've already done Option A or B once) — the workflow does not provision secrets on the VPS itself. The post-deploy smoke test reads `DOMAIN` directly from that `.env`, so no separate domain secret is needed.
+This assumes the deploy directory already has a working checkout with `.env` in place (i.e. you've already done Option A or B once). If `docker/seaweedfs/s3.prod.json` is missing, the workflow creates it from `S3_ACCESS_KEY`/`S3_SECRET_KEY` in `.env`. The post-deploy smoke test reads `DOMAIN` directly from that `.env`, so no separate domain secret is needed.
 
 Configure these **GitHub Secrets** on the repo (`Settings → Secrets and variables → Actions`):
 | Secret | Value |
@@ -372,8 +365,8 @@ docker compose -f docker-compose.prod.yml exec postgres \
 docker compose -f docker-compose.prod.yml logs api
 docker compose -f docker-compose.prod.yml logs web
 
-# Common causes: missing/invalid OPENAI_API_KEY, POSTGRES_PASSWORD, or DOMAIN in
-# .env, or docker/seaweedfs/s3.prod.json was never created from the .example.
+# Common causes: missing/invalid OPENAI_API_KEY, POSTGRES_PASSWORD, DOMAIN,
+# S3_ACCESS_KEY, or S3_SECRET_KEY in .env.
 ```
 
 ### Out of memory

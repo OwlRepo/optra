@@ -1,7 +1,7 @@
 import { randomUUID } from 'crypto'
 import { Injectable, Logger, NotFoundException } from '@nestjs/common'
-import { and, asc, eq, gt, or, sql } from 'drizzle-orm'
-import { db, decodeCursor, documents, encodeCursor, knowledgeBases } from '@repo/db'
+import { and, count, desc, eq, ilike } from 'drizzle-orm'
+import { buildOffsetResult, db, documents, knowledgeBases, resolveOffsetPage } from '@repo/db'
 import { IngestService } from '../ingest/ingest.service'
 import { StorageService } from '../storage/storage.service'
 import { CacheService } from '../cache/cache.service'
@@ -60,14 +60,27 @@ export class DocumentsService {
   async listForKnowledgeBase(
     workspaceId: string,
     kbId: string,
-    query: Pick<ListDocumentsQueryDto, 'cursor' | 'limit'>,
+    query: Pick<ListDocumentsQueryDto, 'page' | 'pageSize' | 'q' | 'status'>,
   ) {
     await this.assertKbInWorkspace(workspaceId, kbId)
-    const limit = Math.min(Math.max(Number(query.limit ?? 20), 1), 100)
-    const cursor = query.cursor ? decodeCursor(query.cursor) : null
-    const createdAtMs = sql<number>`floor(extract(epoch from ${documents.createdAt}) * 1000)`
+    const { page, pageSize, offset } = resolveOffsetPage(query.page, query.pageSize)
 
-    const rows = await db
+    const filters = [
+      eq(documents.workspaceId, workspaceId),
+      eq(documents.knowledgeBaseId, kbId),
+    ]
+    if (query.status) {
+      filters.push(eq(documents.status, query.status))
+    }
+    const search = query.q?.trim()
+    if (search) {
+      filters.push(ilike(documents.title, `%${search}%`))
+    }
+    const where = and(...filters)
+
+    const [{ value: total }] = await db.select({ value: count() }).from(documents).where(where)
+
+    const items = await db
       .select({
         id: documents.id,
         title: documents.title,
@@ -76,35 +89,56 @@ export class DocumentsService {
         updatedAt: documents.updatedAt,
       })
       .from(documents)
-      .where(
-        and(
-          eq(documents.workspaceId, workspaceId),
-          eq(documents.knowledgeBaseId, kbId),
-          cursor
-            ? or(
-                gt(createdAtMs, Number(cursor.k[0])),
-                and(
-                  eq(createdAtMs, Number(cursor.k[0])),
-                  gt(documents.id, cursor.id),
-                ),
-              )
-            : undefined,
-        ),
-      )
-      .orderBy(asc(createdAtMs), asc(documents.id))
-      .limit(limit + 1)
+      .where(where)
+      .orderBy(desc(documents.updatedAt), desc(documents.id))
+      .limit(pageSize)
+      .offset(offset)
 
-    const hasMore = rows.length > limit
-    const items = rows.slice(0, limit)
-    const last = items.at(-1)
+    return buildOffsetResult(items, Number(total), page, pageSize)
+  }
 
-    return {
-      items,
-      nextCursor:
-        hasMore && last
-          ? encodeCursor({ k: [last.createdAt.getTime()], id: last.id })
-          : null,
+  /** Load a single document's stored bytes for download (member-readable). */
+  async getDownloadable(workspaceId: string, kbId: string, documentId: string) {
+    const doc = await this.findDownloadable(workspaceId, kbId, documentId)
+    const buffer = await this.storage.getBuffer(doc.storageKey)
+    return { title: doc.title, buffer }
+  }
+
+  /** Load several documents' bytes for a bulk (zip) download, skipping any without stored content. */
+  async getManyDownloadable(workspaceId: string, kbId: string, documentIds: string[]) {
+    const results: { title: string; buffer: Buffer }[] = []
+    for (const documentId of documentIds) {
+      const doc = await this.findDownloadable(workspaceId, kbId, documentId).catch(() => null)
+      if (!doc) continue
+      const buffer = await this.storage.getBuffer(doc.storageKey).catch((error: unknown) => {
+        this.logger.warn(
+          `Skipping download for ${documentId}: ${error instanceof Error ? error.message : String(error)}`,
+        )
+        return null
+      })
+      if (buffer) {
+        results.push({ title: doc.title, buffer })
+      }
     }
+
+    if (results.length === 0) {
+      throw new NotFoundException('No downloadable documents found')
+    }
+
+    return results
+  }
+
+  private async findDownloadable(workspaceId: string, kbId: string, documentId: string) {
+    const [doc] = await db.select().from(documents).where(eq(documents.id, documentId)).limit(1)
+
+    if (!doc || doc.workspaceId !== workspaceId || doc.knowledgeBaseId !== kbId) {
+      throw new NotFoundException('Document not found')
+    }
+    if (!doc.storageKey) {
+      throw new NotFoundException('Document has no stored file')
+    }
+
+    return doc as typeof doc & { storageKey: string }
   }
 
   async remove(workspaceId: string, kbId: string, documentId: string): Promise<{ message: string }> {

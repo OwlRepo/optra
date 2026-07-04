@@ -84,8 +84,6 @@ Everything runs in Docker:
 # First time setup
 cp .env.example .env
 nano .env  # Fill in DOMAIN, passwords, API keys
-cp docker/seaweedfs/s3.prod.json.example docker/seaweedfs/s3.prod.json
-nano docker/seaweedfs/s3.prod.json  # Fill in real S3 credentials
 
 # Deploy
 bun run deploy:remote user@your-server-ip
@@ -97,7 +95,7 @@ cd /opt/mnemra
 ./scripts/deploy.sh
 ```
 
-**Automatically on push to `main`:** see `.github/workflows/deploy.yml` — requires the deploy dir to already have `.env` and `docker/seaweedfs/s3.prod.json` in place from a prior manual deploy, plus `VPS_HOST`/`VPS_USER`/`VPS_SSH_KEY`/`VPS_PORT` configured as GitHub Secrets. The smoke test reads `DOMAIN` from `.env`, so no domain secret is needed.
+**Automatically on push to `main`:** see `.github/workflows/deploy.yml` — requires the deploy dir to already have `.env` in place, plus `VPS_HOST`/`VPS_USER`/`VPS_SSH_KEY`/`VPS_PORT` configured as GitHub Secrets. If `docker/seaweedfs/s3.prod.json` is missing, the deploy creates it from `S3_ACCESS_KEY`/`S3_SECRET_KEY` in `.env`. The smoke test reads `DOMAIN` from `.env`, so no domain secret is needed.
 
 ### What Happens
 
@@ -245,7 +243,7 @@ Local development:
 
 Production:
 - `S3_ENDPOINT=http://seaweedfs:8333`
-- prod must provide `docker/seaweedfs/s3.prod.json` with real credentials matching `.env` — copy it from the committed `docker/seaweedfs/s3.prod.json.example` template before first deploy (the file itself is gitignored, same as `.env`)
+- prod must have real `S3_ACCESS_KEY`/`S3_SECRET_KEY` in `.env`; `scripts/ensure-seaweedfs-s3-config.sh` creates `docker/seaweedfs/s3.prod.json` from those values when missing
 
 ---
 
@@ -402,7 +400,7 @@ docker compose -f docker-compose.prod.yml up -d
 
 `.github/workflows/deploy.yml` deploys automatically on push to `main` (or manual `workflow_dispatch`). It SSHes into the VPS, backs up Postgres using the container's `POSTGRES_USER`/`POSTGRES_DB`, rebuilds `api`/`web`, brings the stack up with `docker compose -f docker-compose.prod.yml up -d --remove-orphans`, polls `GET /health` and the web root inside the `api`/`web` containers, then fetches the public site and fails the deploy if it finds dev-mode artifacts (HMR client scripts, `.next/dev`, `localhost:*`, or `127.0.0.1`) in the served HTML — a guard against accidentally shipping a dev build. Production does not publish `api`/`web` ports to the host; Caddy is the public ingress.
 
-It assumes the deploy dir already has a working checkout with `.env` and `docker/seaweedfs/s3.prod.json` in place; it does not provision those itself. The smoke test reads `DOMAIN` from `.env`.
+It assumes the deploy dir already has a working checkout with `.env` in place. If `docker/seaweedfs/s3.prod.json` is missing, the workflow generates it from `S3_ACCESS_KEY`/`S3_SECRET_KEY` in `.env`. The smoke test reads `DOMAIN` from `.env`.
 
 **Required GitHub Secrets** (`Settings → Secrets and variables → Actions`):
 - `VPS_HOST` — server IP or hostname
