@@ -2,7 +2,6 @@ import { Readability } from '@mozilla/readability'
 import * as cheerio from 'cheerio'
 import { promises as dns } from 'dns'
 import { JSDOM } from 'jsdom'
-import pLimit from 'p-limit'
 import robotsParser from 'robots-parser'
 import { assertPublicUrl, type LookupFn } from './ssrf'
 
@@ -172,6 +171,7 @@ export async function crawlSite(seedUrl: string, options: CrawlOptions = {}): Pr
   const results: CrawledPage[] = []
   const progress = { pagesFound: 0 }
   const queue: QueueEntry[] = [{ url: canonicalSeed, depth: 0 }]
+  const { default: pLimit } = await import('p-limit')
   const limit = pLimit(concurrency)
   const waitForTurn = makeRequestScheduler(effectiveDelayMs)
 

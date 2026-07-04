@@ -1,8 +1,13 @@
 node_modules
+**/node_modules
 .next
+**/.next
 dist
+**/dist
 build
+**/build
 .turbo
+**/.turbo
 .git
 .gitignore
 # Environment files - loaded via env_file: in docker-compose
@@ -15,10 +20,12 @@ build
 .idea
 *.log
 coverage
+**/coverage
 .DS_Store
 *.swp
 *.swo
 *.tsbuildinfo
+**/*.tsbuildinfo
+.gstack
 Dockerfile
 docker-compose*.yml
-scripts

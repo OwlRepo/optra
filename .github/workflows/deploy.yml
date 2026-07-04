@@ -48,7 +48,7 @@ jobs:
               backup_file=/home/deploy/apps/mnemra-backups/mnemra-$(date +%F-%H%M%S).sql
               echo "creating PostgreSQL backup: $backup_file"
               docker compose -f docker-compose.prod.yml exec -T postgres \
-                pg_dump -U postgres -d mnemra > "$backup_file"
+                sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB"' > "$backup_file"
               test -s "$backup_file"
               find /home/deploy/apps/mnemra-backups -type f -name 'mnemra-*.sql' -mtime +14 -delete
             else
@@ -65,7 +65,8 @@ jobs:
 
             api_ok=0
             for i in $(seq 1 15); do
-              curl -fsS --connect-timeout 2 --max-time 5 http://localhost:3001/health >/dev/null && { api_ok=1; break; }
+              docker compose -f docker-compose.prod.yml exec -T api \
+                wget -q -O /dev/null http://127.0.0.1:3001/health && { api_ok=1; break; }
               echo "api health check retry $i..."; sleep 4
             done
             if [ "$api_ok" -ne 1 ]; then
@@ -76,7 +77,8 @@ jobs:
 
             web_ok=0
             for i in $(seq 1 10); do
-              curl -fsS --connect-timeout 2 --max-time 5 http://localhost:3000 >/dev/null && { web_ok=1; break; }
+              docker compose -f docker-compose.prod.yml exec -T web \
+                wget -q -O /dev/null http://127.0.0.1:3000/ && { web_ok=1; break; }
               echo "web health check retry $i..."; sleep 3
             done
             if [ "$web_ok" -ne 1 ]; then

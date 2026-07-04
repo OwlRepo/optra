@@ -14,7 +14,7 @@ cp .env.example .env    # Configure environment
 bun run docker:dev:up   # Start the full stack, build images on first run
 ```
 
-Everything — Postgres, Redis, SeaweedFS, the API, and the web app — runs in Docker. Migrations run automatically inside each container on start. No separate `bun install`/`db:push`/`bun run dev` steps needed.
+Everything — Postgres, Redis, SeaweedFS, the API, and the web app — runs in Docker. Migrations run automatically from the API container on start. No separate `bun install`, manual migration, or `bun run dev` steps needed.
 
 **Apps running:**
 
@@ -136,8 +136,7 @@ This will:
 - Sync code to server
 - Copy `.env`
 - Build Docker images
-- Run migrations
-- Start all services
+- Start all services; the API container runs `db:migrate` during startup
 - Configure SSL automatically (Caddy)
 
 **Option B: Deploy on server directly**
@@ -202,12 +201,17 @@ docker compose -f docker-compose.prod.yml logs -f web
 docker compose -f docker-compose.prod.yml logs -f api
 ```
 
-**Test health endpoint:**
+**Test internal health endpoints:**
 
 ```bash
-curl http://localhost:3001/health
-# {"status":"ok"}
+docker compose -f docker-compose.prod.yml exec -T api \
+  wget -q -O - http://127.0.0.1:3001/health
+
+docker compose -f docker-compose.prod.yml exec -T web \
+  wget -q -O /dev/null http://127.0.0.1:3000/
 ```
+
+Production does not publish the `api` or `web` ports on the host. Caddy is the only public ingress.
 
 **Test SSL:**
 
@@ -257,18 +261,20 @@ git pull  # or re-sync code
 
 ### Database Migrations
 
+The API container runs migrations automatically on startup. To run them manually on the server:
+
 ```bash
 # On server
 docker compose -f docker-compose.prod.yml run --rm api \
-  sh -c "cd packages/db && bun run db:generate && bun run db:push"
+  sh -c "cd packages/db && bun run db:migrate"
 ```
 
 ### Backup Database
 
 ```bash
 # On server
-docker compose -f docker-compose.prod.yml exec postgres \
-  pg_dump -U postgres mnemra > backup_$(date +%Y%m%d_%H%M%S).sql
+docker compose -f docker-compose.prod.yml exec -T postgres \
+  sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB"' > backup_$(date +%Y%m%d_%H%M%S).sql
 ```
 
 The GitHub Actions deploy workflow also takes an automatic backup before every deploy, stored in `/home/deploy/apps/mnemra-backups/`, retained 14 days.
@@ -278,7 +284,7 @@ The GitHub Actions deploy workflow also takes an automatic backup before every d
 ```bash
 # On server
 docker compose -f docker-compose.prod.yml exec -T postgres \
-  psql -U postgres mnemra < backup.sql
+  sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"' < backup.sql
 ```
 
 ### View Logs
@@ -355,7 +361,7 @@ docker compose -f docker-compose.prod.yml logs postgres
 
 # Test connection
 docker compose -f docker-compose.prod.yml exec postgres \
-  psql -U postgres -d mnemra -c "SELECT 1"
+  sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT 1"'
 ```
 
 ### `api`/`web` never becomes healthy

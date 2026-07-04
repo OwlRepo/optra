@@ -1,6 +1,5 @@
 import { readFile, stat } from 'fs/promises'
 import { basename } from 'path'
-import { PDFParse } from 'pdf-parse'
 import type { LoadedDocument } from './types'
 
 export async function loadPDF(filePath: string): Promise<LoadedDocument> {
@@ -9,6 +8,7 @@ export async function loadPDF(filePath: string): Promise<LoadedDocument> {
     stat(filePath),
   ])
 
+  const { PDFParse } = await import('pdf-parse')
   const parser = new PDFParse({ data: buffer })
   const result = await parser.getText()
   await parser.destroy()

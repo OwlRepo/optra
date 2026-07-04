@@ -60,10 +60,27 @@ If risk area is missing, mark `UNMAPPED RISK`.
   directives and the new `.github/workflows/deploy.yml` auto-deploy healthcheck-poll. Also
   completed the in-progress "Second Brain" → "Mnemra" rebrand across browser UI, docs, and
   Docker/DB naming (`support_brain` → `mnemra`).
+  Docker cache/perf follow-up (2026-07-04): `.dockerignore` now recursively excludes nested
+  build outputs and dependency folders (`**/node_modules`, `**/.next`, `**/dist`, `**/build`,
+  `**/.turbo`, `**/*.tsbuildinfo`, `.gstack`) so Docker does not send stale local artifacts in
+  the build context. Web's build graph is source-verified as `@repo/web` + `@repo/ui`; API's graph
+  is `@repo/api` + `@repo/ai` + `@repo/db`. Dockerfiles use Bun install cache mounts, Turbo build
+  cache mounts, and filtered installs. Dev images no longer prebuild package `dist` files that
+  bind mounts hide at runtime; API dev instead conditionally rebuilds only stale/missing
+  `@repo/db`/`@repo/ai` package output before `db:migrate`. The Bun Alpine base image has no real
+  `node`; container repro showed `nest build`/`swc` hanging under Bun's Node shim, so API/Web
+  Dockerfiles install `nodejs` and production uses Node for API/Next standalone startup. Bun and
+  Turbo cache mounts use locked app-specific ids so a corrupt package tarball in one cache does
+  not poison another service build. Prod compose keeps `api`/`web` ports internal to Compose,
+  scopes `env_file: .env` to app services only, and leaves Caddy as the only public ingress.
+  Deploy scripts preserve cache and use `--remove-orphans`.
   Required checks:
-  - `docker compose -f docker-compose.prod.yml build` succeeds locally as a dry run before trusting a live VPS deploy
+  - Turbo dry graph for web is exactly `@repo/web`, `@repo/ui`; Turbo dry graph for API is exactly `@repo/api`, `@repo/ai`, `@repo/db`
+  - `docker compose build api web` and `docker compose -f docker-compose.prod.yml build api web` both succeed locally as dry runs before trusting a live VPS deploy
+  - `docker compose config --quiet` and prod `docker compose ... config --quiet` with required env set both pass
   - `apps/api`'s `/health` returns `200 {"status":"ok"}` with zero dependencies reachable (verifies it never false-fails the container `HEALTHCHECK` during startup race windows)
-  - GitHub Actions `deploy.yml` requires `VPS_HOST`/`VPS_USER`/`VPS_SSH_KEY`/`VPS_PORT`/`DEPLOY_DOMAIN` secrets configured on `OwlRepo/mnemra` before the auto-deploy path can run; until configured, `scripts/deploy.sh`/`deploy-remote.sh` remain the only working deploy path
+  - GitHub Actions `deploy.yml` requires `VPS_HOST`/`VPS_USER`/`VPS_SSH_KEY`/`VPS_PORT` secrets configured on `OwlRepo/mnemra` before the auto-deploy path can run; it reads `DOMAIN` from the VPS `.env`, not a separate domain secret
+  - prod API/Web health checks must run inside containers (`docker compose exec -T api/web wget ...`) because their ports are not host-published
   - `docker/seaweedfs/s3.prod.json` must be manually created from `docker/seaweedfs/s3.prod.json.example` on the VPS before first prod deploy, or the `seaweedfs` service bind-mount fails at container start
   - no live production data existed anywhere under the old `support_brain` name at the time of this change (confirmed with the project owner) — if that assumption is ever wrong for a specific deploy target, stop and reconcile via `pg_dump`/restore before cutting over, per the rollback notes in the implementation plan
 

@@ -99,11 +99,13 @@ CONTEXT DRIFT resolved 2026-07-01 for production-RAG controls:
 - LangGraph miss path routes retrieval score → direct generate, rewrite loop, or fallback; optional self-grade/regenerate remains off by default.
 - Offline quality measurement now lives in `scripts/eval/*` and is not imported into app runtime.
 
-CONTEXT DRIFT resolved 2026-07-01 for workspace runtime packaging:
-- `apps/api` runtime build no longer uses tsconfig `paths` aliases for `@repo/ai`, `@repo/db`, or `@repo/types`.
+CONTEXT DRIFT resolved 2026-07-01/04 for workspace runtime packaging:
+- `apps/api` runtime build no longer uses tsconfig `paths` aliases for `@repo/ai` or `@repo/db`, and `apps/api/package.json` no longer declares a stale `@repo/types` dependency.
 - SWC/nest runtime now resolves those imports as normal workspace packages through `node_modules`, landing on each package `dist/index.js`.
 - `apps/api` Jest unit tests still map `@repo/*` to package `src`, while e2e maps to built `dist` packages to match real runtime boot.
-- `packages/ai/src/loaders/pdf.ts` now uses the exported `pdf-parse` API (`PDFParse`) instead of the no-longer-exported `pdf-parse/lib/pdf-parse.js` internal path, so API bootstrap survives on current Node.
+- `packages/ai/src/loaders/pdf.ts` now uses the exported `pdf-parse` API (`PDFParse`) instead of the no-longer-exported `pdf-parse/lib/pdf-parse.js` internal path, and lazy-imports it inside `loadPDF()` so API bootstrap does not load pdfjs/DOMMatrix code unless a PDF is ingested.
+- `packages/ai/src/web/crawl.ts` lazy-imports ESM-only `p-limit` inside `crawlSite()` so the CommonJS `@repo/ai` package can be imported by the API without a top-level `ERR_REQUIRE_ESM` boot failure.
+- `apps/web` source imports only `@repo/ui`; Docker/Turbo prod build graph is intentionally root + `@repo/web` + `@repo/ui`, and stale web deps/aliases for `@repo/ai`, `@repo/types`, `@ai-sdk/openai`, and `langchain` were removed.
 
 CONTEXT DRIFT resolved 2026-07-01 for queue reliability:
 - `documents` and `scrape_runs` now persist queue linkage (`queue_job_id`, `enqueued_at`) so API rows can be reconciled against Bull after dev-watch restarts or lost jobs.

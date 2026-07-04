@@ -67,7 +67,7 @@
 | F3 | **CI** | None (`.github/workflows` absent). | CI: type-check + lint + unit + e2e (with infra services) on PR. | 🟠 | Prod |
 | F4 | **Staging env** | None. | A staging deploy mirroring prod for dry-runs. | 🟠 | Prod |
 | F5 | **Dockerfile hardening** | `apps/{api,web}/Dockerfile` exist; not reviewed for non-root/multi-stage/size. | Review: multi-stage, non-root user, minimal base, pinned. | 🟢 | Prod |
-| F6 | **Migration runner in deploy** | Migrations run manually (`db:push`). | Run migrations as a deploy step (drizzle migrate) with the `0000–0004` history; avoid `push` in prod. | 🟠 | Prod |
+| F6 | **Migration runner in deploy** | API container startup runs `db:migrate`; deploy scripts no longer call `db:push`. | Keep migrations as source of truth and avoid `push` in prod. | 🟢 | Prod |
 
 Dependency pin note:
 - `packages/ai` now pins `@langchain/langgraph` exactly to `0.2.39` so `bun install` cannot silently drift to the incompatible `0.2.7x` line while `@langchain/core` stays on `0.2.36`.

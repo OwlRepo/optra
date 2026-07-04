@@ -5,8 +5,6 @@ services:
     image: pgvector/pgvector:pg16
     container_name: mnemra-db-prod
     restart: unless-stopped
-    env_file:
-      - .env
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD required}
@@ -26,8 +24,6 @@ services:
     image: redis:7-alpine
     container_name: mnemra-redis-prod
     restart: unless-stopped
-    env_file:
-      - .env
     volumes:
       - redis_data:/data
     networks:
@@ -42,8 +38,6 @@ services:
     image: chrislusf/seaweedfs
     container_name: mnemra-seaweedfs-prod
     restart: unless-stopped
-    env_file:
-      - .env
     command: server -s3 -s3.config=/etc/seaweedfs/s3.json -dir=/data
     volumes:
       - seaweedfs_data:/data
@@ -96,7 +90,7 @@ services:
     build:
       context: .
       dockerfile: apps/web/Dockerfile
-      target: prod
+      target: runner
       args:
         # Baked into the client bundle at build time (Next inlines NEXT_PUBLIC_*).
         NEXT_PUBLIC_API_URL: https://${DOMAIN}/api
@@ -131,8 +125,6 @@ services:
     image: caddy:2-alpine
     container_name: mnemra-caddy
     restart: unless-stopped
-    env_file:
-      - .env
     ports:
       - "80:80"
       - "443:443"

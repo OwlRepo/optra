@@ -102,11 +102,10 @@ cd /opt/mnemra
 ### What Happens
 
 1. **Build multi-stage Docker images** (optimized, small)
-   - Install deps → Build packages → Build apps → Copy to minimal runtime
-2. **Stop old containers** (zero-downtime with health checks)
-3. **Run database migrations**
-4. **Start all services** — `api`/`web`/`caddy` wait on real healthchecks before the next one starts
-5. **Caddy obtains SSL certificate** (automatic, from Let's Encrypt)
+   - Filter workspace deps → use BuildKit cache mounts → build only the needed app graph → copy to minimal runtime
+2. **Start all services** — `api`/`web`/`caddy` wait on real healthchecks before the next one starts
+3. **Run database migrations** from the `api` container startup path (`db:migrate`)
+4. **Caddy obtains SSL certificate** (automatic, from Let's Encrypt)
 
 ### Services
 
@@ -175,19 +174,20 @@ git checkout HEAD~1
 
 ### Web App (Next.js)
 
-Multi-stage build (`base` → `deps` → `dev` → `prod`):
-1. **deps**: Install all dependencies
+Multi-stage build (`base` → `deps` → `dev` → `prod` → `runner`):
+1. **deps**: Install Node for Node-shebang CLIs, then only root + `@repo/web` + `@repo/ui` dependencies with a Bun cache mount
 2. **dev**: bind-mounted source, `next dev`, polling-based hot reload
-3. **prod**: builds shared packages + Next.js standalone output, then stages into a slim final `runner` layer (non-root, no `node_modules`, no source)
+3. **prod**: builds the `@repo/web...` graph with a Turbo cache mount
+4. **runner**: slim final layer with Next standalone output (non-root, no full source tree) served by `node apps/web/server.js`
 
 **Size**: ~200MB (optimized standalone build)
 
 ### API (NestJS)
 
 Multi-stage build (`base` → `deps` → `dev` → `prod`):
-1. **deps**: Install dependencies
-2. **dev**: bind-mounted source, `nest start --watch`, polling-based hot reload
-3. **prod**: builds shared packages + NestJS, minimal runtime with compiled JS
+1. **deps**: Install Node for Node-shebang CLIs, then only root + `@repo/api` + `@repo/ai` + `@repo/db` dependencies with a Bun cache mount
+2. **dev**: bind-mounted source, conditional package rebuild, `db:migrate`, then `nest start --watch`
+3. **prod**: builds the `@repo/api...` graph with a Turbo cache mount, then starts with `db:migrate` and `node dist/main`
 
 **Size**: ~150MB
 
@@ -198,7 +198,7 @@ Multi-stage build (`base` → `deps` → `dev` → `prod`):
 docker build -f apps/web/Dockerfile --target dev -t mnemra-web:dev .
 
 # Web (prod target)
-docker build -f apps/web/Dockerfile --target prod -t mnemra-web:prod .
+docker build -f apps/web/Dockerfile --target runner -t mnemra-web:prod .
 
 # API
 docker build -f apps/api/Dockerfile --target prod -t mnemra-api:prod .
@@ -273,12 +273,12 @@ docker run --rm -v mnemra_postgres_data:/data \
 docker volume ls | grep mnemra
 
 # Backup Postgres
-docker compose -f docker-compose.prod.yml exec postgres \
-  pg_dump -U postgres mnemra | gzip > backup-$(date +%Y%m%d).sql.gz
+docker compose -f docker-compose.prod.yml exec -T postgres \
+  sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB"' | gzip > backup-$(date +%Y%m%d).sql.gz
 
 # Restore
 gunzip < backup.sql.gz | docker compose -f docker-compose.prod.yml exec -T postgres \
-  psql -U postgres mnemra
+  sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"'
 ```
 
 ---
@@ -288,11 +288,12 @@ gunzip < backup.sql.gz | docker compose -f docker-compose.prod.yml exec -T postg
 ### Build fails
 
 ```bash
-# Clear Docker cache
-docker builder prune -af
+# Rebuild app images while preserving useful cache
+docker compose -f docker-compose.prod.yml build api web
 
-# Rebuild without cache
-docker compose -f docker-compose.prod.yml build --no-cache
+# If cache metadata is corrupt, prune builder cache once, then rebuild
+docker builder prune -af
+docker compose -f docker-compose.prod.yml build api web
 ```
 
 ### Container won't start
@@ -387,8 +388,8 @@ services:
 # Pull latest base images
 docker compose -f docker-compose.prod.yml pull
 
-# Rebuild apps with updated bases
-docker compose -f docker-compose.prod.yml build --no-cache
+# Rebuild apps with updated bases while preserving layer/package caches
+docker compose -f docker-compose.prod.yml build api web
 
 # Restart
 docker compose -f docker-compose.prod.yml up -d
@@ -398,7 +399,7 @@ docker compose -f docker-compose.prod.yml up -d
 
 ## CI/CD Integration
 
-`.github/workflows/deploy.yml` deploys automatically on push to `main` (or manual `workflow_dispatch`). It SSHes into the VPS, backs up Postgres, rebuilds `api`/`web`, brings the stack up with `docker compose -f docker-compose.prod.yml up -d --remove-orphans`, polls `GET /health` and the web root until healthy, then fetches the public site and fails the deploy if it finds dev-mode artifacts (HMR client scripts, `.next/dev`, a `localhost` API URL) in the served HTML — a guard against accidentally shipping a dev build.
+`.github/workflows/deploy.yml` deploys automatically on push to `main` (or manual `workflow_dispatch`). It SSHes into the VPS, backs up Postgres using the container's `POSTGRES_USER`/`POSTGRES_DB`, rebuilds `api`/`web`, brings the stack up with `docker compose -f docker-compose.prod.yml up -d --remove-orphans`, polls `GET /health` and the web root inside the `api`/`web` containers, then fetches the public site and fails the deploy if it finds dev-mode artifacts (HMR client scripts, `.next/dev`, a `localhost` API URL) in the served HTML — a guard against accidentally shipping a dev build. Production does not publish `api`/`web` ports to the host; Caddy is the public ingress.
 
 It assumes the deploy dir already has a working checkout with `.env` and `docker/seaweedfs/s3.prod.json` in place; it does not provision those itself. The smoke test reads `DOMAIN` from `.env`.
 

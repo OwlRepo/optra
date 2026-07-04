@@ -134,26 +134,36 @@ the one exception is `apps/api/src/health/health.controller.ts`, which is real a
 
 For everything else infra-shaped, the pragmatic verification checklist is:
 
-1. `docker compose build` (dev) and `docker compose -f docker-compose.prod.yml build` (prod) both
-   succeed with no errors — catches Dockerfile syntax errors, missing COPY paths, and lockfile
-   mismatches before ever touching a real VPS.
-2. `docker compose up` brings up all services; `docker compose ps` shows every service `healthy`
+1. Turbo dry graphs must match source imports exactly:
+   `bunx turbo run build --filter=@repo/web... --dry=json` includes only `@repo/web` + `@repo/ui`;
+   `bunx turbo run build --filter=@repo/api... --dry=json` includes only `@repo/api` + `@repo/ai` + `@repo/db`.
+2. Shell/config checks must pass:
+   `sh -n docker/api-dev-entrypoint.sh scripts/deploy.sh scripts/verify-env.sh`,
+   `docker compose config --quiet`, and
+   `POSTGRES_PASSWORD=postgres DOMAIN=localhost OPENAI_API_KEY=test docker compose -f docker-compose.prod.yml config --quiet`.
+3. `docker compose build api web` (dev) and
+   `POSTGRES_PASSWORD=postgres DOMAIN=localhost OPENAI_API_KEY=test docker compose -f docker-compose.prod.yml build api web` (prod)
+   both succeed with no errors — catches Dockerfile syntax errors, missing COPY paths, lockfile
+   mismatches, bad stage targets, and broken filtered workspace installs before ever touching a real VPS.
+4. `docker compose up -d` brings up all services; `docker compose ps` shows every service `healthy`
    or `running` with no restart loops.
-3. Edit a source file in `apps/api/src` or `apps/web/app` while the dev stack is running; confirm
+5. Edit a source file in `apps/api/src` or `apps/web/app` while the dev stack is running; confirm
    the corresponding container's logs show a rebuild/reload (`nest start --watch` recompile log for
    api, Fast Refresh log for web) within a few seconds — this is the hot-reload verification the
    bind-mount + polling setup exists to guarantee.
-4. `curl http://localhost:3001/health` returns `200 {"status":"ok"}` (dev) — confirms the endpoint
+6. `curl http://localhost:3001/health` returns `200 {"status":"ok"}` (dev) — confirms the endpoint
    and the api container's port mapping both work.
-5. `curl http://localhost:3000` returns `200` with the Next.js app HTML (dev).
-6. Run each app's existing test suite (`cd apps/api && bun run test`, `cd apps/web && bun run test`,
+7. `curl http://localhost:3000` returns `200` with the Next.js app HTML (dev).
+8. Run each app's existing test suite (`cd apps/api && bun run test`, `cd apps/web && bun run test`,
    plus `packages/db`/`packages/ai`/`packages/ui`'s `bun run test` where defined) to confirm
    infra/rebrand changes did not silently break any test that happened to assert on old
    brand strings or the `support_brain` database name.
-7. For prod-readiness without a live VPS: `docker compose -f docker-compose.prod.yml build` succeeding
-   locally is the required pre-flight dry run before trusting an actual Hetzner deploy — this catches
-   lockfile/env-file/missing-mount-source class bugs without needing SSH access.
-8. GitHub Actions workflow (`deploy.yml`) cannot be fully verified without live VPS secrets (by
+9. For prod-readiness without a live VPS: the prod config/build commands above are the required
+   pre-flight dry run before trusting an actual Hetzner deploy — this catches lockfile/env-file,
+   missing-mount-source, stage-target, and app graph class bugs without needing SSH access. Prod
+   `api`/`web` ports are not host-published, so prod smoke checks must use
+   `docker compose -f docker-compose.prod.yml exec -T api/web wget ...` or the public Caddy URL.
+10. GitHub Actions workflow (`deploy.yml`) cannot be fully verified without live VPS secrets (by
    design — Claude does not hold VPS SSH credentials). What CAN be verified without secrets: YAML
    syntax validity, `shellcheck` on the embedded script block, and that every command/path/service
    name the script references matches the real `docker-compose.prod.yml` (service names, `/health`

@@ -1,9 +1,10 @@
 # syntax=docker/dockerfile:1
 # Web app: Next.js 14
-# Targets: dev (HMR, bind-mount source) | prod (standalone image)
+# Targets: dev (HMR, bind-mount source) | runner (standalone image)
 
 FROM oven/bun:1.2.22-alpine AS base
 WORKDIR /app
+RUN apk add --no-cache nodejs
 
 # --- deps stage: install workspace deps ---
 FROM base AS deps
@@ -14,7 +15,8 @@ COPY packages/types/package.json ./packages/types/
 COPY packages/db/package.json ./packages/db/
 COPY packages/ai/package.json ./packages/ai/
 COPY packages/ui/package.json ./packages/ui/
-RUN bun install --frozen-lockfile
+RUN --mount=type=cache,id=mnemra-bun-web-v1,target=/root/.bun/install/cache,sharing=locked \
+    bun install --frozen-lockfile --filter './' --filter '@repo/web' --filter '@repo/ui'
 
 # --- dev target: run next dev with bind-mounted source ---
 FROM base AS dev
@@ -24,9 +26,6 @@ COPY apps/web/package.json ./apps/web/
 COPY apps/api/package.json ./apps/api/
 COPY packages/ ./packages/
 
-# Build packages only (web depends on types/ai/ui at type + runtime level)
-RUN bunx turbo run build --filter=@repo/types --filter=@repo/db --filter=@repo/ai --filter=@repo/ui || true
-
 WORKDIR /app
 
 # Next dev with polling for reliable file watch in Docker (macOS/Windows)
@@ -35,7 +34,7 @@ ENV CHOKIDAR_USEPOLLING=true
 
 EXPOSE 3000
 
-ENTRYPOINT ["sh", "-c", "cd /app && (test -d node_modules/next || bun install) && cd apps/web && exec bun run dev"]
+ENTRYPOINT ["sh", "-c", "cd /app && (test -d node_modules/next || bun install --frozen-lockfile --filter './' --filter '@repo/web' --filter '@repo/ui') && cd apps/web && exec bun run dev"]
 
 # --- prod target: build, then stage standalone output ---
 FROM base AS prod
@@ -48,15 +47,18 @@ COPY . .
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
-RUN bunx turbo run build --filter=@repo/web...
+RUN --mount=type=cache,id=mnemra-turbo-web-v1,target=/app/.turbo,sharing=locked \
+    bunx turbo run build --filter=@repo/web...
 
-RUN cp -r /app/apps/web/public /app/prod-public && \
+RUN mkdir -p /app/prod-public && \
+    if [ -d /app/apps/web/public ]; then cp -r /app/apps/web/public/. /app/prod-public/; fi && \
     cp -r /app/apps/web/.next/standalone /app/prod-standalone && \
     cp -r /app/apps/web/.next/static /app/prod-static
 
 # --- runner: slim final image, standalone server only ---
 FROM oven/bun:1.2.22-alpine AS runner
 WORKDIR /app
+RUN apk add --no-cache nodejs
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV HOSTNAME="0.0.0.0"
@@ -73,4 +75,4 @@ EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
   CMD ["sh", "-c", "wget -q -O /dev/null \"http://127.0.0.1:${PORT:-3000}/\" || exit 1"]
 
-CMD ["bun", "run", "apps/web/server.js"]
+CMD ["node", "apps/web/server.js"]

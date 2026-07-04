@@ -28,6 +28,10 @@ yarn-error.log*
 # Turbo
 .turbo
 
+# TypeScript incremental build metadata
+*.tsbuildinfo
+**/*.tsbuildinfo
+
 # OS
 .DS_Store
 *.pem

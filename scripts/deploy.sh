@@ -34,22 +34,13 @@ if [ -z "$OPENAI_API_KEY" ]; then
 fi
 
 echo "📦 Building production images..."
-docker compose -f docker-compose.prod.yml build --no-cache
+docker compose -f docker-compose.prod.yml build api web
 
 echo "🛑 Stopping old containers..."
 docker compose -f docker-compose.prod.yml down
 
-echo "🗄️  Running database migrations..."
-docker compose -f docker-compose.prod.yml up -d postgres redis
-sleep 5
-
-# Run migrations (temporary container)
-docker compose -f docker-compose.prod.yml run --rm \
-    -e DATABASE_URL="postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-mnemra}" \
-    api sh -c "cd packages/db && bun run db:push"
-
 echo "🚀 Starting production services..."
-docker compose -f docker-compose.prod.yml up -d
+docker compose -f docker-compose.prod.yml up -d --remove-orphans
 
 echo "✅ Deployment complete!"
 echo ""
