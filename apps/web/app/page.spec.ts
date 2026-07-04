@@ -100,4 +100,29 @@ describe('Home', () => {
     expect(screen.getAllByText('Ready to build your support memory?').length).toBeGreaterThan(0)
     expect(screen.queryByText('Ready to turn support knowledge into product advantage?')).toBeNull()
   })
+
+  it('embeds Organization + SoftwareApplication JSON-LD structured data', () => {
+    const { container } = render(React.createElement(Home))
+
+    const script = container.querySelector('script[type="application/ld+json"]')
+    expect(script).not.toBeNull()
+
+    const parsed = JSON.parse(script?.textContent ?? '[]')
+    const org = parsed.find((entry: { '@type': string }) => entry['@type'] === 'Organization')
+    const app = parsed.find((entry: { '@type': string }) => entry['@type'] === 'SoftwareApplication')
+
+    expect(org).toMatchObject({
+      '@context': 'https://schema.org',
+      '@type': 'Organization',
+      name: 'Mnemra',
+      url: 'https://mnemra.tyvera.app',
+    })
+    expect(app).toMatchObject({
+      '@context': 'https://schema.org',
+      '@type': 'SoftwareApplication',
+      name: 'Mnemra',
+      applicationCategory: 'BusinessApplication',
+      description: 'Search past tickets, docs, and Slack threads to get a sourced answer before you start typing a reply.',
+    })
+  })
 })

@@ -21,23 +21,26 @@ const mono = JetBrains_Mono({
   display: 'swap',
 })
 
+const description = 'Search past tickets, docs, and Slack threads to get a sourced answer before you start typing a reply.'
+
 export const metadata: Metadata = {
   title: {
     default: 'Mnemra',
     template: '%s · Mnemra',
   },
-  description: 'Modern support intelligence platform for faster answers, cleaner knowledge operations, and happier customers.',
-  metadataBase: new URL('https://mnemra.com'),
+  description,
+  metadataBase: new URL(process.env.WEB_URL ?? 'https://mnemra.tyvera.app'),
+  alternates: { canonical: '/' },
   openGraph: {
-    title: 'Mnemra',
-    description: 'Support intelligence platform for modern teams.',
+    title: 'Mnemra — Turn support history into instant, sourced answers',
+    description,
     siteName: 'Mnemra',
     type: 'website',
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Mnemra',
-    description: 'Support intelligence platform for modern teams.',
+    title: 'Mnemra — Turn support history into instant, sourced answers',
+    description,
   },
 }
 

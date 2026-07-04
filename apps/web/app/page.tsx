@@ -80,9 +80,33 @@ const features = [
   },
 ]
 
+const WEB_URL = process.env.WEB_URL ?? 'https://mnemra.tyvera.app'
+
+const jsonLd = [
+  {
+    '@context': 'https://schema.org',
+    '@type': 'Organization',
+    name: 'Mnemra',
+    url: WEB_URL,
+    logo: `${WEB_URL}/icon.png`,
+  },
+  {
+    '@context': 'https://schema.org',
+    '@type': 'SoftwareApplication',
+    name: 'Mnemra',
+    description: 'Search past tickets, docs, and Slack threads to get a sourced answer before you start typing a reply.',
+    applicationCategory: 'BusinessApplication',
+    operatingSystem: 'Web',
+  },
+]
+
 export default function Home() {
   return (
     <PageShell contentClassName="pb-24">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
       <AppHeader
         className="mt-4 rounded-2xl border border-border/70 bg-background/75"
         brand={
