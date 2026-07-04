@@ -7,7 +7,7 @@ import { z } from 'zod'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Button, Card, Input, PageShell, StatusBanner } from '@repo/ui'
-import { Sparkles } from 'lucide-react'
+import { BrandMark } from '@/components/brand-mark'
 import { register } from '@/lib/api/auth'
 
 const schema = z.object({
@@ -45,9 +45,7 @@ export default function RegisterPage() {
       <Card variant="elevated" className="w-full max-w-sm space-y-6 p-8">
         <div className="space-y-4">
           <Link href="/" className="flex items-center gap-2 text-sm font-semibold">
-            <span className="flex size-9 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-md">
-              <Sparkles className="size-4" />
-            </span>
+            <BrandMark decorative className="size-9" />
             Mnemra
           </Link>
           <div>

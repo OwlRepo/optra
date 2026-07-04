@@ -16,9 +16,13 @@ describe('Home', () => {
   })
 
   it('gives the logo link an accessible Home label', () => {
-    render(React.createElement(Home))
+    const { container } = render(React.createElement(Home))
 
-    expect(screen.getAllByRole('link', { name: 'Home' }).at(0)?.getAttribute('href')).toBe('/')
+    const logoLink = screen.getAllByRole('link', { name: 'Home' }).at(0)
+
+    expect(logoLink?.getAttribute('href')).toBe('/')
+    expect(logoLink?.querySelector('[data-brand-mark="mnemra-folded-page"]')).not.toBeNull()
+    expect(container.querySelector('a[aria-label="Home"] svg.lucide-sparkles')).toBeNull()
   })
 
   it('renders product-focused copy and removes the flagged UI-process copy', () => {

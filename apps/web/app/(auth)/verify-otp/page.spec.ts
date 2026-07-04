@@ -39,7 +39,9 @@ describe('VerifyOtpPage', () => {
   it('marks the session logged in and redirects to workspaces on success, without touching the raw token', async () => {
     verifyOtpMock.mockResolvedValue({ accessToken: 'jwt.value.here' })
 
-    render(React.createElement(VerifyOtpPage))
+    const { container } = render(React.createElement(VerifyOtpPage))
+
+    expect(container.querySelector('[data-brand-mark="mnemra-folded-page"]')).not.toBeNull()
 
     fireEvent.change(screen.getByLabelText('Verification code'), { target: { value: '123456' } })
     fireEvent.submit(screen.getByRole('button', { name: 'Verify email' }).closest('form') as HTMLFormElement)

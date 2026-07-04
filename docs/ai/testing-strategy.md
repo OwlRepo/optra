@@ -75,6 +75,11 @@ Confirmed from `apps/web/package.json` as of 2026-06-29:
 - `bun run test` — Vitest, runs once (`apps/web/**/*.spec.ts`, node environment, config at `vitest.config.mts` — must be `.mts` not `.ts`, see note below)
 - `bun run test:watch` — Vitest, watch mode
 
+Brand asset note as of 2026-07-05:
+- `apps/web/src/components/brand-mark.spec.tsx` covers the shared folded-page `BrandMark` component and decorative mode used in already-labelled links.
+- `apps/web/app/brand-images.spec.ts` covers the source `public/mnemra-mark.svg`, `icon.png` favicon dimensions, `favicon.ico` presence, `apple-icon.png`, and `opengraph-image.png`.
+- `apps/web/app/page.spec.ts`, `apps/web/app/(auth)/*/page.spec.ts`, `apps/web/app/loading.spec.tsx`, and `apps/web/app/chat/loading.spec.tsx` cover that landing, auth, and loading chrome use the shared folded-page mark instead of the old Sparkles logo.
+
 Chat UI note as of 2026-06-30:
 - `apps/web/app/api/workspaces/[id]/chat/**/*.spec.ts` covers streaming proxy + history proxies.
 - `apps/web/app/workspaces/[id]/chat/page.spec.ts` covers session list/history loading, source rendering from chat headers/persisted messages, safe Markdown rendering, and full-width bubble layout.

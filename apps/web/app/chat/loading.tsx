@@ -1,12 +1,12 @@
 import { AppHeader, Badge, Card, PageShell, Skeleton } from '@repo/ui'
-import { Sparkles } from 'lucide-react'
+import { BrandMark } from '@/components/brand-mark'
 
 export default function ChatLoading() {
   return (
     <PageShell contentClassName="pb-16">
       <AppHeader
         className="mt-4 rounded-2xl border border-border/70 bg-background/75"
-        brand={<div className="flex size-11 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-md"><Sparkles className="size-5" /></div>}
+        brand={<BrandMark decorative className="size-11" />}
         title="Assistant workspace"
         description="Loading conversation surface."
         badge={<Badge variant="secondary">Connecting</Badge>}

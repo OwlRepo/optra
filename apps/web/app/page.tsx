@@ -21,6 +21,7 @@ import {
   Workflow,
   Zap,
 } from 'lucide-react'
+import { BrandMark } from '@/components/brand-mark'
 
 const metrics = [
   { label: 'Avg. answer time', value: '<15s' },
@@ -110,8 +111,8 @@ export default function Home() {
       <AppHeader
         className="mt-4 rounded-2xl border border-border/70 bg-background/75"
         brand={
-          <Link href="/" aria-label="Home" className="flex size-11 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-md">
-            <Sparkles className="size-5" />
+          <Link href="/" aria-label="Home" className="inline-flex">
+            <BrandMark decorative className="size-11" />
           </Link>
         }
         title="Mnemra"

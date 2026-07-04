@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" data-mark="mnemra-folded-page">
+  <title>Mnemra folded-page mark</title>
+  <desc>A rounded document with a folded corner and a bold M, representing sourced support memory.</desc>
+  <defs>
+    <filter id="shadow" x="8%" y="8%" width="84%" height="88%" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="26" stdDeviation="16" flood-color="#0f172a" flood-opacity=".16"/>
+    </filter>
+  </defs>
+  <g filter="url(#shadow)">
+    <rect x="190" y="114" width="644" height="796" rx="112" fill="#fff" stroke="#dfe5ed" stroke-width="4"/>
+    <path d="M692 114h142L692 256z" fill="#5661df"/>
+    <path d="M692 114l142 142-92-18-50 18z" fill="#8287ee"/>
+    <path d="M692 256h142" stroke="#3f459b" stroke-opacity=".28" stroke-width="5"/>
+    <path d="M692 114v142" stroke="#3f459b" stroke-opacity=".18" stroke-width="5"/>
+    <path d="M298 700V396L512 560l214-164v304" fill="none" stroke="#5661df" stroke-width="82" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M344 782h336" stroke="#dbe1e8" stroke-width="30" stroke-linecap="butt"/>
+    <path d="M424 836h176" stroke="#e6b746" stroke-width="18" stroke-linecap="butt"/>
+  </g>
+</svg>

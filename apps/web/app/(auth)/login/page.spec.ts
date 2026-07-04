@@ -37,7 +37,9 @@ describe('LoginPage', () => {
   it('marks the session logged in and redirects to workspaces on success, without touching the raw token', async () => {
     loginMock.mockResolvedValue({ accessToken: 'jwt.value.here' })
 
-    render(React.createElement(LoginPage))
+    const { container } = render(React.createElement(LoginPage))
+
+    expect(container.querySelector('[data-brand-mark="mnemra-folded-page"]')).not.toBeNull()
 
     fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'owner@example.com' } })
     fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'password123' } })

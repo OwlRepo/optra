@@ -31,7 +31,9 @@ describe('RegisterPage', () => {
   it('registers and redirects to verify-otp with the entered email on success', async () => {
     registerMock.mockResolvedValue({ ok: true })
 
-    render(React.createElement(RegisterPage))
+    const { container } = render(React.createElement(RegisterPage))
+
+    expect(container.querySelector('[data-brand-mark="mnemra-folded-page"]')).not.toBeNull()
 
     fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'new@example.com' } })
     fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'password123' } })
