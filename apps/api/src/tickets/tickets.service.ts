@@ -1,4 +1,5 @@
 import { createHash } from 'crypto'
+import { PDFDocument, StandardFonts, type PDFFont } from 'pdf-lib'
 import { getQueueToken, InjectQueue } from '@nestjs/bull'
 import {
   Injectable,
@@ -8,22 +9,51 @@ import {
   OnModuleInit,
 } from '@nestjs/common'
 import { Job, Queue } from 'bull'
-import { and, desc, eq, lt, or, sql } from 'drizzle-orm'
+import { and, count, desc, eq, ilike, or, sql } from 'drizzle-orm'
 import {
+  buildOffsetResult,
   db,
-  decodeCursor,
-  encodeCursor,
+  resolveOffsetPage,
   type TicketFieldConfidence,
   tickets,
 } from '@repo/db'
 import { syncTicketChunk } from '@repo/ai'
 import { CacheService } from '../cache/cache.service'
-import { ListQueryDto } from '../common/dto/list-query.dto'
+import type { ListTicketsQueryDto } from './dto/list-tickets-query.dto'
 import type { UpdateTicketDto } from './dto/update-ticket.dto'
 
 const PENDING_TICKET_STALE_MS = 10 * 60_000
 const PROCESSING_TICKET_STALE_MS = 30 * 60_000
 const TICKET_JOB_TIMEOUT_MS = 5 * 60_000
+
+/** Word-wrap transcript text (preserving blank-line paragraph breaks) to fit a PDF line width. */
+function wrapTranscript(transcript: string, font: PDFFont, size: number, maxWidth: number): string[] {
+  const lines: string[] = []
+
+  for (const paragraph of transcript.split('\n')) {
+    const words = paragraph.split(/\s+/).filter(Boolean)
+    if (words.length === 0) {
+      lines.push('')
+      continue
+    }
+
+    let current = ''
+    for (const word of words) {
+      const candidate = current ? `${current} ${word}` : word
+      if (font.widthOfTextAtSize(candidate, size) > maxWidth && current) {
+        lines.push(current)
+        current = word
+      } else {
+        current = candidate
+      }
+    }
+    if (current) {
+      lines.push(current)
+    }
+  }
+
+  return lines
+}
 
 const ticketDetailSelect = {
   id: tickets.id,
@@ -114,64 +144,108 @@ export class TicketsService implements OnModuleInit {
 
   async list(
     workspaceId: string,
-    query: Pick<ListQueryDto, 'cursor' | 'limit'> = {},
+    query: Pick<
+      ListTicketsQueryDto,
+      'page' | 'pageSize' | 'q' | 'status' | 'severity' | 'usefulness' | 'indexed'
+    > = {},
   ) {
-    const limit = Math.min(Math.max(Number(query.limit ?? 20), 1), 100)
-    const cursor = query.cursor ? decodeCursor(query.cursor) : null
-    const updatedAtUs = sql<number>`floor(extract(epoch from ${tickets.updatedAt}) * 1000000)`
-    const createdAtUs = sql<number>`floor(extract(epoch from ${tickets.createdAt}) * 1000000)`
+    const { page, pageSize, offset } = resolveOffsetPage(query.page, query.pageSize)
 
-    const rows = await db
+    const filters = [eq(tickets.workspaceId, workspaceId)]
+    if (query.status) {
+      filters.push(eq(tickets.status, query.status))
+    }
+    if (query.severity) {
+      filters.push(eq(tickets.severity, query.severity))
+    }
+    if (query.usefulness) {
+      filters.push(eq(tickets.usefulness, query.usefulness))
+    }
+    // COALESCE keeps this a plain boolean (never SQL NULL) so negating it for
+    // `indexed=false` doesn't fall into three-valued-logic gaps when usefulness is unset.
+    const isIndexedSql = sql<boolean>`(${tickets.status} = 'done' AND ${tickets.reviewedBy} IS NOT NULL AND COALESCE(${tickets.usefulness} = 'useful', false))`
+    if (query.indexed === 'true') {
+      filters.push(isIndexedSql)
+    } else if (query.indexed === 'false') {
+      filters.push(sql`NOT (${isIndexedSql})`)
+    }
+    const search = query.q?.trim()
+    if (search) {
+      filters.push(ilike(tickets.title, `%${search}%`))
+    }
+    const where = and(...filters)
+
+    const [{ value: total }] = await db.select({ value: count() }).from(tickets).where(where)
+
+    const items = await db
       .select({
         id: tickets.id,
         title: tickets.title,
         status: tickets.status,
         severity: tickets.severity,
+        usefulness: tickets.usefulness,
+        reviewedBy: tickets.reviewedBy,
         createdAt: tickets.createdAt,
         updatedAt: tickets.updatedAt,
-        updatedCursor: updatedAtUs,
-        createdCursor: createdAtUs,
       })
       .from(tickets)
-      .where(
-        and(
-          eq(tickets.workspaceId, workspaceId),
-          cursor
-            ? or(
-                lt(updatedAtUs, Number(cursor.k[0])),
-                and(
-                  eq(updatedAtUs, Number(cursor.k[0])),
-                  lt(createdAtUs, Number(cursor.k[1])),
-                ),
-                and(
-                  eq(updatedAtUs, Number(cursor.k[0])),
-                  eq(createdAtUs, Number(cursor.k[1])),
-                  lt(tickets.id, cursor.id),
-                ),
-              )
-            : undefined,
-        ),
-      )
-      .orderBy(desc(updatedAtUs), desc(createdAtUs), desc(tickets.id))
-      .limit(limit + 1)
+      .where(where)
+      .orderBy(desc(tickets.updatedAt), desc(tickets.createdAt), desc(tickets.id))
+      .limit(pageSize)
+      .offset(offset)
 
-    const hasMore = rows.length > limit
-    const items = rows
-      .slice(0, limit)
-      .map(({ updatedCursor: _updatedCursor, createdCursor: _createdCursor, ...ticket }) => ticket)
-    const last = items.at(-1)
-    const lastRow = rows.at(Math.min(limit, rows.length) - 1)
+    const withIndexedFlag = items.map(({ reviewedBy, ...rest }) => ({
+      ...rest,
+      indexed: rest.status === 'done' && reviewedBy !== null && rest.usefulness === 'useful',
+    }))
 
-    return {
-      items,
-      nextCursor:
-        hasMore && last && lastRow
-          ? encodeCursor({
-              k: [lastRow.updatedCursor, lastRow.createdCursor],
-              id: last.id,
-            })
-          : null,
+    return buildOffsetResult(withIndexedFlag, Number(total), page, pageSize)
+  }
+
+  /** Render a ticket's source transcript as a downloadable PDF (member-readable, same scoping as getOne). */
+  async getTranscriptPdf(workspaceId: string, ticketId: string) {
+    const ticket = await this.getOne(workspaceId, ticketId)
+
+    const pdfDoc = await PDFDocument.create()
+    const font = await pdfDoc.embedFont(StandardFonts.Helvetica)
+    const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold)
+
+    const margin = 50
+    const titleSize = 16
+    const bodySize = 11
+    const lineHeight = 14
+
+    let page = pdfDoc.addPage()
+    const { width, height } = page.getSize()
+    const maxWidth = width - margin * 2
+    let y = height - margin
+
+    page.drawText(ticket.title || 'Untitled ticket', {
+      x: margin,
+      y,
+      size: titleSize,
+      font: boldFont,
+    })
+    y -= titleSize + 12
+
+    const newPage = () => {
+      page = pdfDoc.addPage()
+      y = page.getSize().height - margin
     }
+
+    for (const line of wrapTranscript(ticket.transcript, font, bodySize, maxWidth)) {
+      if (y < margin) {
+        newPage()
+      }
+      page.drawText(line, { x: margin, y, size: bodySize, font })
+      y -= lineHeight
+    }
+
+    const bytes = await pdfDoc.save()
+    const buffer = Buffer.from(bytes)
+    const safeTitle = (ticket.title || 'ticket-transcript').replace(/[^a-z0-9-]+/gi, '-')
+
+    return { title: `${safeTitle}.pdf`, buffer }
   }
 
   async getOne(workspaceId: string, ticketId: string) {

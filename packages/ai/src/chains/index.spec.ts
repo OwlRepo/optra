@@ -19,6 +19,7 @@ vi.mock('@repo/db', () => ({
     id: 'id',
     title: 'title',
     sourceUrl: 'sourceUrl',
+    knowledgeBaseId: 'knowledgeBaseId',
   },
   tickets: {
     id: 'id',
@@ -62,8 +63,8 @@ describe('answerQuestion', () => {
       },
     ])
     whereMock.mockResolvedValue([
-      { id: 'doc-1', title: 'Doc One', sourceUrl: 'https://example.com/one' },
-      { id: 'doc-2', title: 'Doc Two', sourceUrl: null },
+      { id: 'doc-1', title: 'Doc One', sourceUrl: 'https://example.com/one', knowledgeBaseId: 'kb-1' },
+      { id: 'doc-2', title: 'Doc Two', sourceUrl: null, knowledgeBaseId: 'kb-2' },
     ])
     streamMock.mockResolvedValue(
       (async function* () {
@@ -85,6 +86,7 @@ describe('answerQuestion', () => {
       {
         sourceType: 'document',
         documentId: 'doc-1',
+        knowledgeBaseId: 'kb-1',
         title: 'Doc One',
         sourceUrl: 'https://example.com/one',
         score: 0.91,
@@ -93,6 +95,7 @@ describe('answerQuestion', () => {
       {
         sourceType: 'document',
         documentId: 'doc-2',
+        knowledgeBaseId: 'kb-2',
         title: 'Doc Two',
         sourceUrl: null,
         score: 0.88,
@@ -124,7 +127,7 @@ describe('answerQuestion', () => {
       },
     ])
     whereMock
-      .mockResolvedValueOnce([{ id: 'doc-1', title: 'Doc One', sourceUrl: 'https://example.com/one' }])
+      .mockResolvedValueOnce([{ id: 'doc-1', title: 'Doc One', sourceUrl: 'https://example.com/one', knowledgeBaseId: 'kb-1' }])
       .mockResolvedValueOnce([{ id: 'ticket-1', title: 'Ticket One' }])
     streamMock.mockResolvedValue(
       (async function* () {
@@ -143,6 +146,7 @@ describe('answerQuestion', () => {
       {
         sourceType: 'document',
         documentId: 'doc-1',
+        knowledgeBaseId: 'kb-1',
         title: 'Doc One',
         sourceUrl: 'https://example.com/one',
         score: 0.91,

@@ -22,7 +22,7 @@ export default function InvitePage({ params }: { params: { token: string } }) {
         title: 'Workspace joined',
         description: `You now have access to ${workspace.name}.`,
       })
-      router.push(`/workspaces/${workspace.id}`)
+      router.push(`/workspaces/${workspace.id}/chat`)
     } catch (err) {
       if (isUnauthorized(err)) {
         router.push('/login')

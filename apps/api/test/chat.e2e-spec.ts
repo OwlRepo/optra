@@ -137,13 +137,13 @@ describe('Chat flow (e2e)', () => {
     const sessionId = okRes.headers['x-chat-session-id'] as string
     const sessionsRes = await request(app.getHttpServer())
       .get(`/workspaces/${workspaceId}/chat/sessions`)
-      .query({ limit: 1 })
+      .query({ pageSize: 1 })
       .set('Authorization', `Bearer ${member.accessToken}`)
       .expect(200)
 
     expect(sessionsRes.body.items).toHaveLength(1)
     expect(sessionsRes.body.items[0].id).toBe(sessionId)
-    expect(sessionsRes.body.nextCursor).toBeNull()
+    expect(sessionsRes.body.totalPages).toBe(1)
 
     const messagesRes = await request(app.getHttpServer())
       .get(`/workspaces/${workspaceId}/chat/sessions/${sessionId}/messages`)

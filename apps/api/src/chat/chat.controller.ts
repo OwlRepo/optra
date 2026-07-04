@@ -17,6 +17,7 @@ import { WorkspaceMemberGuard } from '../auth/guards/workspace-member.guard'
 import { ChatDto } from './dto/chat.dto'
 import { ChatRateLimitGuard } from '../limits/chat-rate-limit.guard'
 import { ListQueryDto } from '../common/dto/list-query.dto'
+import { ListChatSessionsQueryDto } from './dto/list-chat-sessions-query.dto'
 
 @Controller('workspaces/:workspaceId/chat')
 export class ChatController {
@@ -81,7 +82,7 @@ export class ChatController {
   listSessions(
     @Param('workspaceId') workspaceId: string,
     @CurrentUser() user: CurrentUserContext,
-    @Query() query: ListQueryDto,
+    @Query() query: ListChatSessionsQueryDto,
   ) {
     return this.chatService.listSessions(workspaceId, user.userId, query)
   }

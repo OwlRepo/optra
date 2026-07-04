@@ -272,14 +272,14 @@ describe('ChatService', () => {
     const mineSessions = await service.listSessions(mine.workspace.id, mine.user.id, {})
     expect(mineSessions.items).toHaveLength(1)
     expect(mineSessions.items[0]?.id).toBe(existing.sessionId)
-    expect(mineSessions.nextCursor).toBeNull()
+    expect(mineSessions.total).toBe(1)
 
     const otherSessions = await service.listSessions(other.workspace.id, other.user.id, {})
     expect(otherSessions.items).toHaveLength(1)
     expect(otherSessions.items[0]?.id).toBe(otherSession.sessionId)
   })
 
-  it('paginates chat sessions by updatedAt desc with cursor', async () => {
+  it('paginates chat sessions newest-first, defaulting pageSize to 5', async () => {
     const mine = await seedWorkspaceFixture(`${prefix}sessions-page@example.com`, 'Chat Spec Session Page')
     cache.getExact.mockResolvedValue({
       answer: 'cached exact',
@@ -297,18 +297,36 @@ describe('ChatService', () => {
     await db.update(chatSessions).set({ updatedAt: new Date('2026-07-01T00:00:02.000Z') }).where(eq(chatSessions.id, second.sessionId))
     await db.update(chatSessions).set({ updatedAt: new Date('2026-07-01T00:00:03.000Z') }).where(eq(chatSessions.id, third.sessionId))
 
-    const firstPage = await service.listSessions(mine.workspace.id, mine.user.id, { limit: 2 })
+    const defaultPage = await service.listSessions(mine.workspace.id, mine.user.id, {})
+    expect(defaultPage.pageSize).toBe(5)
+    expect(defaultPage.items.map((session) => session.title)).toEqual([
+      'Third question',
+      'Second question',
+      'First question',
+    ])
+
+    const firstPage = await service.listSessions(mine.workspace.id, mine.user.id, { page: '1', pageSize: '2' })
 
     expect(firstPage.items.map((session) => session.title)).toEqual(['Third question', 'Second question'])
-    expect(firstPage.nextCursor).toEqual(expect.any(String))
+    expect(firstPage.total).toBe(3)
+    expect(firstPage.totalPages).toBe(2)
 
-    const secondPage = await service.listSessions(mine.workspace.id, mine.user.id, {
-      limit: 2,
-      cursor: firstPage.nextCursor!,
-    })
+    const secondPage = await service.listSessions(mine.workspace.id, mine.user.id, { page: '2', pageSize: '2' })
 
     expect(secondPage.items.map((session) => session.title)).toEqual(['First question'])
-    expect(secondPage.nextCursor).toBeNull()
+  })
+
+  it('searches chat sessions by title', async () => {
+    const mine = await seedWorkspaceFixture(`${prefix}sessions-search@example.com`, 'Chat Spec Session Search')
+    cache.getExact.mockResolvedValue({ answer: 'cached exact', sources: [] })
+
+    const billing = await service.answer(mine.workspace.id, mine.user.id, 'Billing question about invoices')
+    await billing.onComplete('cached exact')
+    const refund = await service.answer(mine.workspace.id, mine.user.id, 'Refund question')
+    await refund.onComplete('cached exact')
+
+    const searched = await service.listSessions(mine.workspace.id, mine.user.id, { q: 'billing' })
+    expect(searched.items.map((session) => session.id)).toEqual([billing.sessionId])
   })
 
   it('getMessages returns assistant sources and rejects foreign session access', async () => {

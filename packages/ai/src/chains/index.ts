@@ -29,7 +29,15 @@ function buildContext(chunks: Awaited<ReturnType<typeof similaritySearch>>): str
 }
 
 export type ChatSource =
-  | { sourceType: 'document'; documentId: string; title: string; sourceUrl: string | null; score: number; snippet: string }
+  | {
+      sourceType: 'document'
+      documentId: string
+      knowledgeBaseId?: string
+      title: string
+      sourceUrl: string | null
+      score: number
+      snippet: string
+    }
   | { sourceType: 'ticket'; ticketId: string; title: string; score: number; snippet: string }
 
 export interface AnswerResult {
@@ -104,6 +112,7 @@ export async function answerQuestion(
             id: documents.id,
             title: documents.title,
             sourceUrl: documents.sourceUrl,
+            knowledgeBaseId: documents.knowledgeBaseId,
           })
           .from(documents)
           .where(inArray(documents.id, documentIds))
@@ -130,6 +139,7 @@ export async function answerQuestion(
       {
         sourceType: 'document' as const,
         documentId,
+        knowledgeBaseId: row.knowledgeBaseId,
         title: row.title,
         sourceUrl: row.sourceUrl,
         score: chunk.score,

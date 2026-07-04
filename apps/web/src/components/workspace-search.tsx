@@ -2,14 +2,16 @@
 
 import * as React from 'react'
 import { useRouter } from 'next/navigation'
-import { Button, Card, EmptyState, Input, Modal } from '@repo/ui'
-import { FileText, MessageSquareText, Search, Ticket } from 'lucide-react'
+import { Button, Card, EmptyState, Input, Modal, StatusBanner } from '@repo/ui'
+import { FileText, Loader2, MessageSquareText, Search, Ticket } from 'lucide-react'
 import { searchWorkspace } from '@/lib/api/search'
+import { downloadDocument } from '@/lib/api/documents'
 
 type DocumentResult = {
   documentId: string
   knowledgeBaseId: string
   title: string
+  sourceUrl?: string | null
   snippet: string
   score: number
 }
@@ -34,6 +36,8 @@ type SearchResponse = {
   chatMessages: ChatMessageResult[]
 }
 
+type SearchStatus = 'idle' | 'loading' | 'error' | 'success'
+
 const emptyResults: SearchResponse = { documents: [], tickets: [], chatMessages: [] }
 
 export function WorkspaceSearch({ workspaceId, collapsed }: { workspaceId: string; collapsed: boolean }) {
@@ -42,6 +46,7 @@ export function WorkspaceSearch({ workspaceId, collapsed }: { workspaceId: strin
   const [open, setOpen] = React.useState(false)
   const [query, setQuery] = React.useState('')
   const [results, setResults] = React.useState<SearchResponse>(emptyResults)
+  const [status, setStatus] = React.useState<SearchStatus>('idle')
 
   React.useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
@@ -71,20 +76,38 @@ export function WorkspaceSearch({ workspaceId, collapsed }: { workspaceId: strin
     const trimmed = query.trim()
     if (!trimmed) {
       setResults(emptyResults)
+      setStatus('idle')
       return
     }
 
+    setStatus('loading')
+    const controller = new AbortController()
+
     const timeout = window.setTimeout(() => {
-      void searchWorkspace(workspaceId, trimmed).then((response) => {
-        setResults({
-          documents: Array.isArray(response?.documents) ? response.documents : [],
-          tickets: Array.isArray(response?.tickets) ? response.tickets : [],
-          chatMessages: Array.isArray(response?.chatMessages) ? response.chatMessages : [],
+      void searchWorkspace(workspaceId, trimmed, { signal: controller.signal })
+        .then((response) => {
+          // A newer keystroke may have superseded this request before it resolved;
+          // applying it now would overwrite fresher results with stale ones.
+          if (controller.signal.aborted) return
+          setResults({
+            documents: Array.isArray(response?.documents) ? response.documents : [],
+            tickets: Array.isArray(response?.tickets) ? response.tickets : [],
+            chatMessages: Array.isArray(response?.chatMessages) ? response.chatMessages : [],
+          })
+          setStatus('success')
         })
-      })
+        .catch(() => {
+          // An aborted request means a newer keystroke superseded this one — its
+          // result is stale, not a failure, so leave status/results untouched.
+          if (controller.signal.aborted) return
+          setStatus('error')
+        })
     }, 300)
 
-    return () => window.clearTimeout(timeout)
+    return () => {
+      window.clearTimeout(timeout)
+      controller.abort()
+    }
   }, [open, query, workspaceId])
 
   const hasResults =
@@ -96,6 +119,18 @@ export function WorkspaceSearch({ workspaceId, collapsed }: { workspaceId: strin
       router.push(href)
     },
     [router],
+  )
+
+  const openDocument = React.useCallback(
+    (result: DocumentResult) => {
+      setOpen(false)
+      if (result.sourceUrl) {
+        window.open(result.sourceUrl, '_blank', 'noreferrer')
+        return
+      }
+      void downloadDocument(workspaceId, result.knowledgeBaseId, result.documentId)
+    },
+    [workspaceId],
   )
 
   return (
@@ -114,26 +149,47 @@ export function WorkspaceSearch({ workspaceId, collapsed }: { workspaceId: strin
         {!collapsed ? <span className="text-xs text-muted-foreground">⌘K</span> : null}
       </Button>
 
-      <Modal open={open} onClose={() => setOpen(false)} title="Search workspace">
+      <Modal open={open} onClose={() => setOpen(false)} title="Search workspace" size="full">
         <div className="space-y-4">
           <div className="space-y-2">
             <label htmlFor="workspace-search-query" className="text-sm font-medium">
               Search query
             </label>
-            <Input
-              ref={inputRef}
-              id="workspace-search-query"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search documents, tickets, and chat history"
-            />
+            <div className="relative">
+              <Input
+                ref={inputRef}
+                id="workspace-search-query"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Search documents, tickets, and chat history"
+                className="pr-9"
+              />
+              {status === 'loading' ? (
+                <Loader2 className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 animate-spin text-muted-foreground" />
+              ) : null}
+            </div>
           </div>
+
+          {status === 'error' ? (
+            <StatusBanner
+              variant="error"
+              title="Search failed"
+              description="We could not complete that search. Try again in a moment."
+            />
+          ) : null}
 
           {!query.trim() ? (
             <EmptyState
               icon={<Search className="size-5" />}
               title="Search workspace"
               description="Start typing to search documents, tickets, and chat history."
+              className="py-10"
+            />
+          ) : status === 'error' ? null : status === 'loading' && !hasResults ? (
+            <EmptyState
+              icon={<Loader2 className="size-5 animate-spin" />}
+              title="Searching…"
+              description="Looking through documents, tickets, and chat history."
               className="py-10"
             />
           ) : !hasResults ? (
@@ -157,14 +213,15 @@ export function WorkspaceSearch({ workspaceId, collapsed }: { workspaceId: strin
                           type="button"
                           aria-label={result.title}
                           className="flex w-full items-start gap-3 p-4 text-left"
-                          onClick={() =>
-                            closeAndNavigate(`/workspaces/${workspaceId}/knowledge-bases/${result.knowledgeBaseId}`)
-                          }
+                          onClick={() => openDocument(result)}
                         >
                           <FileText className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
                           <span className="space-y-1">
                             <span className="block font-medium">{result.title}</span>
                             <span className="block text-sm text-muted-foreground">{result.snippet}</span>
+                            <span className="block text-xs text-muted-foreground">
+                              {result.sourceUrl ? 'Opens in a new tab' : 'Downloads the file'}
+                            </span>
                           </span>
                         </button>
                       </Card>
@@ -211,7 +268,9 @@ export function WorkspaceSearch({ workspaceId, collapsed }: { workspaceId: strin
                           type="button"
                           aria-label="Chat match"
                           className="flex w-full items-start gap-3 p-4 text-left"
-                          onClick={() => closeAndNavigate(`/workspaces/${workspaceId}/chat`)}
+                          onClick={() =>
+                            closeAndNavigate(`/workspaces/${workspaceId}/chat?session=${result.sessionId}`)
+                          }
                         >
                           <MessageSquareText className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
                           <span className="space-y-1">

@@ -6,6 +6,7 @@ type DocumentSearchResult = {
   documentId: string
   knowledgeBaseId: string
   title: string
+  sourceUrl: string | null
   snippet: string
   score: number
 }
@@ -75,6 +76,7 @@ export class SearchService {
         id: documents.id,
         knowledgeBaseId: documents.knowledgeBaseId,
         title: documents.title,
+        sourceUrl: documents.sourceUrl,
       })
       .from(documents)
       .where(and(eq(documents.workspaceId, workspaceId), inArray(documents.id, documentIds)))
@@ -93,6 +95,7 @@ export class SearchService {
         documentId,
         knowledgeBaseId: row.knowledgeBaseId,
         title: row.title,
+        sourceUrl: row.sourceUrl,
         snippet: chunk.snippet,
         score: chunk.score,
       }]

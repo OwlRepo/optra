@@ -30,6 +30,7 @@ vi.mock('@repo/db', () => ({
     id: 'id',
     title: 'title',
     sourceUrl: 'sourceUrl',
+    knowledgeBaseId: 'knowledgeBaseId',
   },
   tickets: {
     id: 'id',

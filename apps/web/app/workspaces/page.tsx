@@ -215,7 +215,7 @@ export default function WorkspacesPage() {
                       </TableCell>
                       <TableCell className="text-right">
                         <Button asChild variant="ghost" size="sm">
-                          <Link href={`/workspaces/${workspace.id}`}>Open</Link>
+                          <Link href={`/workspaces/${workspace.id}/chat`}>Open</Link>
                         </Button>
                       </TableCell>
                     </TableRow>

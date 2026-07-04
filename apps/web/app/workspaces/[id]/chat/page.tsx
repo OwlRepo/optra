@@ -4,7 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { type Message } from "ai";
 import { useChat } from "ai/react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
@@ -14,22 +14,30 @@ import {
   Card,
   EmptyState,
   Input,
+  Modal,
   StatusBanner,
+  Textarea,
   useToast,
 } from "@repo/ui";
 import {
   Bot,
-  FileStack,
-  MessageSquareText,
-  PanelLeftClose,
-  PanelLeftOpen,
+  Clock,
+  Download,
+  Eye,
+  EyeOff,
+  History,
+  Loader2,
+  Plus,
   RefreshCcw,
   Search,
   Send,
+  Sparkles,
   Square,
 } from "lucide-react";
 import { logout } from "@/lib/api/auth";
 import { getChatMessages, listChatSessions } from "@/lib/api/chat";
+import { downloadDocument } from "@/lib/api/documents";
+import { downloadTicketTranscript } from "@/lib/api/tickets";
 import { isUnauthorized } from "@/lib/api/handle-unauthorized";
 import { getWorkspace } from "@/lib/api/workspaces";
 import { WorkspaceNav } from "@/components/workspace-nav";
@@ -37,6 +45,7 @@ import { WorkspaceNav } from "@/components/workspace-nav";
 type ChatSource = {
   sourceType?: "document" | "ticket";
   documentId?: string;
+  knowledgeBaseId?: string;
   ticketId?: string;
   title: string;
   sourceUrl?: string | null;
@@ -53,7 +62,10 @@ type ChatSession = {
 
 type ChatSessionList = {
   items: ChatSession[];
-  nextCursor: string | null;
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
 };
 
 type PersistedChatMessage = {
@@ -69,10 +81,52 @@ type ChatMessageList = {
   nextCursor: string | null;
 };
 
+type MessageTemplate = {
+  id: string;
+  team: "CSR" | "TSR";
+  title: string;
+  body: string;
+};
+
 const suggestedPrompts = [
   "How do I reset a password for a customer account?",
   "What is our refund policy for annual plans?",
   "Customer cannot access invoices after SSO migration. What should support do?",
+];
+
+const thinkingWords = [
+  "Thinking…",
+  "Noodling…",
+  "Digging through the docs…",
+  "Connecting the dots…",
+  "Almost there…",
+];
+
+const messageTemplates: MessageTemplate[] = [
+  {
+    id: "csr-refund",
+    team: "CSR",
+    title: "Refund request",
+    body: "Customer {{customer_name}} is requesting a refund for {{order_or_invoice}}. Reason given: {{reason}}. Account is on the {{plan_name}} plan. What is our refund policy and next steps?",
+  },
+  {
+    id: "csr-access",
+    team: "CSR",
+    title: "Account access issue",
+    body: "Customer {{customer_name}} cannot access their account after {{recent_change}}. Error message: {{error_message}}. What troubleshooting steps should I follow?",
+  },
+  {
+    id: "tsr-bug",
+    team: "TSR",
+    title: "Suspected bug",
+    body: "Customer reports {{symptom}} when using {{feature}} on {{platform}}. Steps to reproduce: {{steps}}. Is this a known issue, and what is the workaround?",
+  },
+  {
+    id: "tsr-escalation",
+    team: "TSR",
+    title: "Escalation summary",
+    body: "Summarize the troubleshooting done so far for {{ticket_id}}: {{summary}}. What is the recommended next escalation step per our process?",
+  },
 ];
 
 const markdownComponents = {
@@ -155,8 +209,10 @@ export default function WorkspaceChatPage({
 }) {
   const workspaceId = params.id;
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { toast } = useToast();
   const toastRef = React.useRef(toast);
+  const formRef = React.useRef<HTMLFormElement>(null);
   const pendingSourcesRef = React.useRef<ChatSource[]>([]);
   const pendingSessionIdRef = React.useRef<string | null>(null);
   const [workspace, setWorkspace] = React.useState<{
@@ -164,14 +220,9 @@ export default function WorkspaceChatPage({
     name: string;
   } | null>(null);
   const [sessions, setSessions] = React.useState<ChatSession[]>([]);
-  const [nextSessionCursor, setNextSessionCursor] = React.useState<
-    string | null
-  >(null);
   const [activeSessionId, setActiveSessionId] = React.useState<
     string | undefined
   >();
-  const [isLoadingMoreSessions, setIsLoadingMoreSessions] =
-    React.useState(false);
   const [nextMessageCursor, setNextMessageCursor] = React.useState<
     string | null
   >(null);
@@ -183,52 +234,36 @@ export default function WorkspaceChatPage({
   const [messageSources, setMessageSources] = React.useState<
     Record<string, ChatSource[]>
   >({});
-  const [showHistory, setShowHistory] = React.useState(false);
+  const [historyOpen, setHistoryOpen] = React.useState(false);
+  const [historySearch, setHistorySearch] = React.useState("");
+  const [debouncedHistorySearch, setDebouncedHistorySearch] =
+    React.useState("");
+  const [templatesOpen, setTemplatesOpen] = React.useState(false);
+  const [showScores, setShowScores] = React.useState(false);
+  const [thinkingWord, setThinkingWord] = React.useState(thinkingWords[0]);
 
   React.useEffect(() => {
     toastRef.current = toast;
   }, [toast]);
 
+  // Debounce history search so we don't fire a request on every keystroke.
+  React.useEffect(() => {
+    const timeout = window.setTimeout(
+      () => setDebouncedHistorySearch(historySearch.trim()),
+      300,
+    );
+    return () => window.clearTimeout(timeout);
+  }, [historySearch]);
+
   const loadSessions = React.useCallback(async () => {
     try {
-      const data = await listChatSessions(workspaceId);
-      const rows =
-        data && typeof data === "object" ? (data as ChatSessionList) : null;
-      setSessions(Array.isArray(rows?.items) ? rows.items : []);
-      setNextSessionCursor(rows?.nextCursor ?? null);
-      setSessionLoadError(null);
-    } catch (err) {
-      if (isUnauthorized(err)) {
-        router.push("/login");
-        return;
-      }
-
-      const message =
-        err && typeof err === "object" && "message" in err
-          ? String((err as { message: unknown }).message)
-          : "Try again in a moment.";
-
-      setSessionLoadError(message);
-    }
-  }, [router, workspaceId]);
-
-  const loadMoreSessions = React.useCallback(async () => {
-    if (!nextSessionCursor || isLoadingMoreSessions) {
-      return;
-    }
-
-    setIsLoadingMoreSessions(true);
-
-    try {
       const data = await listChatSessions(workspaceId, {
-        cursor: nextSessionCursor,
+        pageSize: 5,
+        q: debouncedHistorySearch || undefined,
       });
       const rows =
         data && typeof data === "object" ? (data as ChatSessionList) : null;
-      const nextItems = Array.isArray(rows?.items) ? rows.items : [];
-
-      setSessions((current) => [...current, ...nextItems]);
-      setNextSessionCursor(rows?.nextCursor ?? null);
+      setSessions(Array.isArray(rows?.items) ? rows.items : []);
       setSessionLoadError(null);
     } catch (err) {
       if (isUnauthorized(err)) {
@@ -242,10 +277,12 @@ export default function WorkspaceChatPage({
           : "Try again in a moment.";
 
       setSessionLoadError(message);
-    } finally {
-      setIsLoadingMoreSessions(false);
     }
-  }, [isLoadingMoreSessions, nextSessionCursor, router, workspaceId]);
+  }, [debouncedHistorySearch, router, workspaceId]);
+
+  React.useEffect(() => {
+    void loadSessions();
+  }, [loadSessions]);
 
   const {
     messages,
@@ -329,17 +366,29 @@ export default function WorkspaceChatPage({
   });
 
   React.useEffect(() => {
-    void Promise.all([
-      loadSessions(),
-      getWorkspace(workspaceId).then((data) => {
+    if (!isLoading) return;
+
+    let index = 0;
+    setThinkingWord(thinkingWords[0]);
+    const intervalId = window.setInterval(() => {
+      index = (index + 1) % thinkingWords.length;
+      setThinkingWord(thinkingWords[index]);
+    }, 1400);
+
+    return () => window.clearInterval(intervalId);
+  }, [isLoading]);
+
+  React.useEffect(() => {
+    void getWorkspace(workspaceId)
+      .then((data) => {
         setWorkspace(data);
-      }),
-    ]).catch((err) => {
-      if (isUnauthorized(err)) {
-        router.push("/login");
-      }
-    });
-  }, [loadSessions, router, workspaceId]);
+      })
+      .catch((err) => {
+        if (isUnauthorized(err)) {
+          router.push("/login");
+        }
+      });
+  }, [router, workspaceId]);
 
   const handleLogout = React.useCallback(async () => {
     try {
@@ -382,6 +431,24 @@ export default function WorkspaceChatPage({
       }
     },
     [router, setMessages, workspaceId],
+  );
+
+  // Deep-link support: opening /chat?session=<id> (e.g. from the global search
+  // modal's chat-history results) loads that session on mount.
+  React.useEffect(() => {
+    const sessionId = searchParams.get("session");
+    if (sessionId) {
+      void loadSessionMessages(sessionId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const openSession = React.useCallback(
+    (sessionId: string) => {
+      void loadSessionMessages(sessionId);
+      setHistoryOpen(false);
+    },
+    [loadSessionMessages],
   );
 
   const loadOlderMessages = React.useCallback(async () => {
@@ -441,6 +508,17 @@ export default function WorkspaceChatPage({
     handleSubmit(event);
   };
 
+  const handleTextareaKeyDown = (
+    event: React.KeyboardEvent<HTMLTextAreaElement>,
+  ) => {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      if (input.trim() && !isLoading) {
+        formRef.current?.requestSubmit();
+      }
+    }
+  };
+
   const startNewChat = () => {
     React.startTransition(() => {
       setActiveSessionId(undefined);
@@ -451,13 +529,14 @@ export default function WorkspaceChatPage({
     });
   };
 
-  const latestAssistantSources = [...messages]
-    .reverse()
-    .find(
-      (message) =>
-        message.role === "assistant" &&
-        (messageSources[message.id]?.length ?? 0) > 0,
-    );
+  const applyTemplate = (template: MessageTemplate) => {
+    setInput(template.body);
+    setTemplatesOpen(false);
+  };
+
+  const hasAssistantMessage = messages.some(
+    (message) => message.role === "assistant",
+  );
 
   return (
     <AppShell
@@ -484,99 +563,33 @@ export default function WorkspaceChatPage({
           <Button
             size="sm"
             variant="outline"
-            aria-pressed={showHistory}
-            onClick={() => setShowHistory((current) => !current)}
+            onClick={() => setHistoryOpen(true)}
           >
-            {showHistory ? (
-              <PanelLeftClose className="size-4" />
-            ) : (
-              <PanelLeftOpen className="size-4" />
-            )}
-            {showHistory ? "Hide history" : "Show history"}
+            <History className="size-4" />
+            History
           </Button>
-          <Button size="sm" variant="outline" onClick={startNewChat}>
+          {hasAssistantMessage ? (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => void reload()}
+            >
+              <RefreshCcw className="size-4" />
+              Retry last answer
+            </Button>
+          ) : null}
+          <Button size="sm" onClick={startNewChat}>
+            <Plus className="size-4" />
             New chat
           </Button>
         </>
       }
       onLogout={handleLogout}
     >
-      <div
-        className={`grid gap-6 px-6 py-10 ${
-          showHistory
-            ? "xl:grid-cols-[18rem_minmax(0,1fr)_20rem]"
-            : "xl:grid-cols-[minmax(0,1fr)_20rem]"
-        }`}
-      >
-        {showHistory ? (
-          <Card variant="subtle" className="p-4">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <p className="text-sm font-semibold text-primary">History</p>
-                <p className="text-xs text-muted-foreground">
-                  Your sessions in this workspace
-                </p>
-              </div>
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => void loadSessions()}
-              >
-                <RefreshCcw className="size-4" />
-              </Button>
-            </div>
-
-            <div className="mt-4 space-y-2">
-              {sessions.map((session) => (
-                <button
-                  key={session.id}
-                  type="button"
-                  className={`w-full rounded-2xl border px-3 py-3 text-left text-sm transition ${
-                    activeSessionId === session.id
-                      ? "border-primary bg-primary/5"
-                      : "border-border/70 bg-background hover:border-primary/30"
-                  }`}
-                  onClick={() => void loadSessionMessages(session.id)}
-                >
-                  <p className="font-medium">{session.title}</p>
-                </button>
-              ))}
-
-              {sessions.length === 0 ? (
-                <EmptyState
-                  icon={<MessageSquareText className="size-5" />}
-                  title="No chat history yet"
-                  description="Start first workspace conversation to create saved history."
-                />
-              ) : null}
-
-              {nextSessionCursor ? (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => void loadMoreSessions()}
-                  isLoading={isLoadingMoreSessions}
-                  loadingText="Loading"
-                >
-                  Load more sessions
-                </Button>
-              ) : null}
-            </div>
-
-            {sessionLoadError ? (
-              <StatusBanner
-                className="mt-4"
-                variant="error"
-                title="Failed to load sessions"
-                description={sessionLoadError}
-              />
-            ) : null}
-          </Card>
-        ) : null}
-
+      <div className="h-[calc(100vh-5.75rem)] px-6 py-6">
         <Card
           variant="elevated"
-          className="flex min-h-[70vh] flex-col overflow-hidden"
+          className="flex h-full flex-col overflow-hidden"
         >
           <div className="border-b border-border/70 px-6 py-5 sm:px-8">
             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -588,9 +601,24 @@ export default function WorkspaceChatPage({
                   Ask questions across this workspace
                 </h2>
               </div>
-              <Badge variant={isLoading ? "secondary" : "success"}>
-                {isLoading ? "Searching" : "Ready"}
-              </Badge>
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  aria-pressed={showScores}
+                  onClick={() => setShowScores((current) => !current)}
+                >
+                  {showScores ? (
+                    <EyeOff className="size-4" />
+                  ) : (
+                    <Eye className="size-4" />
+                  )}
+                  {showScores ? "Hide relevance scores" : "Show relevance scores"}
+                </Button>
+                <Badge variant={isLoading ? "secondary" : "success"}>
+                  {isLoading ? "Searching" : "Ready"}
+                </Badge>
+              </div>
             </div>
           </div>
 
@@ -605,7 +633,7 @@ export default function WorkspaceChatPage({
               />
             ) : null}
 
-            {messages.length === 0 ? (
+            {messages.length === 0 && !isLoading ? (
               <EmptyState
                 icon={<Bot className="size-5" />}
                 title="Start workspace chat"
@@ -639,48 +667,152 @@ export default function WorkspaceChatPage({
                   </Button>
                 ) : null}
 
-                {messages.map((message) => (
-                  <div key={message.id} className="w-full">
-                    <div
-                      className={`w-full rounded-[calc(var(--radius)+0.25rem)] border px-4 py-4 text-sm shadow-[var(--shadow-sm)] sm:px-5 ${
-                        message.role === "user"
-                          ? "border-primary/20 bg-primary/5"
-                          : "border-border/70 bg-secondary/40"
-                      }`}
-                    >
+                {messages.map((message) => {
+                  const sources = messageSources[message.id] ?? [];
+
+                  return (
+                    <div key={message.id} className="w-full">
                       <div
-                        className={`w-full ${message.role === "user" ? "ml-auto max-w-3xl" : "max-w-3xl"}`}
+                        className={`w-full rounded-[calc(var(--radius)+0.25rem)] border px-4 py-4 text-sm shadow-[var(--shadow-sm)] sm:px-5 ${
+                          message.role === "user"
+                            ? "border-primary/20 bg-primary/5"
+                            : "border-border/70 bg-secondary/40"
+                        }`}
                       >
-                        <p className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                          {message.role}
-                        </p>
-                        <div className="leading-7 text-foreground/95">
-                          <ReactMarkdown
-                            remarkPlugins={[remarkGfm]}
-                            components={markdownComponents}
-                          >
-                            {message.content}
-                          </ReactMarkdown>
+                        <div
+                          className={`w-full ${message.role === "user" ? "ml-auto max-w-3xl" : "max-w-3xl"}`}
+                        >
+                          <p className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                            {message.role}
+                          </p>
+                          <div className="leading-7 text-foreground/95">
+                            <ReactMarkdown
+                              remarkPlugins={[remarkGfm]}
+                              components={markdownComponents}
+                            >
+                              {message.content}
+                            </ReactMarkdown>
+                          </div>
+
+                          {message.role === "assistant" && sources.length > 0 ? (
+                            <div className="mt-4 space-y-2 border-t border-border/50 pt-3">
+                              <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                                Sources ({sources.length})
+                              </p>
+                              {sources.map((source) => {
+                                const key =
+                                  source.sourceType === "ticket"
+                                    ? source.ticketId
+                                    : source.documentId;
+                                const isTicket = source.sourceType === "ticket";
+                                const sourceUrl = isTicket
+                                  ? null
+                                  : source.sourceUrl;
+                                const canDownloadDocument =
+                                  !isTicket && Boolean(source.knowledgeBaseId);
+
+                                return (
+                                  <div
+                                    key={`${message.id}-${key}`}
+                                    className="rounded-2xl border border-border/70 bg-background px-3 py-3 text-sm"
+                                  >
+                                    <div className="flex items-center justify-between gap-3">
+                                      {sourceUrl ? (
+                                        <a
+                                          href={sourceUrl}
+                                          target="_blank"
+                                          rel="noreferrer"
+                                          className="font-medium text-primary underline-offset-4 hover:underline"
+                                        >
+                                          {source.title}
+                                        </a>
+                                      ) : (
+                                        <p className="font-medium">{source.title}</p>
+                                      )}
+                                      {showScores ? (
+                                        <Badge variant="outline">
+                                          {source.score.toFixed(2)}
+                                        </Badge>
+                                      ) : null}
+                                    </div>
+                                    <p className="mt-2 line-clamp-4 text-xs leading-6 text-muted-foreground">
+                                      {source.snippet}
+                                    </p>
+                                    {isTicket ? (
+                                      <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="sm"
+                                        className="mt-2"
+                                        onClick={() =>
+                                          void downloadTicketTranscript(
+                                            workspaceId,
+                                            source.ticketId!,
+                                          )
+                                        }
+                                      >
+                                        <Download className="size-4" />
+                                        Download transcript (PDF)
+                                      </Button>
+                                    ) : canDownloadDocument ? (
+                                      <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="sm"
+                                        className="mt-2"
+                                        onClick={() =>
+                                          void downloadDocument(
+                                            workspaceId,
+                                            source.knowledgeBaseId!,
+                                            source.documentId!,
+                                          )
+                                        }
+                                      >
+                                        <Download className="size-4" />
+                                        Download document
+                                      </Button>
+                                    ) : null}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          ) : null}
                         </div>
                       </div>
                     </div>
+                  );
+                })}
+
+                {isLoading ? (
+                  <div className="w-full">
+                    <div className="w-full max-w-3xl rounded-[calc(var(--radius)+0.25rem)] border border-border/70 bg-secondary/40 px-4 py-4 text-sm shadow-[var(--shadow-sm)] sm:px-5">
+                      <p className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                        assistant
+                      </p>
+                      <p className="flex items-center gap-2 text-muted-foreground">
+                        <Loader2 className="size-4 animate-spin" />
+                        {thinkingWord}
+                      </p>
+                    </div>
                   </div>
-                ))}
+                ) : null}
               </div>
             )}
           </div>
 
           <div className="border-t border-border/70 bg-background/70 px-6 py-5 backdrop-blur-sm sm:px-8">
-            <form onSubmit={submitForm} className="space-y-3">
+            <form ref={formRef} onSubmit={submitForm} className="space-y-3">
               <div className="flex flex-col gap-3 sm:flex-row">
-                <Input
+                <Textarea
                   value={input}
                   onChange={handleInputChange}
-                  placeholder="Ask a workspace question…"
-                  className="h-12 flex-1 text-base"
+                  onKeyDown={handleTextareaKeyDown}
+                  placeholder="Ask a workspace question… (Shift+Enter for a new line)"
+                  rows={3}
+                  className="min-h-[3.5rem] flex-1 resize-none text-base"
                   disabled={isLoading}
                 />
-                <div className="flex gap-3">
+                <div className="flex gap-3 sm:flex-col">
                   {isLoading ? (
                     <Button
                       type="button"
@@ -703,74 +835,97 @@ export default function WorkspaceChatPage({
                   </Button>
                 </div>
               </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setTemplatesOpen(true)}
+              >
+                <Sparkles className="size-4" />
+                Message templates
+              </Button>
             </form>
           </div>
         </Card>
-
-        <Card variant="subtle" className="p-4">
-          <div className="flex items-center gap-3">
-            <Search className="size-5 text-primary" />
-            <div>
-              <p className="text-sm font-semibold text-primary">Sources</p>
-              <p className="text-xs text-muted-foreground">
-                Latest assistant citations
-              </p>
-            </div>
-          </div>
-
-          <div className="mt-4 space-y-3">
-            {latestAssistantSources ? (
-              messageSources[latestAssistantSources.id]?.map((source) => {
-                const key =
-                  source.sourceType === "ticket"
-                    ? source.ticketId
-                    : source.documentId;
-                const sourceUrl =
-                  source.sourceType === "ticket" ? null : source.sourceUrl;
-                return (
-                  <div
-                    key={`${latestAssistantSources.id}-${key}`}
-                    className="rounded-2xl border border-border/70 bg-background px-3 py-3 text-sm"
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      {sourceUrl ? (
-                        <a
-                          href={sourceUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="font-medium text-primary underline-offset-4 hover:underline"
-                        >
-                          {source.title}
-                        </a>
-                      ) : (
-                        <p className="font-medium">{source.title}</p>
-                      )}
-                      <Badge variant="outline">{source.score.toFixed(2)}</Badge>
-                    </div>
-                    <p className="mt-2 line-clamp-4 text-xs leading-6 text-muted-foreground">
-                      {source.snippet}
-                    </p>
-                  </div>
-                );
-              })
-            ) : (
-              <EmptyState
-                icon={<FileStack className="size-5" />}
-                title="No citations yet"
-                description="Cited sources appear here after assistant finishes an answer."
-              />
-            )}
-          </div>
-
-          {messages.some((message) => message.role === "assistant") ? (
-            <div className="mt-4">
-              <Button variant="ghost" size="sm" onClick={() => void reload()}>
-                Retry last answer
-              </Button>
-            </div>
-          ) : null}
-        </Card>
       </div>
+
+      <Modal
+        open={historyOpen}
+        onClose={() => setHistoryOpen(false)}
+        title="Chat history"
+      >
+        <div className="space-y-4">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              aria-label="Search chat history"
+              placeholder="Search by topic or keyword"
+              className="pl-9"
+              value={historySearch}
+              onChange={(event) => setHistorySearch(event.target.value)}
+            />
+          </div>
+
+          <div className="space-y-2">
+            {sessions.map((session) => (
+              <button
+                key={session.id}
+                type="button"
+                className={`w-full rounded-2xl border px-3 py-3 text-left text-sm transition ${
+                  activeSessionId === session.id
+                    ? "border-primary bg-primary/5"
+                    : "border-border/70 bg-background hover:border-primary/30"
+                }`}
+                onClick={() => openSession(session.id)}
+              >
+                <p className="font-medium">{session.title}</p>
+              </button>
+            ))}
+
+            {sessions.length === 0 ? (
+              <EmptyState
+                icon={<Clock className="size-5" />}
+                title="No chat history yet"
+                description="Start first workspace conversation to create saved history."
+              />
+            ) : null}
+          </div>
+
+          {sessionLoadError ? (
+            <StatusBanner
+              variant="error"
+              title="Failed to load sessions"
+              description={sessionLoadError}
+            />
+          ) : null}
+        </div>
+      </Modal>
+
+      <Modal
+        open={templatesOpen}
+        onClose={() => setTemplatesOpen(false)}
+        title="Message templates"
+      >
+        <div className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Fill in the blanks for a clear, retrieval-friendly prompt.
+          </p>
+          {messageTemplates.map((template) => (
+            <button
+              key={template.id}
+              type="button"
+              className="w-full rounded-2xl border border-border/70 bg-background px-4 py-3 text-left text-sm transition hover:border-primary/30"
+              onClick={() => applyTemplate(template)}
+            >
+              <div className="flex items-center gap-2">
+                <Badge variant="outline">{template.team}</Badge>
+                <p className="font-medium">{template.title}</p>
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">{template.body}</p>
+            </button>
+          ))}
+        </div>
+      </Modal>
     </AppShell>
   );
 }

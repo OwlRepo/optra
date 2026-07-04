@@ -109,6 +109,7 @@ async function buildSources(
             id: documents.id,
             title: documents.title,
             sourceUrl: documents.sourceUrl,
+            knowledgeBaseId: documents.knowledgeBaseId,
           })
           .from(documents)
           .where(inArray(documents.id, documentIds))
@@ -135,6 +136,7 @@ async function buildSources(
       {
         sourceType: 'document' as const,
         documentId,
+        knowledgeBaseId: row.knowledgeBaseId,
         title: row.title,
         sourceUrl: row.sourceUrl,
         score: chunk.score,

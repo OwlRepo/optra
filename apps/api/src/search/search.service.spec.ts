@@ -147,10 +147,36 @@ describe('SearchService', () => {
         documentId: myDocument.id,
         knowledgeBaseId: myKnowledgeBase.id,
         title: 'OTP Runbook',
+        sourceUrl: null,
         snippet: 'OTP fix snippet',
         score: 0.93,
       },
     ])
+  })
+
+  it('includes sourceUrl for crawled documents so the client can distinguish a link from an uploaded file', async () => {
+    const mine = await seedWorkspaceFixture(prefix, 'docs-sourceurl')
+    const [knowledgeBase] = await db
+      .insert(knowledgeBases)
+      .values({ workspaceId: mine.workspace.id, name: 'KB' })
+      .returning()
+    const [crawledDocument] = await db
+      .insert(documents)
+      .values({
+        workspaceId: mine.workspace.id,
+        knowledgeBaseId: knowledgeBase.id,
+        title: 'Crawled Page',
+        sourceUrl: 'https://docs.example.com/page',
+      })
+      .returning()
+
+    ;(similaritySearch as jest.Mock).mockResolvedValue([
+      { id: randomUUID(), content: 'Crawled snippet', metadata: { documentId: crawledDocument.id }, score: 0.9 },
+    ])
+
+    const result = await service.search(mine.workspace.id, 'crawled')
+
+    expect(result.documents[0]?.sourceUrl).toBe('https://docs.example.com/page')
   })
 
   it('returns ticket results scoped to workspace', async () => {

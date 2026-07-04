@@ -324,7 +324,7 @@ describe('TicketsService', () => {
     ).rejects.toThrow(NotFoundException)
   })
 
-  it('paginates tickets by updatedAt desc, createdAt desc, then id', async () => {
+  it('paginates tickets newest-updated first with page/pageSize and total metadata', async () => {
     const { workspace } = await seedWorkspaceFixture(
       `${prefix}list-page@example.com`,
       'Tickets Spec List Page',
@@ -366,30 +366,109 @@ describe('TicketsService', () => {
       },
     ])
 
-    const firstPage = await service.list(workspace.id, { limit: 2 })
+    const firstPage = await service.list(workspace.id, { page: '1', pageSize: '2' })
 
     expect(firstPage.items.map((ticket) => ticket.title)).toEqual(['Third ticket', 'Second ticket'])
-    expect(firstPage.nextCursor).toEqual(expect.any(String))
+    expect(firstPage.total).toBe(3)
+    expect(firstPage.totalPages).toBe(2)
 
-    await db.insert(tickets).values({
-      workspaceId: workspace.id,
-      transcript: 'Between transcript',
-      transcriptHash: `between-${Date.now()}`,
-      status: 'done',
-      title: 'Between ticket',
-      productArea: 'general',
-      fieldConfidence: {},
-      createdAt: new Date('2026-07-01T00:00:01.500Z'),
-      updatedAt: new Date('2026-07-01T00:00:03.500Z'),
-    })
+    const secondPage = await service.list(workspace.id, { page: '2', pageSize: '2' })
 
-    const secondPage = await service.list(workspace.id, {
-      limit: 2,
-      cursor: firstPage.nextCursor!,
-    })
+    expect(secondPage.items.map((ticket) => ticket.title)).toEqual(['First ticket'])
+    expect(secondPage.page).toBe(2)
+  })
 
-    expect(secondPage.items.map((ticket) => ticket.title)).toEqual(['Between ticket', 'First ticket'])
-    expect(secondPage.nextCursor).toBeNull()
+  it('searches tickets by title and filters by status/severity/usefulness', async () => {
+    const { workspace } = await seedWorkspaceFixture(
+      `${prefix}list-filter@example.com`,
+      'Tickets Spec List Filter',
+    )
+
+    await db.insert(tickets).values([
+      {
+        workspaceId: workspace.id,
+        transcript: 'Alpha transcript',
+        transcriptHash: `alpha-${Date.now()}`,
+        status: 'done',
+        title: 'Alpha login bug',
+        severity: 'high',
+        usefulness: 'useful',
+        productArea: 'general',
+        fieldConfidence: {},
+      },
+      {
+        workspaceId: workspace.id,
+        transcript: 'Beta transcript',
+        transcriptHash: `beta-${Date.now()}`,
+        status: 'failed',
+        title: 'Beta billing issue',
+        severity: 'low',
+        usefulness: 'not_useful',
+        productArea: 'general',
+        fieldConfidence: {},
+      },
+    ])
+
+    const searched = await service.list(workspace.id, { q: 'login' })
+    expect(searched.items.map((t) => t.title)).toEqual(['Alpha login bug'])
+
+    const byStatus = await service.list(workspace.id, { status: 'failed' })
+    expect(byStatus.items.map((t) => t.title)).toEqual(['Beta billing issue'])
+
+    const bySeverity = await service.list(workspace.id, { severity: 'high' })
+    expect(bySeverity.items.map((t) => t.title)).toEqual(['Alpha login bug'])
+
+    const byUsefulness = await service.list(workspace.id, { usefulness: 'useful' })
+    expect(byUsefulness.items.map((t) => t.title)).toEqual(['Alpha login bug'])
+  })
+
+  it('filters tickets by indexed (done + reviewedBy + usefulness=useful)', async () => {
+    const { workspace, user } = await seedWorkspaceFixture(
+      `${prefix}list-indexed@example.com`,
+      'Tickets Spec List Indexed',
+    )
+
+    await db.insert(tickets).values([
+      {
+        workspaceId: workspace.id,
+        transcript: 'Indexed transcript',
+        transcriptHash: `indexed-${Date.now()}`,
+        status: 'done',
+        title: 'Indexed ticket',
+        usefulness: 'useful',
+        reviewedBy: user.id,
+        reviewedAt: new Date(),
+        productArea: 'general',
+        fieldConfidence: {},
+      },
+      {
+        workspaceId: workspace.id,
+        transcript: 'Not indexed transcript',
+        transcriptHash: `not-indexed-${Date.now()}`,
+        status: 'done',
+        title: 'Not indexed ticket',
+        usefulness: 'not_useful',
+        reviewedBy: user.id,
+        reviewedAt: new Date(),
+        productArea: 'general',
+        fieldConfidence: {},
+      },
+      {
+        workspaceId: workspace.id,
+        transcript: 'Unreviewed transcript',
+        transcriptHash: `unreviewed-${Date.now()}`,
+        status: 'done',
+        title: 'Unreviewed ticket',
+        productArea: 'general',
+        fieldConfidence: {},
+      },
+    ])
+
+    const indexed = await service.list(workspace.id, { indexed: 'true' })
+    expect(indexed.items.map((t) => t.title)).toEqual(['Indexed ticket'])
+
+    const notIndexed = await service.list(workspace.id, { indexed: 'false' })
+    expect(notIndexed.items.map((t) => t.title).sort()).toEqual(['Not indexed ticket', 'Unreviewed ticket'].sort())
   })
 
   it('returns existing ticket when insert loses dedup race on unique violation', async () => {
@@ -512,5 +591,24 @@ describe('TicketsService', () => {
     expect(detail).not.toHaveProperty('transcriptHash')
     expect(detail).not.toHaveProperty('enqueuedAt')
     expect(detail).not.toHaveProperty('processingStartedAt')
+  })
+
+  it('getTranscriptPdf renders the transcript as a downloadable PDF buffer', async () => {
+    const { workspace } = await seedWorkspaceFixture(`${prefix}pdf@example.com`, 'Tickets Spec PDF')
+    const created = await service.create(workspace.id, 'Customer transcript for PDF export')
+
+    const result = await service.getTranscriptPdf(workspace.id, created.ticket.id)
+
+    expect(result.title).toMatch(/\.pdf$/)
+    expect(Buffer.isBuffer(result.buffer)).toBe(true)
+    expect(result.buffer.subarray(0, 5).toString()).toBe('%PDF-')
+  })
+
+  it('getTranscriptPdf 404s for a ticket in another workspace', async () => {
+    const mine = await seedWorkspaceFixture(`${prefix}pdf-mine@example.com`, 'Tickets Spec PDF Mine')
+    const other = await seedWorkspaceFixture(`${prefix}pdf-other@example.com`, 'Tickets Spec PDF Other')
+    const created = await service.create(other.workspace.id, 'Other workspace transcript')
+
+    await expect(service.getTranscriptPdf(mine.workspace.id, created.ticket.id)).rejects.toThrow(NotFoundException)
   })
 })

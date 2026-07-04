@@ -1,16 +1,19 @@
 import { Injectable, NotFoundException } from '@nestjs/common'
-import { and, asc, desc, eq, gt, lt, or, sql } from 'drizzle-orm'
+import { and, asc, count, desc, eq, gt, ilike, lt, or, sql } from 'drizzle-orm'
 import {
+  buildOffsetResult,
   chatMessages,
   chatSessions,
   db,
   decodeCursor,
   encodeCursor,
+  resolveOffsetPage,
   type ChatMessageSource,
 } from '@repo/db'
 import { CacheService } from '../cache/cache.service'
 import { UsageService } from '../limits/usage.service'
 import { ListQueryDto } from '../common/dto/list-query.dto'
+import type { ListChatSessionsQueryDto } from './dto/list-chat-sessions-query.dto'
 
 type CacheStatus = 'exact' | 'semantic' | 'miss'
 
@@ -106,13 +109,20 @@ export class ChatService {
   async listSessions(
     workspaceId: string,
     userId: string,
-    query: Pick<ListQueryDto, 'cursor' | 'limit'>,
+    query: Pick<ListChatSessionsQueryDto, 'page' | 'pageSize' | 'q'>,
   ) {
-    const limit = Math.min(Math.max(Number(query.limit ?? 20), 1), 100)
-    const cursor = query.cursor ? decodeCursor(query.cursor) : null
-    const updatedAtMs = sql<number>`floor(extract(epoch from ${chatSessions.updatedAt}) * 1000)`
+    const { page, pageSize, offset } = resolveOffsetPage(query.page, query.pageSize, { pageSize: 5 })
 
-    const rows = await db
+    const filters = [eq(chatSessions.workspaceId, workspaceId), eq(chatSessions.userId, userId)]
+    const search = query.q?.trim()
+    if (search) {
+      filters.push(ilike(chatSessions.title, `%${search}%`))
+    }
+    const where = and(...filters)
+
+    const [{ value: total }] = await db.select({ value: count() }).from(chatSessions).where(where)
+
+    const items = await db
       .select({
         id: chatSessions.id,
         title: chatSessions.title,
@@ -120,32 +130,12 @@ export class ChatService {
         updatedAt: chatSessions.updatedAt,
       })
       .from(chatSessions)
-      .where(
-        and(
-          eq(chatSessions.workspaceId, workspaceId),
-          eq(chatSessions.userId, userId),
-          cursor
-            ? or(
-                lt(updatedAtMs, Number(cursor.k[0])),
-                and(eq(updatedAtMs, Number(cursor.k[0])), lt(chatSessions.id, cursor.id)),
-              )
-            : undefined,
-        ),
-      )
-      .orderBy(desc(updatedAtMs), desc(chatSessions.id))
-      .limit(limit + 1)
+      .where(where)
+      .orderBy(desc(chatSessions.updatedAt), desc(chatSessions.id))
+      .limit(pageSize)
+      .offset(offset)
 
-    const hasMore = rows.length > limit
-    const items = rows.slice(0, limit)
-    const last = items.at(-1)
-
-    return {
-      items,
-      nextCursor:
-        hasMore && last
-          ? encodeCursor({ k: [last.updatedAt.getTime()], id: last.id })
-          : null,
-    }
+    return buildOffsetResult(items, Number(total), page, pageSize)
   }
 
   async getMessages(

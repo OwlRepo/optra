@@ -156,12 +156,12 @@ describe('Tickets flow (e2e)', () => {
 
     const pendingList = await request(app.getHttpServer())
       .get(`/workspaces/${workspaceId}/tickets`)
-      .query({ limit: 1 })
+      .query({ pageSize: 1 })
       .set('Authorization', `Bearer ${coworker.accessToken}`)
       .expect(200)
 
     expect(pendingList.body.items[0].status).toBe('pending')
-    expect(pendingList.body.nextCursor).toBeNull()
+    expect(pendingList.body.totalPages).toBe(1)
 
     await db
       .update(tickets)

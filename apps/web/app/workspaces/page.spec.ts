@@ -59,6 +59,18 @@ describe('WorkspacesPage', () => {
     expect(screen.getByText('member')).toBeDefined()
   })
 
+  it('opens a workspace directly into chat (default landing page)', async () => {
+    listWorkspacesMock.mockResolvedValue({
+      items: [{ id: 'ws-1', name: 'Alpha', role: 'owner' }],
+      nextCursor: null,
+    })
+
+    renderPage()
+
+    expect(await screen.findByText('Alpha')).toBeDefined()
+    expect(screen.getByRole('link', { name: 'Open' }).getAttribute('href')).toBe('/workspaces/ws-1/chat')
+  })
+
   it('renders empty state when there are no workspaces', async () => {
     listWorkspacesMock.mockResolvedValue({ items: [], nextCursor: null })
 
