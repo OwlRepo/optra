@@ -9,18 +9,18 @@ import {
 } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { Job, Queue } from 'bull'
-import { and, count, desc, eq, lt, or, sql } from 'drizzle-orm'
+import { and, count, desc, eq, ilike, or } from 'drizzle-orm'
 import {
+  buildOffsetResult,
   db,
-  decodeCursor,
   documents,
-  encodeCursor,
   knowledgeBases,
+  resolveOffsetPage,
   scrapeRuns,
   type ScrapeRun,
 } from '@repo/db'
 import { assertPublicUrl } from '@repo/ai'
-import { ListQueryDto } from '../common/dto/list-query.dto'
+import { ListScrapeRunsQueryDto } from './dto/list-scrape-runs-query.dto'
 import { ScrapeDto } from './dto/scrape.dto'
 
 const QUEUED_SCRAPE_STALE_MS = 2 * 60_000
@@ -131,45 +131,35 @@ export class ScrapeService implements OnModuleInit {
   async listRuns(
     workspaceId: string,
     kbId: string,
-    query: Pick<ListQueryDto, 'cursor' | 'limit'>,
+    query: Pick<ListScrapeRunsQueryDto, 'page' | 'pageSize' | 'q' | 'status'>,
   ) {
     await this.assertKbInWorkspace(workspaceId, kbId)
-    const limit = Math.min(Math.max(Number(query.limit ?? 20), 1), 100)
-    const cursor = query.cursor ? decodeCursor(query.cursor) : null
-    const createdAtUs = sql<number>`floor(extract(epoch from ${scrapeRuns.createdAt}) * 1000000)`
+    const { page, pageSize, offset } = resolveOffsetPage(query.page, query.pageSize, { pageSize: 5 })
 
-    const rows = await db
+    const filters = [
+      eq(scrapeRuns.workspaceId, workspaceId),
+      eq(scrapeRuns.knowledgeBaseId, kbId),
+    ]
+    if (query.status) {
+      filters.push(eq(scrapeRuns.status, query.status))
+    }
+    const search = query.q?.trim()
+    if (search) {
+      filters.push(ilike(scrapeRuns.seedUrl, `%${search}%`))
+    }
+    const where = and(...filters)
+
+    const [{ value: total }] = await db.select({ value: count() }).from(scrapeRuns).where(where)
+
+    const items = await db
       .select()
       .from(scrapeRuns)
-      .where(
-        and(
-          eq(scrapeRuns.workspaceId, workspaceId),
-          eq(scrapeRuns.knowledgeBaseId, kbId),
-          cursor
-            ? or(
-                lt(createdAtUs, Number(cursor.k[0])),
-                and(eq(createdAtUs, Number(cursor.k[0])), lt(scrapeRuns.id, cursor.id)),
-              )
-            : undefined,
-        ),
-      )
-      .orderBy(desc(createdAtUs), desc(scrapeRuns.id))
-      .limit(limit + 1)
+      .where(where)
+      .orderBy(desc(scrapeRuns.createdAt), desc(scrapeRuns.id))
+      .limit(pageSize)
+      .offset(offset)
 
-    const hasMore = rows.length > limit
-    const items = rows.slice(0, limit)
-    const last = items.at(-1)
-
-    return {
-      items,
-      nextCursor:
-        hasMore && last
-          ? encodeCursor({
-              k: [Math.floor(last.createdAt.getTime() * 1000)],
-              id: last.id,
-            })
-          : null,
-    }
+    return buildOffsetResult(items, Number(total), page, pageSize)
   }
 
   async quotaRemaining(workspaceId: string) {

@@ -4,7 +4,7 @@ import { Roles } from '../auth/decorators/roles.decorator'
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard'
 import { RolesGuard } from '../auth/guards/roles.guard'
 import { WorkspaceMemberGuard } from '../auth/guards/workspace-member.guard'
-import { ListQueryDto } from '../common/dto/list-query.dto'
+import { ListScrapeRunsQueryDto } from './dto/list-scrape-runs-query.dto'
 import { ScrapeDto } from './dto/scrape.dto'
 import { ScrapeService } from './scrape.service'
 
@@ -31,7 +31,7 @@ export class ScrapeController {
   list(
     @Param('workspaceId') workspaceId: string,
     @Param('kbId') kbId: string,
-    @Query() query: ListQueryDto,
+    @Query() query: ListScrapeRunsQueryDto,
   ) {
     return this.scrapeService.listRuns(workspaceId, kbId, query)
   }

@@ -1,12 +1,15 @@
 import { PassThrough } from 'stream'
+import type { Response } from 'express'
 import { DocumentsController } from './documents.controller'
 import { DocumentsService } from './documents.service'
 
-function fakeRes() {
+type MockResponse = Response & PassThrough & { set: jest.Mock; send: jest.Mock }
+
+function fakeRes(): MockResponse {
   const stream = new PassThrough() as PassThrough & { set: jest.Mock; send: jest.Mock }
   stream.set = jest.fn().mockReturnThis()
   stream.send = jest.fn()
-  return stream
+  return stream as unknown as MockResponse
 }
 
 const flush = () => new Promise((resolve) => setImmediate(resolve))

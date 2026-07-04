@@ -52,4 +52,20 @@ describe('scrape api client', () => {
 
     await expect(listScrapeRuns('ws-1', 'kb-1')).resolves.toEqual([{ id: 'run-1', status: 'completed' }])
   })
+
+  it('serializes offset, search, and status filter params for scrape runs', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ items: [], page: 2, pageSize: 5, total: 0, totalPages: 0 }),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    await listScrapeRuns('ws-1', 'kb-1', { page: 2, pageSize: 5, q: 'docs', status: 'failed' })
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/workspaces/ws-1/knowledge-bases/kb-1/scrape-runs?page=2&pageSize=5&q=docs&status=failed',
+      expect.any(Object),
+    )
+  })
 })

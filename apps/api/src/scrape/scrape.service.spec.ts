@@ -253,70 +253,79 @@ describe('ScrapeService', () => {
     expect(queue.add).not.toHaveBeenCalled()
   })
 
-  it('paginates scrape runs by createdAt desc with cursor', async () => {
+  it('paginates scrape runs by createdAt desc with offset pages and defaults page size to 5', async () => {
     const { workspace, knowledgeBase } = await seedWorkspaceFixture(
       `${prefix}runs-page@example.com`,
       'Scrape Runs Page WS',
+    )
+
+    await db.insert(scrapeRuns).values(
+      Array.from({ length: 6 }, (_, index) => ({
+        workspaceId: workspace.id,
+        knowledgeBaseId: knowledgeBase.id,
+        seedUrl: `https://example.com/run-${index + 1}`,
+        status: 'completed' as const,
+        maxDepth: 1,
+        maxPages: 10,
+        createdAt: new Date(`2026-07-01T00:00:0${index + 1}.000Z`),
+      })),
+    )
+
+    const firstPage = await service.listRuns(workspace.id, knowledgeBase.id, {})
+
+    expect(firstPage.items.map((run) => run.seedUrl)).toEqual([
+      'https://example.com/run-6',
+      'https://example.com/run-5',
+      'https://example.com/run-4',
+      'https://example.com/run-3',
+      'https://example.com/run-2',
+    ])
+    expect(firstPage.page).toBe(1)
+    expect(firstPage.pageSize).toBe(5)
+    expect(firstPage.total).toBe(6)
+    expect(firstPage.totalPages).toBe(2)
+
+    const secondPage = await service.listRuns(workspace.id, knowledgeBase.id, {
+      page: '2',
+      pageSize: '5',
+    })
+
+    expect(secondPage.items.map((run) => run.seedUrl)).toEqual(['https://example.com/run-1'])
+    expect(secondPage.page).toBe(2)
+  })
+
+  it('searches scrape runs by seed URL and filters by status', async () => {
+    const { workspace, knowledgeBase } = await seedWorkspaceFixture(
+      `${prefix}runs-filter@example.com`,
+      'Scrape Runs Filter WS',
     )
 
     await db.insert(scrapeRuns).values([
       {
         workspaceId: workspace.id,
         knowledgeBaseId: knowledgeBase.id,
-        seedUrl: 'https://example.com/first',
+        seedUrl: 'https://example.com/docs',
         status: 'completed',
         maxDepth: 1,
         maxPages: 10,
-        createdAt: new Date('2026-07-01T00:00:01.000Z'),
       },
       {
         workspaceId: workspace.id,
         knowledgeBaseId: knowledgeBase.id,
-        seedUrl: 'https://example.com/second',
-        status: 'completed',
+        seedUrl: 'https://example.com/support',
+        status: 'failed',
         maxDepth: 1,
         maxPages: 10,
-        createdAt: new Date('2026-07-01T00:00:02.000Z'),
-      },
-      {
-        workspaceId: workspace.id,
-        knowledgeBaseId: knowledgeBase.id,
-        seedUrl: 'https://example.com/third',
-        status: 'completed',
-        maxDepth: 1,
-        maxPages: 10,
-        createdAt: new Date('2026-07-01T00:00:03.000Z'),
       },
     ])
 
-    const firstPage = await service.listRuns(workspace.id, knowledgeBase.id, { limit: 2 })
+    const searched = await service.listRuns(workspace.id, knowledgeBase.id, { q: 'docs' })
+    expect(searched.items.map((run) => run.seedUrl)).toEqual(['https://example.com/docs'])
+    expect(searched.total).toBe(1)
 
-    expect(firstPage.items.map((run) => run.seedUrl)).toEqual([
-      'https://example.com/third',
-      'https://example.com/second',
-    ])
-    expect(firstPage.nextCursor).toEqual(expect.any(String))
-
-    await db.insert(scrapeRuns).values({
-      workspaceId: workspace.id,
-      knowledgeBaseId: knowledgeBase.id,
-      seedUrl: 'https://example.com/between',
-      status: 'completed',
-      maxDepth: 1,
-      maxPages: 10,
-      createdAt: new Date('2026-07-01T00:00:01.500Z'),
-    })
-
-    const secondPage = await service.listRuns(workspace.id, knowledgeBase.id, {
-      limit: 2,
-      cursor: firstPage.nextCursor!,
-    })
-
-    expect(secondPage.items.map((run) => run.seedUrl)).toEqual([
-      'https://example.com/between',
-      'https://example.com/first',
-    ])
-    expect(secondPage.nextCursor).toBeNull()
+    const failed = await service.listRuns(workspace.id, knowledgeBase.id, { status: 'failed' })
+    expect(failed.items.map((run) => run.seedUrl)).toEqual(['https://example.com/support'])
+    expect(failed.total).toBe(1)
   })
 
   it('rejects internal seed urls before enqueueing', async () => {
@@ -383,7 +392,7 @@ describe('ScrapeService', () => {
 
     expect(runs.items).toHaveLength(1)
     expect(runs.items[0]?.seedUrl).toBe('https://example.com/docs')
-    expect(runs.nextCursor).toBeNull()
+    expect(runs.total).toBe(1)
   })
 
   it('404s when kb not in workspace', async () => {
