@@ -191,13 +191,16 @@ describe('Scrape flow (e2e)', () => {
 
     const runsRes = await request(app.getHttpServer())
       .get(`/workspaces/${ownerWorkspaceId}/knowledge-bases/${kbId}/scrape-runs`)
-      .query({ limit: 1 })
+      .query({ page: 1, pageSize: 5, q: 'example.com', status: 'queued' })
       .set('Authorization', `Bearer ${member.accessToken}`)
       .expect(200)
 
     expect(runsRes.body.items).toHaveLength(1)
     expect(runsRes.body.items[0].id).toBe(ownerStart.body.runId)
-    expect(runsRes.body.nextCursor).toBeNull()
+    expect(runsRes.body.page).toBe(1)
+    expect(runsRes.body.pageSize).toBe(5)
+    expect(runsRes.body.total).toBe(1)
+    expect(runsRes.body.totalPages).toBe(1)
   })
 
   it('returns the same run when the same crawl is started twice while it is still in flight', async () => {

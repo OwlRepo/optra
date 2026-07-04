@@ -157,10 +157,11 @@ SeaweedFS uses S3-compatible auth from env (`S3_*`) plus an identities JSON file
 `apps/api/src/storage/storage.service.ts` owns object-storage access:
 - `ensureBucket()` on module init
 - `save(key, body, contentType?)`
+- `getBuffer(key)` for exact-byte API downloads
 - `getToTempFile(key)` for downstream loader/ingest steps
 - `delete(key)`
 
-Slice 3A adds only infra + storage abstraction + schema groundwork. Upload and ingest behavior arrive in Slice 3B.
+Slice 3A added infra + storage abstraction + schema groundwork. Upload and ingest behavior arrived in Slice 3B. Slice 1 workspace UX added `getBuffer()` so document download endpoints can return stored bytes without invoking the ingest loader path.
 
 ## Verification Commands
 

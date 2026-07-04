@@ -61,6 +61,12 @@ Queue reliability note as of 2026-07-01:
 - `apps/api/test/scrape.e2e-spec.ts` covers `202` for a new crawl and `200` when the same in-flight crawl is reused.
 - `apps/web/src/lib/api/scrape.spec.ts` covers reused-run detection from HTTP status, and `apps/web/app/workspaces/[id]/knowledge-bases/[kbId]/page.spec.ts` covers disabled crawl submit + duplicate-run UI feedback, truthful document-queue summary rendering, and separating run status from labeled page-level counts.
 
+Workspace UX Slice 1 note as of 2026-07-04:
+- `apps/api/src/documents/documents.service.spec.ts`, `apps/api/src/documents/documents.controller.spec.ts`, and `apps/api/test/documents.e2e-spec.ts` cover document offset pagination, newest-first ordering, member-readable single download, and member-readable bulk zip download.
+- `apps/api/src/scrape/scrape.service.spec.ts` and `apps/api/test/scrape.e2e-spec.ts` cover scrape-run offset pagination, default `pageSize=5`, `q`, and `status`.
+- `apps/web/src/lib/api/documents.spec.ts`, `apps/web/src/lib/api/scrape.spec.ts`, route specs under the KB document/scrape proxy folders, and `apps/web/app/workspaces/[id]/knowledge-bases/[kbId]/page.spec.ts` cover query passthrough, raw download proxying, drag/drop upload, search/filter/pagination controls, and selected-documents download.
+- `apps/api/src/storage/storage.service.spec.ts` covers `getBuffer()` when S3 env is available; without `S3_ENDPOINT`, that integration suite intentionally skips.
+
 Workspace package sync note as of 2026-07-01:
 - After schema changes in `packages/db/src/schema/*`, run `bun run --cwd packages/db build` before API e2e or runtime verification so `@repo/db` `dist/*` stays aligned with the source schema used by Nest runtime and e2e Jest config.
 

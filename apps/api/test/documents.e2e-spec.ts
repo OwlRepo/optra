@@ -22,6 +22,13 @@ import { AppModule } from '../src/app.module'
 import { IngestService } from '../src/ingest/ingest.service'
 import { StorageService } from '../src/storage/storage.service'
 
+function binaryParser(res: NodeJS.ReadableStream, callback: (error: Error | null, body?: Buffer) => void) {
+  const chunks: Buffer[] = []
+  res.on('data', (chunk) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)))
+  res.on('end', () => callback(null, Buffer.concat(chunks)))
+  res.on('error', (error) => callback(error))
+}
+
 jest.mock('@repo/ai', () => ({
   loadDocument: jest.fn(),
   chunkDocument: jest.fn(),
@@ -79,6 +86,7 @@ describe('Documents flow (e2e)', () => {
   let ingest: { queueDocument: jest.Mock }
   let storage: {
     save: jest.Mock
+    getBuffer: jest.Mock
     getToTempFile: jest.Mock
     delete: jest.Mock
   }
@@ -92,6 +100,13 @@ describe('Documents flow (e2e)', () => {
       save: jest.fn(async (key: string, body: Buffer) => {
         stored.set(key, Buffer.from(body))
         return key
+      }),
+      getBuffer: jest.fn(async (key: string) => {
+        const body = stored.get(key)
+        if (!body) {
+          throw new Error(`Missing stored object ${key}`)
+        }
+        return Buffer.from(body)
       }),
       getToTempFile: jest.fn(async (key: string) => {
         const body = stored.get(key)
@@ -228,24 +243,45 @@ describe('Documents flow (e2e)', () => {
 
     const listRes = await request(app.getHttpServer())
       .get(`/workspaces/${ownerWorkspaceId}/knowledge-bases/${kbId}/documents`)
-      .query({ limit: 2 })
+      .query({ page: 1, pageSize: 2 })
       .set('Authorization', `Bearer ${member.accessToken}`)
       .expect(200)
 
     expect(listRes.body.items).toHaveLength(2)
-    expect(listRes.body.items[0].id).toBe(uploadRes.body.id)
+    expect(listRes.body.items[0].id).toBe(thirdUpload.body.id)
     expect(listRes.body.items[1].id).toBe(secondUpload.body.id)
-    expect(listRes.body.nextCursor).toEqual(expect.any(String))
+    expect(listRes.body.page).toBe(1)
+    expect(listRes.body.pageSize).toBe(2)
+    expect(listRes.body.total).toBe(3)
+    expect(listRes.body.totalPages).toBe(2)
 
     const pageTwoRes = await request(app.getHttpServer())
       .get(`/workspaces/${ownerWorkspaceId}/knowledge-bases/${kbId}/documents`)
-      .query({ limit: 2, cursor: listRes.body.nextCursor })
+      .query({ page: 2, pageSize: 2 })
       .set('Authorization', `Bearer ${member.accessToken}`)
       .expect(200)
 
     expect(pageTwoRes.body.items).toHaveLength(1)
-    expect(pageTwoRes.body.items[0].id).toBe(thirdUpload.body.id)
-    expect(pageTwoRes.body.nextCursor).toBeNull()
+    expect(pageTwoRes.body.items[0].id).toBe(uploadRes.body.id)
+    expect(pageTwoRes.body.page).toBe(2)
+
+    const singleDownload = await request(app.getHttpServer())
+      .get(`/workspaces/${ownerWorkspaceId}/knowledge-bases/${kbId}/documents/${uploadRes.body.id}/download`)
+      .set('Authorization', `Bearer ${member.accessToken}`)
+      .expect(200)
+    expect(singleDownload.headers['content-disposition']).toBe('attachment; filename="test.txt"')
+    expect(singleDownload.body.toString()).toBe('seaweed test doc')
+
+    const bulkDownload = await request(app.getHttpServer())
+      .post(`/workspaces/${ownerWorkspaceId}/knowledge-bases/${kbId}/documents/download`)
+      .set('Authorization', `Bearer ${member.accessToken}`)
+      .send({ documentIds: [uploadRes.body.id, secondUpload.body.id] })
+      .buffer(true)
+      .parse(binaryParser)
+      .expect(200)
+    expect(bulkDownload.headers['content-type']).toContain('application/zip')
+    expect(bulkDownload.headers['content-disposition']).toBe('attachment; filename="documents.zip"')
+    expect(bulkDownload.body.subarray(0, 2).toString()).toBe('PK')
 
     const outsiderKbRes = await request(app.getHttpServer())
       .post(`/workspaces/${outsiderWorkspaceId}/knowledge-bases`)

@@ -399,7 +399,7 @@ describe('KnowledgeBasePage', () => {
     renderPage()
 
     expect(await screen.findAllByText('In progress')).toHaveLength(2)
-    expect(screen.getByText('Completed')).toBeDefined()
+    expect(screen.getAllByText('Completed').length).toBeGreaterThan(0)
     expect(screen.getByText('Found 10 · Queued 4 · Page errors 1')).toBeDefined()
     expect(screen.getByText('Found 0 · Queued 0 · Page errors 0')).toBeDefined()
     expect(screen.getByText('Found 3 · Queued 3 · Page errors 0')).toBeDefined()

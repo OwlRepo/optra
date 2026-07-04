@@ -190,14 +190,49 @@ export default function KnowledgeBasePage({
     toastRef.current = toast;
   }, [toast]);
 
+  React.useEffect(() => {
+    const timeout = window.setTimeout(() => setDebouncedDocumentSearch(documentSearch.trim()), 300);
+    return () => window.clearTimeout(timeout);
+  }, [documentSearch]);
+
+  React.useEffect(() => {
+    const timeout = window.setTimeout(() => setDebouncedScrapeRunSearch(scrapeRunSearch.trim()), 300);
+    return () => window.clearTimeout(timeout);
+  }, [scrapeRunSearch]);
+
+  React.useEffect(() => {
+    setDocumentPage(1);
+  }, [debouncedDocumentSearch, documentPageSize, documentStatusFilter]);
+
+  React.useEffect(() => {
+    setScrapeRunPage(1);
+  }, [debouncedScrapeRunSearch, scrapeRunPageSize, scrapeRunStatusFilter]);
+
   const loadDocuments = React.useCallback(async () => {
     try {
+      setIsDocumentsRefreshing(true);
       const data = (await listDocuments(
         workspaceId,
         knowledgeBaseId,
+        {
+          page: documentPage,
+          pageSize: documentPageSize,
+          q: debouncedDocumentSearch || undefined,
+          status: documentStatusFilter || undefined,
+        },
       )) as DocumentListResponse;
-      setDocuments(Array.isArray(data?.items) ? data.items : []);
-      setNextCursor(data?.nextCursor ?? null);
+      const items = Array.isArray(data?.items) ? data.items : [];
+      setDocuments(items);
+      setDocumentMeta({
+        page: data?.page ?? documentPage,
+        pageSize: data?.pageSize ?? documentPageSize,
+        total: data?.total ?? items.length,
+        totalPages: data?.totalPages ?? (items.length === 0 ? 0 : 1),
+      });
+      setSelectedDocumentIds((current) => {
+        const visible = new Set(items.map((item) => item.id));
+        return new Set([...current].filter((id) => visible.has(id)));
+      });
     } catch (err) {
       if (isUnauthorized(err)) {
         router.push("/login");
@@ -216,53 +251,43 @@ export default function KnowledgeBasePage({
       });
     } finally {
       setIsLoading(false);
+      setIsDocumentsRefreshing(false);
     }
-  }, [knowledgeBaseId, router, workspaceId]);
-
-  const loadMoreDocuments = React.useCallback(async () => {
-    if (!nextCursor) {
-      return;
-    }
-
-    setIsLoadingMoreDocuments(true);
-    try {
-      const data = (await listDocuments(workspaceId, knowledgeBaseId, {
-        cursor: nextCursor,
-      })) as DocumentListResponse;
-      setDocuments((current) => [
-        ...current,
-        ...(Array.isArray(data?.items) ? data.items : []),
-      ]);
-      setNextCursor(data?.nextCursor ?? null);
-    } catch (err) {
-      if (isUnauthorized(err)) {
-        router.push("/login");
-        return;
-      }
-
-      const message =
-        err && typeof err === "object" && "message" in err
-          ? String((err as { message: unknown }).message)
-          : "Try again in a moment.";
-
-      toastRef.current({
-        variant: "error",
-        title: "Failed to load more documents",
-        description: message,
-      });
-    } finally {
-      setIsLoadingMoreDocuments(false);
-    }
-  }, [knowledgeBaseId, nextCursor, router, workspaceId]);
+  }, [
+    debouncedDocumentSearch,
+    documentPage,
+    documentPageSize,
+    documentStatusFilter,
+    knowledgeBaseId,
+    router,
+    workspaceId,
+  ]);
 
   const loadScrapeRuns = React.useCallback(async () => {
     try {
+      setIsScrapeRunsLoading(true);
       const data = (await listScrapeRuns(
         workspaceId,
         knowledgeBaseId,
+        {
+          page: scrapeRunPage,
+          pageSize: scrapeRunPageSize,
+          q: debouncedScrapeRunSearch || undefined,
+          status: scrapeRunStatusFilter || undefined,
+        },
       )) as ScrapeRunListResponse;
-      setScrapeRuns(Array.isArray(data?.items) ? data.items : []);
-      setNextScrapeRunCursor(data?.nextCursor ?? null);
+      const items = Array.isArray(data?.items)
+        ? data.items
+        : Array.isArray(data)
+          ? data
+          : [];
+      setScrapeRuns(items);
+      setScrapeRunMeta({
+        page: data?.page ?? scrapeRunPage,
+        pageSize: data?.pageSize ?? scrapeRunPageSize,
+        total: data?.total ?? items.length,
+        totalPages: data?.totalPages ?? (items.length === 0 ? 0 : 1),
+      });
     } catch (err) {
       if (isUnauthorized(err)) {
         router.push("/login");
@@ -282,47 +307,13 @@ export default function KnowledgeBasePage({
     } finally {
       setIsScrapeRunsLoading(false);
     }
-  }, [knowledgeBaseId, router, workspaceId]);
-
-  const loadMoreScrapeRuns = React.useCallback(async () => {
-    if (!nextScrapeRunCursor || isLoadingMoreScrapeRuns) {
-      return;
-    }
-
-    setIsLoadingMoreScrapeRuns(true);
-    try {
-      const data = (await listScrapeRuns(workspaceId, knowledgeBaseId, {
-        cursor: nextScrapeRunCursor,
-      })) as ScrapeRunListResponse;
-      setScrapeRuns((current) => [
-        ...current,
-        ...(Array.isArray(data?.items) ? data.items : []),
-      ]);
-      setNextScrapeRunCursor(data?.nextCursor ?? null);
-    } catch (err) {
-      if (isUnauthorized(err)) {
-        router.push("/login");
-        return;
-      }
-
-      const message =
-        err && typeof err === "object" && "message" in err
-          ? String((err as { message: unknown }).message)
-          : "Try again in a moment.";
-
-      toastRef.current({
-        variant: "error",
-        title: "Failed to load more crawl runs",
-        description: message,
-      });
-    } finally {
-      setIsLoadingMoreScrapeRuns(false);
-    }
   }, [
-    isLoadingMoreScrapeRuns,
+    debouncedScrapeRunSearch,
     knowledgeBaseId,
-    nextScrapeRunCursor,
     router,
+    scrapeRunPage,
+    scrapeRunPageSize,
+    scrapeRunStatusFilter,
     workspaceId,
   ]);
 
@@ -394,10 +385,15 @@ export default function KnowledgeBasePage({
     documents.length === 0
       ? 0
       : Math.round((doneDocumentCount / documents.length) * 100);
-  const sortedDocuments = [...documents].sort(sortDocumentsForQueue);
   const hasInFlightRuns = scrapeRuns.some(
     (run) => run.status === "queued" || run.status === "running",
   );
+  const selectedDocumentIdList = React.useMemo(
+    () => Array.from(selectedDocumentIds),
+    [selectedDocumentIds],
+  );
+  const allVisibleDocumentsSelected =
+    documents.length > 0 && documents.every((document) => selectedDocumentIds.has(document.id));
 
   React.useEffect(() => {
     if (!isScrapeModalOpen) {
@@ -441,14 +437,14 @@ export default function KnowledgeBasePage({
     };
   }, [hasInFlightRuns, loadScrapeRuns]);
 
-  const handleFileChange = React.useCallback(
-    async (event: React.ChangeEvent<HTMLInputElement>) => {
-      const file = event.target.files?.[0];
-      if (!file) {
+  const uploadFiles = React.useCallback(
+    async (files: FileList | File[]) => {
+      const fileList = Array.from(files);
+      if (fileList.length === 0) {
         return;
       }
 
-      try {
+      for (const file of fileList) {
         const created = await uploadDocument(
           workspaceId,
           knowledgeBaseId,
@@ -468,8 +464,14 @@ export default function KnowledgeBasePage({
           title: "Upload started",
           description: `${file.name} is queued for processing.`,
         });
-        void loadDocuments();
-      } catch (err) {
+      }
+      void loadDocuments();
+    },
+    [knowledgeBaseId, loadDocuments, toast, workspaceId],
+  );
+
+  const handleUploadError = React.useCallback(
+    (err: unknown) => {
         if (isUnauthorized(err)) {
           router.push("/login");
           return;
@@ -485,11 +487,35 @@ export default function KnowledgeBasePage({
           title: "Upload failed",
           description: message,
         });
+    },
+    [router, toast],
+  );
+
+  const handleFileChange = React.useCallback(
+    async (event: React.ChangeEvent<HTMLInputElement>) => {
+      try {
+        await uploadFiles(event.target.files ?? []);
+      } catch (err) {
+        handleUploadError(err);
       } finally {
         event.target.value = "";
       }
     },
-    [knowledgeBaseId, loadDocuments, router, toast, workspaceId],
+    [handleUploadError, uploadFiles],
+  );
+
+  const handleDrop = React.useCallback(
+    async (event: React.DragEvent<HTMLLabelElement>) => {
+      event.preventDefault();
+      setDragActive(false);
+
+      try {
+        await uploadFiles(event.dataTransfer.files);
+      } catch (err) {
+        handleUploadError(err);
+      }
+    },
+    [handleUploadError, uploadFiles],
   );
 
   const confirmDelete = React.useCallback(async () => {
@@ -531,6 +557,60 @@ export default function KnowledgeBasePage({
     toast,
     workspaceId,
   ]);
+
+  const handleDownloadDocument = React.useCallback(
+    async (document: DocumentRow) => {
+      try {
+        await downloadDocument(workspaceId, knowledgeBaseId, document.id);
+      } catch (err) {
+        if (isUnauthorized(err)) {
+          router.push("/login");
+          return;
+        }
+
+        const message =
+          err && typeof err === "object" && "message" in err
+            ? String((err as { message: unknown }).message)
+            : "Try again in a moment.";
+
+        toast({
+          variant: "error",
+          title: "Download failed",
+          description: message,
+        });
+      }
+    },
+    [knowledgeBaseId, router, toast, workspaceId],
+  );
+
+  const handleDownloadSelected = React.useCallback(async () => {
+    if (selectedDocumentIdList.length === 0) {
+      return;
+    }
+
+    setIsDownloadingSelected(true);
+    try {
+      await downloadDocuments(workspaceId, knowledgeBaseId, selectedDocumentIdList);
+    } catch (err) {
+      if (isUnauthorized(err)) {
+        router.push("/login");
+        return;
+      }
+
+      const message =
+        err && typeof err === "object" && "message" in err
+          ? String((err as { message: unknown }).message)
+          : "Try again in a moment.";
+
+      toast({
+        variant: "error",
+        title: "Bulk download failed",
+        description: message,
+      });
+    } finally {
+      setIsDownloadingSelected(false);
+    }
+  }, [knowledgeBaseId, router, selectedDocumentIdList, toast, workspaceId]);
 
   const submitScrape = React.useCallback(async () => {
     setIsSubmittingScrape(true);
@@ -629,7 +709,18 @@ export default function KnowledgeBasePage({
               <div className="space-y-4">
                 <label
                   htmlFor="document-upload"
-                  className="flex cursor-pointer flex-col items-center justify-center rounded-[calc(var(--radius)+0.25rem)] border border-dashed border-border/80 bg-secondary/30 px-6 py-12 text-center transition hover:border-primary/40 hover:bg-primary/5"
+                  data-testid="document-dropzone"
+                  onDragOver={(event) => {
+                    event.preventDefault();
+                    setDragActive(true);
+                  }}
+                  onDragLeave={() => setDragActive(false)}
+                  onDrop={(event) => void handleDrop(event)}
+                  className={`flex cursor-pointer flex-col items-center justify-center rounded-[calc(var(--radius)+0.25rem)] border border-dashed px-6 py-12 text-center transition hover:border-primary/40 hover:bg-primary/5 ${
+                    dragActive
+                      ? "border-primary/60 bg-primary/10"
+                      : "border-border/80 bg-secondary/30"
+                  }`}
                 >
                   <FileUp className="mb-4 size-6 text-primary" />
                   <span className="text-base font-semibold">
@@ -663,16 +754,42 @@ export default function KnowledgeBasePage({
           title="Website crawls"
           description="Track crawl runs and page counts. Scraped pages land in document queue automatically."
         >
-          {isScrapeRunsLoading ? (
-            <Card variant="elevated" className="space-y-4 p-6">
+          <Card variant="elevated" className="space-y-4 p-6">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+              <div className="relative flex-1">
+                <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  aria-label="Search crawl runs"
+                  placeholder="Search seed URL"
+                  className="pl-9"
+                  value={scrapeRunSearch}
+                  onChange={(event) => setScrapeRunSearch(event.target.value)}
+                />
+              </div>
+              <Select
+                aria-label="Filter crawl runs by status"
+                className="sm:w-52"
+                value={scrapeRunStatusFilter}
+                onChange={(event) => setScrapeRunStatusFilter(event.target.value as ScrapeStatusFilter)}
+              >
+                <option value="">All statuses</option>
+                <option value="queued">Queued</option>
+                <option value="running">Running</option>
+                <option value="completed">Completed</option>
+                <option value="failed">Failed</option>
+              </Select>
+            </div>
+
+            {isScrapeRunsLoading && scrapeRuns.length === 0 ? (
+              <div className="space-y-4">
               <Skeleton className="h-12 w-full" />
               <Skeleton className="h-12 w-full" />
-            </Card>
+              </div>
           ) : scrapeRuns.length === 0 ? (
             <EmptyState
               icon={<FileUp className="size-5" />}
-              title="No web sources yet"
-              description="Start a crawl to ingest docs pages from a website."
+              title="No crawl runs found"
+              description="Start a crawl or adjust search and filters."
             />
           ) : (
             <>
@@ -721,22 +838,19 @@ export default function KnowledgeBasePage({
                   ))}
                 </TableBody>
               </Table>
-              {nextScrapeRunCursor ? (
-                <div className="mt-4 flex justify-center">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => void loadMoreScrapeRuns()}
-                    isLoading={isLoadingMoreScrapeRuns}
-                    loadingText="Loading"
-                    aria-label="Load more crawl runs"
-                  >
-                    {!isLoadingMoreScrapeRuns ? "Load more crawl runs" : null}
-                  </Button>
-                </div>
-              ) : null}
+              <Pagination
+                page={scrapeRunMeta.page}
+                pageSize={scrapeRunMeta.pageSize}
+                total={scrapeRunMeta.total}
+                totalPages={scrapeRunMeta.totalPages}
+                onPageChange={setScrapeRunPage}
+                onPageSizeChange={setScrapeRunPageSize}
+                pageSizeOptions={[5, 10, 20, 50]}
+                isLoading={isScrapeRunsLoading}
+              />
             </>
           )}
+          </Card>
         </PageSection>
 
         <PageSection
@@ -744,16 +858,53 @@ export default function KnowledgeBasePage({
           title="Document queue"
           description="Polling runs every 3 seconds while any document is pending or processing."
         >
-          {isLoading ? (
-            <Card variant="elevated" className="space-y-4 p-6">
+          <Card variant="elevated" className="space-y-4 p-6">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+              <div className="relative flex-1">
+                <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  aria-label="Search documents"
+                  placeholder="Search document title"
+                  className="pl-9"
+                  value={documentSearch}
+                  onChange={(event) => setDocumentSearch(event.target.value)}
+                />
+              </div>
+              <Select
+                aria-label="Filter documents by status"
+                className="lg:w-52"
+                value={documentStatusFilter}
+                onChange={(event) => setDocumentStatusFilter(event.target.value as DocumentStatusFilter)}
+              >
+                <option value="">All statuses</option>
+                <option value="pending">Pending</option>
+                <option value="processing">Processing</option>
+                <option value="done">Done</option>
+                <option value="failed">Failed</option>
+              </Select>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => void handleDownloadSelected()}
+                disabled={selectedDocumentIdList.length === 0}
+                isLoading={isDownloadingSelected}
+                loadingText="Downloading"
+              >
+                <Download className="size-4" />
+                Download selected
+              </Button>
+            </div>
+
+            {isLoading && documents.length === 0 ? (
+              <div className="space-y-4">
               <Skeleton className="h-12 w-full" />
               <Skeleton className="h-12 w-full" />
-            </Card>
+              </div>
           ) : documents.length === 0 ? (
             <EmptyState
               icon={<FileUp className="size-5" />}
               title="No documents yet"
-              description="Upload the first document to start the ingest pipeline."
+              description="Upload the first document or adjust search and filters."
             />
           ) : (
             <>
@@ -773,6 +924,20 @@ export default function KnowledgeBasePage({
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead>
+                      <input
+                        type="checkbox"
+                        aria-label="Select all documents"
+                        checked={allVisibleDocumentsSelected}
+                        onChange={(event) => {
+                          setSelectedDocumentIds(
+                            event.target.checked
+                              ? new Set(documents.map((document) => document.id))
+                              : new Set(),
+                          );
+                        }}
+                      />
+                    </TableHead>
                     <TableHead>Title</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Created</TableHead>
@@ -780,8 +945,26 @@ export default function KnowledgeBasePage({
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {sortedDocuments.map((document) => (
+                  {documents.map((document) => (
                     <TableRow key={document.id}>
+                      <TableCell>
+                        <input
+                          type="checkbox"
+                          aria-label={`Select ${document.title}`}
+                          checked={selectedDocumentIds.has(document.id)}
+                          onChange={(event) => {
+                            setSelectedDocumentIds((current) => {
+                              const next = new Set(current);
+                              if (event.target.checked) {
+                                next.add(document.id);
+                              } else {
+                                next.delete(document.id);
+                              }
+                              return next;
+                            });
+                          }}
+                        />
+                      </TableCell>
                       <TableCell className="font-medium">
                         {document.title}
                       </TableCell>
@@ -796,6 +979,15 @@ export default function KnowledgeBasePage({
                           : "Just now"}
                       </TableCell>
                       <TableCell className="text-right">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          aria-label={`Download ${document.title}`}
+                          onClick={() => void handleDownloadDocument(document)}
+                        >
+                          <Download className="size-4" />
+                          Download
+                        </Button>
                         {canManage ? (
                           <Button
                             variant="ghost"
@@ -812,22 +1004,18 @@ export default function KnowledgeBasePage({
                   ))}
                 </TableBody>
               </Table>
-              {nextCursor ? (
-                <div className="mt-4 flex justify-center">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => void loadMoreDocuments()}
-                    isLoading={isLoadingMoreDocuments}
-                    loadingText="Loading"
-                    aria-label="Load more documents"
-                  >
-                    {!isLoadingMoreDocuments ? "Load more documents" : null}
-                  </Button>
-                </div>
-              ) : null}
+              <Pagination
+                page={documentMeta.page}
+                pageSize={documentMeta.pageSize}
+                total={documentMeta.total}
+                totalPages={documentMeta.totalPages}
+                onPageChange={setDocumentPage}
+                onPageSizeChange={setDocumentPageSize}
+                isLoading={isDocumentsRefreshing}
+              />
             </>
           )}
+          </Card>
         </PageSection>
       </div>
       <Modal
