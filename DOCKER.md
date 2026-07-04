@@ -22,8 +22,8 @@ docker compose up -d
 ```
 
 **Services:**
-- 🌐 **Web**: http://localhost:3000 (Next.js with hot reload)
-- 🔌 **API**: http://localhost:3001 (NestJS with hot reload)
+- 🌐 **Web**: http://localhost:3100 (Next.js with hot reload; override with `MNEMRA_WEB_PORT`)
+- 🔌 **API**: http://localhost:3101 (NestJS with hot reload; override with `MNEMRA_API_PORT`)
 - 🐘 **Postgres**: localhost:54321
 - 🔴 **Redis**: localhost:6379
 - 🪣 **SeaweedFS S3**: http://localhost:8333
@@ -210,7 +210,7 @@ docker build -f apps/api/Dockerfile --target prod -t mnemra-api:prod .
 
 ### Local Development
 ```
-Host machine (:3000, :3001, :54321, :6379, :8333/:8888/:9333)
+Host machine (:3100, :3101, :54321, :6379, :8333/:8888/:9333)
     ↓ published ports
 Docker default network (api, web, postgres, redis, seaweedfs — reachable by service name inside the network)
 ```
@@ -221,8 +221,9 @@ Internet
    │
 Caddy (:80, :443) ← SSL termination
    │
-   ├─ web (:3000) ← internal network
-   └─ api (:3001) ← internal network
+   └─ web (:3000) ← internal network, serves Next.js UI and same-origin /api/* proxy routes
+          │
+          └─ api (:3001) ← internal network only
           │
           ├─ postgres (:5432) ← internal only
           ├─ redis (:6379) ← internal only
@@ -303,7 +304,7 @@ docker compose -f docker-compose.prod.yml build api web
 docker compose logs api
 
 # Check if port is in use
-sudo lsof -i :3001
+sudo lsof -i :3101
 
 # Restart specific service
 docker compose restart api
@@ -399,7 +400,7 @@ docker compose -f docker-compose.prod.yml up -d
 
 ## CI/CD Integration
 
-`.github/workflows/deploy.yml` deploys automatically on push to `main` (or manual `workflow_dispatch`). It SSHes into the VPS, backs up Postgres using the container's `POSTGRES_USER`/`POSTGRES_DB`, rebuilds `api`/`web`, brings the stack up with `docker compose -f docker-compose.prod.yml up -d --remove-orphans`, polls `GET /health` and the web root inside the `api`/`web` containers, then fetches the public site and fails the deploy if it finds dev-mode artifacts (HMR client scripts, `.next/dev`, a `localhost` API URL) in the served HTML — a guard against accidentally shipping a dev build. Production does not publish `api`/`web` ports to the host; Caddy is the public ingress.
+`.github/workflows/deploy.yml` deploys automatically on push to `main` (or manual `workflow_dispatch`). It SSHes into the VPS, backs up Postgres using the container's `POSTGRES_USER`/`POSTGRES_DB`, rebuilds `api`/`web`, brings the stack up with `docker compose -f docker-compose.prod.yml up -d --remove-orphans`, polls `GET /health` and the web root inside the `api`/`web` containers, then fetches the public site and fails the deploy if it finds dev-mode artifacts (HMR client scripts, `.next/dev`, `localhost:*`, or `127.0.0.1`) in the served HTML — a guard against accidentally shipping a dev build. Production does not publish `api`/`web` ports to the host; Caddy is the public ingress.
 
 It assumes the deploy dir already has a working checkout with `.env` and `docker/seaweedfs/s3.prod.json` in place; it does not provision those itself. The smoke test reads `DOMAIN` from `.env`.
 

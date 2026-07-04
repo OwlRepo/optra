@@ -1,5 +1,5 @@
 #!/bin/bash
-set -e
+set -eu
 
 # Production deployment script for Hetzner VPS
 
@@ -12,10 +12,13 @@ if [ ! -f .env ]; then
     exit 1
 fi
 
-# Load environment
-set -a
-source .env
-set +a
+read_env() {
+    awk -F= -v key="$1" '$1 == key { sub(/\r$/, "", $0); print substr($0, length(key) + 2); exit }' .env
+}
+
+DOMAIN="$(read_env DOMAIN)"
+POSTGRES_PASSWORD="$(read_env POSTGRES_PASSWORD)"
+OPENAI_API_KEY="$(read_env OPENAI_API_KEY)"
 
 # Validate required vars
 if [ -z "$DOMAIN" ]; then
@@ -33,11 +36,14 @@ if [ -z "$OPENAI_API_KEY" ]; then
     exit 1
 fi
 
+if [ ! -f docker/seaweedfs/s3.prod.json ]; then
+    echo "❌ docker/seaweedfs/s3.prod.json not found"
+    echo "📝 Copy docker/seaweedfs/s3.prod.json.example and fill in production S3 credentials"
+    exit 1
+fi
+
 echo "📦 Building production images..."
 docker compose -f docker-compose.prod.yml build api web
-
-echo "🛑 Stopping old containers..."
-docker compose -f docker-compose.prod.yml down
 
 echo "🚀 Starting production services..."
 docker compose -f docker-compose.prod.yml up -d --remove-orphans

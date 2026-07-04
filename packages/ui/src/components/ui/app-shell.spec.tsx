@@ -123,6 +123,55 @@ describe('AppShell', () => {
     expect(screen.getByText('c')).toBeTruthy()
   })
 
+  it('keeps the footer controls in a row when expanded', () => {
+    render(
+      <AppShell
+        sidebarHeader={() => <span>Header</span>}
+        navigation={() => <span>Nav</span>}
+        onLogout={() => {}}
+      >
+        <div>Body</div>
+      </AppShell>,
+    )
+
+    const row = screen.getByRole('button', { name: 'Collapse sidebar' }).parentElement as HTMLElement
+    expect(row.className).not.toContain('flex-col')
+  })
+
+  it('stacks the footer controls in a column when collapsed so both stay clickable', () => {
+    render(
+      <AppShell
+        sidebarHeader={() => <span>Header</span>}
+        navigation={() => <span>Nav</span>}
+        onLogout={() => {}}
+      >
+        <div>Body</div>
+      </AppShell>,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse sidebar' }))
+
+    const row = screen.getByRole('button', { name: 'Expand sidebar' }).parentElement as HTMLElement
+    expect(row.className).toContain('flex-col')
+    expect(screen.getByRole('button', { name: 'Log out' }).hasAttribute('disabled')).toBe(false)
+  })
+
+  it('centers the sidebar header when collapsed', () => {
+    render(
+      <AppShell
+        sidebarHeader={({ collapsed }) => <span>{collapsed ? 'collapsed-header' : 'expanded-header'}</span>}
+        navigation={() => <span>Nav</span>}
+      >
+        <div>Body</div>
+      </AppShell>,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse sidebar' }))
+
+    const wrapper = screen.getByText('collapsed-header').parentElement as HTMLElement
+    expect(wrapper.className).toContain('justify-center')
+  })
+
   it('renders userFooter content when passed and nothing extra when omitted', () => {
     const { rerender } = render(
       <AppShell

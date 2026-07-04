@@ -3,15 +3,25 @@
 import * as React from 'react'
 import { cn } from '../../lib/utils'
 
+export type ModalSize = 'md' | 'lg' | 'xl' | 'full'
+
 export interface ModalProps {
   open: boolean
   onClose: () => void
   title?: string
   children: React.ReactNode
   footer?: React.ReactNode
+  size?: ModalSize
 }
 
-export function Modal({ open, onClose, title, children, footer }: ModalProps) {
+const sizeClasses: Record<ModalSize, string> = {
+  md: 'max-w-xl',
+  lg: 'max-w-3xl',
+  xl: 'max-w-5xl',
+  full: 'max-w-[80vw]',
+}
+
+export function Modal({ open, onClose, title, children, footer, size = 'md' }: ModalProps) {
   const panelRef = React.useRef<HTMLDivElement>(null)
   const onCloseRef = React.useRef(onClose)
 
@@ -50,17 +60,18 @@ export function Modal({ open, onClose, title, children, footer }: ModalProps) {
         aria-label={title}
         tabIndex={-1}
         className={cn(
-          'w-full max-w-xl rounded-[calc(var(--radius)+0.25rem)] border border-border/70 bg-card text-card-foreground shadow-[var(--shadow-lg)] outline-none',
+          'flex max-h-[85vh] w-full flex-col rounded-[calc(var(--radius)+0.25rem)] border border-border/70 bg-card text-card-foreground shadow-[var(--shadow-lg)] outline-none',
+          sizeClasses[size],
         )}
         onClick={(event) => event.stopPropagation()}
       >
         {title ? (
-          <div className="border-b border-border/60 px-6 py-4">
+          <div className="shrink-0 border-b border-border/60 px-6 py-4">
             <h2 className="font-display text-lg font-semibold">{title}</h2>
           </div>
         ) : null}
-        <div className="px-6 py-5">{children}</div>
-        {footer ? <div className="border-t border-border/60 px-6 py-4">{footer}</div> : null}
+        <div className="flex-1 overflow-y-auto px-6 py-5">{children}</div>
+        {footer ? <div className="shrink-0 border-t border-border/60 px-6 py-4">{footer}</div> : null}
       </div>
     </div>
   )

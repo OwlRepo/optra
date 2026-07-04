@@ -6,8 +6,8 @@ import { useRouter } from 'next/navigation'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { AppShell, Badge, Button, Card, EmptyState, Input, Modal, PageSection, Skeleton, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, useToast } from '@repo/ui'
-import { Mail, Trash2 } from 'lucide-react'
+import { AppShell, Badge, Button, Card, EmptyState, Input, Modal, PageSection, Pagination, Select, Skeleton, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, useToast } from '@repo/ui'
+import { Mail, Search, Trash2 } from 'lucide-react'
 import { getCurrentUser, logout } from '@/lib/api/auth'
 import { isUnauthorized } from '@/lib/api/handle-unauthorized'
 import { getWorkspace, inviteMember, listMembers, listWorkspaces, removeMember } from '@/lib/api/workspaces'
@@ -18,7 +18,8 @@ const inviteSchema = z.object({ email: z.string().email('Enter a valid email add
 type Workspace = { id: string; name: string }
 type WorkspaceMembership = { id: string; role: 'owner' | 'admin' | 'member' }
 type Member = { id: string; userId: string; email: string; role: 'owner' | 'admin' | 'member'; joinedAt: string }
-type MemberListResponse = { items: Member[]; nextCursor: string | null }
+type MemberListResponse = { items: Member[]; page: number; pageSize: number; total: number; totalPages: number }
+type RoleFilter = '' | 'owner' | 'admin' | 'member'
 type InviteFormData = z.infer<typeof inviteSchema>
 
 export default function MembersPage({ params }: { params: { id: string } }) {
@@ -28,9 +29,14 @@ export default function MembersPage({ params }: { params: { id: string } }) {
   const [workspace, setWorkspace] = React.useState<Workspace | null>(null)
   const [membership, setMembership] = React.useState<WorkspaceMembership | null>(null)
   const [members, setMembers] = React.useState<Member[]>([])
-  const [membersNextCursor, setMembersNextCursor] = React.useState<string | null>(null)
+  const [meta, setMeta] = React.useState({ page: 1, pageSize: 20, total: 0, totalPages: 0 })
+  const [page, setPage] = React.useState(1)
+  const [pageSize, setPageSize] = React.useState(20)
+  const [search, setSearch] = React.useState('')
+  const [debouncedSearch, setDebouncedSearch] = React.useState('')
+  const [roleFilter, setRoleFilter] = React.useState<RoleFilter>('')
   const [isLoading, setIsLoading] = React.useState(true)
-  const [isLoadingMoreMembers, setIsLoadingMoreMembers] = React.useState(false)
+  const [isMembersLoading, setIsMembersLoading] = React.useState(false)
   const [pendingRemove, setPendingRemove] = React.useState<Member | null>(null)
   const [currentUserId, setCurrentUserId] = React.useState<string | null>(null)
 
@@ -41,20 +47,28 @@ export default function MembersPage({ params }: { params: { id: string } }) {
 
   const canManage = membership?.role === 'owner' || membership?.role === 'admin'
 
-  const loadPage = React.useCallback(async () => {
+  // Debounce the search box so we don't fire a request on every keystroke.
+  React.useEffect(() => {
+    const timeout = window.setTimeout(() => setDebouncedSearch(search.trim()), 300)
+    return () => window.clearTimeout(timeout)
+  }, [search])
+
+  // Changing a filter or page size always returns to the first page.
+  React.useEffect(() => {
+    setPage(1)
+  }, [debouncedSearch, roleFilter, pageSize])
+
+  const loadContext = React.useCallback(async () => {
     try {
       setIsLoading(true)
-      const [workspaceData, memberships, memberData, currentUser] = await Promise.all([
+      const [workspaceData, memberships, currentUser] = await Promise.all([
         getWorkspace(workspaceId),
         listWorkspaces(),
-        listMembers(workspaceId) as Promise<MemberListResponse>,
         getCurrentUser(),
       ])
       setWorkspace(workspaceData)
       const membershipItems = Array.isArray(memberships?.items) ? memberships.items : []
       setMembership(membershipItems.find((entry: WorkspaceMembership) => entry.id === workspaceId) ?? null)
-      setMembers(Array.isArray(memberData?.items) ? memberData.items : [])
-      setMembersNextCursor(memberData?.nextCursor ?? null)
       setCurrentUserId(currentUser?.userId ?? null)
     } catch (err) {
       if (isUnauthorized(err)) {
@@ -71,9 +85,44 @@ export default function MembersPage({ params }: { params: { id: string } }) {
     }
   }, [router, toast, workspaceId])
 
+  const fetchMembers = React.useCallback(async () => {
+    try {
+      setIsMembersLoading(true)
+      const data = (await listMembers(workspaceId, {
+        page,
+        pageSize,
+        q: debouncedSearch || undefined,
+        role: roleFilter || undefined,
+      })) as MemberListResponse
+      setMembers(Array.isArray(data?.items) ? data.items : [])
+      setMeta({
+        page: data?.page ?? 1,
+        pageSize: data?.pageSize ?? pageSize,
+        total: data?.total ?? 0,
+        totalPages: data?.totalPages ?? 0,
+      })
+    } catch (err) {
+      if (isUnauthorized(err)) {
+        router.push('/login')
+        return
+      }
+      toast({
+        variant: 'error',
+        title: 'Failed to load members',
+        description: err && typeof err === 'object' && 'message' in err ? String((err as { message: unknown }).message) : 'Try again in a moment.',
+      })
+    } finally {
+      setIsMembersLoading(false)
+    }
+  }, [debouncedSearch, page, pageSize, roleFilter, router, toast, workspaceId])
+
   React.useEffect(() => {
-    void loadPage()
-  }, [loadPage])
+    void loadContext()
+  }, [loadContext])
+
+  React.useEffect(() => {
+    void fetchMembers()
+  }, [fetchMembers])
 
   const handleLogout = React.useCallback(async () => {
     try {
@@ -82,28 +131,6 @@ export default function MembersPage({ params }: { params: { id: string } }) {
       router.push('/login')
     }
   }, [router])
-
-  const loadMoreMembers = React.useCallback(async () => {
-    if (!membersNextCursor) return
-    try {
-      setIsLoadingMoreMembers(true)
-      const data = (await listMembers(workspaceId, { cursor: membersNextCursor })) as MemberListResponse
-      setMembers((current) => [...current, ...(Array.isArray(data?.items) ? data.items : [])])
-      setMembersNextCursor(data?.nextCursor ?? null)
-    } catch (err) {
-      if (isUnauthorized(err)) {
-        router.push('/login')
-        return
-      }
-      toast({
-        variant: 'error',
-        title: 'Failed to load more members',
-        description: err && typeof err === 'object' && 'message' in err ? String((err as { message: unknown }).message) : 'Try again in a moment.',
-      })
-    } finally {
-      setIsLoadingMoreMembers(false)
-    }
-  }, [membersNextCursor, router, toast, workspaceId])
 
   const submitInvite = inviteForm.handleSubmit(async (data) => {
     try {
@@ -137,7 +164,7 @@ export default function MembersPage({ params }: { params: { id: string } }) {
         description: `${pendingRemove.email} no longer has access.`,
       })
       setPendingRemove(null)
-      await loadPage()
+      await fetchMembers()
     } catch (err) {
       if (isUnauthorized(err)) {
         router.push('/login')
@@ -149,7 +176,7 @@ export default function MembersPage({ params }: { params: { id: string } }) {
         description: err && typeof err === 'object' && 'message' in err ? String((err as { message: unknown }).message) : 'Try again in a moment.',
       })
     }
-  }, [loadPage, pendingRemove, router, toast, workspaceId])
+  }, [fetchMembers, pendingRemove, router, toast, workspaceId])
 
   return (
     <AppShell
@@ -185,46 +212,77 @@ export default function MembersPage({ params }: { params: { id: string } }) {
         </PageSection>
 
         <PageSection eyebrow={<Badge variant="outline">Roster</Badge>} title="Members" description="Everyone with access to this workspace.">
-          {isLoading ? (
-            <Card variant="elevated" className="space-y-4 p-6">
-              <Skeleton className="h-12 w-full" />
-              <Skeleton className="h-12 w-full" />
-            </Card>
-          ) : (
-            <>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Email</TableHead>
-                    <TableHead>Role</TableHead>
-                    <TableHead>Joined</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {members.map((member) => (
-                    <TableRow key={member.id}>
-                      <TableCell className="font-medium">{member.email}</TableCell>
-                      <TableCell><Badge variant={member.role === 'member' ? 'secondary' : 'success'}>{member.role}</Badge></TableCell>
-                      <TableCell>{new Date(member.joinedAt).toLocaleDateString()}</TableCell>
-                      <TableCell className="text-right">
-                        {membership?.role === 'owner' && member.userId !== currentUserId ? (
-                          <Button variant="ghost" size="sm" aria-label={`Remove ${member.email}`} onClick={() => setPendingRemove(member)}><Trash2 className="size-4" />Remove</Button>
-                        ) : null}
-                      </TableCell>
+          <Card variant="elevated" className="space-y-4 p-6">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+              <div className="relative flex-1">
+                <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  aria-label="Search members"
+                  placeholder="Search by email"
+                  className="pl-9"
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                />
+              </div>
+              <Select
+                aria-label="Filter by role"
+                className="sm:w-48"
+                value={roleFilter}
+                onChange={(event) => setRoleFilter(event.target.value as RoleFilter)}
+              >
+                <option value="">All roles</option>
+                <option value="owner">Owner</option>
+                <option value="admin">Admin</option>
+                <option value="member">Member</option>
+              </Select>
+            </div>
+
+            {isLoading ? (
+              <div className="space-y-4">
+                <Skeleton className="h-12 w-full" />
+                <Skeleton className="h-12 w-full" />
+              </div>
+            ) : members.length === 0 ? (
+              <EmptyState icon={<Search className="size-5" />} title="No members found" description="Try a different search or role filter." />
+            ) : (
+              <>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Email</TableHead>
+                      <TableHead>Role</TableHead>
+                      <TableHead>Joined</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-              {membersNextCursor ? (
-                <div className="mt-4 flex justify-center">
-                  <Button type="button" variant="outline" onClick={() => void loadMoreMembers()} isLoading={isLoadingMoreMembers} loadingText="Loading" aria-label="Load more members">
-                    {!isLoadingMoreMembers ? 'Load more members' : null}
-                  </Button>
-                </div>
-              ) : null}
-            </>
-          )}
+                  </TableHeader>
+                  <TableBody>
+                    {members.map((member) => (
+                      <TableRow key={member.id}>
+                        <TableCell className="font-medium">{member.email}</TableCell>
+                        <TableCell><Badge variant={member.role === 'member' ? 'secondary' : 'success'}>{member.role}</Badge></TableCell>
+                        <TableCell>{new Date(member.joinedAt).toLocaleDateString()}</TableCell>
+                        <TableCell className="text-right">
+                          {membership?.role === 'owner' && member.userId !== currentUserId ? (
+                            <Button variant="ghost" size="sm" aria-label={`Remove ${member.email}`} onClick={() => setPendingRemove(member)}><Trash2 className="size-4" />Remove</Button>
+                          ) : null}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+
+                <Pagination
+                  page={meta.page}
+                  pageSize={meta.pageSize}
+                  total={meta.total}
+                  totalPages={meta.totalPages}
+                  onPageChange={setPage}
+                  onPageSizeChange={setPageSize}
+                  isLoading={isMembersLoading}
+                />
+              </>
+            )}
+          </Card>
         </PageSection>
       </div>
 

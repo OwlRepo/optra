@@ -39,10 +39,15 @@ export function removeMember(id: string, userId: string) {
   })
 }
 
-export function listMembers(id: string, opts?: { cursor?: string; limit?: number }) {
+export function listMembers(
+  id: string,
+  opts?: { page?: number; pageSize?: number; q?: string; role?: 'owner' | 'admin' | 'member' },
+) {
   const params = new URLSearchParams()
-  if (opts?.cursor) params.set('cursor', opts.cursor)
-  if (opts?.limit) params.set('limit', String(opts.limit))
+  if (opts?.page) params.set('page', String(opts.page))
+  if (opts?.pageSize) params.set('pageSize', String(opts.pageSize))
+  if (opts?.q) params.set('q', opts.q)
+  if (opts?.role) params.set('role', opts.role)
   const query = params.toString()
 
   return apiFetch(`/api/workspaces/${id}/members${query ? `?${query}` : ''}`)

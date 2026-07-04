@@ -6,11 +6,22 @@ import {
   NotFoundException,
 } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
-import { and, asc, desc, eq, gt, isNull, lt, or, sql } from 'drizzle-orm'
+import { and, asc, count, desc, eq, gt, ilike, isNull, lt, or, sql } from 'drizzle-orm'
 import { randomBytes } from 'crypto'
-import { db, decodeCursor, encodeCursor, invitations, users, workspaceMembers, workspaces } from '@repo/db'
+import {
+  buildOffsetResult,
+  db,
+  decodeCursor,
+  encodeCursor,
+  invitations,
+  resolveOffsetPage,
+  users,
+  workspaceMembers,
+  workspaces,
+} from '@repo/db'
 import { NotificationsService } from '../notifications/notifications.service'
 import { ListQueryDto } from '../common/dto/list-query.dto'
+import { ListMembersQueryDto } from './dto/list-members-query.dto'
 
 type DbTx = Parameters<Parameters<typeof db.transaction>[0]>[0]
 
@@ -206,13 +217,27 @@ export class WorkspacesService {
 
   async listMembers(
     workspaceId: string,
-    query: Pick<ListQueryDto, 'cursor' | 'limit'>,
+    query: Pick<ListMembersQueryDto, 'page' | 'pageSize' | 'q' | 'role'>,
   ) {
-    const limit = Math.min(Math.max(Number(query.limit ?? 20), 1), 100)
-    const cursor = query.cursor ? decodeCursor(query.cursor) : null
-    const joinedAtMs = sql<number>`floor(extract(epoch from ${workspaceMembers.joinedAt}) * 1000)`
+    const { page, pageSize, offset } = resolveOffsetPage(query.page, query.pageSize)
 
-    const rows = await db
+    const filters = [eq(workspaceMembers.workspaceId, workspaceId)]
+    if (query.role) {
+      filters.push(eq(workspaceMembers.role, query.role))
+    }
+    const search = query.q?.trim()
+    if (search) {
+      filters.push(ilike(users.email, `%${search}%`))
+    }
+    const where = and(...filters)
+
+    const [{ value: total }] = await db
+      .select({ value: count() })
+      .from(workspaceMembers)
+      .innerJoin(users, eq(workspaceMembers.userId, users.id))
+      .where(where)
+
+    const items = await db
       .select({
         id: workspaceMembers.id,
         userId: workspaceMembers.userId,
@@ -222,31 +247,12 @@ export class WorkspacesService {
       })
       .from(workspaceMembers)
       .innerJoin(users, eq(workspaceMembers.userId, users.id))
-      .where(
-        and(
-          eq(workspaceMembers.workspaceId, workspaceId),
-          cursor
-            ? or(
-                gt(joinedAtMs, Number(cursor.k[0])),
-                and(eq(joinedAtMs, Number(cursor.k[0])), gt(workspaceMembers.id, cursor.id)),
-              )
-            : undefined,
-        ),
-      )
-      .orderBy(asc(joinedAtMs), asc(workspaceMembers.id))
-      .limit(limit + 1)
+      .where(where)
+      .orderBy(desc(workspaceMembers.joinedAt), desc(workspaceMembers.id))
+      .limit(pageSize)
+      .offset(offset)
 
-    const hasMore = rows.length > limit
-    const items = rows.slice(0, limit)
-    const last = items.at(-1)
-
-    return {
-      items,
-      nextCursor:
-        hasMore && last
-          ? encodeCursor({ k: [last.joinedAt.getTime()], id: last.id })
-          : null,
-    }
+    return buildOffsetResult(items, Number(total), page, pageSize)
   }
 
   private async getWorkspaceOrThrow(client: typeof db | DbTx, workspaceId: string) {

@@ -52,7 +52,7 @@ If risk area is missing, mark `UNMAPPED RISK`.
   real-secrets file, risking a deploy running with placeholder values (`CHANGE_ME_STRONG_PASSWORD`,
   `your-domain.com`). Env model has since been unified: dev and prod compose both `env_file: .env`
   (single gitignored file, `cp .env.example .env`), which Compose also auto-reads for `${VAR}`
-  interpolation; the deploy workflow sources `.env` for `DOMAIN` in its smoke test, so the former
+  interpolation; the deploy workflow reads `.env` for `DOMAIN` without shell-sourcing it, so the former
   `DEPLOY_DOMAIN` GitHub Secret is no longer used. Added
   `depends_on: condition: service_healthy` wiring for api/web/caddy (previously only infra services
   had healthchecks) plus a dependency-free `GET /health` endpoint
@@ -73,7 +73,11 @@ If risk area is missing, mark `UNMAPPED RISK`.
   Turbo cache mounts use locked app-specific ids so a corrupt package tarball in one cache does
   not poison another service build. Prod compose keeps `api`/`web` ports internal to Compose,
   scopes `env_file: .env` to app services only, and leaves Caddy as the only public ingress.
-  Deploy scripts preserve cache and use `--remove-orphans`.
+  Deploy scripts preserve cache, do not `docker compose down` before replacement, and use `--remove-orphans`.
+  Prod compose must never publish app/internal service host ports (`3000`, `3001`, `5432`, `6379`,
+  `8333`, `8888`, `9333`) because Suki already uses `3000`/`3001` on the same target class; Caddy
+  is the only host-published ingress (`80`, `443`). Local Mnemra dev publishes web/API on
+  `3100`/`3101` by default (`MNEMRA_WEB_PORT`/`MNEMRA_API_PORT`) to avoid Suki's local ports.
   Required checks:
   - Turbo dry graph for web is exactly `@repo/web`, `@repo/ui`; Turbo dry graph for API is exactly `@repo/api`, `@repo/ai`, `@repo/db`
   - `docker compose build api web` and `docker compose -f docker-compose.prod.yml build api web` both succeed locally as dry runs before trusting a live VPS deploy
@@ -81,6 +85,7 @@ If risk area is missing, mark `UNMAPPED RISK`.
   - `apps/api`'s `/health` returns `200 {"status":"ok"}` with zero dependencies reachable (verifies it never false-fails the container `HEALTHCHECK` during startup race windows)
   - GitHub Actions `deploy.yml` requires `VPS_HOST`/`VPS_USER`/`VPS_SSH_KEY`/`VPS_PORT` secrets configured on `OwlRepo/mnemra` before the auto-deploy path can run; it reads `DOMAIN` from the VPS `.env`, not a separate domain secret
   - prod API/Web health checks must run inside containers (`docker compose exec -T api/web wget ...`) because their ports are not host-published
+  - public Caddy routes must send all browser traffic to `web:3000`; Next.js owns same-origin `/api/*` proxy route handlers and forwards server-side to `api:3001`
   - `docker/seaweedfs/s3.prod.json` must be manually created from `docker/seaweedfs/s3.prod.json.example` on the VPS before first prod deploy, or the `seaweedfs` service bind-mount fails at container start
   - no live production data existed anywhere under the old `support_brain` name at the time of this change (confirmed with the project owner) — if that assumption is ever wrong for a specific deploy target, stop and reconcile via `pg_dump`/restore before cutting over, per the rollback notes in the implementation plan
 

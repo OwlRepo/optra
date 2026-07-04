@@ -31,6 +31,7 @@ jobs:
             docker compose version >/dev/null
             test -f docker-compose.prod.yml
             test -f .env
+            test -f docker/seaweedfs/s3.prod.json
 
             # Compose auto-reads .env for ${VAR} interpolation on its own.
             # Only DOMAIN is needed here (smoke test). Do NOT source .env — values may
@@ -89,7 +90,7 @@ jobs:
 
             html="$(mktemp)"
             curl -fsS --max-time 15 "https://${DOMAIN}/" -o "$html" || { echo "public smoke fetch failed"; exit 1; }
-            if grep -Eq 'hmr-client|next-devtools|\.next/dev|localhost:3001' "$html"; then
+            if grep -Eq 'hmr-client|next-devtools|\.next/dev|localhost:[0-9]+|127\.0\.0\.1' "$html"; then
               echo "public smoke check found dev artifacts"; exit 1
             fi
 

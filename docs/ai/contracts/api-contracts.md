@@ -24,6 +24,25 @@ Unknown fields must be marked `TODO: Fill after repository analysis. Do not trea
 
 ---
 
+## Shared convention: offset pagination (admin tables)
+
+Introduced 2026-07-04 (Slice 0). Admin list surfaces (KB documents, website
+crawls, members, ticket drafts, chat history) are migrating from keyset cursor
+(`?cursor=&limit=` → `{items, nextCursor}`) to **offset pagination** so the UI can
+jump to a specific page and go first/last.
+
+- Request DTO: `OffsetQueryDto` (`apps/api/src/common/dto/offset-query.dto.ts`) —
+  `page?` (>=1), `pageSize?` (1–100), `q?`, `sort?`, `sortDir?` (`asc|desc`);
+  per-domain DTOs extend it with their own filters.
+- Helpers: `resolveOffsetPage()` + `buildOffsetResult()` (`@repo/db`, `packages/db/src/pagination.ts`).
+- Response shape: `{ items, page, pageSize, total, totalPages }` (replaces
+  `{ items, nextCursor }`). `totalPages` is `0` for an empty set.
+- Frontend control: `Pagination` (`@repo/ui`, `packages/ui/src/components/ui/pagination.tsx`).
+- **Chat messages ("load older") stays on keyset cursor** — infinite scroll is correct there.
+
+Each list row below is migrated in its own slice; until a row's Notes say
+"offset (Slice N)", assume it still returns `{items, nextCursor}` — verify in source.
+
 ## Contract Index
 
 | Domain | Feature | Method | Endpoint / Route | Frontend Caller | Backend Handler | Request Shape | Response Shape | Auth / Permission | Risk | Notes |
@@ -40,7 +59,7 @@ Unknown fields must be marked `TODO: Fill after repository analysis. Do not trea
 | Workspaces | Get One | GET | `/workspaces/:workspaceId` | `apps/web/app/workspaces/[id]/page.tsx` → `apps/web/src/lib/api/workspaces.ts#getWorkspace` → `apps/web/app/api/workspaces/[id]/route.ts` | `workspaces.controller.ts#getOne` → `workspaces.service.ts#getOne` | path `workspaceId` | `{id, name, ownerId, createdAt}` | Member only (`JwtAuthGuard` + `WorkspaceMemberGuard`) | Deep | Non-members get 403 from guard before service lookup. Verified in `test/workspaces.e2e-spec.ts`. |
 | Workspaces | Invite Member | POST | `/workspaces/:workspaceId/invite` | `apps/web/app/workspaces/[id]/page.tsx` → `apps/web/src/lib/api/workspaces.ts#inviteMember` → `apps/web/app/api/workspaces/[id]/invite/route.ts` | `workspaces.controller.ts#invite` → `workspaces.service.ts#invite` | `{email}` | `{message}` | Owner/admin only (`JwtAuthGuard` + `WorkspaceMemberGuard` + `RolesGuard`) | Deep | Generates 64-char hex token, stores invite row, sends email via `NotificationsService` or dev console `[DEV INVITE]`. Token never returned in API body. |
 | Workspaces | Remove Member | DELETE | `/workspaces/:workspaceId/members/:userId` | `apps/web/src/lib/api/workspaces.ts#removeMember` → `apps/web/app/api/workspaces/[id]/members/[userId]/route.ts` | `workspaces.controller.ts#remove` → `workspaces.service.ts#removeMember` | path `workspaceId`, `userId` | `{message}` | Owner only (`JwtAuthGuard` + `WorkspaceMemberGuard` + `RolesGuard`) | Deep | Blocks removing last owner with 403. Returns 404 when target membership row does not exist. |
-| Workspaces | List Members | GET | `/workspaces/:workspaceId/members` | `apps/web/app/workspaces/[id]/page.tsx` → `apps/web/src/lib/api/workspaces.ts#listMembers` → `apps/web/app/api/workspaces/[id]/members/route.ts` | `workspaces.controller.ts#listMembers` → `workspaces.service.ts#listMembers` | query `cursor?`, `limit? (1-100)` | `{items: [{id, userId, email, role, joinedAt}], nextCursor: string | null}` | Member only (`JwtAuthGuard` + `WorkspaceMemberGuard`, no `RolesGuard` — any member can view the roster) | Deep | Joins `workspace_members` with `users` for email. Sorted `joinedAt` ascending, tie-broken on the membership row's own `id`. Added 2026-07-01 to close the gap where `removeMember` existed with no way to list who to remove. |
+| Workspaces | List Members | GET | `/workspaces/:workspaceId/members` | `apps/web/app/workspaces/[id]/page.tsx` → `apps/web/src/lib/api/workspaces.ts#listMembers` → `apps/web/app/api/workspaces/[id]/members/route.ts` | `workspaces.controller.ts#listMembers` → `workspaces.service.ts#listMembers` | query `page?`, `pageSize? (1-100)`, `q?`, `role?` (`owner\|admin\|member`) | `{items: [{id, userId, email, role, joinedAt}], page, pageSize, total, totalPages}` | Member only (`JwtAuthGuard` + `WorkspaceMemberGuard`, no `RolesGuard` — any member can view the roster) | Deep | Joins `workspace_members` with `users` for email. **Offset paginated (Slice 2, 2026-07-04)**: sorted `joinedAt DESC, id DESC` (newest-joined first, was `joinedAt ASC`); `q` filters `users.email ILIKE`, `role` filters membership role. Migrated from keyset cursor to offset (`ListMembersQueryDto extends OffsetQueryDto`, `resolveOffsetPage`/`buildOffsetResult`). FE `members/page.tsx` uses `@repo/ui` `Pagination` + search + role `Select`; e2e asserts `items` content only so shape change is compatible. Added 2026-07-01 to close the gap where `removeMember` existed with no way to list who to remove. |
 | Workspace Events | List Events | GET | `/workspaces/:workspaceId/events` | `apps/web/app/workspaces/[id]/page.tsx` → `apps/web/src/lib/api/events.ts#listEvents` → `apps/web/app/api/workspaces/[id]/events/route.ts` | `events.controller.ts#list` → `events.service.ts#list` | query `cursor?`, `limit? (1-100)` | `{items: [{id, workspaceId, type, entityId, title, detail, createdAt}], nextCursor: string | null}` | Member only (`JwtAuthGuard` + `WorkspaceMemberGuard`) | Standard | Newest-first keyset pagination on `createdAt DESC, id DESC`. Feed rows come from shared terminal job events, not ad-hoc frontend polling state. |
 | Workspace Events | Read Unread Count | GET | `/workspaces/:workspaceId/events/unread-count` | `apps/web/src/components/workspace-nav.tsx` → `apps/web/src/lib/api/events.ts#getUnreadCount` → `apps/web/app/api/workspaces/[id]/events/unread-count/route.ts` | `events.controller.ts#unreadCount` → `events.service.ts#unreadCount` | none | `{count: number}` | Member only (`JwtAuthGuard` + `WorkspaceMemberGuard`) | Standard | Count is per caller membership row, using `workspace_members.events_seen_at`; another member's seen marker never affects your badge. |
 | Workspace Events | Mark Events Seen | POST | `/workspaces/:workspaceId/events/mark-seen` | `apps/web/app/workspaces/[id]/page.tsx` → `apps/web/src/lib/api/events.ts#markEventsSeen` → `apps/web/app/api/workspaces/[id]/events/mark-seen/route.ts` | `events.controller.ts#markSeen` → `events.service.ts#markSeen` | none | `204 No Content` | Member only (`JwtAuthGuard` + `WorkspaceMemberGuard`) | Standard | Writes only caller's `workspace_members.events_seen_at`. Web proxy must preserve `204` with empty body; same-origin client treats `204` as `{}`. |

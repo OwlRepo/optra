@@ -35,7 +35,9 @@ export function WorkspaceNav({ workspaceId, collapsed }: { workspaceId: string; 
 
   return (
     <nav className="flex flex-col gap-1">
-      <WorkspaceSearch workspaceId={workspaceId} collapsed={collapsed} />
+      <div data-testid="workspace-search-slot" className="mb-3">
+        <WorkspaceSearch workspaceId={workspaceId} collapsed={collapsed} />
+      </div>
       {workspaceNavItems(workspaceId).map((item) => {
         const isActive = item.exact ? pathname === item.href : pathname === item.href || pathname?.startsWith(`${item.href}/`)
 

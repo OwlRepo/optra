@@ -4,45 +4,46 @@ services:
   postgres:
     image: pgvector/pgvector:pg16
     container_name: mnemra-prod-db
+    restart: unless-stopped
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: mnemra
-    ports:
-      - "54321:5432"
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD required}
+      POSTGRES_DB: ${POSTGRES_DB:-mnemra}
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./docker/init-db.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - internal
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 5s
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 10s
       timeout: 5s
       retries: 5
 
   redis:
     image: redis:7-alpine
     container_name: mnemra-prod-redis
-    ports:
-      - "6379:6379"
+    restart: unless-stopped
     volumes:
       - redis_data:/data
+    networks:
+      - internal
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
+      interval: 10s
       timeout: 3s
       retries: 5
 
   seaweedfs:
     image: chrislusf/seaweedfs
     container_name: mnemra-prod-seaweedfs
+    restart: unless-stopped
     command: server -s3 -s3.config=/etc/seaweedfs/s3.json -dir=/data
-    ports:
-      - "8333:8333"
-      - "8888:8888"
-      - "9333:9333"
     volumes:
       - seaweedfs_data:/data
-      - ./docker/seaweedfs/s3.json:/etc/seaweedfs/s3.json:ro
+      - ./docker/seaweedfs/s3.prod.json:/etc/seaweedfs/s3.json:ro
+    networks:
+      - internal
     healthcheck:
       test:
         [
@@ -61,28 +62,31 @@ services:
     build:
       context: .
       dockerfile: apps/api/Dockerfile
-      target: dev
+      target: prod
     container_name: mnemra-prod-api
-    ports:
-      - "3001:3001"
+    restart: unless-stopped
     env_file:
       - .env
     environment:
-      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/mnemra
+      NODE_ENV: production
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-mnemra}
       REDIS_HOST: redis
       REDIS_PORT: 6379
       S3_ENDPOINT: http://seaweedfs:8333
-      WEB_URL: http://localhost:3000
-    volumes:
-      - .:/app
-      - api_node_modules:/app/node_modules
+      WEB_URL: https://${DOMAIN}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:?OPENAI_API_KEY required}
+      LANGSMITH_API_KEY: ${LANGSMITH_API_KEY:-}
+      LANGSMITH_PROJECT: ${LANGSMITH_PROJECT:-mnemra-prod}
+    networks:
+      - internal
+      - web
     healthcheck:
       test:
         ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:3001/health"]
-      interval: 10s
+      interval: 15s
       timeout: 5s
-      retries: 12
-      start_period: 30s
+      retries: 5
+      start_period: 40s
     depends_on:
       postgres:
         condition: service_healthy
@@ -95,31 +99,64 @@ services:
     build:
       context: .
       dockerfile: apps/web/Dockerfile
-      target: dev
+      target: runner
+      args:
+        NEXT_PUBLIC_API_URL: https://${DOMAIN}/api
     container_name: mnemra-prod-web
-    ports:
-      - "3000:3000"
+    restart: unless-stopped
     env_file:
       - .env
     environment:
-      NEXT_PUBLIC_API_URL: http://localhost:3001
+      NODE_ENV: production
       API_URL: http://api:3001
-    volumes:
-      - .:/app
-      - web_node_modules:/app/node_modules
+      NEXT_PUBLIC_API_URL: https://${DOMAIN}/api
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-mnemra}
+      WEB_URL: https://${DOMAIN}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:?OPENAI_API_KEY required}
+      LANGSMITH_API_KEY: ${LANGSMITH_API_KEY:-}
+      LANGSMITH_PROJECT: ${LANGSMITH_PROJECT:-mnemra-prod}
+    networks:
+      - internal
+      - web
     depends_on:
       api:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:3000/"]
-      interval: 10s
+      interval: 15s
       timeout: 5s
-      retries: 12
-      start_period: 30s
+      retries: 5
+      start_period: 40s
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: mnemra-prod-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./docker/Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+    environment:
+      DOMAIN: ${DOMAIN:?DOMAIN required}
+    networks:
+      - web
+    depends_on:
+      web:
+        condition: service_healthy
+
+networks:
+  internal:
+    driver: bridge
+  web:
+    driver: bridge
 
 volumes:
   postgres_data:
   redis_data:
   seaweedfs_data:
-  api_node_modules:
-  web_node_modules:
+  caddy_data:
+  caddy_config:

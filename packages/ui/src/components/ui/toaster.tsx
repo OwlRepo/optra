@@ -4,7 +4,7 @@ import * as React from 'react'
 import { CheckCircle2, Info, Loader2, X, XCircle } from 'lucide-react'
 import { cn } from '../../lib/utils'
 
-type ToastVariant = 'default' | 'success' | 'error' | 'loading'
+export type ToastVariant = 'default' | 'success' | 'error' | 'loading'
 
 interface ToastItem {
   id: string
@@ -27,11 +27,22 @@ interface ToastContextValue {
 
 const ToastContext = React.createContext<ToastContextValue | null>(null)
 
-const variantClasses: Record<ToastVariant, string> = {
-  default: 'border-border/70 bg-card text-card-foreground',
-  success: 'border-emerald-500/20 bg-emerald-500/10 text-emerald-950 dark:text-emerald-100',
-  error: 'border-destructive/20 bg-destructive/10 text-rose-950 dark:text-rose-100',
-  loading: 'border-primary/20 bg-primary/10 text-primary',
+// Surface = border + background tint ONLY. Text stays a neutral high-contrast
+// token (see title/description below) so copy is always readable on the tint —
+// the previous same-hue foreground (e.g. loading = text-primary on bg-primary/10)
+// failed contrast.
+const variantSurface: Record<ToastVariant, string> = {
+  default: 'border-border/70 bg-card',
+  success: 'border-emerald-500/30 bg-emerald-500/10',
+  error: 'border-destructive/30 bg-destructive/10',
+  loading: 'border-primary/30 bg-primary/10',
+}
+
+const variantIconColor: Record<ToastVariant, string> = {
+  default: 'text-muted-foreground',
+  success: 'text-emerald-600 dark:text-emerald-400',
+  error: 'text-destructive',
+  loading: 'text-primary',
 }
 
 const variantIcon: Record<ToastVariant, React.ReactNode> = {
@@ -119,17 +130,17 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
               <div
                 key={item.id}
                 className={cn(
-                  'pointer-events-auto fade-slide-in flex items-start gap-3 rounded-3xl border px-4 py-3 shadow-[var(--shadow-xl)] backdrop-blur-xl',
-                  variantClasses[variant]
+                  'pointer-events-auto fade-slide-in flex items-start gap-3 rounded-3xl border px-4 py-3 text-foreground shadow-[var(--shadow-xl)] backdrop-blur-xl',
+                  variantSurface[variant]
                 )}
                 role="status"
                 aria-live="polite"
               >
-                <div className="mt-0.5 shrink-0">{variantIcon[variant]}</div>
+                <div className={cn('mt-0.5 shrink-0', variantIconColor[variant])}>{variantIcon[variant]}</div>
                 <div className="min-w-0 flex-1 space-y-1">
-                  <div className="text-sm font-semibold">{item.title}</div>
+                  <div className="text-sm font-semibold text-foreground">{item.title}</div>
                   {item.description ? (
-                    <p className="text-sm opacity-80">{item.description}</p>
+                    <p className="text-sm text-muted-foreground">{item.description}</p>
                   ) : null}
                 </div>
                 <button

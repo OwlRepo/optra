@@ -151,9 +151,9 @@ For everything else infra-shaped, the pragmatic verification checklist is:
    the corresponding container's logs show a rebuild/reload (`nest start --watch` recompile log for
    api, Fast Refresh log for web) within a few seconds — this is the hot-reload verification the
    bind-mount + polling setup exists to guarantee.
-6. `curl http://localhost:3001/health` returns `200 {"status":"ok"}` (dev) — confirms the endpoint
+6. `curl http://localhost:3101/health` returns `200 {"status":"ok"}` (dev) — confirms the endpoint
    and the api container's port mapping both work.
-7. `curl http://localhost:3000` returns `200` with the Next.js app HTML (dev).
+7. `curl http://localhost:3100` returns `200` with the Next.js app HTML (dev).
 8. Run each app's existing test suite (`cd apps/api && bun run test`, `cd apps/web && bun run test`,
    plus `packages/db`/`packages/ai`/`packages/ui`'s `bun run test` where defined) to confirm
    infra/rebrand changes did not silently break any test that happened to assert on old

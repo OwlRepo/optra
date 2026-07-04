@@ -39,12 +39,12 @@ export function AppShell({
         )}
       >
         <div className="space-y-6">
-          <div>{sidebarHeader({ collapsed })}</div>
+          <div className={cn('flex', collapsed && 'justify-center')}>{sidebarHeader({ collapsed })}</div>
           {navigation({ collapsed })}
         </div>
         <div className="space-y-3">
           {userFooter ? userFooter({ collapsed }) : null}
-          <div className="flex items-center justify-between gap-2">
+          <div className={cn('flex items-center gap-2', collapsed ? 'flex-col' : 'justify-between')}>
             {onLogout ? (
               <Button
                 variant="ghost"

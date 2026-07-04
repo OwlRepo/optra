@@ -63,7 +63,10 @@ describe('MembersPage', () => {
         { id: 'mem-1', userId: 'user-owner', email: 'owner@example.com', role: 'owner', joinedAt: '2026-06-01T00:00:00.000Z' },
         { id: 'mem-2', userId: 'user-2', email: 'teammate@example.com', role: 'member', joinedAt: '2026-06-15T00:00:00.000Z' },
       ],
-      nextCursor: null,
+      page: 1,
+      pageSize: 20,
+      total: 2,
+      totalPages: 1,
     })
     getCurrentUserMock.mockResolvedValue({ userId: 'user-owner', email: 'owner@example.com' })
   })
@@ -148,11 +151,17 @@ describe('MembersPage', () => {
           { id: 'mem-1', userId: 'user-owner', email: 'owner@example.com', role: 'owner', joinedAt: '2026-06-01T00:00:00.000Z' },
           { id: 'mem-2', userId: 'user-2', email: 'teammate@example.com', role: 'member', joinedAt: '2026-06-15T00:00:00.000Z' },
         ],
-        nextCursor: null,
+        page: 1,
+        pageSize: 20,
+        total: 2,
+        totalPages: 1,
       })
       .mockResolvedValueOnce({
         items: [{ id: 'mem-1', userId: 'user-owner', email: 'owner@example.com', role: 'owner', joinedAt: '2026-06-01T00:00:00.000Z' }],
-        nextCursor: null,
+        page: 1,
+        pageSize: 20,
+        total: 1,
+        totalPages: 1,
       })
     removeMemberMock.mockResolvedValue({ message: 'Removed' })
 
@@ -184,26 +193,49 @@ describe('MembersPage', () => {
     expect(screen.getByText('teammate@example.com')).toBeDefined()
   })
 
-  it('loads more members without duplicating existing rows', async () => {
+  it('paginates to the next page via the pagination control', async () => {
     listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
-    listMembersMock
-      .mockResolvedValueOnce({
-        items: [{ id: 'mem-1', userId: 'user-owner', email: 'owner@example.com', role: 'owner', joinedAt: '2026-06-01T00:00:00.000Z' }],
-        nextCursor: 'cursor-1',
-      })
-      .mockResolvedValueOnce({
-        items: [{ id: 'mem-2', userId: 'user-2', email: 'teammate@example.com', role: 'member', joinedAt: '2026-06-15T00:00:00.000Z' }],
-        nextCursor: null,
-      })
+    listMembersMock.mockResolvedValue({
+      items: [{ id: 'mem-1', userId: 'user-owner', email: 'owner@example.com', role: 'owner', joinedAt: '2026-06-01T00:00:00.000Z' }],
+      page: 1,
+      pageSize: 20,
+      total: 40,
+      totalPages: 2,
+    })
 
     renderPage()
 
     expect(await screen.findByText('owner@example.com')).toBeDefined()
-    fireEvent.click(screen.getByRole('button', { name: 'Load more members' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Next page' }))
 
     await waitFor(() => {
-      expect(listMembersMock).toHaveBeenNthCalledWith(2, 'ws-1', { cursor: 'cursor-1' })
-      expect(screen.getByText('teammate@example.com')).toBeDefined()
+      expect(listMembersMock).toHaveBeenCalledWith('ws-1', expect.objectContaining({ page: 2 }))
+    })
+  })
+
+  it('searches members by email through the backend', async () => {
+    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+
+    renderPage()
+
+    await screen.findByText('owner@example.com')
+    fireEvent.change(screen.getByLabelText('Search members'), { target: { value: 'teammate' } })
+
+    await waitFor(() => {
+      expect(listMembersMock).toHaveBeenCalledWith('ws-1', expect.objectContaining({ q: 'teammate' }))
+    })
+  })
+
+  it('filters members by role through the backend', async () => {
+    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+
+    renderPage()
+
+    await screen.findByText('owner@example.com')
+    fireEvent.change(screen.getByLabelText('Filter by role'), { target: { value: 'member' } })
+
+    await waitFor(() => {
+      expect(listMembersMock).toHaveBeenCalledWith('ws-1', expect.objectContaining({ role: 'member' }))
     })
   })
 })
