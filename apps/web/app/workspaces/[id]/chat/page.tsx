@@ -12,6 +12,7 @@ import {
   Badge,
   Button,
   Card,
+  cn,
   EmptyState,
   Input,
   Modal,
@@ -569,11 +570,7 @@ export default function WorkspaceChatPage({
             History
           </Button>
           {hasAssistantMessage ? (
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => void reload()}
-            >
+            <Button size="sm" variant="ghost" onClick={() => void reload()}>
               <RefreshCcw className="size-4" />
               Retry last answer
             </Button>
@@ -613,7 +610,9 @@ export default function WorkspaceChatPage({
                   ) : (
                     <Eye className="size-4" />
                   )}
-                  {showScores ? "Hide relevance scores" : "Show relevance scores"}
+                  {showScores
+                    ? "Hide relevance scores"
+                    : "Show relevance scores"}
                 </Button>
                 <Badge variant={isLoading ? "secondary" : "success"}>
                   {isLoading ? "Searching" : "Ready"}
@@ -671,7 +670,15 @@ export default function WorkspaceChatPage({
                   const sources = messageSources[message.id] ?? [];
 
                   return (
-                    <div key={message.id} className="w-full">
+                    <div
+                      key={message.id}
+                      className={cn([
+                        message.role === "user"
+                          ? "flex justify-end ml-auto"
+                          : "flex justify-start",
+                        "w-fit",
+                      ])}
+                    >
                       <div
                         className={`w-full rounded-[calc(var(--radius)+0.25rem)] border px-4 py-4 text-sm shadow-[var(--shadow-sm)] sm:px-5 ${
                           message.role === "user"
@@ -694,7 +701,8 @@ export default function WorkspaceChatPage({
                             </ReactMarkdown>
                           </div>
 
-                          {message.role === "assistant" && sources.length > 0 ? (
+                          {message.role === "assistant" &&
+                          sources.length > 0 ? (
                             <div className="mt-4 space-y-2 border-t border-border/50 pt-3">
                               <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
                                 Sources ({sources.length})
@@ -727,7 +735,9 @@ export default function WorkspaceChatPage({
                                           {source.title}
                                         </a>
                                       ) : (
-                                        <p className="font-medium">{source.title}</p>
+                                        <p className="font-medium">
+                                          {source.title}
+                                        </p>
                                       )}
                                       {showScores ? (
                                         <Badge variant="outline">
@@ -921,7 +931,9 @@ export default function WorkspaceChatPage({
                 <Badge variant="outline">{template.team}</Badge>
                 <p className="font-medium">{template.title}</p>
               </div>
-              <p className="mt-1 text-xs text-muted-foreground">{template.body}</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {template.body}
+              </p>
             </button>
           ))}
         </div>
