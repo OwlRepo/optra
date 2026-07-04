@@ -14,6 +14,7 @@ import { ScrapeModule } from './scrape/scrape.module'
 import { TicketsModule } from './tickets/tickets.module'
 import { EventsModule } from './events/events.module'
 import { SearchModule } from './search/search.module'
+import { RefineModule } from './refine/refine.module'
 import { HealthController } from './health/health.controller'
 
 @Module({
@@ -38,6 +39,7 @@ import { HealthController } from './health/health.controller'
     TicketsModule,
     EventsModule,
     SearchModule,
+    RefineModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })

@@ -3,6 +3,7 @@ import { validate } from 'class-validator'
 import { RegisterDto } from './register.dto'
 import { LoginDto } from './login.dto'
 import { VerifyOtpDto } from './verify-otp.dto'
+import { ChangePasswordDto } from './change-password.dto'
 
 async function errorsFor<T extends object>(cls: new () => T, plain: object) {
   const instance = plainToInstance(cls, plain)
@@ -66,5 +67,23 @@ describe('VerifyOtpDto', () => {
   it('documents current behavior: 6 letters pass DTO validation (Length checks size, not digits)', async () => {
     const errors = await errorsFor(VerifyOtpDto, { email: 'a@example.com', code: 'abcdef' })
     expect(errors).toHaveLength(0)
+  })
+})
+
+describe('ChangePasswordDto', () => {
+  it('accepts a current password and an 8-character new password (lower boundary)', async () => {
+    const errors = await errorsFor(ChangePasswordDto, { currentPassword: 'old-pass', newPassword: '12345678' })
+    expect(errors).toHaveLength(0)
+  })
+
+  it('rejects a missing currentPassword', async () => {
+    const errors = await errorsFor(ChangePasswordDto, { newPassword: '12345678' })
+    expect(errors.length).toBeGreaterThan(0)
+  })
+
+  it('rejects a 7-character newPassword (just under the boundary)', async () => {
+    const errors = await errorsFor(ChangePasswordDto, { currentPassword: 'old-pass', newPassword: '1234567' })
+    expect(errors).toHaveLength(1)
+    expect(errors[0].constraints).toHaveProperty('minLength')
   })
 })

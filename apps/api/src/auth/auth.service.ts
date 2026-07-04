@@ -169,6 +169,31 @@ export class AuthService {
     })
   }
 
+  async changePassword(
+    userId: string,
+    currentPassword: string,
+    newPassword: string,
+  ): Promise<{ message: string }> {
+    const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1)
+    if (!user) throw new NotFoundException('User not found')
+
+    const passwordMatch = await bcrypt.compare(currentPassword, user.passwordHash)
+    if (!passwordMatch) throw new UnauthorizedException('Current password is incorrect')
+
+    const passwordHash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS)
+    const now = new Date()
+
+    await db.transaction(async (tx) => {
+      await tx.update(users).set({ passwordHash }).where(eq(users.id, userId))
+      await tx
+        .update(refreshTokens)
+        .set({ revokedAt: now })
+        .where(and(eq(refreshTokens.userId, userId), isNull(refreshTokens.revokedAt)))
+    })
+
+    return { message: 'Password changed. Please log in again.' }
+  }
+
   async logout(rawToken: string): Promise<{ message: string }> {
     const tokenHash = this.hashToken(rawToken)
     await db

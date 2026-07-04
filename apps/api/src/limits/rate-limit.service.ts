@@ -49,6 +49,62 @@ export class RateLimitService {
     }
   }
 
+  /** Per-user daily cap on "Refine with Mnemra" requests. Resets at UTC midnight. */
+  async checkRefineDaily(userId: string) {
+    const limit = Number.parseInt(
+      this.config.get<string>('REFINE_DAILY_LIMIT_PER_USER', '20'),
+      10,
+    )
+    const key = `rl:refine:${userId}:${this.utcDateBucket()}`
+
+    try {
+      const count = await this.redis.incr(key)
+      if (count === 1) {
+        await this.redis.expire(key, 60 * 60 * 24)
+      }
+
+      if (count > limit) {
+        throw new HttpException('Daily refine limit reached', 429)
+      }
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error
+      }
+
+      this.logger.warn(
+        `Failed refine rate-limit check for user ${userId}: ${this.message(error)}`,
+      )
+    }
+  }
+
+  /** Read-only lookup of the current day's refine usage. Never increments the counter. */
+  async getRefineStatus(userId: string): Promise<{ used: number; limit: number; remaining: number }> {
+    const limit = Number.parseInt(
+      this.config.get<string>('REFINE_DAILY_LIMIT_PER_USER', '20'),
+      10,
+    )
+    const key = `rl:refine:${userId}:${this.utcDateBucket()}`
+
+    try {
+      const raw = await this.redis.get(key)
+      const used = raw ? Number.parseInt(raw, 10) : 0
+      return { used, limit, remaining: Math.max(0, limit - used) }
+    } catch (error) {
+      this.logger.warn(
+        `Failed refine status lookup for user ${userId}: ${this.message(error)}`,
+      )
+      return { used: 0, limit, remaining: limit }
+    }
+  }
+
+  private utcDateBucket(): string {
+    const now = new Date(Date.now())
+    const year = now.getUTCFullYear()
+    const month = String(now.getUTCMonth() + 1).padStart(2, '0')
+    const day = String(now.getUTCDate()).padStart(2, '0')
+    return `${year}${month}${day}`
+  }
+
   private message(error: unknown) {
     return error instanceof Error ? error.message : String(error)
   }

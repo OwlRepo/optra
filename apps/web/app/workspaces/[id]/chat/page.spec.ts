@@ -18,6 +18,10 @@ const setInputMock = vi.fn();
 const downloadDocumentMock = vi.fn();
 const downloadTicketTranscriptMock = vi.fn();
 const logoutMock = vi.fn();
+const refineMessageMock = vi.fn();
+const getRefineStatusMock = vi.fn();
+const saveRefinedMessageMock = vi.fn();
+const listSavedRefinedMessagesMock = vi.fn();
 let latestUseChatOptions: any = null;
 let mockMessages = [{ id: "assistant-1", role: "assistant", content: "Grounded answer" }];
 let shouldEmitAssistantReply = true;
@@ -50,6 +54,13 @@ vi.mock("@/lib/api/workspaces", () => ({
 
 vi.mock("@/lib/api/auth", () => ({
   logout: (...args: unknown[]) => logoutMock(...args),
+}));
+
+vi.mock("@/lib/api/refine", () => ({
+  refineMessage: (...args: unknown[]) => refineMessageMock(...args),
+  getRefineStatus: (...args: unknown[]) => getRefineStatusMock(...args),
+  saveRefinedMessage: (...args: unknown[]) => saveRefinedMessageMock(...args),
+  listSavedRefinedMessages: (...args: unknown[]) => listSavedRefinedMessagesMock(...args),
 }));
 
 vi.mock("ai/react", async () => {
@@ -146,6 +157,12 @@ describe("WorkspaceChatPage", () => {
     downloadDocumentMock.mockReset();
     downloadTicketTranscriptMock.mockReset();
     logoutMock.mockReset();
+    refineMessageMock.mockReset();
+    getRefineStatusMock.mockReset();
+    saveRefinedMessageMock.mockReset();
+    listSavedRefinedMessagesMock.mockReset();
+    getRefineStatusMock.mockResolvedValue({ used: 0, limit: 20, remaining: 20 });
+    listSavedRefinedMessagesMock.mockResolvedValue({ items: [] });
     latestUseChatOptions = null;
     mockMessages = [{ id: "assistant-1", role: "assistant", content: "Grounded answer" }];
     shouldEmitAssistantReply = true;
@@ -523,5 +540,156 @@ describe("WorkspaceChatPage", () => {
 
     expect(await screen.findByText("Start workspace chat")).toBeDefined();
     expect(screen.queryByRole("button", { name: "Retry last answer" })).toBeNull();
+  });
+
+  it("shows the remaining-refines badge from the status endpoint on mount", async () => {
+    getRefineStatusMock.mockResolvedValue({ used: 5, limit: 20, remaining: 15 });
+
+    renderPage();
+
+    expect(await screen.findByText(/15 refines left today/)).toBeDefined();
+  });
+
+  it("clicking Refine with Mnemra calls refine and replaces textarea content with refined text", async () => {
+    refineMessageMock.mockResolvedValue({ original: "raw draft", refined: "Clean refined text" });
+
+    renderPage();
+
+    const textarea = await screen.findByPlaceholderText(/Ask a workspace question/);
+    fireEvent.change(textarea, { target: { value: "raw draft" } });
+
+    fireEvent.click(await screen.findByRole("button", { name: "Refine with Mnemra" }));
+
+    await waitFor(() => {
+      expect(refineMessageMock).toHaveBeenCalledWith("ws-1", "raw draft");
+      expect(setInputMock).toHaveBeenCalledWith("Clean refined text");
+    });
+  });
+
+  it("shows Undo refine after a successful refine, and clicking it restores the original text", async () => {
+    refineMessageMock.mockResolvedValue({ original: "raw draft", refined: "Clean refined text" });
+
+    renderPage();
+
+    const textarea = await screen.findByPlaceholderText(/Ask a workspace question/);
+    fireEvent.change(textarea, { target: { value: "raw draft" } });
+    fireEvent.click(await screen.findByRole("button", { name: "Refine with Mnemra" }));
+
+    fireEvent.click(await screen.findByRole("button", { name: "Undo refine" }));
+
+    await waitFor(() => {
+      expect(setInputMock).toHaveBeenLastCalledWith("raw draft");
+    });
+  });
+
+  it("hand-editing the textarea after a refine hides the Undo/Save affordances", async () => {
+    refineMessageMock.mockResolvedValue({ original: "raw draft", refined: "Clean refined text" });
+
+    renderPage();
+
+    const textarea = await screen.findByPlaceholderText(/Ask a workspace question/);
+    fireEvent.change(textarea, { target: { value: "raw draft" } });
+    fireEvent.click(await screen.findByRole("button", { name: "Refine with Mnemra" }));
+    await screen.findByRole("button", { name: "Undo refine" });
+
+    fireEvent.change(textarea, { target: { value: "Clean refined text, but hand-edited" } });
+
+    await waitFor(() => {
+      expect(screen.queryByRole("button", { name: "Undo refine" })).toBeNull();
+      expect(screen.queryByRole("button", { name: "Save refined message" })).toBeNull();
+    });
+  });
+
+  it("clicking Save refined message calls the save API with the last refine pair", async () => {
+    refineMessageMock.mockResolvedValue({ original: "raw draft", refined: "Clean refined text" });
+    saveRefinedMessageMock.mockResolvedValue({
+      id: "m-1",
+      originalText: "raw draft",
+      refinedText: "Clean refined text",
+      createdAt: "",
+    });
+
+    renderPage();
+
+    const textarea = await screen.findByPlaceholderText(/Ask a workspace question/);
+    fireEvent.change(textarea, { target: { value: "raw draft" } });
+    fireEvent.click(await screen.findByRole("button", { name: "Refine with Mnemra" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Save refined message" }));
+
+    await waitFor(() => {
+      expect(saveRefinedMessageMock).toHaveBeenCalledWith("ws-1", {
+        originalText: "raw draft",
+        refinedText: "Clean refined text",
+      });
+    });
+  });
+
+  it("shows an error toast with try-rephrasing copy on a 422 refine response", async () => {
+    refineMessageMock.mockRejectedValue({
+      message: "Refine produced no output. Try rephrasing.",
+    });
+
+    renderPage();
+
+    const textarea = await screen.findByPlaceholderText(/Ask a workspace question/);
+    fireEvent.change(textarea, { target: { value: "raw draft" } });
+    fireEvent.click(await screen.findByRole("button", { name: "Refine with Mnemra" }));
+
+    expect(await screen.findByText("Refine produced no output. Try rephrasing.")).toBeDefined();
+  });
+
+  it("shows an error toast mentioning the daily limit on a 429 refine response", async () => {
+    refineMessageMock.mockRejectedValue({ message: "Daily refine limit reached" });
+
+    renderPage();
+
+    const textarea = await screen.findByPlaceholderText(/Ask a workspace question/);
+    fireEvent.change(textarea, { target: { value: "raw draft" } });
+    fireEvent.click(await screen.findByRole("button", { name: "Refine with Mnemra" }));
+
+    expect(await screen.findByText("Daily refine limit reached")).toBeDefined();
+  });
+
+  it("opens the Saved messages modal and lists fetched saved messages", async () => {
+    listSavedRefinedMessagesMock.mockResolvedValue({
+      items: [
+        { id: "m-1", originalText: "raw one", refinedText: "Reusable refined text", createdAt: "" },
+      ],
+    });
+
+    renderPage();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Saved messages" }));
+
+    expect(await screen.findByRole("dialog")).toBeDefined();
+    expect(screen.getByText("Reusable refined text")).toBeDefined();
+  });
+
+  it("renders an empty state in the Saved messages modal when there are no saved messages", async () => {
+    listSavedRefinedMessagesMock.mockResolvedValue({ items: [] });
+
+    renderPage();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Saved messages" }));
+
+    expect(await screen.findByText(/No saved messages yet/)).toBeDefined();
+  });
+
+  it("selecting a saved message pastes its refinedText into the textarea and closes the modal", async () => {
+    listSavedRefinedMessagesMock.mockResolvedValue({
+      items: [
+        { id: "m-1", originalText: "raw one", refinedText: "Reusable refined text", createdAt: "" },
+      ],
+    });
+
+    renderPage();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Saved messages" }));
+    fireEvent.click(await screen.findByText("Reusable refined text"));
+
+    await waitFor(() => {
+      expect(setInputMock).toHaveBeenCalledWith("Reusable refined text");
+      expect(screen.queryByRole("dialog")).toBeNull();
+    });
   });
 });

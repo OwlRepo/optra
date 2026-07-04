@@ -8,3 +8,14 @@ export async function GET(
   const { id } = await context.params
   return proxyJson(request, `/workspaces/${id}`, { method: 'GET' })
 }
+
+export async function PATCH(
+  request: NextRequest,
+  context: { params: Promise<{ id: string }> },
+) {
+  const { id } = await context.params
+  return proxyJson(request, `/workspaces/${id}`, {
+    method: 'PATCH',
+    body: await request.json(),
+  })
+}

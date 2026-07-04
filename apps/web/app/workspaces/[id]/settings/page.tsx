@@ -3,25 +3,81 @@
 import * as React from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { AppShell, Badge, EmptyState, PageSection, useToast } from '@repo/ui'
-import { Settings } from 'lucide-react'
-import { logout } from '@/lib/api/auth'
+import { useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { z } from 'zod'
+import { AppShell, Badge, Button, Input, PageSection, useToast } from '@repo/ui'
+import { changePassword, logout } from '@/lib/api/auth'
 import { isUnauthorized } from '@/lib/api/handle-unauthorized'
-import { getWorkspace } from '@/lib/api/workspaces'
+import { getWorkspace, listWorkspaces, updateWorkspace } from '@/lib/api/workspaces'
 import { WorkspaceNav } from '@/components/workspace-nav'
 
 type Workspace = { id: string; name: string }
+type WorkspaceMembership = { id: string; role: 'owner' | 'admin' | 'member' }
+
+const renameSchema = z.object({
+  name: z.string().trim().min(1, 'Workspace name is required').max(255, 'Workspace name is too long'),
+})
+
+type RenameFormData = z.infer<typeof renameSchema>
+
+const changePasswordSchema = z
+  .object({
+    currentPassword: z.string().min(1, 'Current password is required'),
+    newPassword: z.string().min(8, 'Password must be at least 8 characters'),
+    confirmPassword: z.string().min(1, 'Please confirm your new password'),
+  })
+  .refine((data) => data.newPassword === data.confirmPassword, {
+    message: 'Passwords do not match',
+    path: ['confirmPassword'],
+  })
+
+type ChangePasswordFormData = z.infer<typeof changePasswordSchema>
 
 export default function SettingsPage({ params }: { params: { id: string } }) {
   const router = useRouter()
   const { toast } = useToast()
   const workspaceId = params.id
   const [workspace, setWorkspace] = React.useState<Workspace | null>(null)
+  const [role, setRole] = React.useState<WorkspaceMembership['role'] | null>(null)
+
+  const {
+    register,
+    handleSubmit,
+    reset,
+    formState: { errors, isSubmitting },
+  } = useForm<RenameFormData>({
+    resolver: zodResolver(renameSchema),
+    defaultValues: { name: '' },
+  })
+
+  const [passwordApiError, setPasswordApiError] = React.useState<string | null>(null)
+
+  const {
+    register: registerPassword,
+    handleSubmit: handlePasswordSubmit,
+    reset: resetPasswordForm,
+    formState: { errors: passwordErrors, isSubmitting: isChangingPassword },
+  } = useForm<ChangePasswordFormData>({
+    resolver: zodResolver(changePasswordSchema),
+    defaultValues: { currentPassword: '', newPassword: '', confirmPassword: '' },
+  })
 
   React.useEffect(() => {
     const loadPage = async () => {
       try {
-        setWorkspace(await getWorkspace(workspaceId))
+        const [workspaceData, memberships] = await Promise.all([
+          getWorkspace(workspaceId),
+          listWorkspaces(),
+        ])
+        setWorkspace(workspaceData)
+        reset({ name: workspaceData?.name ?? '' })
+
+        const membershipItems = Array.isArray(memberships?.items) ? memberships.items : []
+        const membership = membershipItems.find(
+          (entry: WorkspaceMembership) => entry.id === workspaceId,
+        )
+        setRole(membership?.role ?? null)
       } catch (err) {
         if (isUnauthorized(err)) {
           router.push('/login')
@@ -35,7 +91,7 @@ export default function SettingsPage({ params }: { params: { id: string } }) {
       }
     }
     void loadPage()
-  }, [router, toast, workspaceId])
+  }, [reset, router, toast, workspaceId])
 
   const handleLogout = React.useCallback(async () => {
     try {
@@ -44,6 +100,52 @@ export default function SettingsPage({ params }: { params: { id: string } }) {
       router.push('/login')
     }
   }, [router])
+
+  const canRename = role === 'owner' || role === 'admin'
+
+  const onSubmitRename = handleSubmit(async (data) => {
+    try {
+      const updated = await updateWorkspace(workspaceId, data.name)
+      setWorkspace(updated)
+      reset({ name: updated.name })
+      toast({
+        variant: 'success',
+        title: 'Workspace renamed',
+        description: `Now called ${updated.name}.`,
+      })
+    } catch (err) {
+      if (isUnauthorized(err)) {
+        router.push('/login')
+        return
+      }
+      toast({
+        variant: 'error',
+        title: 'Failed to rename workspace',
+        description: err instanceof Error ? err.message : 'Try again in a moment.',
+      })
+    }
+  })
+
+  const onSubmitChangePassword = handlePasswordSubmit(async (data) => {
+    setPasswordApiError(null)
+    try {
+      await changePassword(data.currentPassword, data.newPassword)
+      toast({
+        variant: 'success',
+        title: 'Password changed',
+        description: 'Please log in again with your new password.',
+      })
+      resetPasswordForm()
+      await logout()
+      router.push('/login')
+    } catch (err) {
+      const message =
+        err && typeof err === 'object' && 'message' in err
+          ? String((err as { message: unknown }).message)
+          : 'Try again in a moment.'
+      setPasswordApiError(message)
+    }
+  })
 
   return (
     <AppShell
@@ -59,8 +161,84 @@ export default function SettingsPage({ params }: { params: { id: string } }) {
       onLogout={handleLogout}
     >
       <div className="mx-auto w-full max-w-3xl space-y-8 px-6 py-10">
-        <PageSection eyebrow={<Badge variant="outline">Workspace</Badge>} title={workspace?.name ?? 'Workspace'} description={`Workspace ID: ${workspaceId}`}>
-          <EmptyState icon={<Settings className="size-5" />} title="More settings coming soon" description="Workspace name changes, danger-zone actions, and integrations will land here." />
+        <PageSection
+          eyebrow={<Badge variant="outline">Workspace</Badge>}
+          title="Workspace name"
+          description={`Workspace ID: ${workspaceId}`}
+        >
+          <form className="space-y-4" onSubmit={onSubmitRename}>
+            <div className="space-y-2">
+              <label htmlFor="workspace-name-input" className="text-sm font-medium">
+                Workspace name
+              </label>
+              <Input id="workspace-name-input" disabled={!canRename} {...register('name')} />
+              {errors.name ? <p className="text-sm text-destructive">{errors.name.message}</p> : null}
+            </div>
+            {canRename ? (
+              <div className="flex justify-end">
+                <Button type="submit" isLoading={isSubmitting} loadingText="Saving">
+                  Save changes
+                </Button>
+              </div>
+            ) : null}
+          </form>
+        </PageSection>
+
+        <PageSection
+          eyebrow={<Badge variant="outline">Security</Badge>}
+          title="Change password"
+          description="Changing your password signs you out of every other session."
+        >
+          <form className="space-y-4" onSubmit={onSubmitChangePassword}>
+            <div className="space-y-2">
+              <label htmlFor="current-password-input" className="text-sm font-medium">
+                Current password
+              </label>
+              <Input
+                id="current-password-input"
+                type="password"
+                autoComplete="current-password"
+                {...registerPassword('currentPassword')}
+              />
+              {passwordErrors.currentPassword ? (
+                <p className="text-sm text-destructive">{passwordErrors.currentPassword.message}</p>
+              ) : null}
+            </div>
+            <div className="space-y-2">
+              <label htmlFor="new-password-input" className="text-sm font-medium">
+                New password
+              </label>
+              <Input
+                id="new-password-input"
+                type="password"
+                autoComplete="new-password"
+                {...registerPassword('newPassword')}
+              />
+              {passwordErrors.newPassword ? (
+                <p className="text-sm text-destructive">{passwordErrors.newPassword.message}</p>
+              ) : null}
+            </div>
+            <div className="space-y-2">
+              <label htmlFor="confirm-password-input" className="text-sm font-medium">
+                Confirm new password
+              </label>
+              <Input
+                id="confirm-password-input"
+                type="password"
+                autoComplete="new-password"
+                {...registerPassword('confirmPassword')}
+              />
+              {passwordErrors.confirmPassword ? (
+                <p className="text-sm text-destructive">{passwordErrors.confirmPassword.message}</p>
+              ) : null}
+            </div>
+            {passwordApiError ? <p className="text-sm text-destructive">{passwordApiError}</p> : null}
+            <div className="flex justify-end">
+              <Button type="submit" isLoading={isChangingPassword} loadingText="Changing">
+                Change password
+              </Button>
+            </div>
+          </form>
         </PageSection>
       </div>
     </AppShell>

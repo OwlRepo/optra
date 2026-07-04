@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { listMembers } from './workspaces'
+import { listMembers, updateWorkspace } from './workspaces'
 
 describe('workspaces api client', () => {
   afterEach(() => {
@@ -31,6 +31,21 @@ describe('workspaces api client', () => {
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/workspaces/ws-1/members?page=2&pageSize=10&q=needle&role=member',
       expect.any(Object),
+    )
+  })
+
+  it('updateWorkspace PATCHes the workspace endpoint with the new name', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ id: 'ws-1', name: 'New Name', ownerId: 'u-1', createdAt: '' }),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    await updateWorkspace('ws-1', 'New Name')
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/workspaces/ws-1',
+      expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ name: 'New Name' }) }),
     )
   })
 })

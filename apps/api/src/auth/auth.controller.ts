@@ -16,6 +16,7 @@ import { AuthService } from './auth.service'
 import { RegisterDto } from './dto/register.dto'
 import { VerifyOtpDto } from './dto/verify-otp.dto'
 import { LoginDto } from './dto/login.dto'
+import { ChangePasswordDto } from './dto/change-password.dto'
 import { CurrentUser, type CurrentUserContext } from './decorators/current-user.decorator'
 import { JwtAuthGuard } from './guards/jwt-auth.guard'
 
@@ -88,6 +89,23 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   getMe(@CurrentUser() user: CurrentUserContext) {
     return user
+  }
+
+  @Post('change-password')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard)
+  async changePassword(
+    @CurrentUser() user: CurrentUserContext,
+    @Body() dto: ChangePasswordDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const result = await this.authService.changePassword(
+      user.userId,
+      dto.currentPassword,
+      dto.newPassword,
+    )
+    res.clearCookie(RT_COOKIE, { path: '/' })
+    return result
   }
 
   private setRtCookie(res: Response, token: string) {

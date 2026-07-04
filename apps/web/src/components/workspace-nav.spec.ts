@@ -85,7 +85,7 @@ describe('WorkspaceNav', () => {
     render(React.createElement(WorkspaceNav, { workspaceId: 'w1', collapsed: false }))
 
     const slot = screen.getByTestId('workspace-search-slot')
-    expect(slot.className).toContain('mb-3')
+    expect(slot.className).toContain('mb-4')
   })
 
   it('renders unread-count badge on Overview when count is positive', async () => {

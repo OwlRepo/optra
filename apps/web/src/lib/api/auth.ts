@@ -37,3 +37,10 @@ export async function logout() {
 export async function getCurrentUser(): Promise<{ userId: string; email: string }> {
   return apiFetch('/api/auth/me')
 }
+
+export async function changePassword(currentPassword: string, newPassword: string) {
+  return apiFetch('/api/auth/change-password', {
+    method: 'POST',
+    body: JSON.stringify({ currentPassword, newPassword }),
+  })
+}

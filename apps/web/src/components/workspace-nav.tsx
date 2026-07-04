@@ -35,7 +35,7 @@ export function WorkspaceNav({ workspaceId, collapsed }: { workspaceId: string; 
 
   return (
     <nav className="flex flex-col gap-1">
-      <div data-testid="workspace-search-slot" className="mb-3">
+      <div data-testid="workspace-search-slot" className="mb-4">
         <WorkspaceSearch workspaceId={workspaceId} collapsed={collapsed} />
       </div>
       {workspaceNavItems(workspaceId).map((item) => {

@@ -323,6 +323,28 @@ describe('WorkspacesService', () => {
     expect(members.items.map((m: any) => m.userId)).toEqual([member.id])
   })
 
+  it('update changes the workspace name', async () => {
+    const [user] = await db
+      .insert(users)
+      .values({ email: `workspaces-spec-update-${Date.now()}@example.com`, passwordHash: 'x', isVerified: true })
+      .returning()
+    const workspace = await service.create(user.id, 'Spec WS Before Rename')
+
+    const updated = await service.update(workspace.id, 'Spec WS After Rename')
+
+    expect(updated.name).toBe('Spec WS After Rename')
+    expect(updated.id).toBe(workspace.id)
+
+    const [row] = await db.select().from(workspaces).where(eq(workspaces.id, workspace.id)).limit(1)
+    expect(row.name).toBe('Spec WS After Rename')
+  })
+
+  it('update throws NotFoundException for an unknown workspaceId', async () => {
+    await expect(service.update('00000000-0000-0000-0000-000000000000', 'Nope')).rejects.toThrow(
+      NotFoundException,
+    )
+  })
+
   it('searches members by email substring', async () => {
     const stamp = Date.now()
     const [owner] = await db

@@ -1,7 +1,7 @@
 /** @vitest-environment jsdom */
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { getCurrentUser, logout } from './auth'
+import { changePassword, getCurrentUser, logout } from './auth'
 import { isLoggedIn, markLoggedIn } from '@/lib/auth'
 
 describe('logout', () => {
@@ -50,5 +50,29 @@ describe('getCurrentUser', () => {
 
     expect(fetchMock).toHaveBeenCalledWith('/api/auth/me', expect.any(Object))
     expect(result).toEqual({ userId: 'user-1', email: 'owner@example.com' })
+  })
+})
+
+describe('changePassword', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('POSTs currentPassword and newPassword to /api/auth/change-password', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ message: 'Password changed. Please log in again.' }),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    await changePassword('old-pass', 'new-password-123')
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/auth/change-password',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ currentPassword: 'old-pass', newPassword: 'new-password-123' }),
+      }),
+    )
   })
 })

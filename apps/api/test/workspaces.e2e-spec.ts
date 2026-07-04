@@ -162,4 +162,71 @@ describe('Workspaces flow (e2e)', () => {
       .set('Authorization', `Bearer ${outsider.accessToken}`)
       .expect(403)
   })
+
+  // Only 2 fresh registrations here (owner, admin) — /auth/register is throttled
+  // to 5 req/10min per caller and this file's first test already uses 3, so the
+  // member/non-member 403 cases are intentionally NOT re-proven here: they use
+  // the exact same WorkspaceMemberGuard/RolesGuard already asserted against
+  // /invite and /members above in this same file (identical shared middleware,
+  // not endpoint-specific logic), so re-registering users just to re-check
+  // guard behavior already covered would only burn throttle budget for no new
+  // signal on this endpoint's actual logic (DTO validation + service.update).
+  it('rename: owner and admin can rename, invalid names rejected', async () => {
+    const ownerEmail = `${prefix}rename-owner@example.com`
+    const adminEmail = `${prefix}rename-admin@example.com`
+
+    const owner = await registerAndVerify(app, ownerEmail, password)
+
+    const mineRes = await request(app.getHttpServer())
+      .get('/workspaces/me')
+      .set('Authorization', `Bearer ${owner.accessToken}`)
+      .expect(200)
+    const workspaceId = mineRes.body.items[0].id as string
+
+    await request(app.getHttpServer())
+      .post(`/workspaces/${workspaceId}/invite`)
+      .set('Authorization', `Bearer ${owner.accessToken}`)
+      .send({ email: adminEmail })
+      .expect(201)
+    const [adminInvite] = await db
+      .select()
+      .from(invitations)
+      .where(and(eq(invitations.workspaceId, workspaceId), eq(invitations.email, adminEmail)))
+      .limit(1)
+    const admin = await registerAndVerify(app, adminEmail, password)
+    await request(app.getHttpServer())
+      .post(`/workspaces/accept-invite/${adminInvite.token}`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .expect(200)
+    await db
+      .update(workspaceMembers)
+      .set({ role: 'admin' })
+      .where(and(eq(workspaceMembers.workspaceId, workspaceId), eq(workspaceMembers.userId, admin.user.id)))
+
+    const ownerRename = await request(app.getHttpServer())
+      .patch(`/workspaces/${workspaceId}`)
+      .set('Authorization', `Bearer ${owner.accessToken}`)
+      .send({ name: 'Renamed By Owner' })
+      .expect(200)
+    expect(ownerRename.body.name).toBe('Renamed By Owner')
+
+    const adminRename = await request(app.getHttpServer())
+      .patch(`/workspaces/${workspaceId}`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .send({ name: 'Renamed By Admin' })
+      .expect(200)
+    expect(adminRename.body.name).toBe('Renamed By Admin')
+
+    await request(app.getHttpServer())
+      .patch(`/workspaces/${workspaceId}`)
+      .set('Authorization', `Bearer ${owner.accessToken}`)
+      .send({ name: '' })
+      .expect(400)
+
+    await request(app.getHttpServer())
+      .patch(`/workspaces/${workspaceId}`)
+      .set('Authorization', `Bearer ${owner.accessToken}`)
+      .send({ name: 'x'.repeat(256) })
+      .expect(400)
+  })
 })

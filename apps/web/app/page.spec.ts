@@ -25,7 +25,7 @@ describe('Home', () => {
     render(React.createElement(Home))
 
     expect(screen.getAllByText('Knowledge search, grounded chat, and ticket drafts all pull from the same source of truth, so answers never fall out of sync with your docs.').length).toBeGreaterThan(0)
-    expect(screen.getAllByText('Support teammates get consistent, cited answers without learning a new tool or waiting on engineering.').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Stop digging through tickets, docs, and Slack threads for answers your team already found.').length).toBeGreaterThan(0)
     expect(screen.getAllByText('Every answer cites its source, so agents can double-check before they reply and never guess in front of a customer.').length).toBeGreaterThan(0)
 
     expect(screen.queryByText('Designed like real software, not placeholder screens')).toBeNull()
@@ -45,15 +45,59 @@ describe('Home', () => {
     const { container } = render(React.createElement(Home))
 
     expect(screen.getAllByText('Agent question').length).toBeGreaterThan(0)
-    expect(screen.getAllByText('Find right answer instantly').length).toBeGreaterThan(0)
-    expect(screen.getAllByText('One place for support context').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Stop searching everywhere').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Onboard new agents on day one').length).toBeGreaterThan(0)
 
     expect(container.querySelector('svg.lucide-message-square-text.size-5.text-primary')).not.toBeNull()
-    expect(container.querySelector('svg.lucide-file-stack.mt-6.size-5.text-accent-foreground')).not.toBeNull()
+    expect(container.querySelector('svg.lucide-user-plus.mt-6.size-5.text-accent-foreground')).not.toBeNull()
+    expect(container.querySelector('svg.lucide-archive.mt-6.size-5.text-accent-foreground')).not.toBeNull()
+    expect(container.querySelector('svg.lucide-zap.mt-6.size-5.text-accent-foreground')).not.toBeNull()
     expect(container.querySelector('svg.lucide-search.size-5.text-primary')).not.toBeNull()
 
     expect(container.querySelector('.size-10.rounded-2xl.bg-primary.text-primary-foreground')).toBeNull()
     expect(container.querySelector('.size-12.rounded-2xl.bg-primary\\/10.text-primary')).toBeNull()
     expect(container.querySelector('.size-12.rounded-2xl.bg-accent\\/20.text-accent-foreground')).toBeNull()
+  })
+
+  it('rewrites hero copy around the pain point instead of the feature, removing the old self-referential copy', () => {
+    render(React.createElement(Home))
+
+    expect(screen.getAllByText('Your team already solved this.').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Mnemra helps you find it.').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Search past tickets, docs, and Slack threads to get a sourced answer before you start typing a reply.').length).toBeGreaterThan(0)
+
+    expect(screen.queryByText('Give every support teammate')).toBeNull()
+    expect(screen.queryByText('expert-level context')).toBeNull()
+    expect(screen.queryByText('Mnemra turns scattered documentation into fast, confident answers. It looks polished, feels easy, and helps non-technical teams solve customer issues without digging through tabs.')).toBeNull()
+  })
+
+  it('rewrites the pillars section title away from the retired UI-process framing', () => {
+    render(React.createElement(Home))
+
+    expect(screen.getAllByText('Stop losing time to knowledge you already have').length).toBeGreaterThan(0)
+    expect(screen.queryByText('Fast answers for people who just need system to work')).toBeNull()
+  })
+
+  it('adds a workspaces section supporting both solo and team use, without colored-circle icon wrappers', () => {
+    const { container } = render(React.createElement(Home))
+
+    expect(screen.getAllByText('Built for solo work and growing teams').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Personal workspace').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Team workspace').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('For VAs, freelancers, and solo support agents who need one place for client notes, SOPs, and past fixes.').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('For support teams and agencies where every agent should answer from the same trusted knowledge.').length).toBeGreaterThan(0)
+
+    expect(container.querySelector('svg.lucide-user.size-5.text-primary')).not.toBeNull()
+    expect(container.querySelector('svg.lucide-users.size-5.text-primary')).not.toBeNull()
+    expect(container.querySelector('.size-10.rounded-2xl.bg-primary.text-primary-foreground')).toBeNull()
+    expect(container.querySelector('.size-12.rounded-2xl.bg-primary\\/10.text-primary')).toBeNull()
+    expect(container.querySelector('.size-12.rounded-2xl.bg-accent\\/20.text-accent-foreground')).toBeNull()
+  })
+
+  it('rewrites the final CTA to not re-narrow to teams-only after the solo/team section', () => {
+    render(React.createElement(Home))
+
+    expect(screen.getAllByText('Ready to build your support memory?').length).toBeGreaterThan(0)
+    expect(screen.queryByText('Ready to turn support knowledge into product advantage?')).toBeNull()
   })
 })

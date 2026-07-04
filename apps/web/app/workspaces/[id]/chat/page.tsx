@@ -21,6 +21,7 @@ import {
   useToast,
 } from "@repo/ui";
 import {
+  Bookmark,
   Bot,
   Clock,
   Download,
@@ -30,14 +31,24 @@ import {
   Loader2,
   Plus,
   RefreshCcw,
+  Save,
   Search,
   Send,
   Sparkles,
   Square,
+  Undo2,
+  Wand2,
 } from "lucide-react";
 import { logout } from "@/lib/api/auth";
 import { getChatMessages, listChatSessions } from "@/lib/api/chat";
 import { downloadDocument } from "@/lib/api/documents";
+import {
+  getRefineStatus,
+  listSavedRefinedMessages,
+  refineMessage,
+  saveRefinedMessage,
+  type SavedRefinedMessage,
+} from "@/lib/api/refine";
 import { downloadTicketTranscript } from "@/lib/api/tickets";
 import { isUnauthorized } from "@/lib/api/handle-unauthorized";
 import { getWorkspace } from "@/lib/api/workspaces";
@@ -242,6 +253,18 @@ export default function WorkspaceChatPage({
   const [templatesOpen, setTemplatesOpen] = React.useState(false);
   const [showScores, setShowScores] = React.useState(false);
   const [thinkingWord, setThinkingWord] = React.useState(thinkingWords[0]);
+  const [isRefining, setIsRefining] = React.useState(false);
+  const [lastRefine, setLastRefine] = React.useState<{
+    original: string;
+    refined: string;
+  } | null>(null);
+  const [refineRemaining, setRefineRemaining] = React.useState<number | null>(
+    null,
+  );
+  const [savedMessagesOpen, setSavedMessagesOpen] = React.useState(false);
+  const [savedMessages, setSavedMessages] = React.useState<
+    SavedRefinedMessage[]
+  >([]);
 
   React.useEffect(() => {
     toastRef.current = toast;
@@ -535,6 +558,131 @@ export default function WorkspaceChatPage({
     setTemplatesOpen(false);
   };
 
+  const refreshRefineStatus = React.useCallback(async () => {
+    try {
+      const status = await getRefineStatus(workspaceId);
+      setRefineRemaining(
+        status && typeof status.remaining === "number" ? status.remaining : null,
+      );
+    } catch (err) {
+      if (isUnauthorized(err)) {
+        router.push("/login");
+      }
+    }
+  }, [router, workspaceId]);
+
+  React.useEffect(() => {
+    void refreshRefineStatus();
+  }, [refreshRefineStatus]);
+
+  const extractErrorMessage = (err: unknown, fallback: string) =>
+    err && typeof err === "object" && "message" in err
+      ? String((err as { message: unknown }).message)
+      : fallback;
+
+  const handleTextareaChange = (
+    event: React.ChangeEvent<HTMLTextAreaElement>,
+  ) => {
+    handleInputChange(event);
+    if (lastRefine && event.target.value !== lastRefine.refined) {
+      setLastRefine(null);
+    }
+  };
+
+  const handleRefine = async () => {
+    if (!input.trim() || isLoading || isRefining) {
+      return;
+    }
+
+    const original = input;
+    setIsRefining(true);
+
+    try {
+      const result = await refineMessage(workspaceId, original);
+      setLastRefine({ original, refined: result.refined });
+      setInput(result.refined);
+      await refreshRefineStatus();
+    } catch (err) {
+      if (isUnauthorized(err)) {
+        router.push("/login");
+        return;
+      }
+
+      toastRef.current({
+        variant: "error",
+        title: "Refine failed",
+        description: extractErrorMessage(err, "Try again in a moment."),
+      });
+    } finally {
+      setIsRefining(false);
+    }
+  };
+
+  const handleUndoRefine = () => {
+    if (!lastRefine) {
+      return;
+    }
+    setInput(lastRefine.original);
+    setLastRefine(null);
+  };
+
+  const handleSaveRefined = async () => {
+    if (!lastRefine) {
+      return;
+    }
+
+    try {
+      await saveRefinedMessage(workspaceId, {
+        originalText: lastRefine.original,
+        refinedText: lastRefine.refined,
+      });
+      toastRef.current({
+        variant: "success",
+        title: "Saved for reuse",
+        description: "Find it anytime in Saved messages.",
+      });
+    } catch (err) {
+      if (isUnauthorized(err)) {
+        router.push("/login");
+        return;
+      }
+
+      toastRef.current({
+        variant: "error",
+        title: "Failed to save refined message",
+        description: extractErrorMessage(err, "Try again in a moment."),
+      });
+    }
+  };
+
+  const loadSavedMessages = React.useCallback(async () => {
+    try {
+      const data = await listSavedRefinedMessages(workspaceId);
+      setSavedMessages(Array.isArray(data?.items) ? data.items : []);
+    } catch (err) {
+      if (isUnauthorized(err)) {
+        router.push("/login");
+        return;
+      }
+
+      toastRef.current({
+        variant: "error",
+        title: "Failed to load saved messages",
+        description: extractErrorMessage(err, "Try again in a moment."),
+      });
+    }
+  }, [router, workspaceId]);
+
+  const openSavedMessages = () => {
+    setSavedMessagesOpen(true);
+    void loadSavedMessages();
+  };
+
+  const applySavedMessage = (message: SavedRefinedMessage) => {
+    setInput(message.refinedText);
+    setSavedMessagesOpen(false);
+  };
+
   const hasAssistantMessage = messages.some(
     (message) => message.role === "assistant",
   );
@@ -815,7 +963,7 @@ export default function WorkspaceChatPage({
               <div className="flex flex-col gap-3 sm:flex-row">
                 <Textarea
                   value={input}
-                  onChange={handleInputChange}
+                  onChange={handleTextareaChange}
                   onKeyDown={handleTextareaKeyDown}
                   placeholder="Ask a workspace question… (Shift+Enter for a new line)"
                   rows={3}
@@ -845,15 +993,65 @@ export default function WorkspaceChatPage({
                   </Button>
                 </div>
               </div>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => setTemplatesOpen(true)}
-              >
-                <Sparkles className="size-4" />
-                Message templates
-              </Button>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setTemplatesOpen(true)}
+                >
+                  <Sparkles className="size-4" />
+                  Message templates
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void handleRefine()}
+                  disabled={!input.trim() || isLoading}
+                  isLoading={isRefining}
+                  loadingText="Refining"
+                >
+                  {!isRefining ? <Wand2 className="size-4" /> : null}
+                  {!isRefining ? "Refine with Mnemra" : null}
+                </Button>
+                {refineRemaining !== null ? (
+                  <Badge variant="outline">
+                    {refineRemaining} refines left today
+                  </Badge>
+                ) : null}
+                {lastRefine ? (
+                  <>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleUndoRefine}
+                    >
+                      <Undo2 className="size-4" />
+                      Undo refine
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => void handleSaveRefined()}
+                    >
+                      <Save className="size-4" />
+                      Save refined message
+                    </Button>
+                  </>
+                ) : null}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={openSavedMessages}
+                >
+                  <Bookmark className="size-4" />
+                  Saved messages
+                </Button>
+              </div>
             </form>
           </div>
         </Card>
@@ -936,6 +1134,36 @@ export default function WorkspaceChatPage({
               </p>
             </button>
           ))}
+        </div>
+      </Modal>
+
+      <Modal
+        open={savedMessagesOpen}
+        onClose={() => setSavedMessagesOpen(false)}
+        title="Saved refined messages"
+      >
+        <div className="space-y-3">
+          {savedMessages.map((message) => (
+            <button
+              key={message.id}
+              type="button"
+              className="w-full rounded-2xl border border-border/70 bg-background px-4 py-3 text-left text-sm transition hover:border-primary/30"
+              onClick={() => applySavedMessage(message)}
+            >
+              <p className="font-medium line-clamp-2">{message.refinedText}</p>
+              <p className="mt-1 line-clamp-1 text-xs text-muted-foreground">
+                Original: {message.originalText}
+              </p>
+            </button>
+          ))}
+
+          {savedMessages.length === 0 ? (
+            <EmptyState
+              icon={<Bookmark className="size-5" />}
+              title="No saved messages yet"
+              description="Refine a message and save it for reuse."
+            />
+          ) : null}
         </div>
       </Modal>
     </AppShell>

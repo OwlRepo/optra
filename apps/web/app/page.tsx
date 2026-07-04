@@ -9,15 +9,17 @@ import {
   PageShell,
 } from '@repo/ui'
 import {
+  Archive,
   ArrowRight,
-  Bot,
-  FileStack,
-  Gauge,
   MessageSquareText,
   Search,
   ShieldCheck,
   Sparkles,
+  User,
+  UserPlus,
+  Users,
   Workflow,
+  Zap,
 } from 'lucide-react'
 
 const metrics = [
@@ -29,39 +31,52 @@ const metrics = [
 const pillars = [
   {
     icon: Search,
-    title: 'Find right answer instantly',
-    description: 'Semantic retrieval surfaces exact sections, policies, and troubleshooting steps without forcing agents to know where content lives.',
+    title: 'Stop searching everywhere',
+    description: 'One search across tickets, docs, Slack threads, and runbooks — instead of checking each tool separately.',
   },
   {
     icon: Workflow,
-    title: 'Turn docs into workflow memory',
-    description: 'Convert SOPs, FAQs, and release notes into an operational layer your whole support org can use every day.',
+    title: 'Never solve it twice',
+    description: "Surface similar past tickets and the exact fix that worked before, so issues don't get re-solved from scratch.",
   },
   {
     icon: ShieldCheck,
-    title: 'Keep replies consistent',
-    description: 'Every answer follows approved knowledge so non-technical teammates can respond with confidence and fewer escalations.',
+    title: 'Answer consistently, every time',
+    description: 'Every answer is sourced from the same approved knowledge, so customers get the same answer no matter who replies.',
+  },
+]
+
+const workspaceModes = [
+  {
+    icon: User,
+    title: 'Personal workspace',
+    description: 'For VAs, freelancers, and solo support agents who need one place for client notes, SOPs, and past fixes.',
+  },
+  {
+    icon: Users,
+    title: 'Team workspace',
+    description: 'For support teams and agencies where every agent should answer from the same trusted knowledge.',
   },
 ]
 
 const features = [
   {
     eyebrow: 'Knowledge ops',
-    title: 'One place for support context',
-    description: 'Blend internal docs, customer-facing help, and tribal knowledge into one retrieval experience.',
-    icon: FileStack,
+    title: 'Onboard new agents on day one',
+    description: "New hires get your team's full support history and proven fixes, instead of waiting months to learn tribal knowledge.",
+    icon: UserPlus,
   },
   {
-    eyebrow: 'Assistive chat',
-    title: 'Answers with context, not guesses',
-    description: 'Grounded responses keep agents fast while still showing enough detail to understand the why behind each answer.',
-    icon: Bot,
+    eyebrow: 'Knowledge continuity',
+    title: 'Keep knowledge when people leave',
+    description: 'Past fixes and troubleshooting reasoning stay searchable even after the agent who found them is gone.',
+    icon: Archive,
   },
   {
-    eyebrow: 'Performance',
-    title: 'Feels fast for every teammate',
-    description: 'Clean layouts, clear states, and lightweight motion keep experience friendly for non-technical teams under pressure.',
-    icon: Gauge,
+    eyebrow: 'Team efficiency',
+    title: 'Free up your senior agents',
+    description: 'Give junior agents self-serve access to what your experts already know, so interruptions drop and experts can focus on hard tickets.',
+    icon: Zap,
   },
 ]
 
@@ -76,7 +91,7 @@ export default function Home() {
           </Link>
         }
         title="Mnemra"
-        description="Support intelligence for modern customer teams"
+        description="Turn support history into instant, sourced answers"
         navigation={
           <>
             <a href="#product" className="rounded-full px-3 py-1.5 text-sm text-muted-foreground transition hover:bg-secondary hover:text-foreground">Product</a>
@@ -101,11 +116,11 @@ export default function Home() {
           <Badge variant="secondary" className="w-fit">Modern SaaS support workspace</Badge>
           <div className="space-y-5">
             <h1 className="max-w-4xl text-5xl font-semibold leading-[0.95] tracking-[-0.04em] md:text-7xl lg:text-[5.5rem]">
-              Give every support teammate
-              <span className="text-gradient block">expert-level context</span>
+              Your team already solved this.
+              <span className="text-gradient block">Mnemra helps you find it.</span>
             </h1>
             <p className="max-w-2xl text-lg leading-8 text-muted-foreground md:text-xl">
-              Mnemra turns scattered documentation into fast, confident answers. It looks polished, feels easy, and helps non-technical teams solve customer issues without digging through tabs.
+              Search past tickets, docs, and Slack threads to get a sourced answer before you start typing a reply.
             </p>
           </div>
           <div className="flex flex-col gap-3 sm:flex-row">
@@ -132,7 +147,7 @@ export default function Home() {
         </div>
 
         <Card variant="gradient" className="relative overflow-hidden p-6 lg:p-8">
-          <div className="absolute inset-0 bg-[linear-gradient(135deg,transparent,rgba(255,255,255,0.4),transparent)] opacity-40" />
+          <div className="absolute inset-0 bg-gradient-to-br from-transparent via-white/40 to-transparent opacity-40" />
           <div className="relative space-y-6">
             <div className="flex items-center justify-between">
               <div>
@@ -173,12 +188,29 @@ export default function Home() {
       <PageSection
         className="py-10"
         eyebrow={<Badge variant="outline">Trusted workflow</Badge>}
-        title="Fast answers for people who just need system to work"
-        description="Support teammates get consistent, cited answers without learning a new tool or waiting on engineering."
+        title="Stop losing time to knowledge you already have"
+        description="Stop digging through tickets, docs, and Slack threads for answers your team already found."
       >
         <div className="grid gap-5 lg:grid-cols-3">
           {pillars.map(({ icon: Icon, title, description }) => (
             <Card key={title} variant="elevated" className="group p-6 hover:-translate-y-1 hover:border-primary/20">
+              <Icon className="size-5 text-primary" />
+              <h3 className="mt-6 text-2xl font-semibold">{title}</h3>
+              <p className="mt-3 text-sm leading-7 text-muted-foreground">{description}</p>
+            </Card>
+          ))}
+        </div>
+      </PageSection>
+
+      <PageSection
+        className="py-10"
+        eyebrow={<Badge variant="outline">Workspaces</Badge>}
+        title="Built for solo work and growing teams"
+        description="Use Mnemra alone as your own support memory, or invite your team into a shared workspace everyone searches from."
+      >
+        <div className="grid gap-5 lg:grid-cols-2">
+          {workspaceModes.map(({ icon: Icon, title, description }) => (
+            <Card key={title} variant="elevated" className="p-6">
               <Icon className="size-5 text-primary" />
               <h3 className="mt-6 text-2xl font-semibold">{title}</h3>
               <p className="mt-3 text-sm leading-7 text-muted-foreground">{description}</p>
@@ -234,7 +266,7 @@ export default function Home() {
       >
         <EmptyState
           icon={<Sparkles className="size-5" />}
-          title="Ready to turn support knowledge into product advantage?"
+          title="Ready to build your support memory?"
           description="Create a workspace, connect your first knowledge base, and see grounded answers in minutes."
           actions={
             <>

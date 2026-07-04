@@ -94,6 +94,20 @@ export class WorkspacesService {
     }
   }
 
+  async update(workspaceId: string, name: string) {
+    const [workspace] = await db
+      .update(workspaces)
+      .set({ name })
+      .where(eq(workspaces.id, workspaceId))
+      .returning()
+
+    if (!workspace) {
+      throw new NotFoundException('Workspace not found')
+    }
+
+    return workspace
+  }
+
   async getOne(workspaceId: string) {
     const [workspace] = await db
       .select()

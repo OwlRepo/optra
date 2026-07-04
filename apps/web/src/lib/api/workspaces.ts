@@ -20,6 +20,13 @@ export function getWorkspace(id: string) {
   return apiFetch(`/api/workspaces/${id}`)
 }
 
+export function updateWorkspace(id: string, name: string) {
+  return apiFetch(`/api/workspaces/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ name }),
+  })
+}
+
 export function inviteMember(id: string, email: string) {
   return apiFetch(`/api/workspaces/${id}/invite`, {
     method: 'POST',

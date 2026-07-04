@@ -262,4 +262,78 @@ describe('AuthService', () => {
       }
     })
   })
+
+  describe('changePassword', () => {
+    const password = 'password123'
+
+    async function registerAndVerify(suffix: string) {
+      const email = `svc-changepw-${suffix}-${Date.now()}@example.com`
+      await service.register({ email, password })
+      const [user] = await db.select().from(users).where(eq(users.email, email)).limit(1)
+      const [otp] = await db.select().from(otps).where(eq(otps.userId, user.id)).limit(1)
+      await service.verifyOtp({ email, code: otp.code })
+      return { email, userId: user.id }
+    }
+
+    it('rejects the wrong current password', async () => {
+      const { email, userId } = await registerAndVerify('wrong')
+      try {
+        await expect(
+          service.changePassword(userId, 'totally-wrong', 'newpassword123'),
+        ).rejects.toThrow(UnauthorizedException)
+      } finally {
+        await cleanupUser(email)
+      }
+    })
+
+    it('accepts the correct current password, re-hashes, and the new password then works for login', async () => {
+      const { email, userId } = await registerAndVerify('accept')
+      try {
+        await service.changePassword(userId, password, 'newpassword123')
+
+        await expect(service.login({ email, password: 'newpassword123' })).resolves.toBeDefined()
+      } finally {
+        await cleanupUser(email)
+      }
+    })
+
+    it('the old password no longer works after a successful change', async () => {
+      const { email, userId } = await registerAndVerify('old-dead')
+      try {
+        await service.changePassword(userId, password, 'newpassword123')
+
+        await expect(service.login({ email, password })).rejects.toThrow(UnauthorizedException)
+      } finally {
+        await cleanupUser(email)
+      }
+    })
+
+    it('revokes ALL of the caller\'s previously-issued active refresh tokens', async () => {
+      const { email, userId } = await registerAndVerify('revoke')
+      try {
+        const first = await service.login({ email, password })
+        const second = await service.login({ email, password })
+
+        await service.changePassword(userId, password, 'newpassword123')
+
+        await expect(service.refresh(first.refreshToken)).rejects.toThrow(UnauthorizedException)
+        await expect(service.refresh(second.refreshToken)).rejects.toThrow(UnauthorizedException)
+      } finally {
+        await cleanupUser(email)
+      }
+    })
+
+    it('does not throw when the user has zero active refresh tokens', async () => {
+      const { email, userId } = await registerAndVerify('zero-tokens')
+      try {
+        await db.delete(refreshTokens).where(eq(refreshTokens.userId, userId))
+
+        await expect(
+          service.changePassword(userId, password, 'newpassword123'),
+        ).resolves.toEqual({ message: expect.any(String) })
+      } finally {
+        await cleanupUser(email)
+      }
+    })
+  })
 })

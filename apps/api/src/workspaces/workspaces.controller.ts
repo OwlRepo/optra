@@ -6,6 +6,7 @@ import {
   HttpCode,
   HttpStatus,
   Param,
+  Patch,
   Post,
   Query,
   UseGuards,
@@ -19,6 +20,7 @@ import { ListQueryDto } from '../common/dto/list-query.dto'
 import { CreateWorkspaceDto } from './dto/create-workspace.dto'
 import { InviteMemberDto } from './dto/invite-member.dto'
 import { ListMembersQueryDto } from './dto/list-members-query.dto'
+import { UpdateWorkspaceDto } from './dto/update-workspace.dto'
 import { WorkspacesService } from './workspaces.service'
 
 @Controller('workspaces')
@@ -64,6 +66,16 @@ export class WorkspacesController {
     @Body() dto: InviteMemberDto,
   ) {
     return this.workspacesService.invite(workspaceId, dto.email)
+  }
+
+  @Patch(':workspaceId')
+  @UseGuards(JwtAuthGuard, WorkspaceMemberGuard, RolesGuard)
+  @Roles('owner', 'admin')
+  update(
+    @Param('workspaceId') workspaceId: string,
+    @Body() dto: UpdateWorkspaceDto,
+  ) {
+    return this.workspacesService.update(workspaceId, dto.name)
   }
 
   @Get(':workspaceId/members')

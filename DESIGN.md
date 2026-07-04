@@ -23,7 +23,7 @@
 ## Color
 - **Approach:** Balanced — primary + accent + semantic colors (unchanged).
 - **Source of truth:** `packages/ui/src/globals.css:42-103` — full oklch token set, light + dark variants. **Not modified by this consultation.** Confirmed by design review as already disciplined and consumed correctly via Tailwind semantic classes almost everywhere.
-- **One cleanup item:** `apps/web/app/page.tsx:135` uses a raw `rgba()` gradient overlay instead of a token-based value — fix as part of implementation, not a new color decision.
+- **One cleanup item:** `apps/web/app/page.tsx:135` uses a raw `rgba()` gradient overlay instead of a token-based value — fix as part of implementation, not a new color decision. (Resolved 2026-07-04 — replaced with `bg-gradient-to-br ... via-white/40 ...` Tailwind utilities as part of the landing-page copy rewrite.)
 
 ## Spacing
 - **Base unit:** existing Tailwind 4px scale — confirmed clean, no arbitrary pixel values found in design review. No change.
@@ -67,3 +67,4 @@ Replaces the current pattern where every one of the 6 authenticated pages (dashb
 | 2026-07-02 | Landing page copy rewritten, dead `/dashboard` links fixed | Design audit flagged 4 sections describing the UI/design process instead of the product; E1's dashboard retirement made the old links a real 404, not just stale copy |
 | 2026-07-02 | Auth pages restyled with @repo/ui primitives | QA and design-review both flagged unstyled auth pages as the most visibly unfinished part of the app; zero logic changed, pure component swap |
 | 2026-07-02 | Activity feed and notifications share one `workspace_events` system | Same 6 processor terminal transitions drive both features, so one append-only event log + per-member seen marker avoids building duplicate infrastructure with divergent truth |
+| 2026-07-04 | Landing page copy rewritten to lead with support-team pain points; added Personal/Team workspace positioning section | Design-review session found hero/pillars/features copy was feature-first and self-referential (hero subhead repeated the exact self-praising pattern the 2026-07-02 audit already flagged and removed elsewhere on this page); workspace model already supports 1..N members, so individual/team framing needed no new capability, pure copy |
