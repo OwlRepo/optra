@@ -205,6 +205,44 @@
     }
   }
 
+  @keyframes marquee {
+    from {
+      transform: translateX(0);
+    }
+    to {
+      transform: translateX(-50%);
+    }
+  }
+
+  @keyframes float-slow {
+    0%,
+    100% {
+      transform: translate(0, 0) scale(1);
+    }
+    50% {
+      transform: translate(14px, -18px) scale(1.06);
+    }
+  }
+
+  @keyframes float-slow-reverse {
+    0%,
+    100% {
+      transform: translate(0, 0) scale(1);
+    }
+    50% {
+      transform: translate(-16px, 16px) scale(1.08);
+    }
+  }
+
+  @keyframes shine-sweep {
+    from {
+      transform: translateX(-120%) skewX(-12deg);
+    }
+    to {
+      transform: translateX(220%) skewX(-12deg);
+    }
+  }
+
   .font-display {
     font-family: var(--font-display), system-ui, -apple-system, sans-serif;
   }
@@ -248,6 +286,36 @@
 
   .fade-slide-in {
     animation: fade-slide-in 480ms var(--ease-out) both;
+  }
+
+  .animate-marquee {
+    animation-name: marquee;
+    animation-timing-function: linear;
+    animation-iteration-count: infinite;
+  }
+
+  .animate-float-slow {
+    animation: float-slow 10s ease-in-out infinite;
+  }
+
+  .animate-float-slower {
+    animation: float-slow-reverse 14s ease-in-out infinite;
+  }
+
+  .btn-shine {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .btn-shine::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(115deg, transparent 30%, oklch(1 0 0 / 0.35) 50%, transparent 70%);
+    transform: translateX(-120%) skewX(-12deg);
+    animation: shine-sweep 3.2s ease-in-out infinite;
+    animation-delay: 1s;
+    pointer-events: none;
   }
 
   .ring-inset-soft {

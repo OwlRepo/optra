@@ -75,17 +75,16 @@ describe('Home', () => {
     expect(screen.queryByText('Fast answers for people who just need system to work')).toBeNull()
   })
 
-  it('adds a workspaces section supporting both solo and team use', () => {
+  it('adds a workspaces section supporting both solo and team use as an interactive switcher', () => {
     const { container } = render(React.createElement(Home))
 
     expect(screen.getAllByText('Use it alone, or bring the whole team').length).toBeGreaterThan(0)
-    expect(screen.getAllByText('Personal workspace').length).toBeGreaterThan(0)
-    expect(screen.getAllByText('Team workspace').length).toBeGreaterThan(0)
-    expect(screen.getAllByText(/For VAs, freelancers, and solo support agents/).length).toBeGreaterThan(0)
-    expect(screen.getAllByText(/For support teams and agencies/).length).toBeGreaterThan(0)
+    expect(screen.getAllByRole('tab', { name: /Personal/i }).length).toBeGreaterThan(0)
+    expect(screen.getAllByRole('tab', { name: /Team/i }).length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Your own second brain').length).toBeGreaterThan(0)
 
-    expect(container.querySelector('svg.lucide-user.size-5')).not.toBeNull()
-    expect(container.querySelector('svg.lucide-users.size-5')).not.toBeNull()
+    expect(container.querySelector('svg.lucide-user')).not.toBeNull()
+    expect(container.querySelector('svg.lucide-users')).not.toBeNull()
   })
 
   it('rewrites the final CTA to not re-narrow to teams-only after the solo/team section', () => {
