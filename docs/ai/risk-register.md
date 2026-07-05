@@ -212,6 +212,7 @@ If risk area is missing, mark `UNMAPPED RISK`.
   - document ingest `done` and document single/bulk delete both call `cache.bumpVersion(workspaceId)` when rows actually change
   - ticket-driven chunk changes (`syncTicketChunk` outcomes `embedded`/`deleted`) also bump workspace cache version, including backfill path once per changed workspace
   - fallback/insufficient-info responses (`isFallback: true`) never get written to either cache layer, in both straight-line and LangGraph paths
+  - 2026-07-05 prompt wording change: partial-context answers may hedge and cite supported evidence, but only the two structural no-context paths set `isFallback: true`; cache-skip invariant for true fallbacks re-verified unchanged
   - semantic-cache writes opportunistically delete that workspace's expired rows without blocking successful cache writes if cleanup fails
   - Redis/cache failures fail soft to normal chat answers; cache outage must not 500 chat
   - optional `X-Chat-Cache` header reflects `exact|semantic|miss` for observability/tests

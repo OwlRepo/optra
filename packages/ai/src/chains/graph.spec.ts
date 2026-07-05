@@ -96,6 +96,73 @@ describe("answerQuestionWithGraph", () => {
     expect(invokeMock).not.toHaveBeenCalled();
   });
 
+  it("uses hedged prompt copy while preserving hard no-info sentence", async () => {
+    similaritySearchMock.mockResolvedValue([
+      {
+        id: "chunk-1",
+        content: "Partial context.",
+        metadata: { documentId: "doc-1" },
+        score: 0.91,
+      },
+    ]);
+    streamMock.mockResolvedValue(
+      (async function* () {
+        yield { content: "answer" };
+      })(),
+    );
+
+    const result = await answerQuestionWithGraph("question", "ws-1");
+    for await (const _token of result.stream) {
+      // drain
+    }
+
+    const answerPrompt = streamMock.mock.calls[0][0][0].content;
+    expect(answerPrompt).toContain("If the context is only partially relevant");
+    expect(answerPrompt).toContain("point the user to the sources below");
+    expect(answerPrompt).toContain(
+      '"I don\'t have enough information to answer that."',
+    );
+
+    process.env.SELF_GRADE_ENABLED = "true";
+    process.env.SELF_GRADE_MIN_SCORE = "1.0";
+    streamMock.mockReset();
+    invokeMock.mockReset();
+    similaritySearchMock.mockResolvedValue([
+      {
+        id: "chunk-1",
+        content: "Partial context.",
+        metadata: { documentId: "doc-1" },
+        score: 0.91,
+      },
+    ]);
+    streamMock
+      .mockResolvedValueOnce(
+        (async function* () {
+          yield { content: "first answer" };
+        })(),
+      )
+      .mockResolvedValueOnce(
+        (async function* () {
+          yield { content: "regen answer" };
+        })(),
+      );
+    invokeMock.mockResolvedValueOnce({ content: "no" });
+
+    const regenerateResult = await answerQuestionWithGraph("question", "ws-1");
+    for await (const _token of regenerateResult.stream) {
+      // drain
+    }
+
+    const regeneratePrompt = streamMock.mock.calls[1][0][0].content;
+    expect(regeneratePrompt).toContain("If any part is unsupported, omit it.");
+    expect(regeneratePrompt).toContain(
+      "If the context is only partially relevant, keep only the supported parts",
+    );
+    expect(regeneratePrompt).toContain(
+      '"I don\'t have enough information to answer that."',
+    );
+  });
+
   it("low score rewrites once, retrieves again, then generates", async () => {
     similaritySearchMock
       .mockResolvedValueOnce([
@@ -156,6 +223,47 @@ describe("answerQuestionWithGraph", () => {
     ]);
     expect(result.sources).toEqual([]);
     expect(streamMock).not.toHaveBeenCalled();
+  });
+
+  it("keeps partial-context answers non-fallback and preserves sources", async () => {
+    similaritySearchMock.mockResolvedValue([
+      {
+        id: "chunk-1",
+        content: "Port 51212 appears in one service context.",
+        metadata: { documentId: "doc-1" },
+        score: 0.67,
+      },
+    ]);
+    streamMock.mockResolvedValue(
+      (async function* () {
+        yield {
+          content:
+            "Found port 51212 in provided context, but exact REST API port is not stated.",
+        };
+      })(),
+    );
+
+    const result = await answerQuestionWithGraph("question", "ws-1");
+    const tokens: string[] = [];
+    for await (const token of result.stream) {
+      tokens.push(token);
+    }
+
+    expect(result.isFallback).toBe(false);
+    expect(tokens).toEqual([
+      "Found port 51212 in provided context, but exact REST API port is not stated.",
+    ]);
+    expect(result.sources).toEqual([
+      {
+        sourceType: "document",
+        documentId: "doc-1",
+        knowledgeBaseId: undefined,
+        title: "Doc One",
+        sourceUrl: "https://example.com/doc",
+        score: 0.67,
+        snippet: "Port 51212 appears in one service context.",
+      },
+    ]);
   });
 
   it("self-grade can trigger one regenerate pass", async () => {
@@ -301,7 +409,7 @@ describe("answerQuestionWithGraph", () => {
 
   it("self-grade still grades when top score < SELF_GRADE_MIN_SCORE", async () => {
     process.env.SELF_GRADE_ENABLED = "true";
-    process.env.SELF_GRADE_MIN_SCORE = "0.35";
+    process.env.SELF_GRADE_MIN_SCORE = "0.95";
     similaritySearchMock.mockResolvedValue([
       {
         id: "chunk-1",

@@ -20,8 +20,12 @@ const llm = new ChatOpenAI({
 })
 
 const SYSTEM_PROMPT = `You are a helpful support assistant.
-Answer questions using ONLY the context provided below.
-If the answer is not in the context, say: "I don't have enough information to answer that."
+Answer using ONLY the context provided below.
+If the context fully answers the question, answer directly and concisely.
+If the context is only partially relevant, say what you found, be explicit about what's missing or
+uncertain, and point the user to the sources below. Do not invent specifics that aren't stated in the
+context.
+If the context has nothing relevant to the question, say: "I don't have enough information to answer that."
 Be concise, accurate, and do not make up information.`
 
 function buildContext(chunks: Awaited<ReturnType<typeof similaritySearch>>): string {

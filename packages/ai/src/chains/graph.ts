@@ -34,13 +34,19 @@ const FALLBACK_MESSAGE =
   "I don't have enough information to answer that. Consider escalating to a human.";
 
 const ANSWER_SYSTEM_PROMPT = `You are a helpful support assistant.
-Answer questions using ONLY the context provided below.
-If the answer is not in the context, say: "I don't have enough information to answer that."
+Answer using ONLY the context provided below.
+If the context fully answers the question, answer directly and concisely.
+If the context is only partially relevant, say what you found, be explicit about what's missing or
+uncertain, and point the user to the sources below. Do not invent specifics that aren't stated in the
+context.
+If the context has nothing relevant to the question, say: "I don't have enough information to answer that."
 Be concise, accurate, and do not make up information.`;
 
 const REGENERATE_SYSTEM_PROMPT = `You are a careful support assistant.
 Answer using ONLY the provided context.
 If any part is unsupported, omit it.
+If the context is only partially relevant, keep only the supported parts, state clearly what's missing, and
+point the user to the sources below.
 If context is insufficient, say: "I don't have enough information to answer that."`;
 
 const REWRITE_SYSTEM_PROMPT = `Rewrite the user question so vector retrieval is more likely to find matching support documentation.

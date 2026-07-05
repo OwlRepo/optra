@@ -105,6 +105,36 @@ describe('answerQuestion', () => {
     expect(tokens.join('')).toBe('hello world')
   })
 
+  it('uses hedged prompt copy while preserving hard no-info sentence', async () => {
+    similaritySearchMock.mockResolvedValue([
+      {
+        id: 'chunk-1',
+        content: 'Partial context.',
+        metadata: { documentId: 'doc-1' },
+        score: 0.91,
+      },
+    ])
+    whereMock.mockResolvedValue([
+      { id: 'doc-1', title: 'Doc One', sourceUrl: 'https://example.com/one', knowledgeBaseId: 'kb-1' },
+    ])
+    streamMock.mockResolvedValue(
+      (async function* () {
+        yield { content: 'answer' }
+      })(),
+    )
+
+    const { answerQuestion } = await import('./index')
+    const result = await answerQuestion('question', 'ws-1')
+    for await (const _token of result.stream) {
+      // drain
+    }
+
+    const prompt = streamMock.mock.calls[0][0][0].content
+    expect(prompt).toContain('If the context is only partially relevant')
+    expect(prompt).toContain('point the user to the sources below')
+    expect(prompt).toContain("\"I don't have enough information to answer that.\"")
+  })
+
   it('returns mixed document and ticket citations, deduped by kind', async () => {
     similaritySearchMock.mockResolvedValue([
       {
@@ -161,6 +191,50 @@ describe('answerQuestion', () => {
       },
     ])
     expect(tokens).toEqual(['answer'])
+  })
+
+  it('keeps partial-context answers non-fallback and preserves sources', async () => {
+    similaritySearchMock.mockResolvedValue([
+      {
+        id: 'chunk-1',
+        content: 'Port 51212 appears in one service context.',
+        metadata: { documentId: 'doc-1' },
+        score: 0.67,
+      },
+    ])
+    whereMock.mockResolvedValue([
+      { id: 'doc-1', title: 'Doc One', sourceUrl: 'https://example.com/one', knowledgeBaseId: 'kb-1' },
+    ])
+    streamMock.mockResolvedValue(
+      (async function* () {
+        yield {
+          content: 'Found port 51212 in provided context, but exact REST API port is not stated.',
+        }
+      })(),
+    )
+
+    const { answerQuestion } = await import('./index')
+    const result = await answerQuestion('question', 'ws-1')
+    const tokens: string[] = []
+    for await (const token of result.stream) {
+      tokens.push(token)
+    }
+
+    expect(result.isFallback).toBe(false)
+    expect(tokens).toEqual([
+      'Found port 51212 in provided context, but exact REST API port is not stated.',
+    ])
+    expect(result.sources).toEqual([
+      {
+        sourceType: 'document',
+        documentId: 'doc-1',
+        knowledgeBaseId: 'kb-1',
+        title: 'Doc One',
+        sourceUrl: 'https://example.com/one',
+        score: 0.67,
+        snippet: 'Port 51212 appears in one service context.',
+      },
+    ])
   })
 
   it('routes simple queries to the light path with fewer chunks even in graph mode', async () => {
