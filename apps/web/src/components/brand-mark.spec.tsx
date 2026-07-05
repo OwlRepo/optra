@@ -6,10 +6,10 @@ import { describe, expect, it } from 'vitest'
 import { BrandMark } from './brand-mark'
 
 describe('BrandMark', () => {
-  it('renders the folded-page Mnemra SVG by default', () => {
+  it('renders the Mnemra bloom SVG by default', () => {
     const { container } = render(<BrandMark />)
 
-    const mark = container.querySelector('[data-brand-mark="mnemra-folded-page"]')
+    const mark = container.querySelector('[data-brand-mark="mnemra-bloom"]')
     const image = screen.getByAltText('Mnemra logo') as HTMLImageElement
 
     expect(mark).not.toBeNull()

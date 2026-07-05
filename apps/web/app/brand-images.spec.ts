@@ -9,13 +9,13 @@ function pngDimensions(name: string) {
 }
 
 describe('static brand image assets (Next app/ file-convention icons)', () => {
-  it('ships the source folded-page SVG mark used by web chrome', () => {
+  it('ships the source bloom SVG mark used by web chrome', () => {
     const svgPath = join(__dirname, '../public/mnemra-mark.svg')
     expect(existsSync(svgPath)).toBe(true)
 
     const svg = readFileSync(svgPath, 'utf8')
-    expect(svg).toContain('<title>Mnemra folded-page mark</title>')
-    expect(svg).toContain('data-mark="mnemra-folded-page"')
+    expect(svg).toContain('<title>Mnemra bloom mark</title>')
+    expect(svg).toContain('data-mark="mnemra-bloom"')
   })
 
   it('ships a 32x32 favicon', () => {

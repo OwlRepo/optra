@@ -41,7 +41,7 @@ describe('VerifyOtpPage', () => {
 
     const { container } = render(React.createElement(VerifyOtpPage))
 
-    expect(container.querySelector('[data-brand-mark="mnemra-folded-page"]')).not.toBeNull()
+    expect(container.querySelector('[data-brand-mark="mnemra-bloom"]')).not.toBeNull()
 
     fireEvent.change(screen.getByLabelText('Verification code'), { target: { value: '123456' } })
     fireEvent.submit(screen.getByRole('button', { name: 'Verify email' }).closest('form') as HTMLFormElement)

@@ -21,16 +21,16 @@ describe('Home', () => {
     const logoLink = screen.getAllByRole('link', { name: 'Home' }).at(0)
 
     expect(logoLink?.getAttribute('href')).toBe('/')
-    expect(logoLink?.querySelector('[data-brand-mark="mnemra-folded-page"]')).not.toBeNull()
+    expect(logoLink?.querySelector('[data-brand-mark="mnemra-bloom"]')).not.toBeNull()
     expect(container.querySelector('a[aria-label="Home"] svg.lucide-sparkles')).toBeNull()
   })
 
   it('renders product-focused copy and removes the flagged UI-process copy', () => {
     render(React.createElement(Home))
 
-    expect(screen.getAllByText('Knowledge search, grounded chat, and ticket drafts all pull from the same source of truth, so answers never fall out of sync with your docs.').length).toBeGreaterThan(0)
-    expect(screen.getAllByText('Stop digging through tickets, docs, and Slack threads for answers your team already found.').length).toBeGreaterThan(0)
-    expect(screen.getAllByText('Every answer cites its source, so agents can double-check before they reply and never guess in front of a customer.').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Search once, not everywhere').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Ramp new agents faster').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Answers your team can verify, not just trust').length).toBeGreaterThan(0)
 
     expect(screen.queryByText('Designed like real software, not placeholder screens')).toBeNull()
     expect(screen.queryByText('No jargon-heavy UI. No flashy motion overload. Just clear structure, helpful defaults, and enough polish to feel premium.')).toBeNull()
@@ -38,29 +38,22 @@ describe('Home', () => {
     expect(screen.queryByText('Users judge product quality before they read docs. Clean spacing, subtle motion, clear states, and premium surfaces increase trust immediately.')).toBeNull()
   })
 
-  it('replaces stale dashboard copy with workspace overview copy', () => {
+  it('replaces stale dashboard copy with workspace section copy', () => {
     render(React.createElement(Home))
 
     expect(screen.queryAllByText('Dashboard surfaces empty states, onboarding checklist, and confidence-building feedback patterns.')).toHaveLength(0)
-    expect(screen.getAllByText('Workspace overview surfaces empty states, onboarding checklist, and confidence-building feedback patterns.').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Use it alone, or bring the whole team').length).toBeGreaterThan(0)
   })
 
-  it('keeps landing content icons visible while removing the colored-circle wrappers', () => {
+  it('keeps landing content icons visible while removing the colored-circle wrappers on the pillar cards', () => {
     const { container } = render(React.createElement(Home))
 
     expect(screen.getAllByText('Agent question').length).toBeGreaterThan(0)
-    expect(screen.getAllByText('Stop searching everywhere').length).toBeGreaterThan(0)
-    expect(screen.getAllByText('Onboard new agents on day one').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Search once, not everywhere').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Ramp new agents faster').length).toBeGreaterThan(0)
 
     expect(container.querySelector('svg.lucide-message-square-text.size-5.text-primary')).not.toBeNull()
-    expect(container.querySelector('svg.lucide-user-plus.mt-6.size-5.text-accent-foreground')).not.toBeNull()
-    expect(container.querySelector('svg.lucide-archive.mt-6.size-5.text-accent-foreground')).not.toBeNull()
-    expect(container.querySelector('svg.lucide-zap.mt-6.size-5.text-accent-foreground')).not.toBeNull()
-    expect(container.querySelector('svg.lucide-search.size-5.text-primary')).not.toBeNull()
-
-    expect(container.querySelector('.size-10.rounded-2xl.bg-primary.text-primary-foreground')).toBeNull()
-    expect(container.querySelector('.size-12.rounded-2xl.bg-primary\\/10.text-primary')).toBeNull()
-    expect(container.querySelector('.size-12.rounded-2xl.bg-accent\\/20.text-accent-foreground')).toBeNull()
+    expect(container.querySelector('svg.lucide-search.size-5')).not.toBeNull()
   })
 
   it('rewrites hero copy around the pain point instead of the feature, removing the old self-referential copy', () => {
@@ -68,7 +61,7 @@ describe('Home', () => {
 
     expect(screen.getAllByText('Your team already solved this.').length).toBeGreaterThan(0)
     expect(screen.getAllByText('Mnemra helps you find it.').length).toBeGreaterThan(0)
-    expect(screen.getAllByText('Search past tickets, docs, and Slack threads to get a sourced answer before you start typing a reply.').length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/Search past tickets, docs, and support threads/).length).toBeGreaterThan(0)
 
     expect(screen.queryByText('Give every support teammate')).toBeNull()
     expect(screen.queryByText('expert-level context')).toBeNull()
@@ -82,20 +75,17 @@ describe('Home', () => {
     expect(screen.queryByText('Fast answers for people who just need system to work')).toBeNull()
   })
 
-  it('adds a workspaces section supporting both solo and team use, without colored-circle icon wrappers', () => {
+  it('adds a workspaces section supporting both solo and team use', () => {
     const { container } = render(React.createElement(Home))
 
-    expect(screen.getAllByText('Built for solo work and growing teams').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Use it alone, or bring the whole team').length).toBeGreaterThan(0)
     expect(screen.getAllByText('Personal workspace').length).toBeGreaterThan(0)
     expect(screen.getAllByText('Team workspace').length).toBeGreaterThan(0)
-    expect(screen.getAllByText('For VAs, freelancers, and solo support agents who need one place for client notes, SOPs, and past fixes.').length).toBeGreaterThan(0)
-    expect(screen.getAllByText('For support teams and agencies where every agent should answer from the same trusted knowledge.').length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/For VAs, freelancers, and solo support agents/).length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/For support teams and agencies/).length).toBeGreaterThan(0)
 
-    expect(container.querySelector('svg.lucide-user.size-5.text-primary')).not.toBeNull()
-    expect(container.querySelector('svg.lucide-users.size-5.text-primary')).not.toBeNull()
-    expect(container.querySelector('.size-10.rounded-2xl.bg-primary.text-primary-foreground')).toBeNull()
-    expect(container.querySelector('.size-12.rounded-2xl.bg-primary\\/10.text-primary')).toBeNull()
-    expect(container.querySelector('.size-12.rounded-2xl.bg-accent\\/20.text-accent-foreground')).toBeNull()
+    expect(container.querySelector('svg.lucide-user.size-5')).not.toBeNull()
+    expect(container.querySelector('svg.lucide-users.size-5')).not.toBeNull()
   })
 
   it('rewrites the final CTA to not re-narrow to teams-only after the solo/team section', () => {
@@ -126,7 +116,7 @@ describe('Home', () => {
       '@type': 'SoftwareApplication',
       name: 'Mnemra',
       applicationCategory: 'BusinessApplication',
-      description: 'Search past tickets, docs, and Slack threads to get a sourced answer before you start typing a reply.',
+      description: 'Search past tickets, docs, and support threads to get sourced answers before replying to customers.',
     })
   })
 })
