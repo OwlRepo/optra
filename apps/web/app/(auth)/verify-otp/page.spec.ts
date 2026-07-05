@@ -36,7 +36,7 @@ describe('VerifyOtpPage', () => {
     vi.restoreAllMocks()
   })
 
-  it('marks the session logged in and redirects to workspaces on success, without touching the raw token', async () => {
+  it('marks the session logged in and redirects to chat on success, without touching the raw token', async () => {
     verifyOtpMock.mockResolvedValue({ accessToken: 'jwt.value.here' })
 
     const { container } = render(React.createElement(VerifyOtpPage))
@@ -50,7 +50,7 @@ describe('VerifyOtpPage', () => {
       expect(verifyOtpMock).toHaveBeenCalledWith('owner@example.com', '123456')
       expect(markLoggedInMock).toHaveBeenCalledTimes(1)
       expect(markLoggedInMock).toHaveBeenCalledWith()
-      expect(pushMock).toHaveBeenCalledWith('/workspaces')
+      expect(pushMock).toHaveBeenCalledWith('/chat')
     })
   })
 

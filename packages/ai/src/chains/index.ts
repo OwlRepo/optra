@@ -6,6 +6,7 @@ import { similaritySearch, similaritySearchWithTicketSlot, type RetrievalFilters
 import { resolveModel } from './models'
 import { buildEvidencePack } from './context'
 import { classifyQuery } from './classify'
+import { historyInAnswerEnabled, toMessages, type HistoryTurn } from './history'
 
 function simpleQueryLimit(): number {
   const raw = process.env.SIMPLE_QUERY_CHUNK_LIMIT
@@ -55,8 +56,13 @@ export async function answerQuestion(
   workspaceId: string,
   limit = 5,
   precomputedEmbedding?: number[],
-  filters?: RetrievalFilters
+  filters?: RetrievalFilters,
+  history: HistoryTurn[] = []
 ): Promise<AnswerResult> {
+  // Gated once here so every downstream use (graph call, light-path prompt)
+  // shares one decision instead of re-checking the flag in multiple places.
+  const effectiveHistory = historyInAnswerEnabled() ? history : []
+
   // Route by complexity: simple lookups skip the heavy graph (rewrite/grade) and
   // retrieve fewer chunks; complex/procedural queries keep the full graph flow.
   const queryClass = classifyQuery(question)
@@ -64,7 +70,14 @@ export async function answerQuestion(
 
   if (process.env.LANGGRAPH_ENABLED === 'true' && queryClass === 'complex') {
     const { answerQuestionWithGraph } = await import('./graph')
-    return answerQuestionWithGraph(question, workspaceId, effectiveLimit, precomputedEmbedding, filters)
+    return answerQuestionWithGraph(
+      question,
+      workspaceId,
+      effectiveLimit,
+      precomputedEmbedding,
+      filters,
+      effectiveHistory,
+    )
   }
 
   const chunks = await similaritySearchWithTicketSlot(
@@ -178,6 +191,7 @@ export async function answerQuestion(
       const context = buildContext(chunks)
       const stream = await llm.stream([
         new SystemMessage(SYSTEM_PROMPT),
+        ...toMessages(effectiveHistory),
         new HumanMessage(`Context:\n${context}\n\nQuestion: ${question}`),
       ])
 

@@ -56,6 +56,7 @@ describe("answerQuestionWithGraph", () => {
       MAX_QUERY_REWRITES: "2",
       SELF_GRADE_ENABLED: "false",
     };
+    delete process.env.HISTORY_IN_ANSWER_ENABLED;
 
     selectMock.mockReturnValue({ from: fromMock });
     fromMock.mockReturnValue({ where: whereMock });
@@ -469,5 +470,160 @@ describe("answerQuestionWithGraph", () => {
         snippet: "Ticket context.",
       },
     ]);
+  });
+
+  it("threads history into the confident-stream branch's prompt", async () => {
+    similaritySearchMock.mockResolvedValue([
+      {
+        id: "chunk-1",
+        content: "Grounded context.",
+        metadata: { documentId: "doc-1" },
+        score: 0.91,
+      },
+    ]);
+    streamMock.mockResolvedValue(
+      (async function* () {
+        yield { content: "answer" };
+      })(),
+    );
+    const history = [
+      { role: "user" as const, content: "What is our refund policy?" },
+      { role: "assistant" as const, content: "Refunds are available within 30 days." },
+    ];
+
+    const result = await answerQuestionWithGraph(
+      "How do I request one?",
+      "ws-1",
+      5,
+      undefined,
+      undefined,
+      history,
+    );
+    for await (const _token of result.stream) {
+      // drain
+    }
+
+    const messages = streamMock.mock.calls[0][0];
+    expect(messages).toHaveLength(4);
+    expect(messages[1].content).toBe("What is our refund policy?");
+    expect(messages[2].content).toBe("Refunds are available within 30 days.");
+    expect(messages[3].content).toContain("How do I request one?");
+  });
+
+  it("threads history into the buffered generateNode prompt", async () => {
+    process.env.SELF_GRADE_ENABLED = "true";
+    similaritySearchMock.mockResolvedValue([
+      {
+        id: "chunk-1",
+        content: "Grounded context.",
+        metadata: { documentId: "doc-1" },
+        score: 0.91,
+      },
+    ]);
+    streamMock.mockResolvedValue(
+      (async function* () {
+        yield { content: "answer" };
+      })(),
+    );
+    invokeMock.mockResolvedValue({ content: "yes" });
+    const history = [
+      { role: "user" as const, content: "What is our refund policy?" },
+      { role: "assistant" as const, content: "Refunds are available within 30 days." },
+    ];
+
+    const result = await answerQuestionWithGraph(
+      "How do I request one?",
+      "ws-1",
+      5,
+      undefined,
+      undefined,
+      history,
+    );
+    for await (const _token of result.stream) {
+      // drain
+    }
+
+    expect(streamMock).toHaveBeenCalledTimes(1);
+    const messages = streamMock.mock.calls[0][0];
+    expect(messages).toHaveLength(4);
+    expect(messages[1].content).toBe("What is our refund policy?");
+    expect(messages[2].content).toBe("Refunds are available within 30 days.");
+    expect(messages[3].content).toContain("How do I request one?");
+  });
+
+  it("threads history into the regenerateNode's buffered prompt", async () => {
+    process.env.SELF_GRADE_ENABLED = "true";
+    similaritySearchMock.mockResolvedValue([
+      {
+        id: "chunk-1",
+        content: "Grounded context.",
+        metadata: { documentId: "doc-1" },
+        score: 0.91,
+      },
+    ]);
+    streamMock
+      .mockResolvedValueOnce(
+        (async function* () {
+          yield { content: "first answer" };
+        })(),
+      )
+      .mockResolvedValueOnce(
+        (async function* () {
+          yield { content: "regenerated answer" };
+        })(),
+      );
+    invokeMock.mockResolvedValueOnce({ content: "no" });
+    const history = [
+      { role: "user" as const, content: "What is our refund policy?" },
+      { role: "assistant" as const, content: "Refunds are available within 30 days." },
+    ];
+
+    const result = await answerQuestionWithGraph(
+      "How do I request one?",
+      "ws-1",
+      5,
+      undefined,
+      undefined,
+      history,
+    );
+    for await (const _token of result.stream) {
+      // drain
+    }
+
+    expect(streamMock).toHaveBeenCalledTimes(2);
+    const regenerateMessages = streamMock.mock.calls[1][0];
+    expect(regenerateMessages).toHaveLength(4);
+    expect(regenerateMessages[1].content).toBe("What is our refund policy?");
+    expect(regenerateMessages[2].content).toBe("Refunds are available within 30 days.");
+    expect(regenerateMessages[3].content).toContain("How do I request one?");
+  });
+
+  it("fallback path is unaffected by a non-empty history argument", async () => {
+    similaritySearchMock.mockResolvedValue([
+      {
+        id: "chunk-1",
+        content: "Weak context.",
+        metadata: { documentId: "doc-1" },
+        score: 0.2,
+      },
+    ]);
+    invokeMock.mockResolvedValue({ content: "rewritten question" });
+    const history = [{ role: "user" as const, content: "prior turn" }];
+
+    const result = await answerQuestionWithGraph(
+      "question",
+      "ws-1",
+      5,
+      undefined,
+      undefined,
+      history,
+    );
+    const tokens: string[] = [];
+    for await (const token of result.stream) {
+      tokens.push(token);
+    }
+
+    expect(result.isFallback).toBe(true);
+    expect(streamMock).not.toHaveBeenCalled();
   });
 });

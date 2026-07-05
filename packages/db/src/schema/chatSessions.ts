@@ -1,4 +1,4 @@
-import { pgEnum, pgTable, text, timestamp, uuid, varchar, jsonb } from 'drizzle-orm/pg-core'
+import { index, pgEnum, pgTable, text, timestamp, uuid, varchar, jsonb } from 'drizzle-orm/pg-core'
 import { workspaces } from './workspaces'
 import { users } from './users'
 
@@ -29,16 +29,25 @@ export const chatSessions = pgTable('chat_sessions', {
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 })
 
-export const chatMessages = pgTable('chat_messages', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  sessionId: uuid('session_id')
-    .references(() => chatSessions.id, { onDelete: 'cascade' })
-    .notNull(),
-  role: chatMessageRoleEnum('role').notNull(),
-  content: text('content').notNull(),
-  sources: jsonb('sources').$type<ChatMessageSource[] | null>(),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-})
+export const chatMessages = pgTable(
+  'chat_messages',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    sessionId: uuid('session_id')
+      .references(() => chatSessions.id, { onDelete: 'cascade' })
+      .notNull(),
+    role: chatMessageRoleEnum('role').notNull(),
+    content: text('content').notNull(),
+    sources: jsonb('sources').$type<ChatMessageSource[] | null>(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    sessionCreatedIdx: index('chat_messages_session_created_idx').on(
+      table.sessionId,
+      table.createdAt,
+    ),
+  }),
+)
 
 export type ChatSession = typeof chatSessions.$inferSelect
 export type NewChatSession = typeof chatSessions.$inferInsert

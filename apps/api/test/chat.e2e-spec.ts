@@ -23,8 +23,13 @@ import { DocumentsService } from '../src/documents/documents.service'
 
 jest.mock('@repo/ai', () => ({
   answerQuestion: jest.fn(),
+  condenseQuestion: jest.fn((question: string) => Promise.resolve(question)),
   countTokens: jest.fn((text: string) => text.length),
   embedQuery: jest.fn(),
+  boundHistory: jest.fn((turns: unknown[]) => turns),
+  historyCondenseEnabled: jest.fn(() => true),
+  historyInAnswerEnabled: jest.fn(() => true),
+  historyMaxMessages: jest.fn(() => 12),
 }))
 
 async function cleanupUsers(prefix: string) {
@@ -190,6 +195,35 @@ describe('Chat flow (e2e)', () => {
 
     expect(session).toBeDefined()
     expect(persisted).toHaveLength(2)
+
+    // Multi-turn: a follow-up in the SAME session should receive the first
+    // turn's content as history. This verifies wiring end-to-end through the
+    // real HTTP -> controller -> service -> @repo/ai boundary; prompt/
+    // condensation content itself is exclusively unit-tested inside
+    // packages/ai, since @repo/ai is wholesale-mocked at this layer.
+    ;(answerQuestion as jest.Mock).mockResolvedValueOnce({
+      sources: [],
+      stream: (async function* () {
+        yield 'hello '
+        yield 'world'
+      })(),
+    })
+
+    const followUpRes = await request(app.getHttpServer())
+      .post(`/workspaces/${workspaceId}/chat`)
+      .set('Authorization', `Bearer ${member.accessToken}`)
+      .send({ message: 'Can you say more about that?', sessionId })
+      .expect(201)
+
+    expect(followUpRes.text).toBe('hello world')
+    expect(answerQuestion).toHaveBeenCalledTimes(2)
+    // answerQuestion(question, workspaceId, limit, embedding, filters, history)
+    // — history is the 6th positional argument.
+    expect((answerQuestion as jest.Mock).mock.calls[0][5]).toEqual([])
+    expect((answerQuestion as jest.Mock).mock.calls[1][5]).toEqual([
+      { role: 'user', content: 'What is policy?' },
+      { role: 'assistant', content: 'hello world' },
+    ])
   })
 
   it('serves repeat question from cache, then invalidates after KB mutation', async () => {

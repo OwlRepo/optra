@@ -37,6 +37,7 @@ describe('answerQuestion', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     delete process.env.LANGGRAPH_ENABLED
+    delete process.env.HISTORY_IN_ANSWER_ENABLED
     selectMock.mockReturnValue({ from: fromMock })
     fromMock.mockReturnValue({ where: whereMock })
   })
@@ -274,5 +275,102 @@ describe('answerQuestion', () => {
     expect(result.isFallback).toBe(true)
     expect(result.sources).toEqual([])
     expect(tokens).toEqual(["I don't have enough information to answer that."])
+  })
+
+  it('returns fallback on empty retrieval even when a non-empty history argument is passed', async () => {
+    similaritySearchMock.mockResolvedValue([])
+    const history = [{ role: 'user' as const, content: 'prior turn' }]
+    const { answerQuestion } = await import('./index')
+
+    const result = await answerQuestion('question', 'ws-1', 5, undefined, undefined, history)
+    const tokens: string[] = []
+    for await (const token of result.stream) {
+      tokens.push(token)
+    }
+
+    expect(result.isFallback).toBe(true)
+    expect(tokens).toEqual(["I don't have enough information to answer that."])
+  })
+
+  it('threads bounded history into the light-path prompt when history-in-answer is enabled', async () => {
+    similaritySearchMock.mockResolvedValue([
+      {
+        id: 'chunk-1',
+        content: 'Doc content here is long enough to become a snippet.',
+        metadata: { documentId: 'doc-1' },
+        score: 0.9,
+      },
+    ])
+    whereMock.mockResolvedValue([
+      { id: 'doc-1', title: 'Doc One', sourceUrl: null, knowledgeBaseId: 'kb-1' },
+    ])
+    streamMock.mockResolvedValue(
+      (async function* () {
+        yield { content: 'answer' }
+      })(),
+    )
+    const history = [
+      { role: 'user' as const, content: 'What is our refund policy?' },
+      { role: 'assistant' as const, content: 'Refunds are available within 30 days.' },
+    ]
+
+    const { answerQuestion } = await import('./index')
+    const result = await answerQuestion(
+      'How do I request one?',
+      'ws-1',
+      5,
+      undefined,
+      undefined,
+      history,
+    )
+    for await (const _token of result.stream) {
+      // drain
+    }
+
+    const messages = streamMock.mock.calls[0][0]
+    expect(messages).toHaveLength(4)
+    expect(messages[1].content).toBe('What is our refund policy?')
+    expect(messages[2].content).toBe('Refunds are available within 30 days.')
+    expect(messages[3].content).toContain('How do I request one?')
+  })
+
+  it('omits history from the light-path prompt when HISTORY_IN_ANSWER_ENABLED=false', async () => {
+    process.env.HISTORY_IN_ANSWER_ENABLED = 'false'
+    similaritySearchMock.mockResolvedValue([
+      {
+        id: 'chunk-1',
+        content: 'Doc content here is long enough to become a snippet.',
+        metadata: { documentId: 'doc-1' },
+        score: 0.9,
+      },
+    ])
+    whereMock.mockResolvedValue([
+      { id: 'doc-1', title: 'Doc One', sourceUrl: null, knowledgeBaseId: 'kb-1' },
+    ])
+    streamMock.mockResolvedValue(
+      (async function* () {
+        yield { content: 'answer' }
+      })(),
+    )
+    const history = [
+      { role: 'user' as const, content: 'What is our refund policy?' },
+      { role: 'assistant' as const, content: 'Refunds are available within 30 days.' },
+    ]
+
+    const { answerQuestion } = await import('./index')
+    const result = await answerQuestion(
+      'How do I request one?',
+      'ws-1',
+      5,
+      undefined,
+      undefined,
+      history,
+    )
+    for await (const _token of result.stream) {
+      // drain
+    }
+
+    const messages = streamMock.mock.calls[0][0]
+    expect(messages).toHaveLength(2)
   })
 })

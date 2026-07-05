@@ -134,6 +134,15 @@ Confirmed from `packages/ai/package.json` as of 2026-06-30:
 LangGraph note as of 2026-07-01:
 - `packages/ai/src/chains/graph.spec.ts` covers high-score direct generate, rewrite retry path, fallback after max rewrites, and optional self-grade regenerate.
 
+History-aware chat note as of 2026-07-05:
+- `packages/ai/src/chains/history.spec.ts` covers `boundHistory()` token-budget trimming (oldest-first drop, recency preserved, never-exceeds-budget), `toMessages()` role mapping, and the two feature-flag defaults/overrides.
+- `packages/ai/src/chains/condense.spec.ts` covers skip-when-no-history, skip-when-`HISTORY_CONDENSE_ENABLED=false`, the condense happy path (prompt contains history + question), fallback to the original question on empty model output, and history bounding before prompt construction.
+- `packages/ai/src/chains/models.spec.ts` covers the new `'condense'` role's `OPENAI_CONDENSE_MODEL` → `OPENAI_CHAT_MODEL` → default fallback chain.
+- `packages/ai/src/chains/index.spec.ts` and `packages/ai/src/chains/graph.spec.ts` cover history reaching the light-path prompt and all three graph generation call sites (confident-stream, generate, regenerate), the `HISTORY_IN_ANSWER_ENABLED=false` negative case, and that the `isFallback` invariant is unaffected by a non-empty history argument.
+- `apps/api/src/chat/chat.service.spec.ts` covers history fetch + condensation on a session with prior turns, cache/embed/generation using the condensed question, the updated `answerQuestion()` call shape, usage accounting including condensed-question tokens only when condensing changed the text, and byte-identical behavior when both flags are disabled.
+- `apps/api/test/chat.e2e-spec.ts` extends the existing first-turn test with a same-session follow-up, asserting the second `answerQuestion()` call receives the first turn's content as history while the first call's history argument is empty — the one thing genuinely observable at this layer, since `@repo/ai` is wholesale-mocked in e2e; prompt/condensation content itself is unit-tested only in `packages/ai`.
+- DB migration `0013_condemned_silver_surfer.sql` (additive index on `chat_messages(session_id, created_at)`) is verified via `bun run --cwd packages/db build` plus a no-further-diff `drizzle-kit generate:pg` run, per the schema-change verification convention below — not a Jest test, since an index has no application-level correctness behavior to assert.
+
 Note: a plain `vitest.config.ts` failed to load in this repo with `ERR_REQUIRE_ESM` (a transitive dep, `std-env`, is ESM-only and the config got loaded as CJS). Fixed by naming it `vitest.config.mts` instead — forces Vite to treat it as ESM regardless of the package's default module type. If `apps/web` ever adds `"type": "module"` to its `package.json`, re-check whether this workaround is still needed.
 
 ## Infrastructure / Docker / Deployment Verification

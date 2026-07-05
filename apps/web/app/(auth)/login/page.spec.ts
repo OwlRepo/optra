@@ -34,7 +34,7 @@ describe('LoginPage', () => {
     vi.restoreAllMocks()
   })
 
-  it('marks the session logged in and redirects to workspaces on success, without touching the raw token', async () => {
+  it('marks the session logged in and redirects to chat on success, without touching the raw token', async () => {
     loginMock.mockResolvedValue({ accessToken: 'jwt.value.here' })
 
     const { container } = render(React.createElement(LoginPage))
@@ -49,7 +49,7 @@ describe('LoginPage', () => {
       expect(loginMock).toHaveBeenCalledWith('owner@example.com', 'password123')
       expect(markLoggedInMock).toHaveBeenCalledTimes(1)
       expect(markLoggedInMock).toHaveBeenCalledWith()
-      expect(pushMock).toHaveBeenCalledWith('/workspaces')
+      expect(pushMock).toHaveBeenCalledWith('/chat')
     })
   })
 

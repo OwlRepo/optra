@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common'
-import { and, asc, count, desc, eq, gt, ilike, lt, or, sql } from 'drizzle-orm'
+import { and, asc, count, desc, eq, gt, ilike, lt, ne, or, sql } from 'drizzle-orm'
 import {
   buildOffsetResult,
   chatMessages,
@@ -10,6 +10,7 @@ import {
   resolveOffsetPage,
   type ChatMessageSource,
 } from '@repo/db'
+import type { HistoryTurn } from '@repo/ai'
 import { CacheService } from '../cache/cache.service'
 import { UsageService } from '../limits/usage.service'
 import { ListQueryDto } from '../common/dto/list-query.dto'
@@ -34,14 +35,43 @@ export class ChatService {
       ? await this.getOwnedSession(workspaceId, userId, sessionId)
       : await this.createSession(workspaceId, userId, message)
 
-    await db.insert(chatMessages).values({
-      sessionId: session.id,
-      role: 'user',
-      content: message,
-      sources: null,
-    })
+    const [inserted] = await db
+      .insert(chatMessages)
+      .values({
+        sessionId: session.id,
+        role: 'user',
+        content: message,
+        sources: null,
+      })
+      .returning({ id: chatMessages.id })
 
-    const exact = await this.cache.getExact(workspaceId, message)
+    const {
+      answerQuestion,
+      condenseQuestion,
+      countTokens,
+      embedQuery,
+      boundHistory,
+      historyCondenseEnabled,
+      historyInAnswerEnabled,
+      historyMaxMessages,
+    } = await import('@repo/ai')
+
+    // History only needs fetching when at least one history-aware behavior is
+    // on; when both are off this whole block is skipped, keeping that config
+    // byte-identical to pre-history behavior (no extra DB round-trip either).
+    const needsHistory = historyCondenseEnabled() || historyInAnswerEnabled()
+    const history = needsHistory
+      ? boundHistory(await this.getRecentHistory(session.id, inserted.id, historyMaxMessages()))
+      : []
+
+    // Condensing must run before any cache/embed lookup: caching a follow-up
+    // like "find more like that" by its literal text would collide across
+    // unrelated conversations. Skipped entirely (zero LLM cost) when there's
+    // no history to resolve pronouns/references against.
+    const standaloneQuestion =
+      history.length > 0 ? await condenseQuestion(message, history) : message
+
+    const exact = await this.cache.getExact(workspaceId, standaloneQuestion)
     if (exact) {
       return {
         sessionId: session.id,
@@ -53,11 +83,10 @@ export class ChatService {
       }
     }
 
-    const { answerQuestion, countTokens, embedQuery } = await import('@repo/ai')
-    const embedding = await embedQuery(message)
+    const embedding = await embedQuery(standaloneQuestion)
     const semantic = await this.cache.getSemantic(workspaceId, embedding)
     if (semantic) {
-      await this.cache.setExact(workspaceId, message, semantic.answer, semantic.sources)
+      await this.cache.setExact(workspaceId, standaloneQuestion, semantic.answer, semantic.sources)
 
       return {
         sessionId: session.id,
@@ -74,10 +103,12 @@ export class ChatService {
     // Reuse the embedding computed for the semantic-cache lookup so retrieval
     // does not embed the same message a second time on a cache miss.
     const { sources, stream, isFallback } = await answerQuestion(
-      message,
+      standaloneQuestion,
       workspaceId,
       undefined,
       embedding,
+      undefined,
+      history,
     )
 
     return {
@@ -86,17 +117,19 @@ export class ChatService {
       stream,
       cacheStatus: 'miss' as CacheStatus,
       onComplete: async (fullText: string) => {
+        const condensedTokens =
+          standaloneQuestion !== message ? countTokens(standaloneQuestion) : 0
         await this.usage.addUsage(
           workspaceId,
-          countTokens(message) + countTokens(fullText),
+          countTokens(message) + countTokens(fullText) + condensedTokens,
         )
         await this.persistAssistant(session.id, fullText, sources)
         if (!isFallback) {
-          await this.cache.setExact(workspaceId, message, fullText, sources)
+          await this.cache.setExact(workspaceId, standaloneQuestion, fullText, sources)
           await this.cache.saveSemantic(
             workspaceId,
             version,
-            message,
+            standaloneQuestion,
             embedding,
             fullText,
             sources,
@@ -198,6 +231,21 @@ export class ChatService {
       .returning()
 
     return session
+  }
+
+  private async getRecentHistory(
+    sessionId: string,
+    excludeMessageId: string,
+    limit: number,
+  ): Promise<HistoryTurn[]> {
+    const rows = await db
+      .select({ role: chatMessages.role, content: chatMessages.content })
+      .from(chatMessages)
+      .where(and(eq(chatMessages.sessionId, sessionId), ne(chatMessages.id, excludeMessageId)))
+      .orderBy(desc(chatMessages.createdAt), desc(chatMessages.id))
+      .limit(limit)
+
+    return rows.reverse()
   }
 
   private async getOwnedSession(workspaceId: string, userId: string, sessionId: string) {

@@ -10,6 +10,7 @@ import {
 } from "../vectorstore";
 import { resolveModel } from "./models";
 import { buildEvidencePack } from "./context";
+import { toMessages, type HistoryTurn } from "./history";
 import type { AnswerResult, ChatSource } from "./index";
 
 // Answering streams and is quality-critical; rewrite/grade are cheap classification
@@ -60,6 +61,9 @@ const GraphState = Annotation.Root({
   originalQuestion: Annotation<string>,
   // The query used for vector retrieval — rewrites mutate THIS, not the original.
   retrievalQuery: Annotation<string>,
+  // Bounded recent turns for generation context. Write-once at seed time, never
+  // mutated by a node — retrieval/rewrite nodes deliberately never read this.
+  history: Annotation<HistoryTurn[]>,
   workspaceId: Annotation<string>,
   limit: Annotation<number>,
   rewrites: Annotation<number>,
@@ -181,9 +185,11 @@ async function collectAnswer(
   question: string,
   chunks: Awaited<ReturnType<typeof similaritySearch>>,
   systemPrompt: string,
+  history: HistoryTurn[] = [],
 ): Promise<string> {
   const stream = await answerLlm.stream([
     new SystemMessage(systemPrompt),
+    ...toMessages(history),
     new HumanMessage(
       `Context:\n${buildContext(chunks)}\n\nQuestion: ${question}`,
     ),
@@ -205,9 +211,11 @@ async function* streamAnswer(
   question: string,
   chunks: Awaited<ReturnType<typeof similaritySearch>>,
   systemPrompt: string,
+  history: HistoryTurn[] = [],
 ): AsyncGenerator<string> {
   const stream = await answerLlm.stream([
     new SystemMessage(systemPrompt),
+    ...toMessages(history),
     new HumanMessage(
       `Context:\n${buildContext(chunks)}\n\nQuestion: ${question}`,
     ),
@@ -300,6 +308,7 @@ async function generateNode(state: typeof GraphState.State) {
       state.originalQuestion,
       state.chunks,
       ANSWER_SYSTEM_PROMPT,
+      state.history,
     ),
   };
 }
@@ -351,6 +360,7 @@ async function regenerateNode(state: typeof GraphState.State) {
       state.originalQuestion,
       state.chunks,
       REGENERATE_SYSTEM_PROMPT,
+      state.history,
     ),
     regenerated: true,
   };
@@ -388,10 +398,12 @@ export async function answerQuestionWithGraph(
   limit = 5,
   precomputedEmbedding?: number[],
   filters?: RetrievalFilters,
+  history: HistoryTurn[] = [],
 ): Promise<AnswerResult> {
   const result = await graph.invoke({
     originalQuestion: question,
     retrievalQuery: question,
+    history,
     workspaceId,
     limit,
     rewrites: 0,
@@ -424,6 +436,7 @@ export async function answerQuestionWithGraph(
         result.originalQuestion,
         result.chunks,
         ANSWER_SYSTEM_PROMPT,
+        result.history,
       ),
     };
   }

@@ -1,7 +1,14 @@
 import { NotFoundException } from '@nestjs/common'
 import { Test } from '@nestjs/testing'
 import { and, asc, eq, like } from 'drizzle-orm'
-import { answerQuestion, countTokens, embedQuery } from '@repo/ai'
+import {
+  answerQuestion,
+  condenseQuestion,
+  countTokens,
+  embedQuery,
+  historyCondenseEnabled,
+  historyInAnswerEnabled,
+} from '@repo/ai'
 import {
   chatMessages,
   chatSessions,
@@ -17,8 +24,13 @@ import { UsageService } from '../limits/usage.service'
 
 jest.mock('@repo/ai', () => ({
   answerQuestion: jest.fn(),
+  condenseQuestion: jest.fn((question: string) => Promise.resolve(question)),
   countTokens: jest.fn(),
   embedQuery: jest.fn(),
+  boundHistory: jest.fn((turns: unknown[]) => turns),
+  historyCondenseEnabled: jest.fn(() => true),
+  historyInAnswerEnabled: jest.fn(() => true),
+  historyMaxMessages: jest.fn(() => 12),
 }))
 
 async function cleanupChatFixtures(prefix: string) {
@@ -105,6 +117,9 @@ describe('ChatService', () => {
   afterEach(() => {
     jest.clearAllMocks()
     ;(countTokens as jest.Mock).mockImplementation((text: string) => text.length)
+    ;(condenseQuestion as jest.Mock).mockImplementation((question: string) => Promise.resolve(question))
+    ;(historyCondenseEnabled as jest.Mock).mockReturnValue(true)
+    ;(historyInAnswerEnabled as jest.Mock).mockReturnValue(true)
   })
 
   afterAll(async () => {
@@ -136,9 +151,17 @@ describe('ChatService', () => {
     const result = await service.answer(workspace.id, user.id, 'Hello assistant')
 
     // The cache-lookup embedding is reused for retrieval (no second embed on miss).
-    expect(answerQuestion).toHaveBeenCalledWith('Hello assistant', workspace.id, undefined, [
-      0.1, 0.2, 0.3,
-    ])
+    // First turn in a session has no history, so condensing is skipped entirely
+    // (zero added cost) and the trailing history arg is an empty array.
+    expect(condenseQuestion).not.toHaveBeenCalled()
+    expect(answerQuestion).toHaveBeenCalledWith(
+      'Hello assistant',
+      workspace.id,
+      undefined,
+      [0.1, 0.2, 0.3],
+      undefined,
+      [],
+    )
     expect(result.sessionId).toBeDefined()
 
     const body: string[] = []
@@ -530,6 +553,140 @@ describe('ChatService', () => {
     expect(usage.addUsage).toHaveBeenCalledWith(
       workspace.id,
       'Count these tokens'.length + 'final answer'.length,
+    )
+  })
+
+  it('condenses a follow-up using prior turns and uses the condensed question for cache/embed/generation', async () => {
+    const { user, workspace } = await seedWorkspaceFixture(
+      `${prefix}condense@example.com`,
+      'Chat Spec Condense',
+    )
+    cache.getExact.mockResolvedValue(null)
+    cache.getSemantic.mockResolvedValue(null)
+    cache.getVersion.mockResolvedValue(1)
+    usage.assertWithinBudget.mockResolvedValue(undefined)
+    usage.addUsage.mockResolvedValue(undefined)
+    ;(embedQuery as jest.Mock).mockResolvedValue([0.1])
+    ;(countTokens as jest.Mock).mockImplementation((text: string) => text.length)
+    ;(answerQuestion as jest.Mock).mockResolvedValue({
+      sources: [],
+      stream: (async function* () {
+        yield 'first answer'
+      })(),
+      isFallback: false,
+    })
+
+    const first = await service.answer(workspace.id, user.id, 'What is our refund policy?')
+    for await (const _token of first.stream) {
+      // drain
+    }
+    await first.onComplete('first answer')
+
+    const condensed = 'How do I request a refund within the 30-day window?'
+    ;(condenseQuestion as jest.Mock).mockResolvedValueOnce(condensed)
+    ;(answerQuestion as jest.Mock).mockResolvedValue({
+      sources: [],
+      stream: (async function* () {
+        yield 'second answer'
+      })(),
+      isFallback: false,
+    })
+
+    const second = await service.answer(
+      workspace.id,
+      user.id,
+      'How do I request one?',
+      first.sessionId,
+    )
+    for await (const _token of second.stream) {
+      // drain
+    }
+    await second.onComplete('second answer')
+
+    expect(condenseQuestion).toHaveBeenCalledTimes(1)
+    const [passedQuestion, passedHistory] = (condenseQuestion as jest.Mock).mock.calls[0]
+    expect(passedQuestion).toBe('How do I request one?')
+    expect(passedHistory).toEqual([
+      { role: 'user', content: 'What is our refund policy?' },
+      { role: 'assistant', content: 'first answer' },
+    ])
+
+    // Cache/embed/generation all operate on the condensed standalone question,
+    // not the raw follow-up text.
+    expect(cache.getExact).toHaveBeenLastCalledWith(workspace.id, condensed)
+    expect(embedQuery).toHaveBeenLastCalledWith(condensed)
+    expect(answerQuestion).toHaveBeenLastCalledWith(
+      condensed,
+      workspace.id,
+      undefined,
+      [0.1],
+      undefined,
+      passedHistory,
+    )
+
+    // Usage accounting folds in the condensed-question length only because
+    // condensing actually changed the text this turn.
+    expect(usage.addUsage).toHaveBeenLastCalledWith(
+      workspace.id,
+      'How do I request one?'.length + 'second answer'.length + condensed.length,
+    )
+  })
+
+  it('reproduces pre-history behavior exactly when both history flags are disabled, even with prior turns present', async () => {
+    ;(historyCondenseEnabled as jest.Mock).mockReturnValue(false)
+    ;(historyInAnswerEnabled as jest.Mock).mockReturnValue(false)
+
+    const { user, workspace } = await seedWorkspaceFixture(
+      `${prefix}flags-off@example.com`,
+      'Chat Spec Flags Off',
+    )
+    cache.getExact.mockResolvedValue(null)
+    cache.getSemantic.mockResolvedValue(null)
+    cache.getVersion.mockResolvedValue(1)
+    usage.assertWithinBudget.mockResolvedValue(undefined)
+    usage.addUsage.mockResolvedValue(undefined)
+    ;(embedQuery as jest.Mock).mockResolvedValue([0.2])
+    ;(countTokens as jest.Mock).mockImplementation((text: string) => text.length)
+    ;(answerQuestion as jest.Mock).mockResolvedValue({
+      sources: [],
+      stream: (async function* () {
+        yield 'first answer'
+      })(),
+      isFallback: false,
+    })
+
+    const first = await service.answer(workspace.id, user.id, 'First turn')
+    for await (const _token of first.stream) {
+      // drain
+    }
+    await first.onComplete('first answer')
+
+    ;(answerQuestion as jest.Mock).mockResolvedValue({
+      sources: [],
+      stream: (async function* () {
+        yield 'second answer'
+      })(),
+      isFallback: false,
+    })
+
+    const second = await service.answer(workspace.id, user.id, 'Second turn', first.sessionId)
+    for await (const _token of second.stream) {
+      // drain
+    }
+    await second.onComplete('second answer')
+
+    expect(condenseQuestion).not.toHaveBeenCalled()
+    expect(answerQuestion).toHaveBeenLastCalledWith(
+      'Second turn',
+      workspace.id,
+      undefined,
+      [0.2],
+      undefined,
+      [],
+    )
+    expect(usage.addUsage).toHaveBeenLastCalledWith(
+      workspace.id,
+      'Second turn'.length + 'second answer'.length,
     )
   })
 })
