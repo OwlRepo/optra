@@ -53,3 +53,7 @@ packages/*/src/**/*.d.ts
 apps/*/src/**/*.js
 apps/*/src/**/*.js.map
 .gstack/
+
+# Claude Code hook acknowledgment files (per-turn state, never committed)
+.claude/.predict-verify-ack
+.claude/.plan-ack

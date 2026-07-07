@@ -2,7 +2,26 @@
 
 For refactors, preserve behavior unless user explicitly approved behavior change.
 
-Claude must not edit source code.
+No source edits during planning. Implementation begins only after approval.
+
+## Plan Contract
+
+Follow the Plan Contract in `CLAUDE.md`.
+
+Two layers required for Standard/Deep:
+
+- Layer 1: human summary — plain English, Risk Matrix, Backward Compatibility Matrix, visual/analogy as needed, ~1 minute read
+- Layer 2: execution spec — exact file paths, symbol + before/after code block anchors, tests per file in TDD order
+
+Line numbers are hints only. Symbols and code blocks are the anchors.
+
+Express: one line instead of matrices — `Blast radius: <files>; external users: none / <list>`.
+
+Implementation touches only the allowed files listed in the plan.
+
+Search usages of every changed export/symbol before finalizing the plan.
+
+Affected-but-not-modified dependents go in the Backward Compatibility Matrix.
 
 ## Task Router Compatibility
 
@@ -113,17 +132,15 @@ For Standard/Deep tasks:
 
 For Tiny/Express tasks, state `Low risk. No special rollback required.` if applicable.
 
-### 8. Codex Scratchpad Output
+### 8. Approval Gate
 
-Write to `.ai-scratchpad.md`.
+Present the plan and wait for approval before implementing (Standard/Deep).
 
-Use `Status: IMPLEMENTATION_READY` only after approval.
-
-For Deep tasks, include `Deep implementation approved: Yes` only after explicit human approval.
+For Deep tasks, implementation starts only after explicit human approval of the plan.
 
 ## Contract Areas
 
-Include in Codex Scratchpad Output when relevant:
+Include in the plan when relevant:
 
 - API: (identified from plan or `No contract impact`)
 - Database: (identified from plan or `No contract impact`)
@@ -140,7 +157,7 @@ For Deep refactors:
 - human approval required before plan
 - full regression verification required
 - rollback plan required
-- `Deep implementation approved: Yes` required before implementation
+- explicit human approval required before implementation
 
 ## Forbidden Actions
 
@@ -148,7 +165,7 @@ Must forbid broad cleanup.
 
 Must forbid opportunistic changes.
 
-Claude must not edit source code.
+No source edits during planning. Implementation begins only after approval.
 
 ## Behavior-Changing Contract Drift
 
@@ -159,13 +176,10 @@ If refactor changes API contract, DB contract, or public behavior:
 - do not proceed unless user approved behavior change
 - document contract change explicitly
 
-## Scratchpad Output
+## Implementation Start
 
-Final Codex Scratchpad Output must be written to `.ai-scratchpad.md`.
-
-`.ai-scratchpad.md` may use `Status: IMPLEMENTATION_READY` only after approval.
+After approval, Claude implements directly in the same thread — one step at a time, strict TDD, explaining each step.
 
 For Deep tasks:
 
-- human approval required
-- `Deep implementation approved: Yes` required before implementation
+- explicit human approval required before implementation

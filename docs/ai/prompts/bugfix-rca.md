@@ -4,7 +4,7 @@ For bug reports, Claude must produce RCA first.
 
 Do not generate implementation steps.
 
-Do not write `Status: IMPLEMENTATION_READY`.
+Do not begin implementation.
 
 ## Task Router Compatibility
 
@@ -169,7 +169,7 @@ If task is Deep:
 
 - stop after RCA
 - human approval required before plan
-- do not write `Status: IMPLEMENTATION_READY`
+- do not begin implementation
 - do not generate implementation steps
 
 ## Output Rule
@@ -178,6 +178,6 @@ Stop after RCA.
 
 No implementation plan.
 
-No `.ai-scratchpad.md`.
+No source edits.
 
 Wait for approval before planning.

@@ -1,23 +1,29 @@
 {
-  "description": "Example Claude Code settings for this project. Rename to settings.json after verifying schema support.",
-  "note": "This is an example file. Claude Code settings schema is not verified for this project. Do not activate unless schema is verified.",
-  "permissions": {
-    "read": true,
-    "discovery": true,
-    "sourceWrites": false
-  },
-  "context": {
-    "loadOrder": [
-      "CLAUDE.md",
-      "docs/ai/entry-point.md",
-      "docs/ai/task-router.md",
-      "docs/ai/architecture-manifest.md",
-      "docs/ai/module-ownership-map.md",
-      "docs/ai/contracts/api-contracts.md",
-      "docs/ai/contracts/db-contracts.md",
-      "docs/ai/testing-strategy.md",
-      "docs/ai/risk-register.md",
-      "docs/ai/file-index/repository-map.md"
+  "description": "Example Claude Code settings for this project. The active copy is settings.json (schema verified in this environment). Claude Code implements directly in this repo (single-agent setup) — source edits are gated by the predict-verify hook, not disabled.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Skill",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/check-gstack.sh\""
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/check-predict-verify.sh\""
+          },
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/check-plan-gate.sh\""
+          }
+        ]
+      }
     ]
   }
 }

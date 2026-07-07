@@ -32,7 +32,7 @@ Claude must not require user to name a lane.
 | Approved RCA, request for fix plan, request to generate implementation plan after RCA                                                 | Bug Plan          | `docs/ai/prompts/bugfix-plan.md`   |
 | New capability, enhancement, new workflow, new UI behavior, new API behavior, product behavior change                                 | Feature Plan      | `docs/ai/prompts/feature-plan.md`  |
 | Cleanup, rename, restructure, internal code quality change, no intended behavior change                                               | Refactor Plan     | `docs/ai/prompts/refactor-plan.md` |
-| Question, explanation, code review, architecture review, discovery only                                                               | Read-only         | No scratchpad unless user asks     |
+| Question, explanation, code review, architecture review, discovery only                                                               | Read-only         | No template — evidence-backed findings only, no source edits |
 | Infra, Docker, deployment, CI/CD, VPS, container, compose, Dockerfile, hosting configuration change                                   | Infra Plan        | No dedicated template — treat as Feature Plan discovery depth, but consult `docs/ai/risk-register.md`'s "Production Deployment" row (Deep by default) and `docs/ai/testing-strategy.md`'s operational-verification checklist instead of unit-test-first flow for non-code files |
 
 ## Ambiguity Rules
@@ -195,15 +195,19 @@ For Deep tasks:
 - Claude produces RCA/discovery first
 - Claude stops after RCA/discovery
 - Human approval required before plan
-- Claude does not write `Status: IMPLEMENTATION_READY` until human approval is explicit
+- Human approval required again before implementation
 
-## Scratchpad Write Rule
+## Implementation Rule
 
-Claude writes `.ai-scratchpad.md` only after approval.
+Claude implements directly in the same thread — no handoff artifact, no second agent.
 
-Claude uses `Status: IMPLEMENTATION_READY` only for approved handoff.
+Standard/Deep plans must follow the Plan Contract in `CLAUDE.md` (two layers, Risk Matrix, Backward Compatibility Matrix, symbol + code-block anchors).
+
+- Tiny/Express: implement after classification
+- Standard: implement after plan approval
+- Deep: implement only after explicit human approval of both RCA/discovery and plan
 
 For read-only tasks:
 
-- no `.ai-scratchpad.md` unless user asks
 - evidence-backed findings only
+- no source edits

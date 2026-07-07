@@ -1,8 +1,8 @@
-# CLAUDE.md — Autonomous Bootstrap Template
+# CLAUDE.md — Autonomous Bootstrap Template (reusable master)
 
-Single-agent spec. Claude routes, investigates, plans, implements, and validates in one lane — no Codex, no split-brain, no `.ai-scratchpad.md` handoff. This file is both the operating contract AND the bootstrap source spec.
+> **This is the unfilled master copy.** To reuse on another project: copy this file into that repo's root as `CLAUDE.md`, delete this banner, then say **"Read CLAUDE.md and start project integration."** Discovery fills every `(auto-filled...)` section from that repo's real code. This copy lives in `docs/ai/` purely as the portable source — the filled, operating version for THIS repo is the root `CLAUDE.md`.
 
-> **Bootstrap status: COMPLETED 2026-07-07.** Discovery ran, all auto-fill sections below are filled from the real codebase, `docs/ai/*` was preserved/updated (it predated this bootstrap and was already operational), and the predict-verify hook is installed. Treat this file as filled — re-run discovery only on an explicit "refresh"/"re-bootstrap" request or when the docs look stale (see Context Refresh Rule).
+Single-agent spec. Claude routes, investigates, plans, implements, and validates in one lane — no second agent, no split-brain, no handoff artifacts. This file is both the operating contract AND the bootstrap source spec.
 
 **This file self-fills.** Nothing below needs to be manually edited before use. Drop this file at the repo root as `CLAUDE.md`, then say something like: **"Read CLAUDE.md and start project integration."** That phrase (or anything equivalent — "bootstrap this project," "set up AI integration") triggers the Autonomous Bootstrap Sequence below, which inspects the real codebase, fills in every section itself, generates the supporting `docs/ai/*` files, and reports a summary — no back-and-forth required unless something is genuinely ambiguous.
 
@@ -34,11 +34,11 @@ After this sequence runs once, treat the file as filled and skip straight to nor
 
 ## Identity
 
+*(Auto-filled by step 2 above. Until first bootstrap runs, this reads as a placeholder — that's expected.)*
+
 I am a capable developer who wants to understand the "why," not just copy-paste code. I learn by doing and asking questions. I push back when something doesn't feel right or scalable. Treat me as someone building real production software, not a tutorial project.
 
-**Project:** Mnemra — a multi-tenant RAG knowledge-management SaaS for customer support teams: they connect their own docs (uploads, web scrapes, tickets) and get instant, cited answers plus AI ticket extraction. **Production software** — this is stated explicitly (multi-tenant workspaces, JWT+OTP auth, rate limits and token budgets, GitHub Actions CI/CD auto-deploying to a live VPS with backups), not inferred.
-
-**Stack (discovered, verified):** Turborepo + Bun 1.2.22 workspaces. `apps/web` = Next.js 14 App Router + React 18 + Tailwind v4 + shadcn/ui (`packages/ui`). `apps/api` = NestJS 10 REST API with Bull 4 job queues on Redis, Passport JWT + email OTP (Resend), S3-compatible storage (SeaweedFS local / S3 prod). `packages/db` = Drizzle ORM on PostgreSQL 16 + pgvector (16 tables). `packages/ai` = LangChain/LangGraph RAG pipeline on OpenAI (gpt-4-turbo / gpt-4o-mini, text-embedding-3-small, 1536-dim). Tests: Jest + Supertest (API unit + 15 e2e suites), Vitest (web + packages).
+**Project:** *(auto-filled: name, one-line description, and whether this is production/portfolio/internal-tool/prototype — inferred from README/package metadata, marked `(inferred, please correct if wrong)` if not explicitly stated anywhere)*
 
 ## Communication Style — non-negotiable, every session
 
@@ -51,18 +51,12 @@ I am a capable developer who wants to understand the "why," not just copy-paste 
 - Pause after each step, ask if I have questions before continuing.
 - Mid-implementation question → stop, answer fully, then continue.
 - If I push back, engage with the reasoning — don't just agree. Explain if I'm wrong, adjust if I'm right.
-- Never say "for now" on anything with scalability implications — this is confirmed production software, not a throwaway.
+- Never say "for now" on anything with scalability implications, unless this is confirmed to be a throwaway/prototype during bootstrap.
 - Keep code, paths, commands, API names, error strings exact — no paraphrasing technical specifics.
 
 ## How I Think About This Product
 
-*(inferred, please correct if wrong)*
-
-- **Workspace isolation is the trust boundary.** Every query against tenant tables (documents, chunks, tickets, chat_sessions, scrape_runs, workspace_events) must filter by `workspaceId`; cross-workspace data leakage is the single worst bug this product can have.
-- **Answers must be trustworthy and cited.** Support agents act on RAG output in front of customers — a confident wrong or uncited answer is worse than no answer. Source attribution integrity matters as much as retrieval quality.
-- **LLM cost controls are load-bearing product features.** Per-user (20/min) and per-workspace (200/min) chat rate limits and the 5M-token monthly workspace budget protect margins; changes that touch chat/refine paths must never bypass them.
-- **Async pipeline integrity is user-visible.** Bull jobs (ingest, scrape, ticket extraction) failing silently look like lost data to users; `status`, `queueJobId`, and `lastError` tracking must stay accurate on every queue-touching change.
-- **It's live.** Migrations, env vars, and deploy scripts touch a running system with real tenant data; treat schema and infra changes as production operations (backups exist, but rollback thinking is required, not optional).
+*(Auto-filled by step 2: 2-5 bullets on what actually matters for this specific project — inferred from README, existing docs, and codebase signals like auth/payment/PII-handling code. Marked `(inferred, please correct if wrong)` since this shapes how cautious Claude is.)*
 
 ## Single-Agent Rule
 
@@ -82,32 +76,29 @@ If a migration, schema, contract, permission, or integration detail is unknown: 
 
 This file also governs what supporting files exist in this repo and what each must contain.
 
-**Bootstrap outputs (Claude-only — no Codex artifacts):**
+**Bootstrap outputs (Claude-only — no second-agent artifacts):**
 
 - `CLAUDE.md` — this file.
-- `.claude/settings.json` — active (settings schema verified in this environment); wires the `check-predict-verify.sh` hook alongside the pre-existing gstack Skill-check hook, see below.
-- `.claude/hooks/check-predict-verify.sh` — mechanical backstop for the Learning Contract. Blocks Edit/Write/MultiEdit calls on source files unless `.claude/.predict-verify-ack` exists and is fresh. **Create this file with the exact content in the "Hook Script Source" block further below — copy it verbatim, character for character. Do not paraphrase, "improve," or regenerate this script from the English description; the stdin-parsing logic is load-bearing and a rewritten version will likely break silently.**
+- `.claude/settings.json` (or `.claude/settings.example.json` if Claude Code's settings schema isn't verified yet for this environment) — must wire BOTH hooks below.
+- `.claude/hooks/check-predict-verify.sh` — mechanical backstop for the Learning Contract. Blocks Edit/Write/MultiEdit calls on source files unless `.claude/.predict-verify-ack` exists and is fresh. **Create this file with the exact content in its "Hook Script Source" block further below — copy it verbatim, character for character. Do not paraphrase, "improve," or regenerate this script from the English description; the stdin-parsing logic is load-bearing and a rewritten version will likely break silently.**
 - `.claude/hooks/check-plan-gate.sh` — mechanical backstop for the Plan Contract. Blocks Edit/Write/MultiEdit calls on source files unless `.claude/.plan-ack` exists, is fresh, and — for Standard/Deep — records `plan:approved`. Copy verbatim from its own "Hook Script Source" block below, same no-paraphrase rule.
 - `.gitignore` entries for `.claude/.predict-verify-ack` and `.claude/.plan-ack` — ack files are per-turn state, never committed.
-- `docs/ai/claude-bootstrap-template.md` — the unfilled master copy of this file, kept for reuse: copy it into any new repo as `CLAUDE.md` and say "bootstrap this project."
 - `docs/ai/entry-point.md` — where a new session starts reading; one paragraph on what this repo is and how the docs below fit together.
 - `docs/ai/task-router.md` — task classification table, mirrors the Task Router section below.
 - `docs/ai/architecture-manifest.md` — high-level system shape (repo layout, module/package boundaries, data flow) — built from actual Repository Auto-Discovery findings, not guessed.
 - `docs/ai/module-ownership-map.md` — domain → FE/BE/DB/tests/risk map.
-- `docs/ai/contracts/api-contracts.md` — request/response shapes per endpoint.
-- `docs/ai/contracts/db-contracts.md` — tables, columns, relations, migrations.
-- `docs/ai/testing-strategy.md` — verification level per task size, based on the test setup that exists in the repo.
+- `docs/ai/contracts/api-contracts.md` — request/response shapes per endpoint (skip or state "Not applicable" if no API layer was discovered).
+- `docs/ai/contracts/db-contracts.md` — tables, columns, relations, migrations (skip or state "Not applicable" if no database was discovered).
+- `docs/ai/testing-strategy.md` — verification level per task size, based on whatever test setup already exists in the repo.
 - `docs/ai/risk-register.md` — which domains default to Deep and why.
 - `docs/ai/context-refresh.md` — workflow for refreshing stale context docs without touching source.
-- `docs/ai/file-index/repository-map.md` — the code/file indexer (symbol → file:line), see Repository File Index below.
+- `docs/ai/file-index/repository-map.md` — the code/file indexer (symbol → file:line), pre-populated from discovery, see Repository File Index below.
 - `docs/ai/prompts/bugfix-rca.md` — detailed bug RCA template.
-- `docs/ai/prompts/bugfix-plan.md` — detailed RCA-backed implementation plan template.
-- `docs/ai/prompts/feature-plan.md` — detailed feature discovery + implementation plan template.
-- `docs/ai/prompts/refactor-plan.md` — detailed behavior-preserving refactor plan template.
+- `docs/ai/prompts/bugfix-plan.md` — detailed RCA-backed implementation plan template (must embed the Plan Contract requirements).
+- `docs/ai/prompts/feature-plan.md` — detailed feature discovery + implementation plan template (must embed the Plan Contract requirements).
+- `docs/ai/prompts/refactor-plan.md` — detailed behavior-preserving refactor plan template (must embed the Plan Contract requirements).
 
-**Status after 2026-07-07 bootstrap:** all `docs/ai/*` files above already existed with real, operational project content from the prior setup and were preserved; only `entry-point.md` and `task-router.md` needed updating (Codex/handoff references removed). Codex artifacts (`AGENTS.md`, `.codex/instructions.md`, `CLAUDE_CODEX.md`, `.ai-scratchpad.md`) were deleted with user approval.
-
-Explicitly **not** generated (Codex removed): `AGENTS.md`, `.codex/instructions.md`, `.ai-scratchpad.md`. If any of these reappear from a stale branch or prior setup, flag them as stale and ask whether to delete.
+Explicitly **not** generated (no second agent): `AGENTS.md`, `.codex/instructions.md`, `.ai-scratchpad.md`. If any of these exist from a prior split-agent setup, flag them as stale during bootstrap and ask whether to delete.
 
 Each generated file must include: file purpose, load/use rule, source-of-truth rule, and any safety gate relevant to that file. Files may be compact, but must be operational — no placeholder-only files unless the file is explicitly an index/map meant to be filled later. Generated architecture manifests must never pretend to know project architecture that hasn't been inspected — unverified sections get marked `TODO: Fill after repository analysis. Do not treat as verified.`
 
@@ -234,19 +225,19 @@ echo '{}'
 
 **Manual/refresh trigger:** any later request to "refresh," "re-bootstrap," or "update the AI setup" → don't just barrel forward:
 1. Inspect the actual project tree again.
-2. Detect existing AI setup files (including leftover Codex artifacts).
-3. Produce a plan first: files to create, update, skip, or preserve — and any Codex leftovers flagged for removal.
+2. Detect existing AI setup files (including leftover split-agent artifacts).
+3. Produce a plan first: files to create, update, skip, or preserve — and any stale leftovers flagged for removal.
 4. Wait for approval before writing, unless I explicitly say "apply directly."
 5. Generate/update only approved files, preserving project-specific content already in place.
 6. Report a final Output Summary.
 
-**Output summary must include:** what kind of project this was understood to be, files created, files updated, files skipped, existing content preserved, anything marked inferred/unverified that needs confirmation, verification performed, manual follow-up required, and the predict-verify hook validation result (installed + tested working, or exact failure reason).
+**Output summary must include:** what kind of project this was understood to be, files created, files updated, files skipped, existing content preserved, anything marked inferred/unverified that needs confirmation, verification performed, manual follow-up required, and BOTH hook validation results (installed + tested working, or exact failure reason).
 
 **Drift handling:** if generated setup files already exist, compare against this spec, preserve project-specific additions, update stale rules, don't remove useful local conventions, and report what drifted and what was changed to realign.
 
 **Rules during generation:** don't invent package scripts — verification commands must come from actual package scripts or repo docs discovered in step 1. Don't create an active `.claude/settings.json` unless the Claude Code settings schema is verified for this environment; use `.claude/settings.example.json` otherwise.
 
-**Hook wiring** — whichever settings file is used, it must include (merged with, not replacing, any existing hooks such as the gstack Skill check):
+**Hook wiring** — whichever settings file is used, it must include (merged with, not replacing, any existing hooks):
 ```json
 {
   "hooks": {
@@ -263,18 +254,18 @@ echo '{}'
 }
 ```
 
-**Hook creation and validation — mandatory, not optional:**
+**Hook creation and validation — mandatory for BOTH hooks, not optional:**
 
-1. Create `.claude/hooks/check-predict-verify.sh` using the exact content from the "Hook Script Source" block above — copy verbatim, do not regenerate or paraphrase.
-2. Make it executable: `chmod +x .claude/hooks/check-predict-verify.sh`.
-3. Wire it into `.claude/settings.json` (or `.claude/settings.example.json`) exactly as shown above.
-4. **Validate before reporting bootstrap as done:**
+1. Create each hook using the exact content from its "Hook Script Source" block above — copy verbatim, do not regenerate or paraphrase.
+2. Make each executable: `chmod +x .claude/hooks/<name>.sh`.
+3. Wire both into `.claude/settings.json` (or `.claude/settings.example.json`) exactly as shown above.
+4. **Validate before reporting bootstrap as done (per hook):**
    - Confirm the file exists and its content byte-matches the source block (diff it, don't eyeball it).
    - Confirm the executable bit is set (`ls -l` should show `x`).
-   - Run a dry-run test: simulate the hook's stdin contract directly: `echo '{"file_path":"src/test.ts"}' | .claude/hooks/check-predict-verify.sh` and confirm it returns a `deny` decision when `.claude/.predict-verify-ack` doesn't exist yet.
-   - Then create a fresh `.claude/.predict-verify-ack` (e.g. `echo '{"status":"skipped","matches":"bootstrap test"}' > .claude/.predict-verify-ack`) and re-run the same dry-run command, confirming it now returns `{}` (allow).
-   - Clean up the test ack file afterward so it doesn't leave a false "already acknowledged" state for the first real task.
-5. If validation fails at any step, report the exact failure — do not report the hook as installed if it wasn't actually confirmed working.
+   - Dry-run deny: `echo '{"file_path":"src/test.ts"}' | .claude/hooks/<name>.sh` with no ack file → confirm a `deny` decision.
+   - Write a valid ack file, re-run → confirm `{}` (allow). For the plan gate, additionally test that a `standard`/`deep` ack WITHOUT `plan:approved` still denies.
+   - Clean up test ack files afterward so no false "already acknowledged" state remains.
+5. If validation fails at any step, report the exact failure — do not report a hook as installed if it wasn't actually confirmed working.
 
 ---
 
@@ -291,7 +282,7 @@ Classify every incoming request before acting — plain English, bug report, fea
 | Question, explanation, code review, architecture review, discovery only | Read-only — no plan needed |
 | Docker, CI/CD, hosting/deployment config | Infra Plan — Deep by default, operational-verification checklist instead of unit-test-first |
 
-**Ambiguity rule:** if unsure, pick the safest lane — possible bug → RCA, possible new behavior → Feature Plan, possible no-behavior-change → Refactor Plan, possible auth/roles/permissions/workspace-isolation/jobs/migrations/token-budgets → Deep by default.
+**Ambiguity rule:** if unsure, pick the safest lane — possible bug → RCA, possible new behavior → Feature Plan, possible no-behavior-change → Refactor Plan, possible billing/auth/roles/permissions/automations/jobs/webhooks/migrations/transactions → Deep by default.
 
 After classifying, consult `docs/ai/module-ownership-map.md` for domain, likely FE/BE/DB areas, tests, and default risk. Missing → `UNMAPPED DOMAIN`. Stale or contradicts code → `CONTEXT DRIFT`.
 
@@ -312,7 +303,7 @@ Task Classification:
 - **Tiny** — docs, copy, comments, config, display-only. No behavior change. Minimal verification.
 - **Express** — single-layer, 1-2 files, no DB/schema/API contract change, low regression risk.
 - **Standard** — multiple files or FE-BE coordination. Requires contract verification + targeted tests.
-- **Deep** — high-risk/production-critical. For Mnemra specifically: auth/OTP/JWT/refresh tokens, workspace membership & roles (owner/admin/member), invitations, DB migrations & schema changes (Drizzle/pgvector), Bull job processors (ingest, scrape, ticket extraction), RAG pipeline contract changes (`packages/ai` chains, embedding model/dimension), rate limits & token budgets (`limits`), S3 storage paths, email/OTP delivery (Resend), deploy/infra (docker-compose, GitHub Actions, Caddy), external integrations (OpenAI, LangSmith). Requires full RCA/discovery, my explicit approval before plan, regression tests, manual QA, rollback notes.
+- **Deep** — high-risk/production-critical: auth, roles, permissions, billing/payments, automations, jobs, webhooks, migrations, transactions, schema changes, core domain logic unique to this project *(filled in during bootstrap from discovery)*, external integrations. Requires full RCA/discovery, my explicit approval before plan, regression tests, manual QA, rollback notes.
 
 Only downgrade Deep if repo evidence proves the task is isolated and low-risk.
 
@@ -344,7 +335,7 @@ Every Standard/Deep plan (feature, bugfix, refactor) has exactly two layers. Nei
 
 **Layer 2 — Execution spec (the implementing model follows this exactly — zero improvisation):**
 - Exact file paths for every touched file.
-- Anchors = symbol names (function/class/component) + exact before/after code blocks. Line numbers are hints only, never the primary anchor — parallel sessions shift files.
+- Anchors = symbol names (function/class/component) + exact before/after code blocks. Line numbers are hints only, never the primary anchor — files drift between plan and execution.
 - Required tests per file, in TDD order (failing test first).
 - Verification commands from real package scripts only.
 
@@ -369,15 +360,9 @@ For bug reports, RCA first, no implementation steps yet. Required sections: Issu
 
 ## Testing Requirement
 
-Strict TDD, no exceptions — this is confirmed production software. Write the failing test first, confirm it fails, implement until it passes. Every touched file needs unit coverage; user-facing or cross-layer flows also need e2e coverage. Missing tooling is not a reason to skip coverage — set it up first. Implementation isn't complete until its tests exist and pass.
+Strict TDD, no exceptions, unless the project is confirmed during bootstrap to be a throwaway/prototype (in which case say so explicitly rather than silently skipping coverage). Write the failing test first, confirm it fails, implement until it passes. Every touched file needs unit coverage; user-facing or cross-layer flows also need e2e coverage. Missing tooling is not a reason to skip coverage — set it up first. Implementation isn't complete until its tests exist and pass.
 
-**Verified test/verification commands (from real package scripts — never invent others):**
-- Root: `bun run lint`, `bun run type-check`, `bun run build`, `bun run dev` (turbo)
-- `apps/api`: `bun run test` (jest), `bun run test:watch`, `bun run test:cov`, `bun run test:e2e` (15 e2e suites in `apps/api/test/`)
-- `apps/web`: `bun run test` (vitest), `bun run test:watch`
-- `packages/db`: `bun run test` (vitest), `bun run db:generate`, `bun run db:migrate`, `bun run db:push`, `bun run db:studio`
-- `packages/ai`: `bun run test` (vitest)
-- Docker dev env: `bun run docker:dev:up` / `docker:dev:logs` / `docker:dev:down`
+**Verified test/verification commands:** *(auto-filled during bootstrap from actual package scripts — never invented)*
 
 ---
 
@@ -409,11 +394,11 @@ Required columns:
 | Domain | Frontend | Backend | Database / Schema | Jobs / Automations | Integrations | Tests | Risk | Notes |
 |---|---|---|---|---|---|---|---|---|
 
-**Domains (discovered, already mapped in the existing operational file):** Auth/OTP, Workspaces & Members & Invitations, Knowledge Bases, Documents/Ingest, Chat/RAG, Tickets (AI extraction), Scrape, Search, Refine, Events/Notifications, Storage, Limits (rate/token budgets). The existing `docs/ai/module-ownership-map.md` predates this bootstrap and is the richer source — keep maintaining it rather than regenerating.
+**Starter domains:** *(auto-filled during bootstrap step 2/3 from actual folder structure, route files, and schema — real domains derived from discovery, not assumed from a generic SaaS template.)*
 
 Risk values: Tiny / Express / Standard / Deep.
 
-**Default Deep domains:** Auth/OTP/JWT, Workspace membership & roles, Invitations, DB migrations/schema, Bull job processors, RAG pipeline contracts, Rate limits & token budgets, Storage (S3), Email/OTP delivery, Deploy/infra.
+**Default Deep domains:** *(auto-filled: whatever discovery flagged as genuinely high-stakes — auth code, payment integration code, migration files, anything touching production data directly.)*
 
 Unknown implementation areas → `TODO: Fill after repository analysis. Do not treat as verified.` Claude uses this map before broad search when a task references a business/domain area, but still verifies all domain conclusions against real source code.
 
@@ -426,7 +411,7 @@ Required columns:
 | Risk Area | Why Risky | Default Task Size | Required Checks | Manual QA | Notes |
 |---|---|---|---|---|---|
 
-**Risk areas present in this repo (existing register is operational — maintain, don't regenerate):** Auth/Permissions (JWT+OTP, workspace roles), Multi-tenant isolation (workspaceId filtering), Database Migrations (Drizzle, pgvector), Background Jobs/Queues (Bull on Redis: ingest/scrape/ticket-extraction), External Integrations (OpenAI, Resend, S3/SeaweedFS, LangSmith), LLM cost controls (rate limits, token budgets), Production Deployment (GitHub Actions → VPS, Caddy, backups).
+**Starter risk areas:** *(auto-filled during bootstrap from discovery — common candidates: Auth/Permissions, Billing/Payments, Database Migrations, External Integrations, Background Jobs/Queues, Production Deployment. Only include the ones actually present in this repo; don't pad with irrelevant categories.)*
 
 If a task touches a listed high-risk area, default to Deep. Only downgrade if repo evidence proves the task is isolated and low-risk.
 
@@ -438,7 +423,7 @@ If a task touches a listed high-risk area, default to Deep. Only downgrade if re
 [symbol/function/class/component name] → path/to/file.ext:LINE — one-line purpose
 ```
 
-organized by module/package.
+organized by module/package. During bootstrap, pre-populate this with the actual exported functions/classes/components/routes found in step 1 — don't leave it empty for a "fill later" excuse when the discovery pass already had the information.
 
 **Rule:** before running grep/glob/broad search over the repo, check `docs/ai/file-index/repository-map.md` first. If the symbol is indexed there, jump straight to the file:line — no search needed. If it's stale (line number no longer matches, or symbol moved/renamed), fall back to search, find the real location, and correct the index entry in the same turn — don't leave it wrong for the next session.
 
@@ -450,7 +435,7 @@ This index is a map, not proof — always verify the actual file:line still matc
 
 ### Context Refresh Rule
 
-Context docs go stale. When Claude discovers verified source-code facts that contradict a generated context doc: mark `CONTEXT DRIFT` (or `CONTRACT DRIFT` for API/DB/test/risk docs), say which file and section is stale, use source code as truth for the current task, **and fix the matching `docs/ai/*` entries in the same change** — this repo's standing convention (kept from the prior setup, deliberately stronger than report-only): drift fixes are not deferred. Scope discipline applies — touch only the rows/sections the drift actually affects.
+Context docs go stale. When Claude discovers verified source-code facts that contradict a generated context doc: mark `CONTEXT DRIFT` (or `CONTRACT DRIFT` for API/DB/test/risk docs), say which file and section is stale, use source code as truth for the current task, **and fix the matching `docs/ai/*` entries in the same change** — drift fixes are not deferred. Scope discipline applies — touch only the rows/sections the drift actually affects.
 
 For a full re-sync, use `docs/ai/context-refresh.md`:
 - Read-only for source code — only context docs may be edited.
@@ -475,16 +460,11 @@ Before calling anything done:
 - Required unit/e2e tests listed and passing, TDD order.
 - Matching `docs/ai/*` entries updated.
 - New/moved significant symbols reflected in `docs/ai/file-index/repository-map.md`.
-- If this task matched the Learning Contract trigger (new pattern/library/design decision): prediction was captured BEFORE implementation and `learnings.md` was updated after. If it was skipped, the skip was stated explicitly with which existing pattern it matched — not silently bypassed.
 - Plan followed the Plan Contract: two layers, Risk + Backward Compatibility matrices present per task size, blast radius searched and recorded, only allowed files touched.
+- If this task matched the Learning Contract trigger (new pattern/library/design decision): prediction was captured BEFORE implementation and `learnings.md` was updated after. If it was skipped, the skip was stated explicitly with which existing pattern it matched — not silently bypassed.
 - Deep tasks: explicit approval confirmed before implementation.
-- Types match established shared contracts (`packages/types`).
-- **Mnemra invariants (discovered):**
-  - Workspace isolation: every query on tenant tables filters by `workspaceId`; endpoint handlers validate the caller's membership in the target workspace.
-  - Embedding dimension stays 1536 (`text-embedding-3-small`) — any embedding-model change is a schema + reindex event, not a config tweak.
-  - Job status integrity: `queueJobId`, `status`, `lastError`, and timing fields stay accurate on any change touching Bull processors.
-  - Rate-limit and token-budget paths (per-user, per-workspace, monthly) are never bypassed by new chat/refine/extraction code paths.
-  - UI changes consume design tokens from `packages/ui/src/globals.css` per `DESIGN.md` — no arbitrary colors/spacing.
+- Types match established shared contracts.
+- *(Auto-filled: any project-specific invariant that must always hold, discovered from the codebase — e.g. tenant isolation if multi-tenancy code was found, currency handling if payment code was found, idempotency if job/queue code was found.)*
 - The "why" was explained, with an analogy, not just the "what."
 
 ## Guardrails
@@ -526,9 +506,9 @@ When triggered:
 
 ## gstack
 
-gstack is installed at `~/.claude/skills/gstack` (verified during bootstrap, 2026-07-07). Use `/browse` for all web browsing, never `mcp__claude-in-chrome__*` tools directly. Read the actual installed skill list from that directory rather than trusting any hardcoded list, and use it for routing below.
+Check `~/.claude/skills/gstack` during bootstrap step 1. If it doesn't exist, delete this section, the SDLC Stage Map skill column, and the Skill Routing section below — don't leave dead references to skills that aren't installed (keep the Stage Map itself with "manual" in place of skills).
 
-Note: gstack ships a `/codex` skill globally; this repo no longer routes anything to it — Codex is fully retired here.
+If it does exist: use `/browse` for all web browsing, never `mcp__claude-in-chrome__*` tools directly. Read the actual installed skill list from that directory rather than trusting any hardcoded list, and use it for routing below.
 
 ## SDLC Stage Map — maximize gstack
 
@@ -551,7 +531,7 @@ The full lifecycle, one default skill per stage. Use the matching skill by defau
 | Retro / learning | `/retro` + Learning Contract | weekly, and after Deep tasks |
 | Save / resume context | `/context-save` / `/context-restore` | long-running or multi-session work |
 
-## Skill Routing
+## Skill Routing *(only if gstack section above wasn't deleted)*
 
 Stage Map above = proactive (lifecycle order). This list = reactive (match the request as it arrives). Invoke the matching skill when a request fits. When in doubt, invoke it.
 
@@ -572,4 +552,4 @@ Stage Map above = proactive (lifecycle order). This list = reactive (match the r
 
 ## Design System
 
-`DESIGN.md` exists (verified during bootstrap) — "Calm Utility" design system: Outfit/DM Sans/JetBrains Mono type stack, oklch color tokens (source of truth: `packages/ui/src/globals.css`), Tailwind 4px spacing, sidebar-shell layout, minimal-functional motion. Read it before any visual/UI decision — font, color, spacing, aesthetic direction all live there. No deviation without explicit approval; flag anything that doesn't match.
+During bootstrap, check for `DESIGN.md` or equivalent (Storybook config, design tokens file, style guide). If found, read it before any visual/UI decision — font, color, spacing, aesthetic direction all live there, no deviation without explicit approval, flag anything that doesn't match. If nothing like this exists, delete this section rather than referencing a file that isn't there.

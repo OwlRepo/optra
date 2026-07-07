@@ -10,31 +10,27 @@ Handle this task:
 [paste details]
 ```
 
-Claude routes, investigates, plans.
+Claude routes, investigates, plans, implements, and validates — single agent, one thread.
 
-After Claude RCA/discovery/plan is approved:
-
-```txt
-Approved. Create implementation handoff.
-```
-
-For Codex implementation:
+For Standard/Deep tasks, Claude presents the plan and waits for approval:
 
 ```txt
-Implement from `.ai-scratchpad.md`.
+Approved. Implement.
 ```
 
-For Codex validation:
+Claude then implements one step at a time, tests first (strict TDD), explaining each step.
 
-```txt
-Validate from `.ai-scratchpad.md`.
-```
+Tiny/Express tasks may be implemented directly after classification.
+
+Standard/Deep plans follow the Plan Contract in `CLAUDE.md`: two layers (short human summary with Risk Matrix + Backward Compatibility Matrix, then deterministic execution spec anchored by symbols and code blocks).
+
+Two PreToolUse hooks gate source edits: `check-plan-gate.sh` (Plan Contract recorded) and `check-predict-verify.sh` (Learning Contract recorded).
+
+After implementation, follow the SDLC Stage Map in `CLAUDE.md` (QA → review → ship → canary → release docs → retro via gstack skills).
 
 Developer does not need to name internal lanes.
 
 Claude auto-routes through `docs/ai/task-router.md`.
-
-Codex implements/validates only from `.ai-scratchpad.md`.
 
 ## Context Engineering
 
