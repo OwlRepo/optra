@@ -1,7 +1,7 @@
 /** @vitest-environment jsdom */
 
 import React from "react";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ToastProvider } from "@repo/ui";
 import WorkspaceChatPage from "./page";
@@ -391,8 +391,13 @@ describe("WorkspaceChatPage", () => {
   it("shows New chat as a primary button with a plus icon", async () => {
     renderPage();
 
-    const button = await screen.findByRole("button", { name: "New chat" });
-    expect(button.querySelector("svg.lucide-plus")).not.toBeNull();
+    // The desktop actions bar and the mobile compact header both render a
+    // "New chat" button (split only by CSS breakpoint) — both carry the icon.
+    const buttons = await screen.findAllByRole("button", { name: "New chat" });
+    expect(buttons.length).toBeGreaterThan(0);
+    for (const button of buttons) {
+      expect(button.querySelector("svg.lucide-plus")).not.toBeNull();
+    }
   });
 
   it("opens the session named in ?session= on mount (deep link from global search)", async () => {
@@ -417,7 +422,7 @@ describe("WorkspaceChatPage", () => {
 
     expect(latestUseChatOptions.body).toEqual({ sessionId: "session-1" });
 
-    fireEvent.click(screen.getByRole("button", { name: "New chat" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "New chat" })[0]);
 
     await waitFor(() => {
       expect(setMessagesMock).toHaveBeenCalled();
@@ -512,9 +517,18 @@ describe("WorkspaceChatPage", () => {
   it("renders app shell title/action and workspace nav active on chat route", async () => {
     renderPage();
 
-    expect(await screen.findByText("Workspace assistant")).toBeDefined();
+    // The chat page is mobile-full-bleed: the desktop title header and the
+    // compact mobile header both render "Workspace assistant" (split only by
+    // CSS breakpoint), so at least one match is what we're asserting.
+    expect((await screen.findAllByText("Workspace assistant")).length).toBeGreaterThan(0);
     expect(screen.getAllByRole("button", { name: "New chat" }).length).toBeGreaterThan(0);
-    expect(screen.getByRole("link", { name: "Chat" }).getAttribute("aria-current")).toBe("page");
+    // The desktop sidebar nav renders a "Chat" link; confirm it (and any
+    // other instance) agrees this route is active.
+    const chatLinks = screen.getAllByRole("link", { name: "Chat" });
+    expect(chatLinks.length).toBeGreaterThanOrEqual(1);
+    for (const link of chatLinks) {
+      expect(link.getAttribute("aria-current")).toBe("page");
+    }
   });
 
   it("renders real workspace name in sidebar header", async () => {
@@ -550,7 +564,10 @@ describe("WorkspaceChatPage", () => {
 
     renderPage();
 
-    expect(await screen.findByText(/15 refines left today/)).toBeDefined();
+    // Compact icon toolbar: the count renders as a small numeric badge next
+    // to the "Refine with Mnemra" icon button, not as verbose text anymore.
+    const refineButton = await screen.findByRole("button", { name: "Refine with Mnemra" });
+    expect(within(refineButton.parentElement as HTMLElement).getByText("15")).toBeDefined();
   });
 
   it("clicking Refine with Mnemra calls refine and replaces textarea content with refined text", async () => {

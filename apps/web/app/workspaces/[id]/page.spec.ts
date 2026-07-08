@@ -1,7 +1,7 @@
 /** @vitest-environment jsdom */
 
 import React from 'react'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ToastProvider } from '@repo/ui'
 import WorkspaceOverviewPage from './page'
@@ -86,12 +86,13 @@ describe('WorkspaceOverviewPage', () => {
 
     const { container } = renderPage()
 
-    const kbLink = await screen.findByRole('link', { name: 'Knowledge Bases' })
+    const sidebar = within(screen.getByRole('complementary'))
+    const kbLink = await sidebar.findByRole('link', { name: 'Knowledge Bases' })
     expect(kbLink.getAttribute('href')).toBe('/workspaces/ws-1/knowledge-bases')
-    expect(screen.getByRole('link', { name: 'Members' }).getAttribute('href')).toBe('/workspaces/ws-1/members')
-    expect(screen.getByRole('link', { name: 'Chat' }).getAttribute('href')).toBe('/workspaces/ws-1/chat')
-    expect(screen.getByRole('link', { name: 'Tickets' }).getAttribute('href')).toBe('/workspaces/ws-1/tickets')
-    expect(screen.getByRole('link', { name: 'Settings' }).getAttribute('href')).toBe('/workspaces/ws-1/settings')
+    expect(sidebar.getByRole('link', { name: 'Members' }).getAttribute('href')).toBe('/workspaces/ws-1/members')
+    expect(sidebar.getByRole('link', { name: 'Chat' }).getAttribute('href')).toBe('/workspaces/ws-1/chat')
+    expect(sidebar.getByRole('link', { name: 'Tickets' }).getAttribute('href')).toBe('/workspaces/ws-1/tickets')
+    expect(sidebar.getByRole('link', { name: 'Settings' }).getAttribute('href')).toBe('/workspaces/ws-1/settings')
     expect(container.querySelector('span.shrink-0.text-accent-foreground')).not.toBeNull()
     expect(container.querySelector('.rounded-2xl.bg-accent\\/20.text-accent-foreground')).toBeNull()
   })

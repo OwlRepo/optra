@@ -28,7 +28,9 @@ import { logout } from '@/lib/api/auth'
 import { createKnowledgeBase, deleteKnowledgeBase, listKnowledgeBases } from '@/lib/api/knowledge-bases'
 import { isUnauthorized } from '@/lib/api/handle-unauthorized'
 import { getWorkspace, listWorkspaces } from '@/lib/api/workspaces'
-import { WorkspaceNav } from '@/components/workspace-nav'
+import { WorkspaceNav, workspacePrimaryTabItems } from '@/components/workspace-nav'
+import { MobileTabBar } from '@/components/mobile-tab-bar'
+import { WorkspaceBrandLink } from '@/components/workspace-brand-link'
 
 const kbSchema = z.object({
   name: z.string().trim().min(1, 'Knowledge base name is required').max(255, 'Knowledge base name is too long'),
@@ -178,14 +180,12 @@ export default function KnowledgeBasesPage({ params }: { params: { id: string } 
   return (
     <AppShell
       sidebarHeader={({ collapsed }) => (
-        <Link href="/workspaces" className="flex items-center gap-2 text-sm font-semibold">
-          <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-            {workspace?.name?.[0]?.toUpperCase() ?? 'W'}
-          </span>
-          {!collapsed ? <span className="truncate">{workspace?.name ?? 'Workspace'}</span> : null}
-        </Link>
+        <WorkspaceBrandLink name={workspace?.name} collapsed={collapsed} />
       )}
       navigation={({ collapsed }) => <WorkspaceNav workspaceId={workspaceId} collapsed={collapsed} />}
+      mobileTabBar={({ moreActive, onMoreClick }) => (
+        <MobileTabBar items={workspacePrimaryTabItems(workspaceId)} moreActive={moreActive} onMoreClick={onMoreClick} />
+      )}
       title="Knowledge bases"
       description="Each knowledge base holds the documents used for retrieval."
       badge={membership ? <Badge variant={membership.role === 'member' ? 'secondary' : 'success'}>{membership.role}</Badge> : null}

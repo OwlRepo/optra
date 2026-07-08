@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
 
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AppShell } from './app-shell'
 
@@ -170,6 +170,109 @@ describe('AppShell', () => {
 
     const wrapper = screen.getByText('collapsed-header').parentElement as HTMLElement
     expect(wrapper.className).toContain('justify-center')
+  })
+
+  it('does not render the mobile navigation drawer initially', () => {
+    render(
+      <AppShell sidebarHeader={() => <span>Header</span>} navigation={() => <span>Nav</span>}>
+        <div>Body</div>
+      </AppShell>,
+    )
+
+    const hamburger = screen.getByRole('button', { name: 'Open navigation' })
+    expect(hamburger.getAttribute('aria-expanded')).toBe('false')
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('opens the mobile navigation drawer when the hamburger is clicked, reusing the same slots and onLogout', () => {
+    const onLogout = vi.fn()
+    render(
+      <AppShell
+        sidebarHeader={() => <span>Drawer header</span>}
+        navigation={() => <span>Drawer nav</span>}
+        onLogout={onLogout}
+      >
+        <div>Body</div>
+      </AppShell>,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open navigation' }))
+
+    expect(screen.getByRole('button', { name: 'Open navigation' }).getAttribute('aria-expanded')).toBe('true')
+    const dialog = screen.getByRole('dialog')
+    expect(within(dialog).getByText('Drawer header')).toBeTruthy()
+    expect(within(dialog).getByText('Drawer nav')).toBeTruthy()
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Log out' }))
+    expect(onLogout).toHaveBeenCalledTimes(1)
+  })
+
+  it('closes the mobile navigation drawer when its scrim is clicked', () => {
+    render(
+      <AppShell sidebarHeader={() => <span>Header</span>} navigation={() => <span>Nav</span>}>
+        <div>Body</div>
+      </AppShell>,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open navigation' }))
+    expect(screen.getByRole('dialog')).toBeTruthy()
+
+    fireEvent.click(screen.getByTestId('mobile-nav-scrim'))
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Open navigation' }).getAttribute('aria-expanded')).toBe('false')
+  })
+
+  it('does not render the hamburger strip when mobileTabBar is provided', () => {
+    render(
+      <AppShell
+        sidebarHeader={() => <span>Header</span>}
+        navigation={() => <span>Nav</span>}
+        mobileTabBar={({ moreActive, onMoreClick }) => (
+          <button type="button" aria-pressed={moreActive} onClick={onMoreClick}>
+            More
+          </button>
+        )}
+      >
+        <div>Body</div>
+      </AppShell>,
+    )
+
+    expect(screen.queryByRole('button', { name: 'Open navigation' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'More' })).toBeTruthy()
+  })
+
+  it('renders the fallback hamburger when mobileTabBar is omitted', () => {
+    render(
+      <AppShell sidebarHeader={() => <span>Header</span>} navigation={() => <span>Nav</span>}>
+        <div>Body</div>
+      </AppShell>,
+    )
+
+    expect(screen.getByRole('button', { name: 'Open navigation' })).toBeTruthy()
+  })
+
+  it('wires mobileTabBar moreActive/onMoreClick to the same drawer state as the hamburger would', () => {
+    render(
+      <AppShell
+        sidebarHeader={() => <span>Drawer header</span>}
+        navigation={() => <span>Drawer nav</span>}
+        mobileTabBar={({ moreActive, onMoreClick }) => (
+          <button type="button" aria-pressed={moreActive} onClick={onMoreClick}>
+            More
+          </button>
+        )}
+      >
+        <div>Body</div>
+      </AppShell>,
+    )
+
+    const moreButton = screen.getByRole('button', { name: 'More' })
+    expect(moreButton.getAttribute('aria-pressed')).toBe('false')
+    expect(screen.queryByRole('dialog')).toBeNull()
+
+    fireEvent.click(moreButton)
+
+    expect(screen.getByRole('dialog')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'More' }).getAttribute('aria-pressed')).toBe('true')
   })
 
   it('renders userFooter content when passed and nothing extra when omitted', () => {

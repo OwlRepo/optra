@@ -21,6 +21,14 @@ export function workspaceNavItems(workspaceId: string) {
   ]
 }
 
+export function workspacePrimaryTabItems(workspaceId: string) {
+  return [
+    { href: `/workspaces/${workspaceId}`, label: 'Overview', icon: <BriefcaseBusiness className="size-5" />, exact: true },
+    { href: `/workspaces/${workspaceId}/chat`, label: 'Chat', icon: <MessageSquareText className="size-5" /> },
+    { href: `/workspaces/${workspaceId}/knowledge-bases`, label: 'Knowledge', icon: <Database className="size-5" /> },
+  ]
+}
+
 export function WorkspaceNav({ workspaceId, collapsed }: { workspaceId: string; collapsed: boolean }) {
   const pathname = usePathname()
   const [unreadCount, setUnreadCount] = React.useState(0)
