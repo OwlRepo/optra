@@ -1,7 +1,6 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
 import { type Message } from "ai";
 import { useChat } from "ai/react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -29,6 +28,7 @@ import {
   EyeOff,
   History,
   Loader2,
+  Menu,
   Plus,
   RefreshCcw,
   Save,
@@ -53,6 +53,7 @@ import { downloadTicketTranscript } from "@/lib/api/tickets";
 import { isUnauthorized } from "@/lib/api/handle-unauthorized";
 import { getWorkspace } from "@/lib/api/workspaces";
 import { WorkspaceNav } from "@/components/workspace-nav";
+import { WorkspaceBrandLink } from "@/components/workspace-brand-link";
 
 type ChatSource = {
   sourceType?: "document" | "ticket" | "dataset";
@@ -741,21 +742,12 @@ export default function WorkspaceChatPage({
   return (
     <AppShell
       sidebarHeader={({ collapsed }) => (
-        <Link
-          href="/workspaces"
-          className="flex items-center gap-2 text-sm font-semibold"
-        >
-          <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-            {workspace?.name?.[0]?.toUpperCase() ?? "W"}
-          </span>
-          {!collapsed ? (
-            <span className="truncate">{workspace?.name ?? "Workspace"}</span>
-          ) : null}
-        </Link>
+        <WorkspaceBrandLink name={workspace?.name} collapsed={collapsed} />
       )}
       navigation={({ collapsed }) => (
         <WorkspaceNav workspaceId={workspaceId} collapsed={collapsed} />
       )}
+      mobileFullBleed
       title="Workspace assistant"
       description="Grounded workspace answers with saved history and source citations."
       actions={
@@ -782,14 +774,45 @@ export default function WorkspaceChatPage({
       }
       onLogout={handleLogout}
     >
-      <div className="h-[calc(100vh-5.75rem)] px-6 py-6">
+      {({ openMobileNav }) => (
+        <>
+          <div className="flex h-14 items-center gap-1 border-b border-border/70 bg-background/95 px-2 backdrop-blur-xl lg:hidden">
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="Open navigation"
+              onClick={openMobileNav}
+            >
+              <Menu className="size-4" />
+            </Button>
+            <p className="min-w-0 flex-1 truncate text-sm font-semibold">
+              Workspace assistant
+            </p>
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="Chat history"
+              onClick={() => setHistoryOpen(true)}
+            >
+              <History className="size-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="New chat"
+              onClick={startNewChat}
+            >
+              <Plus className="size-4" />
+            </Button>
+          </div>
+      <div className="h-[calc(100vh-3.5rem)] px-4 py-4 sm:px-6 sm:py-6 lg:h-[calc(100vh-5.75rem)]">
         <Card
           variant="elevated"
           className="flex h-full flex-col overflow-hidden"
         >
-          <div className="border-b border-border/70 px-6 py-5 sm:px-8">
+          <div className="border-b border-border/70 px-4 py-3 sm:px-8 sm:py-5">
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
+              <div className="hidden sm:block">
                 <p className="text-sm font-semibold text-primary">
                   Workspace-scoped answers
                 </p>
@@ -802,6 +825,11 @@ export default function WorkspaceChatPage({
                   size="sm"
                   variant="ghost"
                   aria-pressed={showScores}
+                  aria-label={
+                    showScores
+                      ? "Hide relevance scores"
+                      : "Show relevance scores"
+                  }
                   onClick={() => setShowScores((current) => !current)}
                 >
                   {showScores ? (
@@ -809,9 +837,11 @@ export default function WorkspaceChatPage({
                   ) : (
                     <Eye className="size-4" />
                   )}
-                  {showScores
-                    ? "Hide relevance scores"
-                    : "Show relevance scores"}
+                  <span className="hidden sm:inline">
+                    {showScores
+                      ? "Hide relevance scores"
+                      : "Show relevance scores"}
+                  </span>
                 </Button>
                 <Badge variant={isLoading ? "secondary" : "success"}>
                   {isLoading ? "Searching" : "Ready"}
@@ -843,6 +873,7 @@ export default function WorkspaceChatPage({
                         key={prompt}
                         variant="outline"
                         size="sm"
+                        className="h-auto whitespace-normal text-left"
                         onClick={() => setInput(prompt)}
                       >
                         {prompt}
@@ -1053,99 +1084,103 @@ export default function WorkspaceChatPage({
             )}
           </div>
 
-          <div className="border-t border-border/70 bg-background/70 px-6 py-5 backdrop-blur-sm sm:px-8">
-            <form ref={formRef} onSubmit={submitForm} className="space-y-3">
-              <div className="flex flex-col gap-3 sm:flex-row">
-                <Textarea
-                  value={input}
-                  onChange={handleTextareaChange}
-                  onKeyDown={handleTextareaKeyDown}
-                  placeholder="Ask a workspace question… (Shift+Enter for a new line)"
-                  rows={3}
-                  className="min-h-[3.5rem] flex-1 resize-none text-base"
-                  disabled={isLoading}
-                />
-                <div className="flex gap-3 sm:flex-col">
-                  {isLoading ? (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="lg"
-                      onClick={stop}
-                    >
-                      <Square className="size-4" />
-                      Stop
-                    </Button>
-                  ) : null}
+          <div className="border-t border-border/70 bg-background/70 px-3 py-3 backdrop-blur-sm sm:px-8 sm:py-5">
+            <form
+              ref={formRef}
+              onSubmit={submitForm}
+              className="rounded-2xl border border-border bg-background shadow-[var(--shadow-sm)]"
+            >
+              <Textarea
+                value={input}
+                onChange={handleTextareaChange}
+                onKeyDown={handleTextareaKeyDown}
+                placeholder="Ask a workspace question…"
+                rows={2}
+                className="min-h-[2.75rem] resize-none border-0 bg-transparent px-4 py-3 text-base shadow-none focus-visible:ring-0"
+                disabled={isLoading}
+              />
+              <div className="flex items-center justify-between gap-1 border-t border-border/60 px-2 py-1.5">
+                <div className="flex items-center gap-1">
                   <Button
-                    type="submit"
-                    size="lg"
-                    isLoading={isLoading}
-                    loadingText="Sending"
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    aria-label="Message templates"
+                    onClick={() => setTemplatesOpen(true)}
                   >
-                    {!isLoading ? <Send className="size-4" /> : null}
-                    {!isLoading ? "Send" : null}
+                    <Sparkles className="size-4" />
                   </Button>
-                </div>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setTemplatesOpen(true)}
-                >
-                  <Sparkles className="size-4" />
-                  Message templates
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => void handleRefine()}
-                  disabled={!input.trim() || isLoading}
-                  isLoading={isRefining}
-                  loadingText="Refining"
-                >
-                  {!isRefining ? <Wand2 className="size-4" /> : null}
-                  {!isRefining ? "Refine with Mnemra" : null}
-                </Button>
-                {refineRemaining !== null ? (
-                  <Badge variant="outline">
-                    {refineRemaining} refines left today
-                  </Badge>
-                ) : null}
-                {lastRefine ? (
-                  <>
+                  <div className="relative">
                     <Button
                       type="button"
                       variant="ghost"
-                      size="sm"
-                      onClick={handleUndoRefine}
+                      size="icon"
+                      aria-label={isRefining ? "Refining" : "Refine with Mnemra"}
+                      onClick={() => void handleRefine()}
+                      disabled={!input.trim() || isLoading}
+                      isLoading={isRefining}
                     >
-                      <Undo2 className="size-4" />
-                      Undo refine
+                      {!isRefining ? <Wand2 className="size-4" /> : null}
                     </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => void handleSaveRefined()}
-                    >
-                      <Save className="size-4" />
-                      Save refined message
-                    </Button>
-                  </>
-                ) : null}
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={openSavedMessages}
-                >
-                  <Bookmark className="size-4" />
-                  Saved messages
-                </Button>
+                    {!isRefining && refineRemaining !== null ? (
+                      <span className="pointer-events-none absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-secondary px-1 text-[10px] font-medium leading-none text-secondary-foreground">
+                        {refineRemaining}
+                      </span>
+                    ) : null}
+                  </div>
+                  {lastRefine ? (
+                    <>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        aria-label="Undo refine"
+                        onClick={handleUndoRefine}
+                      >
+                        <Undo2 className="size-4" />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        aria-label="Save refined message"
+                        onClick={() => void handleSaveRefined()}
+                      >
+                        <Save className="size-4" />
+                      </Button>
+                    </>
+                  ) : null}
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    aria-label="Saved messages"
+                    onClick={openSavedMessages}
+                  >
+                    <Bookmark className="size-4" />
+                  </Button>
+                </div>
+                {isLoading ? (
+                  <Button
+                    type="button"
+                    variant="default"
+                    size="icon"
+                    aria-label="Stop"
+                    onClick={stop}
+                  >
+                    <Square className="size-4" />
+                  </Button>
+                ) : (
+                  <Button
+                    type="submit"
+                    size="icon"
+                    variant={input.trim() ? "default" : "ghost"}
+                    aria-label="Send"
+                    disabled={!input.trim()}
+                  >
+                    <Send className="size-4" />
+                  </Button>
+                )}
               </div>
             </form>
           </div>
@@ -1261,6 +1296,8 @@ export default function WorkspaceChatPage({
           ) : null}
         </div>
       </Modal>
+        </>
+      )}
     </AppShell>
   );
 }
