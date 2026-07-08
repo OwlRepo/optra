@@ -27,7 +27,6 @@ import {
   Eye,
   EyeOff,
   History,
-  Loader2,
   Menu,
   Plus,
   RefreshCcw,
@@ -54,6 +53,11 @@ import { isUnauthorized } from "@/lib/api/handle-unauthorized";
 import { getWorkspace } from "@/lib/api/workspaces";
 import { WorkspaceNav } from "@/components/workspace-nav";
 import { WorkspaceBrandLink } from "@/components/workspace-brand-link";
+import { StreamingText } from "@/components/chat/streaming-text";
+import { ThinkingIndicator } from "@/components/chat/thinking-indicator";
+import { ScrollToBottomButton } from "@/components/chat/scroll-to-bottom-button";
+import { MessageJumpRail } from "@/components/chat/message-jump-rail";
+import { useStickToBottom } from "@/hooks/use-stick-to-bottom";
 
 type ChatSource = {
   sourceType?: "document" | "ticket" | "dataset";
@@ -114,6 +118,8 @@ type MessageTemplate = {
   title: string;
   body: string;
 };
+
+const TEXTAREA_MAX_HEIGHT_PX = 160;
 
 const suggestedPrompts = [
   "How do I reset a password for a customer account?",
@@ -251,6 +257,7 @@ export default function WorkspaceChatPage({
   const { toast } = useToast();
   const toastRef = React.useRef(toast);
   const formRef = React.useRef<HTMLFormElement>(null);
+  const textareaRef = React.useRef<HTMLTextAreaElement>(null);
   const pendingSourcesRef = React.useRef<ChatSource[]>([]);
   const pendingSessionIdRef = React.useRef<string | null>(null);
   const pendingStructuredRef = React.useRef<MessageStructuredMeta | null>(null);
@@ -439,6 +446,55 @@ export default function WorkspaceChatPage({
       });
     },
   });
+
+  const {
+    containerRef: messagesContainerRef,
+    isNearBottom,
+    scrollToBottom,
+  } = useStickToBottom<HTMLDivElement>();
+  const lastMessage = messages[messages.length - 1];
+  const isAssistantStreaming = isLoading && lastMessage?.role === "assistant";
+  const isWaitingForFirstToken = isLoading && !isAssistantStreaming;
+
+  const jumpRailItems = React.useMemo(
+    () =>
+      messages.map((message, index) => ({
+        id: message.id,
+        label: `${message.role === "user" ? "You" : "Assistant"} · ${index + 1}`,
+      })),
+    [messages],
+  );
+
+  const jumpToMessage = React.useCallback((id: string) => {
+    document
+      .getElementById(`chat-msg-${id}`)
+      ?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, []);
+
+  React.useEffect(() => {
+    if (isNearBottom) {
+      scrollToBottom(messages.length <= 1 ? "auto" : "smooth");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages.length, lastMessage?.content, isLoading]);
+
+  React.useEffect(() => {
+    const viewport = window.visualViewport;
+    if (!viewport) return;
+    const onResize = () => {
+      if (isNearBottom) scrollToBottom("auto");
+    };
+    viewport.addEventListener("resize", onResize);
+    return () => viewport.removeEventListener("resize", onResize);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isNearBottom]);
+
+  React.useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, TEXTAREA_MAX_HEIGHT_PX)}px`;
+  }, [input]);
 
   React.useEffect(() => {
     if (!isLoading) return;
@@ -805,10 +861,10 @@ export default function WorkspaceChatPage({
               <Plus className="size-4" />
             </Button>
           </div>
-      <div className="h-[calc(100vh-3.5rem)] px-4 py-4 sm:px-6 sm:py-6 lg:h-[calc(100vh-5.75rem)]">
+      <div className="h-[calc(100dvh-3.5rem)] px-0 py-0 lg:h-[calc(100vh-5.75rem)] lg:px-6 lg:py-6">
         <Card
           variant="elevated"
-          className="flex h-full flex-col overflow-hidden"
+          className="flex h-full flex-col overflow-hidden rounded-none border-0 bg-transparent shadow-none backdrop-blur-none lg:rounded-[calc(var(--radius)+0.25rem)] lg:border lg:border-border/60 lg:bg-card/90 lg:shadow-[var(--shadow-lg)] lg:backdrop-blur-xl"
         >
           <div className="border-b border-border/70 px-4 py-3 sm:px-8 sm:py-5">
             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -850,7 +906,13 @@ export default function WorkspaceChatPage({
             </div>
           </div>
 
-          <div className="flex-1 space-y-4 overflow-y-auto px-6 py-6 sm:px-8">
+          <div
+            ref={messagesContainerRef}
+            className="relative flex-1 space-y-4 overflow-y-auto px-3 py-4 sm:px-8 sm:py-6"
+          >
+            <div className="pointer-events-none absolute left-1 top-2 z-20 lg:hidden">
+              <MessageJumpRail items={jumpRailItems} onJump={jumpToMessage} />
+            </div>
             {error ? (
               <StatusBanner
                 variant="error"
@@ -867,7 +929,7 @@ export default function WorkspaceChatPage({
                 title="Start workspace chat"
                 description="Ask policy, troubleshooting, or product questions grounded in your indexed docs."
                 actions={
-                  <div className="flex flex-wrap justify-center gap-2">
+                  <div className="hidden flex-wrap justify-center gap-2 lg:flex">
                     {suggestedPrompts.map((prompt) => (
                       <Button
                         key={prompt}
@@ -898,37 +960,48 @@ export default function WorkspaceChatPage({
 
                 {messages.map((message) => {
                   const sources = messageSources[message.id] ?? [];
+                  const isStreamingThis =
+                    isAssistantStreaming && message.id === lastMessage?.id;
 
                   return (
                     <div
                       key={message.id}
+                      id={`chat-msg-${message.id}`}
                       className={cn([
                         message.role === "user"
-                          ? "flex justify-end ml-auto"
-                          : "flex justify-start",
-                        "w-fit",
+                          ? "flex min-w-0 justify-end ml-auto"
+                          : "flex min-w-0 justify-start",
+                        "w-fit max-w-full",
                       ])}
                     >
                       <div
-                        className={`w-full rounded-[calc(var(--radius)+0.25rem)] border px-4 py-4 text-sm shadow-[var(--shadow-sm)] sm:px-5 ${
+                        className={`w-full min-w-0 rounded-[calc(var(--radius)+0.25rem)] border px-4 py-4 text-sm shadow-[var(--shadow-sm)] sm:px-5 ${
                           message.role === "user"
                             ? "border-primary/20 bg-primary/5"
                             : "border-border/70 bg-secondary/40"
                         }`}
                       >
                         <div
-                          className={`w-full ${message.role === "user" ? "ml-auto max-w-3xl" : "max-w-3xl"}`}
+                          className={`w-full min-w-0 ${message.role === "user" ? "ml-auto max-w-3xl" : "max-w-3xl"}`}
                         >
                           <p className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                             {message.role}
                           </p>
-                          <div className="leading-7 text-foreground/95">
-                            <ReactMarkdown
-                              remarkPlugins={[remarkGfm]}
-                              components={markdownComponents}
-                            >
-                              {message.content}
-                            </ReactMarkdown>
+                          <div className="min-w-0 break-words leading-7 text-foreground/95">
+                            {isStreamingThis ? (
+                              message.content ? (
+                                <StreamingText text={message.content} active />
+                              ) : (
+                                <ThinkingIndicator label={thinkingWord} />
+                              )
+                            ) : (
+                              <ReactMarkdown
+                                remarkPlugins={[remarkGfm]}
+                                components={markdownComponents}
+                              >
+                                {message.content}
+                              </ReactMarkdown>
+                            )}
                           </div>
 
                           {message.role === "assistant" &&
@@ -1067,36 +1140,38 @@ export default function WorkspaceChatPage({
                   );
                 })}
 
-                {isLoading ? (
+                {isWaitingForFirstToken ? (
                   <div className="w-full">
                     <div className="w-full max-w-3xl rounded-[calc(var(--radius)+0.25rem)] border border-border/70 bg-secondary/40 px-4 py-4 text-sm shadow-[var(--shadow-sm)] sm:px-5">
                       <p className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                         assistant
                       </p>
-                      <p className="flex items-center gap-2 text-muted-foreground">
-                        <Loader2 className="size-4 animate-spin" />
-                        {thinkingWord}
-                      </p>
+                      <ThinkingIndicator label={thinkingWord} />
                     </div>
                   </div>
                 ) : null}
               </div>
             )}
+            <ScrollToBottomButton
+              visible={!isNearBottom && messages.length > 0}
+              onClick={() => scrollToBottom("smooth")}
+            />
           </div>
 
-          <div className="border-t border-border/70 bg-background/70 px-3 py-3 backdrop-blur-sm sm:px-8 sm:py-5">
+          <div className="border-t border-border/70 bg-background/70 px-3 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] backdrop-blur-sm sm:px-8 sm:py-5 sm:pb-5">
             <form
               ref={formRef}
               onSubmit={submitForm}
               className="rounded-2xl border border-border bg-background shadow-[var(--shadow-sm)]"
             >
               <Textarea
+                ref={textareaRef}
                 value={input}
                 onChange={handleTextareaChange}
                 onKeyDown={handleTextareaKeyDown}
                 placeholder="Ask a workspace question…"
                 rows={2}
-                className="min-h-[2.75rem] resize-none border-0 bg-transparent px-4 py-3 text-base shadow-none focus-visible:ring-0"
+                className="max-h-40 min-h-[2.75rem] resize-none overflow-y-auto border-0 bg-transparent px-4 py-3 text-base shadow-none focus-visible:ring-0"
                 disabled={isLoading}
               />
               <div className="flex items-center justify-between gap-1 border-t border-border/60 px-2 py-1.5">

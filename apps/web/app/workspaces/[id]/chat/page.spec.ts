@@ -64,6 +64,21 @@ vi.mock("@/lib/api/refine", () => ({
   listSavedRefinedMessages: (...args: unknown[]) => listSavedRefinedMessagesMock(...args),
 }));
 
+// StreamingText/ThinkingIndicator pull in the real GSAP/ogl/motion-backed
+// reactbits components, which self-register global ScrollTrigger listeners at
+// import time (their own animation behavior is covered separately by
+// streaming-text.spec.ts and thinking-indicator.spec.ts, each with the
+// vendored component mocked). Mocking them here keeps this page-level test
+// about this page's own logic and avoids leaking GSAP globals across test
+// files in the same worker.
+vi.mock("@/components/chat/streaming-text", () => ({
+  StreamingText: ({ text }: { text: string }) => text,
+}));
+
+vi.mock("@/components/chat/thinking-indicator", () => ({
+  ThinkingIndicator: ({ label }: { label: string }) => label,
+}));
+
 vi.mock("ai/react", async () => {
   const ReactModule = await import("react");
 
