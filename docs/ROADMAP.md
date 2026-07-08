@@ -80,9 +80,9 @@ Workspace, KB, document ingest, and corresponding web pages are implemented.
 
 ---
 
-### V2 — Structured Query & Insights (planned 2026-07-08)
+### V2 — Structured Query & Insights (approved + shipped 2026-07-08)
 
-Approved batch plan for 7 features: structured CSV querying (DuckDB), ticket trend analysis, runbook freshness detector, auto-FAQ from ticket clusters, cross-file comparison queries, Slack/email digest, confidence/coverage dashboard. Full dependency, risk, migration, and build-order analysis lives in `docs/ai/planning/v2-features.md` — read that before touching any v2 slice. Respects the gates below: nothing enables or extends the RAG LangGraph, and the RAGAS-dependent dashboard half (F7b) sequences after Stage 2 / D1.
+Batch of 7 features, all implemented and tested the same day the batch plan was approved: structured CSV querying (DuckDB, S1+F1), ticket trend analysis (F2), scheduler substrate + runbook/doc freshness detector (S2+F3), auto-FAQ from ticket clusters (F4), cross-file comparison queries (F5), confidence/coverage dashboard (F7a), Slack + email digest (F6). Only F7b (RAGAS-dependent quality-score half of the dashboard) remains explicitly out of batch, gated on Stage 2/D1 below — not started. Full dependency, risk, migration, and build-order analysis (plus per-slice status) lives in `docs/ai/planning/v2-features.md` — read that before touching any v2 slice; it is the living status source, this section is a summary only. Respects the gates below: nothing enables or extends the RAG LangGraph.
 
 ---
 
