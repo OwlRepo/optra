@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { classifyQuery, classifyStructuredIntent, classifyTicketIntent } from './classify'
+import { classifyComparisonIntent, classifyQuery, classifyStructuredIntent, classifyTicketIntent } from './classify'
 
 describe('classifyQuery (#7 simple vs complex routing)', () => {
   it('classifies short definitional questions as simple', () => {
@@ -61,5 +61,22 @@ describe('classifyTicketIntent (tickets vs uploaded-dataset routing)', () => {
 
   it('returns false for empty input', () => {
     expect(classifyTicketIntent('')).toBe(false)
+  })
+})
+
+describe('classifyComparisonIntent (V2 F5 multi-dataset routing)', () => {
+  it('matches comparison phrasing', () => {
+    expect(classifyComparisonIntent('compare sales and refunds by product')).toBe(true)
+    expect(classifyComparisonIntent('Q1 vs Q2 revenue')).toBe(true)
+    expect(classifyComparisonIntent('what is the difference between sales and refunds')).toBe(true)
+  })
+
+  it('does not match ordinary single-dataset questions', () => {
+    expect(classifyComparisonIntent('total revenue by product')).toBe(false)
+    expect(classifyComparisonIntent('average resolution time per agent')).toBe(false)
+  })
+
+  it('returns false for empty input', () => {
+    expect(classifyComparisonIntent('')).toBe(false)
   })
 })

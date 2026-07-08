@@ -339,18 +339,27 @@ export class ChatService {
     const result = await this.structuredQuery.answer(workspaceId, standaloneQuestion)
     // Only a confident answer becomes a persisted citation — ambiguous/
     // correction/empty are momentary UX, not something worth citing forever.
-    const sources: ChatMessageSource[] =
-      result.state === 'confident' && result.datasetId && result.datasetName
-        ? [
-            {
-              sourceType: 'dataset',
-              datasetId: result.datasetId,
-              title: result.datasetName,
-              score: 1,
-              snippet: 'Answered using this dataset via structured query.',
-            },
-          ]
-        : []
+    // V2 F5: a cross-file comparison cites every dataset it joined, not just one.
+    let sources: ChatMessageSource[] = []
+    if (result.state === 'confident' && result.datasets && result.datasets.length > 0) {
+      sources = result.datasets.map((dataset) => ({
+        sourceType: 'dataset' as const,
+        datasetId: dataset.id,
+        title: dataset.name,
+        score: 1,
+        snippet: 'Answered using this dataset via a cross-file structured query.',
+      }))
+    } else if (result.state === 'confident' && result.datasetId && result.datasetName) {
+      sources = [
+        {
+          sourceType: 'dataset',
+          datasetId: result.datasetId,
+          title: result.datasetName,
+          score: 1,
+          snippet: 'Answered using this dataset via structured query.',
+        },
+      ]
+    }
 
     return {
       sessionId,

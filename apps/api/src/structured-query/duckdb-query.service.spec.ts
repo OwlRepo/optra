@@ -93,4 +93,27 @@ describe('DuckDbQueryService', () => {
       service.runReadOnlyQuery(csvPath, 'dataset', 'SELECT nonexistent_column FROM dataset'),
     ).rejects.toThrow(SqlExecutionError)
   })
+
+  describe('runReadOnlyMultiTableQuery (V2 F5)', () => {
+    it('loads N tables into the same instance and runs a JOIN across them', async () => {
+      const refundsPath = join(dir, 'refunds.csv')
+      writeFileSync(refundsPath, ['product,quarter,refund_amount', 'Widget,Q1,100'].join('\n'))
+
+      const rows = await service.runReadOnlyMultiTableQuery(
+        [
+          { csvPath, tableName: 't1' },
+          { csvPath: refundsPath, tableName: 't2' },
+        ],
+        `SELECT t1.product, t1.revenue, t2.refund_amount FROM t1 JOIN t2 ON t1.product = t2.product AND t1.quarter = t2.quarter WHERE t1.product = 'Widget' AND t1.quarter = 'Q1'`,
+      )
+
+      expect(rows).toEqual([{ product: 'Widget', revenue: 1000, refund_amount: 100 }])
+    })
+
+    it('rejects forbidden keywords against any of the loaded tables', async () => {
+      await expect(
+        service.runReadOnlyMultiTableQuery([{ csvPath, tableName: 't1' }], 'DROP TABLE t1'),
+      ).rejects.toThrow(UnsafeSqlError)
+    })
+  })
 })

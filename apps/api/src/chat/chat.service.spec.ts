@@ -912,6 +912,57 @@ describe('ChatService', () => {
     ])
   })
 
+  it('cites every dataset joined by a cross-file comparison (V2 F5)', async () => {
+    const { user, workspace } = await seedWorkspaceFixture(
+      `${prefix}structured-compare@example.com`,
+      'Chat Spec Structured Compare',
+    )
+    ;(classifyStructuredIntent as jest.Mock).mockReturnValue(true)
+    structuredQuery.hasReadyDatasets.mockResolvedValue(true)
+    structuredQuery.answer.mockResolvedValue({
+      state: 'confident',
+      answer: '| product | revenue | refund_amount |\n| --- | --- | --- |\n| Widget | 1000 | 100 |',
+      datasets: [
+        { id: 'dataset-1', name: 'Sales' },
+        { id: 'dataset-2', name: 'Refunds' },
+      ],
+    })
+
+    const result = await service.answer(workspace.id, user.id, 'compare sales vs refunds by product')
+    const body: string[] = []
+    for await (const token of result.stream) {
+      body.push(token)
+    }
+    await result.onComplete(body.join(''))
+
+    const [message] = await db
+      .select()
+      .from(chatMessages)
+      .where(and(eq(chatMessages.sessionId, result.sessionId), eq(chatMessages.role, 'assistant')))
+    expect(message.sources).toEqual([
+      {
+        sourceType: 'dataset',
+        datasetId: 'dataset-1',
+        title: 'Sales',
+        score: 1,
+        snippet: 'Answered using this dataset via a cross-file structured query.',
+      },
+      {
+        sourceType: 'dataset',
+        datasetId: 'dataset-2',
+        title: 'Refunds',
+        score: 1,
+        snippet: 'Answered using this dataset via a cross-file structured query.',
+      },
+    ])
+
+    const [metric] = await db
+      .select()
+      .from(chatQueryMetrics)
+      .where(eq(chatQueryMetrics.sessionId, result.sessionId))
+    expect(metric.sourceCount).toBe(2)
+  })
+
   it('marks non-confident structured states as fallback in telemetry', async () => {
     const { user, workspace } = await seedWorkspaceFixture(
       `${prefix}structured-ambiguous@example.com`,

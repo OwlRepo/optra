@@ -29,17 +29,30 @@ export interface StructuredQueryCandidate {
   description: string | null
 }
 
+export interface StructuredQueryDatasetRef {
+  id: string
+  name: string
+}
+
 export interface StructuredQueryResult {
   state: StructuredQueryState
   answer: string
   datasetId?: string
   datasetName?: string
   candidates?: StructuredQueryCandidate[]
+  // V2 F5: set instead of datasetId/datasetName when the confident answer
+  // came from a cross-file comparison across 2+ datasets.
+  datasets?: StructuredQueryDatasetRef[]
 }
 
 const TABLE_NAME = 'dataset'
 const CONFIDENT_MIN_SCORE = Number.parseFloat(process.env.STRUCTURED_QUERY_MIN_SCORE ?? '0.5')
 const AMBIGUOUS_SCORE_GAP = Number.parseFloat(process.env.STRUCTURED_QUERY_AMBIGUOUS_GAP ?? '0.05')
+// V2 F5: looser than CONFIDENT_MIN_SCORE — a comparison question's semantic
+// similarity naturally splits across the two topics it mentions, so neither
+// dataset alone scores as high as a single-topic question would.
+const COMPARISON_MIN_SCORE = Number.parseFloat(process.env.STRUCTURED_QUERY_COMPARISON_MIN_SCORE ?? '0.35')
+const MAX_COMPARE_DATASETS = 3
 
 interface DatasetCandidateRow {
   id: string
@@ -69,7 +82,7 @@ export class StructuredQueryService {
   }
 
   async answer(workspaceId: string, question: string): Promise<StructuredQueryResult> {
-    const { classifyTicketIntent, embedQuery } = await import('@repo/ai')
+    const { classifyComparisonIntent, classifyTicketIntent, embedQuery } = await import('@repo/ai')
 
     if (classifyTicketIntent(question)) {
       return this.answerFromTickets(workspaceId, question)
@@ -83,6 +96,17 @@ export class StructuredQueryService {
         state: 'empty',
         answer: "I don't see any ready datasets in this workspace yet. Upload a CSV to get started.",
       }
+    }
+
+    if (classifyComparisonIntent(question)) {
+      const comparable = candidates.filter(
+        (candidate) => candidate.score >= COMPARISON_MIN_SCORE && candidate.storageKey && candidate.columnsSchema,
+      )
+      if (comparable.length >= 2) {
+        return this.answerAcrossDatasets(question, comparable.slice(0, MAX_COMPARE_DATASETS))
+      }
+      // Not enough comparable datasets found — fall through to the normal
+      // single-dataset flow below rather than forcing a comparison.
     }
 
     const [top, second] = candidates
@@ -160,6 +184,74 @@ export class StructuredQueryService {
       })
     } finally {
       await rm(dir, { recursive: true, force: true })
+    }
+  }
+
+  /**
+   * Cross-file comparison (V2 F5): loads each candidate dataset's CSV into
+   * its own table (t1, t2, ...) in the SAME ephemeral DuckDB instance, so
+   * the generated SQL can JOIN across them. Reuses the entire S1 engine —
+   * same trusted-load-then-lockdown hardening, same repair-retry shape.
+   */
+  private async answerAcrossDatasets(
+    question: string,
+    candidates: DatasetCandidateRow[],
+  ): Promise<StructuredQueryResult> {
+    const tables = await Promise.all(
+      candidates.map(async (candidate, index) => ({
+        id: candidate.id,
+        name: candidate.name,
+        tableName: `t${index + 1}`,
+        csvPath: await this.storage.getToTempFile(candidate.storageKey!),
+        columns: candidate.columnsSchema!,
+      })),
+    )
+
+    try {
+      return await this.runMultiTableTextToSqlFlow(question, tables)
+    } finally {
+      await Promise.all(tables.map((table) => unlink(table.csvPath).catch(() => undefined)))
+    }
+  }
+
+  private async runMultiTableTextToSqlFlow(
+    question: string,
+    tables: { id: string; name: string; tableName: string; csvPath: string; columns: DatasetColumn[] }[],
+  ): Promise<StructuredQueryResult> {
+    const { generateMultiTableSql, UnanswerableQuestionError } = await import('@repo/ai')
+
+    const schemaInput = tables.map(({ tableName, name, columns }) => ({ tableName, name, columns }))
+    const tableRefs = tables.map(({ csvPath, tableName }) => ({ csvPath, tableName }))
+    const label = tables.map((table) => table.name).join(', ')
+    const datasetRefs: StructuredQueryDatasetRef[] = tables.map(({ id, name }) => ({ id, name }))
+
+    try {
+      let generatedSql = await generateMultiTableSql(question, schemaInput)
+
+      try {
+        const rows = await this.duckDb.runReadOnlyMultiTableQuery(tableRefs, generatedSql)
+        return { state: 'confident', answer: this.verbalize(rows), datasets: datasetRefs }
+      } catch (firstError) {
+        if (firstError instanceof UnsafeSqlError) {
+          throw firstError
+        }
+        const message = firstError instanceof Error ? firstError.message : String(firstError)
+        generatedSql = await generateMultiTableSql(question, schemaInput, message)
+        const rows = await this.duckDb.runReadOnlyMultiTableQuery(tableRefs, generatedSql)
+        return { state: 'confident', answer: this.verbalize(rows), datasets: datasetRefs }
+      }
+    } catch (error) {
+      if (error instanceof UnanswerableQuestionError) {
+        return { state: 'empty', answer: `This question can't be answered from ${label}.` }
+      }
+      if (error instanceof SqlExecutionError || error instanceof UnsafeSqlError) {
+        this.logger.warn(`Multi-dataset structured query correction sources=${label}: ${error.message}`)
+        return {
+          state: 'correction',
+          answer: `I couldn't run a valid query across ${label}. Could you rephrase it?`,
+        }
+      }
+      throw error
     }
   }
 

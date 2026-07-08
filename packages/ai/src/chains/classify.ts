@@ -89,6 +89,18 @@ export function classifyTicketIntent(question: string): boolean {
   return TICKET_SIGNALS.some((signal) => q.includes(signal))
 }
 
+// V2 F5: distinguishes "compare across multiple uploaded datasets" from an
+// ordinary single-dataset structured question — both pass
+// classifyStructuredIntent, but only comparison questions should trigger the
+// multi-table join path in StructuredQueryService.
+const COMPARISON_SIGNALS = ['compare', ' vs ', ' vs.', ' versus ', 'difference between', 'against each other']
+
+export function classifyComparisonIntent(question: string): boolean {
+  const q = ` ${question.trim().toLowerCase()} `
+  if (q.trim().length === 0) return false
+  return COMPARISON_SIGNALS.some((signal) => q.includes(signal))
+}
+
 export function classifyQuery(question: string): QueryClass {
   const q = question.trim().toLowerCase()
   if (q.length === 0) return 'complex'

@@ -50,3 +50,36 @@ describe('generateSql', () => {
     )
   })
 })
+
+describe('generateMultiTableSql (V2 F5)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  const TABLES = [
+    { tableName: 't1', name: 'sales.csv', columns: COLUMNS },
+    { tableName: 't2', name: 'refunds.csv', columns: [{ name: 'product', type: 'string' as const }, { name: 'refund_amount', type: 'number' as const }] },
+  ]
+
+  it('strips markdown fences and includes every table with its source name in the prompt', async () => {
+    invokeMock.mockResolvedValue({ content: '```sql\nSELECT t1.product FROM t1 JOIN t2 ON t1.product = t2.product;\n```' })
+
+    const { generateMultiTableSql } = await import('./text-to-sql')
+    const result = await generateMultiTableSql('compare sales and refunds by product', TABLES)
+
+    expect(result).toBe('SELECT t1.product FROM t1 JOIN t2 ON t1.product = t2.product')
+    const [, humanMessage] = invokeMock.mock.calls[0][0]
+    expect(humanMessage.content).toContain('Table: t1 (source: "sales.csv")')
+    expect(humanMessage.content).toContain('Table: t2 (source: "refunds.csv")')
+  })
+
+  it('throws UnanswerableQuestionError when the model returns the unanswerable sentinel', async () => {
+    invokeMock.mockResolvedValue({ content: 'SELECT NULL AS unanswerable WHERE FALSE' })
+
+    const { generateMultiTableSql, UnanswerableQuestionError } = await import('./text-to-sql')
+
+    await expect(generateMultiTableSql('unrelated question', TABLES)).rejects.toThrow(
+      UnanswerableQuestionError,
+    )
+  })
+})

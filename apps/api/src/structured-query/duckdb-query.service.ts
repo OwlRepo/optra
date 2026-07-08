@@ -49,6 +49,19 @@ export class DuckDbQueryService {
     tableName: string,
     sql: string,
   ): Promise<Record<string, unknown>[]> {
+    return this.runReadOnlyMultiTableQuery([{ csvPath, tableName }], sql)
+  }
+
+  /**
+   * Same hardening as runReadOnlyQuery, generalized to N tables (V2 F5:
+   * cross-file comparison) — every table is loaded via TRUSTED code BEFORE
+   * `enable_external_access=false`, so the untrusted SQL can JOIN across
+   * them but never reach the filesystem/network.
+   */
+  async runReadOnlyMultiTableQuery(
+    tables: { csvPath: string; tableName: string }[],
+    sql: string,
+  ): Promise<Record<string, unknown>[]> {
     this.assertReadOnlySelect(sql)
 
     const db = new duckdb.Database(':memory:')
@@ -56,10 +69,12 @@ export class DuckDbQueryService {
 
     try {
       await this.exec(conn, `SET memory_limit='${MEMORY_LIMIT}'`)
-      await this.exec(
-        conn,
-        `CREATE TABLE "${this.assertSafeIdentifier(tableName)}" AS SELECT * FROM read_csv_auto('${this.escapeLiteral(csvPath)}')`,
-      )
+      for (const table of tables) {
+        await this.exec(
+          conn,
+          `CREATE TABLE "${this.assertSafeIdentifier(table.tableName)}" AS SELECT * FROM read_csv_auto('${this.escapeLiteral(table.csvPath)}')`,
+        )
+      }
       await this.exec(conn, 'SET enable_external_access=false')
 
       const rows = await this.withTimeout(this.all(conn, sql), QUERY_TIMEOUT_MS)
