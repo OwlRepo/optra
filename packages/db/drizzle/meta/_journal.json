@@ -134,6 +134,13 @@
       "when": 1783494242293,
       "tag": "0018_eager_marauders",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "5",
+      "when": 1783497632268,
+      "tag": "0019_mysterious_quasar",
+      "breakpoints": true
     }
   ]
 }

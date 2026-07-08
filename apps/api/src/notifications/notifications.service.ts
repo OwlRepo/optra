@@ -59,4 +59,23 @@ export class NotificationsService {
       console.log('[DEV INVITE] ' + email + ' -> ' + inviteUrl)
     }
   }
+
+  // V2 F6: weekly digest email. Same resend/error-checking discipline as
+  // sendOtp/sendInvite above.
+  async sendDigestEmail(email: string, html: string): Promise<void> {
+    if (this.resend) {
+      const { error } = await this.resend.emails.send({
+        from: this.fromEmail,
+        to: email,
+        subject: 'Your Mnemra weekly digest',
+        html,
+      })
+      if (error) {
+        this.logger.error(`Failed to send digest email to ${email}: ${error.message}`)
+        throw new InternalServerErrorException('Failed to send digest email')
+      }
+    } else {
+      console.log(`[DEV DIGEST] ${email}\n${html}`)
+    }
+  }
 }
