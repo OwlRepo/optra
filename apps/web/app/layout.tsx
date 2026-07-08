@@ -1,4 +1,4 @@
-import type { Metadata } from 'next'
+import type { Metadata, Viewport } from 'next'
 import { DM_Sans, JetBrains_Mono, Outfit } from 'next/font/google'
 import { ToastProvider } from '@repo/ui'
 import '@repo/ui/globals.css'
@@ -42,6 +42,11 @@ export const metadata: Metadata = {
     title: 'Mnemra — Turn support history into instant, sourced answers',
     description,
   },
+}
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
 }
 
 export default function RootLayout({
