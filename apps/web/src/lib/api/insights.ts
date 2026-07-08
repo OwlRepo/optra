@@ -9,3 +9,19 @@ export function dismissFreshnessFlag(workspaceId: string, flagId: string) {
     method: 'PATCH',
   })
 }
+
+export function listFaqDrafts(workspaceId: string) {
+  return apiFetch(`/api/workspaces/${workspaceId}/insights/faq-drafts`)
+}
+
+export function approveFaqDraft(workspaceId: string, draftId: string) {
+  return apiFetch(`/api/workspaces/${workspaceId}/insights/faq-drafts/${draftId}/approve`, {
+    method: 'PATCH',
+  })
+}
+
+export function rejectFaqDraft(workspaceId: string, draftId: string) {
+  return apiFetch(`/api/workspaces/${workspaceId}/insights/faq-drafts/${draftId}/reject`, {
+    method: 'PATCH',
+  })
+}

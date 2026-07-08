@@ -10,6 +10,9 @@ const pushMock = vi.fn();
 const routerMock = { push: pushMock };
 const listFreshnessFlagsMock = vi.fn();
 const dismissFreshnessFlagMock = vi.fn();
+const listFaqDraftsMock = vi.fn();
+const approveFaqDraftMock = vi.fn();
+const rejectFaqDraftMock = vi.fn();
 const getWorkspaceMock = vi.fn();
 const logoutMock = vi.fn();
 
@@ -21,6 +24,9 @@ vi.mock("next/navigation", () => ({
 vi.mock("@/lib/api/insights", () => ({
   listFreshnessFlags: (...args: unknown[]) => listFreshnessFlagsMock(...args),
   dismissFreshnessFlag: (...args: unknown[]) => dismissFreshnessFlagMock(...args),
+  listFaqDrafts: (...args: unknown[]) => listFaqDraftsMock(...args),
+  approveFaqDraft: (...args: unknown[]) => approveFaqDraftMock(...args),
+  rejectFaqDraft: (...args: unknown[]) => rejectFaqDraftMock(...args),
 }));
 
 vi.mock("@/lib/api/workspaces", () => ({
@@ -50,10 +56,14 @@ describe("WorkspaceInsightsPage", () => {
     pushMock.mockReset();
     listFreshnessFlagsMock.mockReset();
     dismissFreshnessFlagMock.mockReset();
+    listFaqDraftsMock.mockReset();
+    approveFaqDraftMock.mockReset();
+    rejectFaqDraftMock.mockReset();
     getWorkspaceMock.mockReset();
     logoutMock.mockReset();
     getWorkspaceMock.mockResolvedValue({ id: "ws-1", name: "Acme Support" });
     listFreshnessFlagsMock.mockResolvedValue([]);
+    listFaqDraftsMock.mockResolvedValue([]);
   });
 
   afterEach(() => {
@@ -119,5 +129,57 @@ describe("WorkspaceInsightsPage", () => {
     await waitFor(() => {
       expect(pushMock).toHaveBeenCalledWith("/login");
     });
+  });
+
+  it("switches to the FAQ drafts tab and lists drafts", async () => {
+    listFaqDraftsMock.mockResolvedValue([
+      { id: "draft-1", question: "Why can't I log in?", answer: "Check your credentials.", clusterSize: 4, createdAt: "" },
+    ]);
+
+    renderPage();
+    await screen.findByText("No freshness flags");
+
+    fireEvent.click(screen.getByRole("button", { name: "FAQ drafts" }));
+
+    expect(await screen.findByText("Why can't I log in?")).toBeDefined();
+    expect(screen.getByText("4 tickets")).toBeDefined();
+  });
+
+  it("approves a draft and removes it from the list", async () => {
+    listFaqDraftsMock.mockResolvedValue([
+      { id: "draft-1", question: "Why can't I log in?", answer: "Check your credentials.", clusterSize: 4, createdAt: "" },
+    ]);
+    approveFaqDraftMock.mockResolvedValue({ id: "draft-1", status: "approved" });
+
+    renderPage();
+    await screen.findByText("No freshness flags");
+    fireEvent.click(screen.getByRole("button", { name: "FAQ drafts" }));
+    await screen.findByText("Why can't I log in?");
+
+    fireEvent.click(screen.getByRole("button", { name: "Approve FAQ: Why can't I log in?" }));
+
+    await waitFor(() => {
+      expect(approveFaqDraftMock).toHaveBeenCalledWith("ws-1", "draft-1");
+    });
+    expect(await screen.findByText("No FAQ drafts")).toBeDefined();
+  });
+
+  it("rejects a draft and removes it from the list", async () => {
+    listFaqDraftsMock.mockResolvedValue([
+      { id: "draft-1", question: "Why can't I log in?", answer: "Check your credentials.", clusterSize: 4, createdAt: "" },
+    ]);
+    rejectFaqDraftMock.mockResolvedValue({ id: "draft-1", status: "rejected" });
+
+    renderPage();
+    await screen.findByText("No freshness flags");
+    fireEvent.click(screen.getByRole("button", { name: "FAQ drafts" }));
+    await screen.findByText("Why can't I log in?");
+
+    fireEvent.click(screen.getByRole("button", { name: "Reject FAQ: Why can't I log in?" }));
+
+    await waitFor(() => {
+      expect(rejectFaqDraftMock).toHaveBeenCalledWith("ws-1", "draft-1");
+    });
+    expect(await screen.findByText("No FAQ drafts")).toBeDefined();
   });
 });
