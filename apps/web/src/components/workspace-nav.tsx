@@ -4,7 +4,7 @@ import * as React from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { Badge, cn } from '@repo/ui'
-import { BriefcaseBusiness, Database, FileSpreadsheet, MessageSquareText, Settings, Ticket, Users } from 'lucide-react'
+import { BriefcaseBusiness, Database, FileSpreadsheet, LineChart, MessageSquareText, Settings, Ticket, Users } from 'lucide-react'
 import { getUnreadCount } from '@/lib/api/events'
 import { WorkspaceSearch } from './workspace-search'
 
@@ -16,6 +16,7 @@ export function workspaceNavItems(workspaceId: string) {
     { label: 'Members', href: `/workspaces/${workspaceId}/members`, icon: <Users className="size-4" /> },
     { label: 'Chat', href: `/workspaces/${workspaceId}/chat`, icon: <MessageSquareText className="size-4" /> },
     { label: 'Tickets', href: `/workspaces/${workspaceId}/tickets`, icon: <Ticket className="size-4" /> },
+    { label: 'Insights', href: `/workspaces/${workspaceId}/insights`, icon: <LineChart className="size-4" /> },
     { label: 'Settings', href: `/workspaces/${workspaceId}/settings`, icon: <Settings className="size-4" /> },
   ]
 }
