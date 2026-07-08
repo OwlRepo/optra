@@ -1,7 +1,6 @@
 'use client'
 
 import * as React from 'react'
-import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -11,7 +10,9 @@ import { Mail, Search, Trash2 } from 'lucide-react'
 import { getCurrentUser, logout } from '@/lib/api/auth'
 import { isUnauthorized } from '@/lib/api/handle-unauthorized'
 import { getWorkspace, inviteMember, listMembers, listWorkspaces, removeMember } from '@/lib/api/workspaces'
-import { WorkspaceNav } from '@/components/workspace-nav'
+import { WorkspaceNav, workspacePrimaryTabItems } from '@/components/workspace-nav'
+import { MobileTabBar } from '@/components/mobile-tab-bar'
+import { WorkspaceBrandLink } from '@/components/workspace-brand-link'
 
 const inviteSchema = z.object({ email: z.string().email('Enter a valid email address') })
 
@@ -181,12 +182,12 @@ export default function MembersPage({ params }: { params: { id: string } }) {
   return (
     <AppShell
       sidebarHeader={({ collapsed }) => (
-        <Link href="/workspaces" className="flex items-center gap-2 text-sm font-semibold">
-          <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">{workspace?.name?.[0]?.toUpperCase() ?? 'W'}</span>
-          {!collapsed ? <span className="truncate">{workspace?.name ?? 'Workspace'}</span> : null}
-        </Link>
+        <WorkspaceBrandLink name={workspace?.name} collapsed={collapsed} />
       )}
       navigation={({ collapsed }) => <WorkspaceNav workspaceId={workspaceId} collapsed={collapsed} />}
+      mobileTabBar={({ moreActive, onMoreClick }) => (
+        <MobileTabBar items={workspacePrimaryTabItems(workspaceId)} moreActive={moreActive} onMoreClick={onMoreClick} />
+      )}
       title="Members"
       description="Everyone with access to this workspace."
       onLogout={handleLogout}
