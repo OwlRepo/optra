@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common'
 import { BullModule } from '@nestjs/bull'
 import { StorageModule } from '../storage/storage.module'
 import { IngestModule } from '../ingest/ingest.module'
+import { CacheModule } from '../cache/cache.module'
 import { InsightsController } from './insights.controller'
 import { InsightsService } from './insights.service'
 import { BackgroundRunsService } from './background-runs.service'
@@ -13,15 +14,21 @@ import { FaqClusterTickProcessor } from './faq-cluster-tick.processor'
 import { FaqClusterProcessor } from './faq-cluster.processor'
 import { FaqDraftsService } from './faq-drafts.service'
 import { FaqDraftsController } from './faq-drafts.controller'
+import { CoverageDashboardService } from './coverage-dashboard.service'
+import { TopicGapTickProcessor } from './topic-gap-tick.processor'
+import { TopicGapProcessor } from './topic-gap.processor'
 
 @Module({
   imports: [
     StorageModule,
     IngestModule,
+    CacheModule,
     BullModule.registerQueue({ name: 'freshness-tick-queue' }),
     BullModule.registerQueue({ name: 'freshness-check-queue' }),
     BullModule.registerQueue({ name: 'faq-cluster-tick-queue' }),
     BullModule.registerQueue({ name: 'faq-cluster-queue' }),
+    BullModule.registerQueue({ name: 'topic-gap-tick-queue' }),
+    BullModule.registerQueue({ name: 'topic-gap-queue' }),
   ],
   controllers: [InsightsController, FaqDraftsController],
   providers: [
@@ -34,6 +41,9 @@ import { FaqDraftsController } from './faq-drafts.controller'
     FaqClusterTickProcessor,
     FaqClusterProcessor,
     FaqDraftsService,
+    CoverageDashboardService,
+    TopicGapTickProcessor,
+    TopicGapProcessor,
   ],
 })
 export class InsightsModule {}

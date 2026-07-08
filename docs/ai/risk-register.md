@@ -332,3 +332,11 @@ If risk area is missing, mark `UNMAPPED RISK`.
   - `FaqClusterProcessor` dedupes against tickets already present in any `pending`/`approved` `faq_drafts.ticketIds` array before clustering — without this, every weekly run would re-draft near-identical FAQs for the same unresolved ticket cluster
   - `getOrCreateFaqKnowledgeBase()` matches by exact name (`"Generated FAQs"`) with no uniqueness constraint on `knowledge_bases.name` — if a user renames or duplicates that KB, a second one could be silently created on the next approval; documented simplification, not a correctness bug, but worth knowing if KB counts look off
   - clustering (`FaqClusterService.cluster()`) is pure/synchronous and unit-tested in isolation from the DB and the LLM call — `FAQ_CLUSTER_SIMILARITY_THRESHOLD`/`FAQ_MIN_CLUSTER_SIZE` are tunable via env without touching either
+
+- Coverage Dashboard (V2 F7a, `docs/ai/planning/v2-features.md`) is Standard risk — read-only, no new table, but shares the scheduler substrate and an LLM label call.
+  Required checks:
+  - `TopicGapProcessor` writes its result to Redis (`insights:topic-gaps:${workspaceId}`), NOT Postgres — a Redis flush or eviction silently empties the dashboard's third panel until the next weekly run; this is accepted as a cache, not a source of truth, per the plan's explicit "no migration" call for this slice
+  - both `TOPIC_GAP_MAX_CANDIDATES` (rows fetched) and `TOPIC_GAP_MAX_LABELED_CLUSTERS` (LLM calls) are hard caps per run — a workspace with a huge fallback volume still only ever costs a bounded number of label calls per week, never scales with raw query volume
+  - `generateTopicLabel()` reuses the existing `'grade'` model role instead of a new one — deliberate, not an oversight: this is a cheap, cost-capped classification-style call, the exact tier `'grade'` already exists for
+  - `getSummary()`/`getLowScoreQueries()` are plain `WHERE workspace_id = ...` scoped reads over `chat_query_metrics` — same tenant-isolation pattern as every other read in this table, no new guard logic to get wrong
+  - `FaqClusterService.cluster()` is reused as-is for topic-gap clustering by mapping `{id, embedding}` into its `{ticketId, embedding, score}` shape — this is intentional reuse of a generic pure function, not a naming mistake; changing `FaqClusterService`'s field names would require updating both call sites
