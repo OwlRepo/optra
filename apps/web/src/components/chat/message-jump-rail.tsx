@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import { cn } from '@repo/ui'
 import LineSidebar from '../LineSidebar'
 
 export type JumpRailItem = {
@@ -16,17 +17,23 @@ function truncate(label: string, max = 26) {
 export function MessageJumpRail({
   items,
   onJump,
+  visible,
   className,
 }: {
   items: JumpRailItem[]
   onJump: (id: string) => void
+  visible: boolean
   className?: string
 }) {
   if (items.length < 2) return null
 
   return (
     <div
-      className={`pointer-events-auto max-h-[60vh] overflow-y-auto py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${className ?? ''}`}
+      className={cn(
+        'max-h-[60vh] overflow-y-auto py-1 transition-opacity duration-200 ease-out [scrollbar-width:none] [&::-webkit-scrollbar]:hidden',
+        visible ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-0',
+        className,
+      )}
     >
       <LineSidebar
         items={items.map((item) => truncate(item.label))}

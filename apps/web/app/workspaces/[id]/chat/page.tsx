@@ -22,6 +22,7 @@ import {
 import {
   Bookmark,
   Bot,
+  ChevronDown,
   Clock,
   Download,
   Eye,
@@ -289,6 +290,14 @@ export default function WorkspaceChatPage({
     React.useState("");
   const [templatesOpen, setTemplatesOpen] = React.useState(false);
   const [showScores, setShowScores] = React.useState(false);
+  const [expandedSources, setExpandedSources] = React.useState<
+    Record<string, boolean>
+  >({});
+  const toggleSources = (messageId: string) =>
+    setExpandedSources((current) => ({
+      ...current,
+      [messageId]: !current[messageId],
+    }));
   const [thinkingWord, setThinkingWord] = React.useState(thinkingWords[0]);
   const [isRefining, setIsRefining] = React.useState(false);
   const [lastRefine, setLastRefine] = React.useState<{
@@ -456,14 +465,13 @@ export default function WorkspaceChatPage({
   const isAssistantStreaming = isLoading && lastMessage?.role === "assistant";
   const isWaitingForFirstToken = isLoading && !isAssistantStreaming;
 
-  const jumpRailItems = React.useMemo(
-    () =>
-      messages.map((message, index) => ({
-        id: message.id,
-        label: `${message.role === "user" ? "You" : "Assistant"} · ${index + 1}`,
-      })),
-    [messages],
-  );
+  const jumpRailItems = React.useMemo(() => {
+    const userMessages = messages.filter((message) => message.role === "user");
+    return userMessages.slice(-5).map((message, index) => ({
+      id: message.id,
+      label: `You · ${index + 1}`,
+    }));
+  }, [messages]);
 
   const jumpToMessage = React.useCallback((id: string) => {
     document
@@ -906,13 +914,11 @@ export default function WorkspaceChatPage({
             </div>
           </div>
 
+          <div className="relative min-h-0 flex-1">
           <div
             ref={messagesContainerRef}
-            className="relative flex-1 space-y-4 overflow-y-auto px-3 py-4 sm:px-8 sm:py-6"
+            className="h-full space-y-4 overflow-y-auto px-3 py-4 sm:px-8 sm:py-6"
           >
-            <div className="pointer-events-none absolute left-1 top-2 z-20 lg:hidden">
-              <MessageJumpRail items={jumpRailItems} onJump={jumpToMessage} />
-            </div>
             {error ? (
               <StatusBanner
                 variant="error"
@@ -1006,10 +1012,26 @@ export default function WorkspaceChatPage({
 
                           {message.role === "assistant" &&
                           sources.length > 0 ? (
-                            <div className="mt-4 space-y-2 border-t border-border/50 pt-3">
-                              <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-                                Sources ({sources.length})
-                              </p>
+                            <div className="mt-4 border-t border-border/50 pt-3">
+                              <button
+                                type="button"
+                                onClick={() => toggleSources(message.id)}
+                                aria-expanded={Boolean(
+                                  expandedSources[message.id],
+                                )}
+                                className="flex w-full items-center justify-between gap-2 py-1 text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground"
+                              >
+                                <span>Sources ({sources.length})</span>
+                                <ChevronDown
+                                  className={cn(
+                                    "size-4 shrink-0 transition-transform duration-200",
+                                    expandedSources[message.id] &&
+                                      "rotate-180",
+                                  )}
+                                />
+                              </button>
+                              {expandedSources[message.id] ? (
+                              <div className="mt-2 space-y-2">
                               {sources.map((source) => {
                                 const isTicket = source.sourceType === "ticket";
                                 const isDataset = source.sourceType === "dataset";
@@ -1089,6 +1111,8 @@ export default function WorkspaceChatPage({
                                   </div>
                                 );
                               })}
+                              </div>
+                              ) : null}
                             </div>
                           ) : null}
 
@@ -1152,6 +1176,14 @@ export default function WorkspaceChatPage({
                 ) : null}
               </div>
             )}
+          </div>
+            <div className="pointer-events-none absolute right-2 top-1/4 z-20 lg:hidden">
+              <MessageJumpRail
+                items={jumpRailItems}
+                onJump={jumpToMessage}
+                visible={!isNearBottom}
+              />
+            </div>
             <ScrollToBottomButton
               visible={!isNearBottom && messages.length > 0}
               onClick={() => scrollToBottom("smooth")}

@@ -12,7 +12,11 @@ describe('MessageJumpRail', () => {
 
   it('renders nothing for fewer than 2 items', () => {
     const { container } = render(
-      React.createElement(MessageJumpRail, { items: [{ id: '1', label: 'Only one' }], onJump: vi.fn() }),
+      React.createElement(MessageJumpRail, {
+        items: [{ id: '1', label: 'Only one' }],
+        onJump: vi.fn(),
+        visible: true,
+      }),
     )
     expect(container.innerHTML).toBe('')
   })
@@ -27,6 +31,7 @@ describe('MessageJumpRail', () => {
           { id: 'b', label: longLabel },
         ],
         onJump,
+        visible: true,
       }),
     )
 
