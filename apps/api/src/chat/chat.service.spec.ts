@@ -3,6 +3,8 @@ import { Test } from '@nestjs/testing'
 import { and, asc, eq, like } from 'drizzle-orm'
 import {
   answerQuestion,
+  classifyQuery,
+  classifyStructuredIntent,
   condenseQuestion,
   countTokens,
   embedQuery,
@@ -11,6 +13,7 @@ import {
 } from '@repo/ai'
 import {
   chatMessages,
+  chatQueryMetrics,
   chatSessions,
   db,
   pool,
@@ -21,9 +24,14 @@ import {
 import { CacheService } from '../cache/cache.service'
 import { ChatService } from './chat.service'
 import { UsageService } from '../limits/usage.service'
+import { StructuredQueryService } from '../structured-query/structured-query.service'
 
 jest.mock('@repo/ai', () => ({
   answerQuestion: jest.fn(),
+  classifyQuery: jest.fn(() => 'complex'),
+  // Defaults false so every pre-existing test (none of which cares about
+  // structured routing) keeps taking the original cache/RAG path unchanged.
+  classifyStructuredIntent: jest.fn(() => false),
   condenseQuestion: jest.fn((question: string) => Promise.resolve(question)),
   countTokens: jest.fn(),
   embedQuery: jest.fn(),
@@ -89,6 +97,10 @@ describe('ChatService', () => {
     assertWithinBudget: jest.Mock
     addUsage: jest.Mock
   }
+  let structuredQuery: {
+    hasReadyDatasets: jest.Mock
+    answer: jest.Mock
+  }
   const prefix = `chat-service-spec-${Date.now()}-`
 
   beforeAll(async () => {
@@ -103,11 +115,16 @@ describe('ChatService', () => {
       assertWithinBudget: jest.fn(),
       addUsage: jest.fn(),
     }
+    structuredQuery = {
+      hasReadyDatasets: jest.fn(() => Promise.resolve(false)),
+      answer: jest.fn(),
+    }
     const moduleRef = await Test.createTestingModule({
       providers: [
         ChatService,
         { provide: CacheService, useValue: cache },
         { provide: UsageService, useValue: usage },
+        { provide: StructuredQueryService, useValue: structuredQuery },
       ],
     }).compile()
 
@@ -120,6 +137,8 @@ describe('ChatService', () => {
     ;(condenseQuestion as jest.Mock).mockImplementation((question: string) => Promise.resolve(question))
     ;(historyCondenseEnabled as jest.Mock).mockReturnValue(true)
     ;(historyInAnswerEnabled as jest.Mock).mockReturnValue(true)
+    ;(classifyStructuredIntent as jest.Mock).mockReturnValue(false)
+    structuredQuery.hasReadyDatasets.mockResolvedValue(false)
   })
 
   afterAll(async () => {
@@ -688,5 +707,269 @@ describe('ChatService', () => {
       workspace.id,
       'Second turn'.length + 'second answer'.length,
     )
+  })
+
+  it('records chat query metrics on a cache miss with topScore, source count, and the reused embedding', async () => {
+    const { user, workspace } = await seedWorkspaceFixture(
+      `${prefix}metrics-miss@example.com`,
+      'Chat Spec Metrics Miss',
+    )
+    cache.getExact.mockResolvedValue(null)
+    cache.getSemantic.mockResolvedValue(null)
+    cache.getVersion.mockResolvedValue(1)
+    usage.assertWithinBudget.mockResolvedValue(undefined)
+    usage.addUsage.mockResolvedValue(undefined)
+    ;(embedQuery as jest.Mock).mockResolvedValue(new Array(1536).fill(0.01))
+    ;(countTokens as jest.Mock).mockImplementation((text: string) => text.length)
+    ;(classifyQuery as jest.Mock).mockReturnValue('complex')
+    ;(answerQuestion as jest.Mock).mockResolvedValue({
+      sources: [
+        { documentId: 'doc-a', title: 'A', sourceUrl: null, score: 0.4, snippet: 'a' },
+        { documentId: 'doc-b', title: 'B', sourceUrl: null, score: 0.8, snippet: 'b' },
+      ],
+      stream: (async function* () {
+        yield 'metrics answer'
+      })(),
+      isFallback: false,
+    })
+
+    const result = await service.answer(workspace.id, user.id, 'Which plan has the best uptime?')
+    for await (const _token of result.stream) {
+      // drain
+    }
+    await result.onComplete('metrics answer')
+
+    const [metric] = await db
+      .select()
+      .from(chatQueryMetrics)
+      .where(eq(chatQueryMetrics.sessionId, result.sessionId))
+
+    expect(metric).toBeDefined()
+    expect(metric.workspaceId).toBe(workspace.id)
+    expect(metric.cacheStatus).toBe('miss')
+    expect(metric.queryClass).toBe('complex')
+    expect(metric.isFallback).toBe(false)
+    expect(metric.sourceCount).toBe(2)
+    expect(metric.topScore).toBeCloseTo(0.8)
+    expect(metric.questionEmbedding).not.toBeNull()
+    expect(metric.latencyMs).toBeGreaterThanOrEqual(0)
+  })
+
+  it('records chat query metrics on an exact-cache hit without embedding the question', async () => {
+    const { user, workspace } = await seedWorkspaceFixture(
+      `${prefix}metrics-exact@example.com`,
+      'Chat Spec Metrics Exact',
+    )
+    cache.getExact.mockResolvedValue({
+      answer: 'cached exact',
+      sources: [{ documentId: 'doc-cache', title: 'Cache Doc', sourceUrl: null, score: 1, snippet: 'hit' }],
+    })
+
+    const result = await service.answer(workspace.id, user.id, 'Same question')
+    const body: string[] = []
+    for await (const token of result.stream) {
+      body.push(token)
+    }
+    await result.onComplete(body.join(''))
+
+    expect(embedQuery).not.toHaveBeenCalled()
+
+    const [metric] = await db
+      .select()
+      .from(chatQueryMetrics)
+      .where(eq(chatQueryMetrics.sessionId, result.sessionId))
+
+    expect(metric.cacheStatus).toBe('exact')
+    expect(metric.isFallback).toBe(false)
+    expect(metric.sourceCount).toBe(1)
+    expect(metric.topScore).toBeCloseTo(1)
+    expect(metric.questionEmbedding).toBeNull()
+  })
+
+  it('records chat query metrics on a semantic-cache hit reusing the already-computed embedding', async () => {
+    const { user, workspace } = await seedWorkspaceFixture(
+      `${prefix}metrics-semantic@example.com`,
+      'Chat Spec Metrics Semantic',
+    )
+    cache.getExact.mockResolvedValue(null)
+    cache.getSemantic.mockResolvedValue({
+      answer: 'cached semantic',
+      sources: [{ documentId: 'doc-sem', title: 'Sem Doc', sourceUrl: null, score: 0.7, snippet: 'sem' }],
+    })
+    ;(embedQuery as jest.Mock).mockResolvedValue(new Array(1536).fill(0.02))
+
+    const result = await service.answer(workspace.id, user.id, 'Paraphrase for metrics')
+    for await (const _token of result.stream) {
+      // drain
+    }
+    await result.onComplete('cached semantic')
+
+    expect(embedQuery).toHaveBeenCalledTimes(1)
+
+    const [metric] = await db
+      .select()
+      .from(chatQueryMetrics)
+      .where(eq(chatQueryMetrics.sessionId, result.sessionId))
+
+    expect(metric.cacheStatus).toBe('semantic')
+    expect(metric.isFallback).toBe(false)
+    expect(metric.questionEmbedding).not.toBeNull()
+  })
+
+  it('does not fail response persistence when chat query metrics recording throws', async () => {
+    const { user, workspace } = await seedWorkspaceFixture(
+      `${prefix}metrics-failure@example.com`,
+      'Chat Spec Metrics Failure',
+    )
+    cache.getExact.mockResolvedValue(null)
+    cache.getSemantic.mockResolvedValue(null)
+    cache.getVersion.mockResolvedValue(1)
+    usage.assertWithinBudget.mockResolvedValue(undefined)
+    usage.addUsage.mockResolvedValue(undefined)
+    ;(embedQuery as jest.Mock).mockResolvedValue([0.1])
+    ;(countTokens as jest.Mock).mockImplementation((text: string) => text.length)
+    ;(answerQuestion as jest.Mock).mockResolvedValue({
+      sources: [],
+      stream: (async function* () {
+        yield 'resilient answer'
+      })(),
+      isFallback: false,
+    })
+
+    const recordSpy = jest
+      .spyOn(service as unknown as { recordQueryMetrics: () => Promise<void> }, 'recordQueryMetrics')
+      .mockRejectedValueOnce(new Error('boom'))
+
+    const result = await service.answer(workspace.id, user.id, 'Resilience check')
+    for await (const _token of result.stream) {
+      // drain
+    }
+
+    await expect(result.onComplete('resilient answer')).resolves.toBeUndefined()
+
+    expect(cache.setExact).toHaveBeenCalled()
+    const messages = await db
+      .select()
+      .from(chatMessages)
+      .where(eq(chatMessages.sessionId, result.sessionId))
+    expect(messages[1]?.content).toBe('resilient answer')
+
+    recordSpy.mockRestore()
+  })
+
+  it('routes to the structured pipeline before any cache lookup when intent matches and datasets are ready', async () => {
+    const { user, workspace } = await seedWorkspaceFixture(
+      `${prefix}structured-route@example.com`,
+      'Chat Spec Structured Route',
+    )
+    ;(classifyStructuredIntent as jest.Mock).mockReturnValue(true)
+    structuredQuery.hasReadyDatasets.mockResolvedValue(true)
+    structuredQuery.answer.mockResolvedValue({
+      state: 'confident',
+      answer: '| product | total |\n| --- | --- |\n| Widget | 1000 |',
+      datasetId: 'dataset-1',
+      datasetName: 'Sales',
+    })
+
+    const result = await service.answer(workspace.id, user.id, 'total revenue by product')
+    const body: string[] = []
+    for await (const token of result.stream) {
+      body.push(token)
+    }
+    await result.onComplete(body.join(''))
+
+    expect(structuredQuery.hasReadyDatasets).toHaveBeenCalledWith(workspace.id)
+    expect(structuredQuery.answer).toHaveBeenCalledWith(workspace.id, 'total revenue by product')
+    expect(cache.getExact).not.toHaveBeenCalled()
+    expect(cache.getSemantic).not.toHaveBeenCalled()
+    expect(embedQuery).not.toHaveBeenCalled()
+    expect(answerQuestion).not.toHaveBeenCalled()
+    expect(result.cacheStatus).toBe('structured')
+    expect(result.structuredState).toBe('confident')
+
+    const [metric] = await db
+      .select()
+      .from(chatQueryMetrics)
+      .where(eq(chatQueryMetrics.sessionId, result.sessionId))
+    expect(metric.cacheStatus).toBe('structured')
+    expect(metric.queryClass).toBe('structured')
+    expect(metric.isFallback).toBe(false)
+    expect(metric.sourceCount).toBe(1)
+    expect(metric.topScore).toBeCloseTo(1)
+
+    const [message] = await db
+      .select()
+      .from(chatMessages)
+      .where(and(eq(chatMessages.sessionId, result.sessionId), eq(chatMessages.role, 'assistant')))
+    expect(message.sources).toEqual([
+      {
+        sourceType: 'dataset',
+        datasetId: 'dataset-1',
+        title: 'Sales',
+        score: 1,
+        snippet: 'Answered using this dataset via structured query.',
+      },
+    ])
+  })
+
+  it('marks non-confident structured states as fallback in telemetry', async () => {
+    const { user, workspace } = await seedWorkspaceFixture(
+      `${prefix}structured-ambiguous@example.com`,
+      'Chat Spec Structured Ambiguous',
+    )
+    ;(classifyStructuredIntent as jest.Mock).mockReturnValue(true)
+    structuredQuery.hasReadyDatasets.mockResolvedValue(true)
+    structuredQuery.answer.mockResolvedValue({
+      state: 'ambiguous',
+      answer: 'Which dataset did you mean?',
+      candidates: [{ id: 'a', name: 'Sales', description: null }],
+    })
+
+    const result = await service.answer(workspace.id, user.id, 'compare totals')
+    for await (const _token of result.stream) {
+      // drain
+    }
+    await result.onComplete('Which dataset did you mean?')
+
+    expect(result.structuredCandidates).toEqual([{ id: 'a', name: 'Sales', description: null }])
+
+    const [metric] = await db
+      .select()
+      .from(chatQueryMetrics)
+      .where(eq(chatQueryMetrics.sessionId, result.sessionId))
+    expect(metric.isFallback).toBe(true)
+  })
+
+  it('falls through to the normal RAG path when structured intent matches but no datasets are ready', async () => {
+    const { user, workspace } = await seedWorkspaceFixture(
+      `${prefix}structured-no-datasets@example.com`,
+      'Chat Spec Structured No Datasets',
+    )
+    ;(classifyStructuredIntent as jest.Mock).mockReturnValue(true)
+    structuredQuery.hasReadyDatasets.mockResolvedValue(false)
+    cache.getExact.mockResolvedValue(null)
+    cache.getSemantic.mockResolvedValue(null)
+    cache.getVersion.mockResolvedValue(1)
+    usage.assertWithinBudget.mockResolvedValue(undefined)
+    usage.addUsage.mockResolvedValue(undefined)
+    ;(embedQuery as jest.Mock).mockResolvedValue([0.1])
+    ;(countTokens as jest.Mock).mockImplementation((text: string) => text.length)
+    ;(answerQuestion as jest.Mock).mockResolvedValue({
+      sources: [],
+      stream: (async function* () {
+        yield 'normal rag answer'
+      })(),
+      isFallback: false,
+    })
+
+    const result = await service.answer(workspace.id, user.id, 'total revenue by product')
+    for await (const _token of result.stream) {
+      // drain
+    }
+    await result.onComplete('normal rag answer')
+
+    expect(structuredQuery.answer).not.toHaveBeenCalled()
+    expect(answerQuestion).toHaveBeenCalled()
+    expect(result.cacheStatus).toBe('miss')
   })
 })

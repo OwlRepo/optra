@@ -73,10 +73,14 @@ export async function POST(
   const contentType = backendRes.headers.get('content-type')
   const sources = backendRes.headers.get('x-chat-sources')
   const sessionId = backendRes.headers.get('x-chat-session-id')
+  const structuredState = backendRes.headers.get('x-chat-structured-state')
+  const structuredCandidates = backendRes.headers.get('x-chat-structured-candidates')
 
   if (contentType) headers.set('Content-Type', contentType)
   if (sources) headers.set('X-Chat-Sources', sources)
   if (sessionId) headers.set('X-Chat-Session-Id', sessionId)
+  if (structuredState) headers.set('X-Chat-Structured-State', structuredState)
+  if (structuredCandidates) headers.set('X-Chat-Structured-Candidates', structuredCandidates)
 
   return new Response(backendRes.body, {
     status: backendRes.status,

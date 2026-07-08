@@ -13,6 +13,7 @@ export type ChatMessageSource =
       snippet: string
     }
   | { sourceType: 'ticket'; ticketId: string; title: string; score: number; snippet: string }
+  | { sourceType: 'dataset'; datasetId: string; title: string; score: number; snippet: string }
 
 export const chatMessageRoleEnum = pgEnum('chat_message_role', ['user', 'assistant'])
 

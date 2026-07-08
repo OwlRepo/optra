@@ -2,9 +2,19 @@
 # API app: NestJS 10
 # Targets: dev (watch mode, bind-mount source) | prod (standalone image)
 
-FROM oven/bun:1.2.22-alpine AS base
+# Debian-based (glibc), not -alpine: DuckDB's prebuilt native binary
+# (apps/api/src/structured-query) is linked against glibc. Alpine's musl libc
+# has no ld-linux-*.so.1 loader at all, and even with the libc6-compat shim
+# the binding hung at dlopen instead of loading cleanly — verified empirically,
+# not assumed. A real glibc base is the reliable fix, not a compatibility shim.
+FROM oven/bun:1.2.22 AS base
 WORKDIR /app
-RUN apk add --no-cache nodejs
+# ca-certificates: without it, HTTPS requests from postinstall scripts (e.g.
+# DuckDB fetching its prebuilt binary from npm.duckdb.org) fail with "unable
+# to get local issuer certificate" — verified via a real failed build, not
+# assumed; --no-install-recommends skips it since it's only "Recommended".
+RUN apt-get update && apt-get install -y --no-install-recommends nodejs ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
 
 # --- deps stage: install workspace deps ---
 FROM base AS deps

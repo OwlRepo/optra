@@ -55,14 +55,28 @@ import { getWorkspace } from "@/lib/api/workspaces";
 import { WorkspaceNav } from "@/components/workspace-nav";
 
 type ChatSource = {
-  sourceType?: "document" | "ticket";
+  sourceType?: "document" | "ticket" | "dataset";
   documentId?: string;
   knowledgeBaseId?: string;
   ticketId?: string;
+  datasetId?: string;
   title: string;
   sourceUrl?: string | null;
   score: number;
   snippet: string;
+};
+
+type StructuredCandidate = {
+  id: string;
+  name: string;
+  description: string | null;
+};
+
+type StructuredState = "confident" | "ambiguous" | "correction" | "empty";
+
+type MessageStructuredMeta = {
+  state: StructuredState;
+  candidates?: StructuredCandidate[];
 };
 
 type ChatSession = {
@@ -198,6 +212,17 @@ function parseSourcesHeader(value: string | null): ChatSource[] {
   }
 }
 
+function parseStructuredCandidatesHeader(value: string | null): StructuredCandidate[] {
+  if (!value) return [];
+
+  try {
+    const parsed = JSON.parse(decodeURIComponent(value));
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
 function toChatMessage(message: PersistedChatMessage): Message {
   return {
     id: message.id,
@@ -227,6 +252,7 @@ export default function WorkspaceChatPage({
   const formRef = React.useRef<HTMLFormElement>(null);
   const pendingSourcesRef = React.useRef<ChatSource[]>([]);
   const pendingSessionIdRef = React.useRef<string | null>(null);
+  const pendingStructuredRef = React.useRef<MessageStructuredMeta | null>(null);
   const [workspace, setWorkspace] = React.useState<{
     id: string;
     name: string;
@@ -245,6 +271,9 @@ export default function WorkspaceChatPage({
   );
   const [messageSources, setMessageSources] = React.useState<
     Record<string, ChatSource[]>
+  >({});
+  const [messageStructured, setMessageStructured] = React.useState<
+    Record<string, MessageStructuredMeta>
   >({});
   const [historyOpen, setHistoryOpen] = React.useState(false);
   const [historySearch, setHistorySearch] = React.useState("");
@@ -334,6 +363,18 @@ export default function WorkspaceChatPage({
         response.headers.get("x-chat-sources"),
       );
       pendingSessionIdRef.current = response.headers.get("x-chat-session-id");
+
+      const structuredState = response.headers.get(
+        "x-chat-structured-state",
+      ) as StructuredState | null;
+      pendingStructuredRef.current = structuredState
+        ? {
+            state: structuredState,
+            candidates: parseStructuredCandidatesHeader(
+              response.headers.get("x-chat-structured-candidates"),
+            ),
+          }
+        : null;
     },
     onFinish: async (message) => {
       if (pendingSourcesRef.current.length > 0) {
@@ -343,10 +384,19 @@ export default function WorkspaceChatPage({
         }));
       }
 
+      const structuredMeta = pendingStructuredRef.current;
+      if (structuredMeta) {
+        setMessageStructured((current) => ({
+          ...current,
+          [message.id]: structuredMeta,
+        }));
+      }
+
       const nextSessionId =
         pendingSessionIdRef.current ?? activeSessionId ?? undefined;
       pendingSourcesRef.current = [];
       pendingSessionIdRef.current = null;
+      pendingStructuredRef.current = null;
 
       if (nextSessionId) {
         React.startTransition(() => {
@@ -548,6 +598,7 @@ export default function WorkspaceChatPage({
       setActiveSessionId(undefined);
       setMessages([]);
       setMessageSources({});
+      setMessageStructured({});
       setNextMessageCursor(null);
       setInput("");
     });
@@ -856,16 +907,17 @@ export default function WorkspaceChatPage({
                                 Sources ({sources.length})
                               </p>
                               {sources.map((source) => {
-                                const key =
-                                  source.sourceType === "ticket"
-                                    ? source.ticketId
-                                    : source.documentId;
                                 const isTicket = source.sourceType === "ticket";
-                                const sourceUrl = isTicket
-                                  ? null
-                                  : source.sourceUrl;
+                                const isDataset = source.sourceType === "dataset";
+                                const key = isTicket
+                                  ? source.ticketId
+                                  : isDataset
+                                    ? source.datasetId
+                                    : source.documentId;
+                                const sourceUrl =
+                                  isTicket || isDataset ? null : source.sourceUrl;
                                 const canDownloadDocument =
-                                  !isTicket && Boolean(source.knowledgeBaseId);
+                                  !isTicket && !isDataset && Boolean(source.knowledgeBaseId);
 
                                 return (
                                   <div
@@ -933,6 +985,49 @@ export default function WorkspaceChatPage({
                                   </div>
                                 );
                               })}
+                            </div>
+                          ) : null}
+
+                          {message.role === "assistant" &&
+                          messageStructured[message.id] &&
+                          messageStructured[message.id].state !== "confident" ? (
+                            <div className="mt-4 space-y-2 border-t border-border/50 pt-3">
+                              {messageStructured[message.id].state ===
+                                "ambiguous" &&
+                              (messageStructured[message.id].candidates ?? [])
+                                .length > 0 ? (
+                                <>
+                                  <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                                    Which dataset did you mean?
+                                  </p>
+                                  <div className="flex flex-wrap gap-2">
+                                    {messageStructured[
+                                      message.id
+                                    ].candidates!.map((candidate) => (
+                                      <Button
+                                        key={candidate.id}
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() =>
+                                          setInput(
+                                            `Use the "${candidate.name}" dataset`,
+                                          )
+                                        }
+                                      >
+                                        {candidate.name}
+                                      </Button>
+                                    ))}
+                                  </div>
+                                </>
+                              ) : (
+                                <Badge variant="outline">
+                                  {messageStructured[message.id].state ===
+                                  "correction"
+                                    ? "Couldn't run that query — try rephrasing"
+                                    : "No matching dataset for this question"}
+                                </Badge>
+                              )}
                             </div>
                           ) : null}
                         </div>

@@ -293,3 +293,21 @@ If risk area is missing, mark `UNMAPPED RISK`.
   - chat full-text search joins `chat_sessions` because `chat_messages` has no `workspace_id`
   - response shape stays `{documents, tickets, chatMessages}` and never becomes one merged ranking
   - shared search modal autofocuses query input on open and never steals focus back while results rerender
+
+- Chat Query Metrics (`chat_query_metrics`) is a live hot-path-write risk as of 2026-07-08 (V2 slice S3, `docs/ai/planning/v2-features.md`).
+  Required checks:
+  - `ChatService#recordQueryMetrics()` is called as `await ...recordQueryMetrics(...).catch(...)` from every `onComplete` branch — a metrics-write failure must never propagate into the chat response
+  - `questionEmbedding` is `null` on exact-cache hits by design (no re-embed cost on the cheapest path) and populated on semantic/miss hits by reusing the already-computed embedding — never a fresh `embedQuery()` call
+  - this table is write-only in this slice; any future reader (F6 digest, F7a coverage dashboard) must filter `workspaceId`, same as every other tenant table
+  - the pgvector `vector(1536)` column in a hand-authored/edited migration must stay unquoted (`vector(1536)`, not `"vector(1536)"`) — drizzle-kit generated the quoted form here, which Postgres rejects as an unknown type
+
+- Structured SQL Execution (datasets/DuckDB) is a Deep, live untrusted-code-execution risk as of 2026-07-08 (V2 slice S1+F1, `docs/ai/planning/v2-features.md`).
+  Required checks:
+  - `DuckDbQueryService.runReadOnlyQuery()` ALWAYS loads the CSV via trusted code (`CREATE TABLE ... AS SELECT * FROM read_csv_auto(trustedPath)`) BEFORE calling `SET enable_external_access=false` — never load untrusted-path input after lockdown
+  - the keyword-based `assertReadOnlySelect()` filter (single-statement, SELECT/WITH-only, forbidden DDL/DML list including `set`) runs on every call — it is defense-in-depth against statements that only touch the already-materialized in-memory table, since `enable_external_access=false` does not stop those
+  - every ephemeral DuckDB connection is `.close()`d in a `finally` block; every downloaded temp CSV is `unlink`ed in a `finally` block, mirroring the ingest-processor temp-file discipline
+  - dataset selection (`StructuredQueryService.selectCandidates()`) is a hand-written pgvector query and must keep the `WHERE workspace_id = ...::uuid` guard — no RLS backstop exists (A7)
+  - structured answers bypass BOTH the exact and semantic chat caches unconditionally (decided in `ChatService#answer()` before either cache lookup) — never let a computed answer over a mutable dataset get cached
+  - DuckDB aggregate results (`SUM`, etc.) return as JS `bigint` from the Node driver and must be sanitized to `Number` before leaving `DuckDbQueryService` — otherwise `JSON.stringify` throws on the very first real query
+  - XLSX uploads are converted to CSV once at profiling time (`DatasetProfilingProcessor`, first sheet only) and the SAME storageKey is overwritten with the CSV bytes — `DuckDbQueryService` and the query engine never need to know the original format
+  - Docker gap (infra, not app code): the API's Docker image cannot currently load DuckDB's native binary — no Linux ARM64 prebuilt for `duckdb@1.4.4`, no build toolchain for a source-compile fallback. Base image moved Alpine→Debian and a missing `ca-certificates` package was fixed, but this is unresolved as of 2026-07-08. `bun run dev` locally is unaffected and is the verified path until this is decided.

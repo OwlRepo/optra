@@ -48,6 +48,15 @@ export class ChatController {
       res.setHeader('X-Chat-Sources', encodeURIComponent(JSON.stringify(result.sources)))
       res.setHeader('X-Chat-Session-Id', result.sessionId)
       res.setHeader('X-Chat-Cache', result.cacheStatus)
+      if (result.structuredState) {
+        res.setHeader('X-Chat-Structured-State', result.structuredState)
+      }
+      if (result.structuredCandidates) {
+        res.setHeader(
+          'X-Chat-Structured-Candidates',
+          encodeURIComponent(JSON.stringify(result.structuredCandidates)),
+        )
+      }
 
       const chunks: string[] = []
 

@@ -3,6 +3,7 @@ import { and, asc, count, desc, eq, gt, ilike, lt, ne, or, sql } from 'drizzle-o
 import {
   buildOffsetResult,
   chatMessages,
+  chatQueryMetrics,
   chatSessions,
   db,
   decodeCursor,
@@ -15,14 +16,16 @@ import { CacheService } from '../cache/cache.service'
 import { UsageService } from '../limits/usage.service'
 import { ListQueryDto } from '../common/dto/list-query.dto'
 import type { ListChatSessionsQueryDto } from './dto/list-chat-sessions-query.dto'
+import { StructuredQueryService } from '../structured-query/structured-query.service'
 
-type CacheStatus = 'exact' | 'semantic' | 'miss'
+type CacheStatus = 'exact' | 'semantic' | 'miss' | 'structured'
 
 @Injectable()
 export class ChatService {
   constructor(
     private readonly cache: CacheService,
     private readonly usage: UsageService,
+    private readonly structuredQuery: StructuredQueryService,
   ) {}
 
   async answer(
@@ -31,6 +34,7 @@ export class ChatService {
     message: string,
     sessionId?: string,
   ) {
+    const startedAt = Date.now()
     const session = sessionId
       ? await this.getOwnedSession(workspaceId, userId, sessionId)
       : await this.createSession(workspaceId, userId, message)
@@ -47,6 +51,8 @@ export class ChatService {
 
     const {
       answerQuestion,
+      classifyQuery,
+      classifyStructuredIntent,
       condenseQuestion,
       countTokens,
       embedQuery,
@@ -71,6 +77,18 @@ export class ChatService {
     const standaloneQuestion =
       history.length > 0 ? await condenseQuestion(message, history) : message
 
+    // Structured (dataset/DuckDB) intent is decided before either cache
+    // lookup: computed answers over mutable datasets must never be served
+    // from a stale RAG cache entry, the same way fallback answers are never
+    // cached. Cheap-first: a workspace with zero ready datasets never pays
+    // for the (still LLM-free) keyword check's result mattering.
+    if (
+      classifyStructuredIntent(standaloneQuestion) &&
+      (await this.structuredQuery.hasReadyDatasets(workspaceId))
+    ) {
+      return this.answerStructured(workspaceId, session.id, standaloneQuestion, startedAt)
+    }
+
     const exact = await this.cache.getExact(workspaceId, standaloneQuestion)
     if (exact) {
       return {
@@ -78,8 +96,23 @@ export class ChatService {
         sources: exact.sources,
         stream: this.singleChunk(exact.answer),
         cacheStatus: 'exact' as CacheStatus,
-        onComplete: async (fullText: string) =>
-          this.persistAssistant(session.id, fullText, exact.sources),
+        structuredState: undefined,
+        structuredCandidates: undefined,
+        onComplete: async (fullText: string) => {
+          const chatMessageId = await this.persistAssistant(session.id, fullText, exact.sources)
+          await this.recordQueryMetrics({
+            workspaceId,
+            sessionId: session.id,
+            chatMessageId,
+            question: standaloneQuestion,
+            questionEmbedding: null,
+            sources: exact.sources,
+            isFallback: false,
+            cacheStatus: 'exact',
+            queryClass: classifyQuery(standaloneQuestion),
+            startedAt,
+          }).catch((error) => console.error('Failed to record chat query metrics', error))
+        },
       }
     }
 
@@ -93,8 +126,23 @@ export class ChatService {
         sources: semantic.sources,
         stream: this.singleChunk(semantic.answer),
         cacheStatus: 'semantic' as CacheStatus,
-        onComplete: async (fullText: string) =>
-          this.persistAssistant(session.id, fullText, semantic.sources),
+        structuredState: undefined,
+        structuredCandidates: undefined,
+        onComplete: async (fullText: string) => {
+          const chatMessageId = await this.persistAssistant(session.id, fullText, semantic.sources)
+          await this.recordQueryMetrics({
+            workspaceId,
+            sessionId: session.id,
+            chatMessageId,
+            question: standaloneQuestion,
+            questionEmbedding: embedding,
+            sources: semantic.sources,
+            isFallback: false,
+            cacheStatus: 'semantic',
+            queryClass: classifyQuery(standaloneQuestion),
+            startedAt,
+          }).catch((error) => console.error('Failed to record chat query metrics', error))
+        },
       }
     }
 
@@ -116,6 +164,8 @@ export class ChatService {
       sources,
       stream,
       cacheStatus: 'miss' as CacheStatus,
+      structuredState: undefined,
+      structuredCandidates: undefined,
       onComplete: async (fullText: string) => {
         const condensedTokens =
           standaloneQuestion !== message ? countTokens(standaloneQuestion) : 0
@@ -123,7 +173,19 @@ export class ChatService {
           workspaceId,
           countTokens(message) + countTokens(fullText) + condensedTokens,
         )
-        await this.persistAssistant(session.id, fullText, sources)
+        const chatMessageId = await this.persistAssistant(session.id, fullText, sources)
+        await this.recordQueryMetrics({
+          workspaceId,
+          sessionId: session.id,
+          chatMessageId,
+          question: standaloneQuestion,
+          questionEmbedding: embedding,
+          sources,
+          isFallback,
+          cacheStatus: 'miss',
+          queryClass: classifyQuery(standaloneQuestion),
+          startedAt,
+        }).catch((error) => console.error('Failed to record chat query metrics', error))
         if (!isFallback) {
           await this.cache.setExact(workspaceId, standaloneQuestion, fullText, sources)
           await this.cache.saveSemantic(
@@ -268,6 +330,53 @@ export class ChatService {
     return session
   }
 
+  private async answerStructured(
+    workspaceId: string,
+    sessionId: string,
+    standaloneQuestion: string,
+    startedAt: number,
+  ) {
+    const result = await this.structuredQuery.answer(workspaceId, standaloneQuestion)
+    // Only a confident answer becomes a persisted citation — ambiguous/
+    // correction/empty are momentary UX, not something worth citing forever.
+    const sources: ChatMessageSource[] =
+      result.state === 'confident' && result.datasetId && result.datasetName
+        ? [
+            {
+              sourceType: 'dataset',
+              datasetId: result.datasetId,
+              title: result.datasetName,
+              score: 1,
+              snippet: 'Answered using this dataset via structured query.',
+            },
+          ]
+        : []
+
+    return {
+      sessionId,
+      sources,
+      stream: this.singleChunk(result.answer),
+      cacheStatus: 'structured' as CacheStatus,
+      structuredState: result.state,
+      structuredCandidates: result.candidates,
+      onComplete: async (fullText: string) => {
+        const chatMessageId = await this.persistAssistant(sessionId, fullText, sources)
+        await this.recordQueryMetrics({
+          workspaceId,
+          sessionId,
+          chatMessageId,
+          question: standaloneQuestion,
+          questionEmbedding: null,
+          sources,
+          isFallback: result.state !== 'confident',
+          cacheStatus: 'structured',
+          queryClass: 'structured',
+          startedAt,
+        }).catch((error) => console.error('Failed to record chat query metrics', error))
+      },
+    }
+  }
+
   private singleChunk(answer: string): AsyncGenerator<string> {
     return (async function* () {
       yield answer
@@ -278,17 +387,52 @@ export class ChatService {
     sessionId: string,
     fullText: string,
     sources: ChatMessageSource[],
-  ) {
-    await db.insert(chatMessages).values({
-      sessionId,
-      role: 'assistant',
-      content: fullText,
-      sources,
-    })
+  ): Promise<string> {
+    const [inserted] = await db
+      .insert(chatMessages)
+      .values({
+        sessionId,
+        role: 'assistant',
+        content: fullText,
+        sources,
+      })
+      .returning({ id: chatMessages.id })
 
     await db
       .update(chatSessions)
       .set({ updatedAt: new Date() })
       .where(eq(chatSessions.id, sessionId))
+
+    return inserted.id
+  }
+
+  private async recordQueryMetrics(params: {
+    workspaceId: string
+    sessionId: string
+    chatMessageId: string
+    question: string
+    questionEmbedding: number[] | null
+    sources: ChatMessageSource[]
+    isFallback: boolean
+    cacheStatus: CacheStatus
+    queryClass: string
+    startedAt: number
+  }) {
+    const topScore =
+      params.sources.length > 0 ? Math.max(...params.sources.map((source) => source.score)) : null
+
+    await db.insert(chatQueryMetrics).values({
+      workspaceId: params.workspaceId,
+      sessionId: params.sessionId,
+      chatMessageId: params.chatMessageId,
+      question: params.question,
+      questionEmbedding: params.questionEmbedding,
+      topScore,
+      sourceCount: params.sources.length,
+      isFallback: params.isFallback,
+      cacheStatus: params.cacheStatus,
+      queryClass: params.queryClass,
+      latencyMs: Date.now() - params.startedAt,
+    })
   }
 }

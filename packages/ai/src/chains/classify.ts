@@ -42,6 +42,41 @@ const SIMPLE_STARTS = [
 const SIMPLE_MAX_WORDS = 12
 const VERY_SHORT_WORDS = 6
 
+// Separate from classifyQuery/QueryClass on purpose: this is a candidate
+// gate for routing into the structured (DuckDB/text-to-SQL) pipeline, not a
+// change to the existing simple/complex RAG routing contract. Cheap
+// keyword heuristic first; the caller layers a workspace-has-datasets check
+// and only then an LLM classifier for genuinely ambiguous questions.
+const STRUCTURED_SIGNALS = [
+  'how many',
+  'how much',
+  'total',
+  'average',
+  'avg',
+  'sum of',
+  'count of',
+  'top ',
+  'highest',
+  'lowest',
+  'most',
+  'least',
+  'trend',
+  'compare',
+  'per quarter',
+  'per month',
+  'per week',
+  'last quarter',
+  'last month',
+  'which product',
+  'which category',
+]
+
+export function classifyStructuredIntent(question: string): boolean {
+  const q = question.trim().toLowerCase()
+  if (q.length === 0) return false
+  return STRUCTURED_SIGNALS.some((signal) => q.includes(signal))
+}
+
 export function classifyQuery(question: string): QueryClass {
   const q = question.trim().toLowerCase()
   if (q.length === 0) return 'complex'
