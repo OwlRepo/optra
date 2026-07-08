@@ -19,8 +19,13 @@ build
 .vscode
 .idea
 *.log
-coverage
-**/coverage
+# Scoped to real Jest/Vitest coverage-report output (apps/*/coverage,
+# packages/*/coverage). A bare "coverage"/"**/coverage" also matched the
+# app route folder apps/web/app/api/workspaces/[id]/insights/coverage/,
+# silently excluding it from the Docker build context and 404ing that
+# route in production only — see docs/ai/risk-register.md.
+/apps/*/coverage
+/packages/*/coverage
 .DS_Store
 *.swp
 *.swo

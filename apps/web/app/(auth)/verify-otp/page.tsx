@@ -37,6 +37,7 @@ export default function VerifyOtpPage() {
     try {
       await verifyOtp(email, data.code)
       markLoggedIn()
+      router.refresh()
       router.push('/chat')
     } catch (err: unknown) {
       const message = err && typeof err === 'object' && 'message' in err
