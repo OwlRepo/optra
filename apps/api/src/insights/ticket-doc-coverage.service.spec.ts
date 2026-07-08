@@ -121,4 +121,34 @@ describe('TicketDocCoverageService', () => {
 
     expect(gaps).toHaveLength(0)
   })
+
+  describe('findUncoveredTickets (V2 F4 ticket-centric read)', () => {
+    it('returns uncovered tickets with their embedding, ignoring existing open flags', async () => {
+      const ticketId = await seedTicketChunk({ embeddingSeed: 1 })
+      await seedDocumentChunk(500)
+
+      await db.insert(documentReviewFlags).values({
+        workspaceId,
+        documentId,
+        ticketId,
+        reason: 'ticket-mismatch',
+        status: 'open',
+      })
+
+      const uncovered = await service.findUncoveredTickets(workspaceId)
+
+      expect(uncovered).toHaveLength(1)
+      expect(uncovered[0].ticketId).toBe(ticketId)
+      expect(uncovered[0].embedding).toHaveLength(1536)
+    })
+
+    it('excludes tickets with a good document match', async () => {
+      await seedTicketChunk({ embeddingSeed: 1 })
+      await seedDocumentChunk(1)
+
+      const uncovered = await service.findUncoveredTickets(workspaceId)
+
+      expect(uncovered).toHaveLength(0)
+    })
+  })
 })

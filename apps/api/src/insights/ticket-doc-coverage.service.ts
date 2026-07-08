@@ -18,8 +18,50 @@ export interface CoverageGap {
 const LOOKBACK_DAYS = Number.parseInt(process.env.FRESHNESS_LOOKBACK_DAYS ?? '90', 10)
 const MIN_COVERAGE_SCORE = Number.parseFloat(process.env.FRESHNESS_MIN_SCORE ?? '0.5')
 
+export interface UncoveredTicket {
+  ticketId: string
+  embedding: number[]
+  score: number
+}
+
 @Injectable()
 export class TicketDocCoverageService {
+  // F4's ticket-centric read of the same primitive: every currently
+  // uncovered ticket (regardless of whether F3 has already flagged the
+  // nearest document as open), plus its embedding for downstream clustering.
+  // Deliberately NOT deduped against document_review_flags — that dedup is
+  // F3-specific (avoid re-flagging the same doc/ticket pair); F4 needs the
+  // full uncovered set every run and does its own dedup against faq_drafts.
+  async findUncoveredTickets(workspaceId: string): Promise<UncoveredTicket[]> {
+    const result = await db.execute<{ ticketId: string; embedding: string; score: number }>(sql`
+      SELECT
+        tc.ticket_id AS "ticketId",
+        tc.embedding::text AS embedding,
+        nearest.score AS score
+      FROM chunks tc
+      CROSS JOIN LATERAL (
+        SELECT 1 - (dc.embedding <=> tc.embedding) AS score
+        FROM chunks dc
+        WHERE dc.workspace_id = tc.workspace_id
+          AND dc.document_id IS NOT NULL
+          AND dc.embedding IS NOT NULL
+        ORDER BY dc.embedding <=> tc.embedding
+        LIMIT 1
+      ) nearest
+      WHERE tc.workspace_id = ${workspaceId}::uuid
+        AND tc.ticket_id IS NOT NULL
+        AND tc.embedding IS NOT NULL
+        AND tc.created_at >= now() - make_interval(days => ${LOOKBACK_DAYS})
+        AND nearest.score < ${MIN_COVERAGE_SCORE}
+    `)
+
+    return result.rows.map((row) => ({
+      ticketId: row.ticketId,
+      score: row.score,
+      embedding: JSON.parse(row.embedding) as number[],
+    }))
+  }
+
   // Only reviewed+useful+done tickets have chunks at all (syncTicketChunk),
   // so this — like the rest of the ticket-chunk surface — only ever sees
   // that reviewed subset; widening is a separate cost decision, not silent.
