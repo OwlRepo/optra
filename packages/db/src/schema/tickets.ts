@@ -2,6 +2,13 @@ import { jsonb, pgEnum, pgTable, text, timestamp, uniqueIndex, uuid, varchar } f
 import { users } from './users'
 import { workspaces } from './workspaces'
 
+// V2 slice F2 (docs/ai/planning/v2-features.md): additive columns for
+// structured ticket-trend querying. `category` is populated deterministically
+// from the already-extracted `productArea` at write time (see
+// TicketExtractionProcessor) — no LLM prompt change, zero risk to the
+// existing extraction chain. `resolvedAt`/`assigneeId` are set via the
+// existing ticket update endpoint, same as `reviewedAt`/`reviewedBy`.
+
 export const ticketSeverityEnum = pgEnum('ticket_severity', ['low', 'medium', 'high'])
 export const ticketStatusEnum = pgEnum('ticket_status', ['pending', 'processing', 'done', 'failed'])
 export const ticketUsefulnessEnum = pgEnum('ticket_usefulness', ['useful', 'not_useful'])
@@ -42,6 +49,9 @@ export const tickets = pgTable('tickets', {
   feedbackNote: text('feedback_note'),
   reviewedBy: uuid('reviewed_by').references(() => users.id, { onDelete: 'set null' }),
   reviewedAt: timestamp('reviewed_at'),
+  category: text('category'),
+  resolvedAt: timestamp('resolved_at'),
+  assigneeId: uuid('assignee_id').references(() => users.id, { onDelete: 'set null' }),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 }, (table) => ({

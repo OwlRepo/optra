@@ -1,9 +1,25 @@
-import { unlink } from 'fs/promises'
+import { mkdtemp, rm, unlink, writeFile } from 'fs/promises'
+import { tmpdir } from 'os'
+import { join } from 'path'
 import { Injectable, Logger } from '@nestjs/common'
 import { and, count, eq, sql } from 'drizzle-orm'
-import { datasets, db, type DatasetColumn } from '@repo/db'
+import { alias } from 'drizzle-orm/pg-core'
+import Papa from 'papaparse'
+import { datasets, db, tickets, users, type DatasetColumn } from '@repo/db'
 import { StorageService } from '../storage/storage.service'
 import { DuckDbQueryService, SqlExecutionError, UnsafeSqlError } from './duckdb-query.service'
+
+const TICKET_TABLE_NAME = 'tickets'
+const TICKET_COLUMNS: DatasetColumn[] = [
+  { name: 'category', type: 'string' },
+  { name: 'severity', type: 'string' },
+  { name: 'productArea', type: 'string' },
+  { name: 'status', type: 'string' },
+  { name: 'createdAt', type: 'date' },
+  { name: 'resolvedAt', type: 'date' },
+  { name: 'reviewedByEmail', type: 'string' },
+  { name: 'assigneeEmail', type: 'string' },
+]
 
 export type StructuredQueryState = 'confident' | 'ambiguous' | 'correction' | 'empty'
 
@@ -53,7 +69,11 @@ export class StructuredQueryService {
   }
 
   async answer(workspaceId: string, question: string): Promise<StructuredQueryResult> {
-    const { embedQuery } = await import('@repo/ai')
+    const { classifyTicketIntent, embedQuery } = await import('@repo/ai')
+
+    if (classifyTicketIntent(question)) {
+      return this.answerFromTickets(workspaceId, question)
+    }
 
     const embedding = await embedQuery(question)
     const candidates = await this.selectCandidates(workspaceId, embedding)
@@ -95,6 +115,51 @@ export class StructuredQueryService {
       })
     } finally {
       await unlink(tempPath).catch(() => undefined)
+    }
+  }
+
+  /**
+   * Ticket trends (V2 F2): tickets are not a user-uploaded dataset, so there's
+   * no candidate-selection step — trusted Drizzle code exports this
+   * workspace's tickets (mandatory workspaceId filter) into the same
+   * ephemeral-DuckDB executor a real dataset would use. LLM-generated SQL
+   * never touches Postgres directly.
+   */
+  private async answerFromTickets(workspaceId: string, question: string): Promise<StructuredQueryResult> {
+    const reviewedByUser = alias(users, 'reviewed_by_user')
+    const assigneeUser = alias(users, 'assignee_user')
+
+    const rows = await db
+      .select({
+        category: tickets.category,
+        severity: tickets.severity,
+        productArea: tickets.productArea,
+        status: tickets.status,
+        createdAt: tickets.createdAt,
+        resolvedAt: tickets.resolvedAt,
+        reviewedByEmail: reviewedByUser.email,
+        assigneeEmail: assigneeUser.email,
+      })
+      .from(tickets)
+      .leftJoin(reviewedByUser, eq(tickets.reviewedBy, reviewedByUser.id))
+      .leftJoin(assigneeUser, eq(tickets.assigneeId, assigneeUser.id))
+      .where(and(eq(tickets.workspaceId, workspaceId), eq(tickets.status, 'done')))
+
+    if (rows.length === 0) {
+      return { state: 'empty', answer: "I don't see any processed tickets in this workspace yet." }
+    }
+
+    const csvContent = Papa.unparse(rows)
+    const dir = await mkdtemp(join(tmpdir(), 'mnemra-tickets-'))
+    const csvPath = join(dir, 'tickets.csv')
+
+    try {
+      await writeFile(csvPath, csvContent, 'utf-8')
+      return await this.runTextToSqlFlow(question, csvPath, TICKET_TABLE_NAME, TICKET_COLUMNS, {
+        label: 'your tickets',
+      })
+    } finally {
+      await rm(dir, { recursive: true, force: true })
     }
   }
 

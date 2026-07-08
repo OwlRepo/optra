@@ -1,20 +1,24 @@
 import { writeFileSync } from 'fs'
 import { randomUUID } from 'crypto'
 import { eq } from 'drizzle-orm'
-import { datasets, db, pool, users, workspaceMembers, workspaces, type DatasetColumn } from '@repo/db'
+import { datasets, db, pool, tickets, users, workspaceMembers, workspaces, type DatasetColumn } from '@repo/db'
 import { StructuredQueryService } from './structured-query.service'
 import { DuckDbQueryService } from './duckdb-query.service'
 import { StorageService } from '../storage/storage.service'
 
-const { embedQuery, generateSql, UnanswerableQuestionError } = jest.requireMock('@repo/ai') as {
+const { embedQuery, generateSql, classifyTicketIntent, UnanswerableQuestionError } = jest.requireMock(
+  '@repo/ai',
+) as {
   embedQuery: jest.Mock
   generateSql: jest.Mock
+  classifyTicketIntent: jest.Mock
   UnanswerableQuestionError: typeof Error
 }
 
 jest.mock('@repo/ai', () => ({
   embedQuery: jest.fn(),
   generateSql: jest.fn(),
+  classifyTicketIntent: jest.fn(() => false),
   UnanswerableQuestionError: class UnanswerableQuestionError extends Error {},
 }))
 
@@ -151,5 +155,49 @@ describe('StructuredQueryService', () => {
     expect(result.state).toBe('ambiguous')
     expect(result.candidates?.length).toBeGreaterThan(1)
     expect(generateSql).not.toHaveBeenCalled()
+  })
+
+  describe('ticket trend queries (V2 F2)', () => {
+    afterEach(async () => {
+      await db.delete(tickets).where(eq(tickets.workspaceId, workspaceId))
+    })
+
+    it('exports done tickets to DuckDB and answers without touching the dataset selector', async () => {
+      classifyTicketIntent.mockReturnValue(true)
+      await db.insert(tickets).values([
+        {
+          workspaceId,
+          transcript: 't1',
+          transcriptHash: 'h1',
+          status: 'done',
+          category: 'billing',
+          severity: 'high',
+        },
+        {
+          workspaceId,
+          transcript: 't2',
+          transcriptHash: 'h2',
+          status: 'done',
+          category: 'billing',
+          severity: 'low',
+        },
+      ])
+      generateSql.mockResolvedValue("SELECT category, COUNT(*) AS n FROM tickets GROUP BY category")
+
+      const result = await service.answer(workspaceId, 'which ticket category is most common')
+
+      expect(result.state).toBe('confident')
+      expect(result.answer).toContain('billing')
+      expect(embedQuery).not.toHaveBeenCalled()
+    })
+
+    it('returns empty state when there are no processed tickets yet', async () => {
+      classifyTicketIntent.mockReturnValue(true)
+
+      const result = await service.answer(workspaceId, 'ticket trends by severity')
+
+      expect(result.state).toBe('empty')
+      expect(generateSql).not.toHaveBeenCalled()
+    })
   })
 })

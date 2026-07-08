@@ -44,6 +44,10 @@ export class TicketExtractionProcessor {
         .update(tickets)
         .set({
           ...extracted,
+          // V2 F2: category is deterministically copied from the already-
+          // extracted productArea, not a separate LLM extraction target —
+          // keeps the extraction prompt/chain untouched.
+          category: extracted.productArea,
           status: 'done',
           lastError: null,
           updatedAt: new Date(),

@@ -77,6 +77,18 @@ export function classifyStructuredIntent(question: string): boolean {
   return STRUCTURED_SIGNALS.some((signal) => q.includes(signal))
 }
 
+// V2 slice F2: distinguishes "trend question about our own tickets" from
+// "trend question about an uploaded dataset" — both pass
+// classifyStructuredIntent, but only one should route to the fixed tickets
+// pseudo-source instead of the pgvector dataset selector.
+const TICKET_SIGNALS = ['ticket', 'tickets', 'severity', 'agent', 'reviewer', 'resolution time', 'resolved']
+
+export function classifyTicketIntent(question: string): boolean {
+  const q = question.trim().toLowerCase()
+  if (q.length === 0) return false
+  return TICKET_SIGNALS.some((signal) => q.includes(signal))
+}
+
 export function classifyQuery(question: string): QueryClass {
   const q = question.trim().toLowerCase()
   if (q.length === 0) return 'complex'
