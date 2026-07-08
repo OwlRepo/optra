@@ -34,6 +34,7 @@
     "class-validator": "^0.15.1",
     "cookie-parser": "^1.4.7",
     "drizzle-orm": "^0.30.0",
+    "duckdb": "1.4.4",
     "ioredis": "^5.11.1",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
@@ -41,7 +42,8 @@
     "pg": "^8.11.0",
     "reflect-metadata": "^0.2.1",
     "resend": "^6.16.0",
-    "rxjs": "^7.8.1"
+    "rxjs": "^7.8.1",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@nestjs/cli": "^10.3.0",

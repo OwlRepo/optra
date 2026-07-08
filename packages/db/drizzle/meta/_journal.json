@@ -99,6 +99,48 @@
       "when": 1783219324797,
       "tag": "0013_condemned_silver_surfer",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "5",
+      "when": 1783482771488,
+      "tag": "0014_supreme_doctor_octopus",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "5",
+      "when": 1783483778366,
+      "tag": "0015_thin_blonde_phantom",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "5",
+      "when": 1783488976211,
+      "tag": "0016_overrated_inhumans",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "5",
+      "when": 1783492828033,
+      "tag": "0017_minor_captain_marvel",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "5",
+      "when": 1783494242293,
+      "tag": "0018_eager_marauders",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "5",
+      "when": 1783497632268,
+      "tag": "0019_mysterious_quasar",
+      "breakpoints": true
     }
   ]
 }

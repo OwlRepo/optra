@@ -31,6 +31,16 @@ vi.mock('@/lib/api/auth', () => ({
   changePassword: (...args: unknown[]) => changePasswordMock(...args),
 }))
 
+const getDigestSettingsMock = vi.fn()
+const updateDigestSettingsMock = vi.fn()
+const previewDigestMock = vi.fn()
+
+vi.mock('@/lib/api/digest-settings', () => ({
+  getDigestSettings: (...args: unknown[]) => getDigestSettingsMock(...args),
+  updateDigestSettings: (...args: unknown[]) => updateDigestSettingsMock(...args),
+  previewDigest: (...args: unknown[]) => previewDigestMock(...args),
+}))
+
 function renderPage() {
   return render(
     React.createElement(
@@ -51,11 +61,15 @@ describe('SettingsPage', () => {
     updateWorkspaceMock.mockReset()
     logoutMock.mockReset()
     changePasswordMock.mockReset()
+    getDigestSettingsMock.mockReset()
+    updateDigestSettingsMock.mockReset()
+    previewDigestMock.mockReset()
     getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme Support' })
     listWorkspacesMock.mockResolvedValue({
       items: [{ id: 'ws-1', name: 'Acme Support', role: 'owner' }],
       nextCursor: null,
     })
+    getDigestSettingsMock.mockResolvedValue({ emailEnabled: true, slackWebhookUrl: null, slackEnabled: false })
   })
 
   afterEach(() => {
@@ -215,5 +229,66 @@ describe('SettingsPage', () => {
     expect(await screen.findByText('Current password is incorrect')).toBeDefined()
     expect(logoutMock).not.toHaveBeenCalled()
     expect(pushMock).not.toHaveBeenCalledWith('/login')
+  })
+
+  it('does not fetch digest settings for a plain member', async () => {
+    listWorkspacesMock.mockResolvedValue({
+      items: [{ id: 'ws-1', name: 'Acme Support', role: 'member' }],
+      nextCursor: null,
+    })
+
+    renderPage()
+
+    await screen.findByLabelText('Workspace name')
+    expect(getDigestSettingsMock).not.toHaveBeenCalled()
+    expect(screen.queryByText('Weekly digest')).toBeNull()
+  })
+
+  it('owner sees the digest section and can toggle email on/off', async () => {
+    updateDigestSettingsMock.mockResolvedValue({ emailEnabled: false, slackWebhookUrl: null, slackEnabled: false })
+
+    renderPage()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'On' }))
+
+    await waitFor(() => {
+      expect(updateDigestSettingsMock).toHaveBeenCalledWith('ws-1', { emailEnabled: false })
+    })
+    expect(await screen.findByRole('button', { name: 'Off' })).toBeDefined()
+  })
+
+  it('saves a Slack webhook URL', async () => {
+    updateDigestSettingsMock.mockResolvedValue({
+      emailEnabled: true,
+      slackWebhookUrl: 'https://hooks.slack.com/services/x',
+      slackEnabled: true,
+    })
+
+    renderPage()
+
+    fireEvent.change(await screen.findByLabelText('Slack webhook URL'), {
+      target: { value: 'https://hooks.slack.com/services/x' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    await waitFor(() => {
+      expect(updateDigestSettingsMock).toHaveBeenCalledWith('ws-1', {
+        slackWebhookUrl: 'https://hooks.slack.com/services/x',
+      })
+    })
+    expect(await screen.findByText('Slack posting is enabled.')).toBeDefined()
+  })
+
+  it('shows a digest preview as plain text', async () => {
+    previewDigestMock.mockResolvedValue({
+      emailHtml: '<h2>digest</h2>',
+      slackPayload: { text: 'Quiet week — nothing notable.' },
+    })
+
+    renderPage()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Preview digest' }))
+
+    expect(await screen.findByText('Quiet week — nothing notable.')).toBeDefined()
   })
 })

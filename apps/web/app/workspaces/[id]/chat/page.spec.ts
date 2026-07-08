@@ -26,6 +26,7 @@ let latestUseChatOptions: any = null;
 let mockMessages = [{ id: "assistant-1", role: "assistant", content: "Grounded answer" }];
 let shouldEmitAssistantReply = true;
 let mockIsLoading = false;
+let mockStructuredHeaders: Record<string, string> = {};
 
 let mockSearchParams = new URLSearchParams();
 
@@ -104,6 +105,7 @@ vi.mock("ai/react", async () => {
                   ]),
                 ),
                 "X-Chat-Session-Id": "session-1",
+                ...mockStructuredHeaders,
               },
             }),
           );
@@ -168,6 +170,7 @@ describe("WorkspaceChatPage", () => {
     shouldEmitAssistantReply = true;
     mockIsLoading = false;
     mockSearchParams = new URLSearchParams();
+    mockStructuredHeaders = {};
     getWorkspaceMock.mockResolvedValue({ id: "ws-1", name: "Acme Support" });
     listChatSessionsMock.mockResolvedValue({
       items: [{ id: "session-1", title: "Billing help", createdAt: "", updatedAt: "" }],
@@ -691,5 +694,44 @@ describe("WorkspaceChatPage", () => {
       expect(setInputMock).toHaveBeenCalledWith("Reusable refined text");
       expect(screen.queryByRole("dialog")).toBeNull();
     });
+  });
+
+  it("renders clickable dataset candidates for an ambiguous structured answer", async () => {
+    mockStructuredHeaders = {
+      "X-Chat-Structured-State": "ambiguous",
+      "X-Chat-Structured-Candidates": encodeURIComponent(
+        JSON.stringify([
+          { id: "ds-1", name: "Sales 2024", description: null },
+          { id: "ds-2", name: "Sales 2025", description: null },
+        ]),
+      ),
+    };
+
+    renderPage();
+
+    expect(await screen.findByText("Which dataset did you mean?")).toBeDefined();
+    fireEvent.click(await screen.findByRole("button", { name: "Sales 2024" }));
+
+    expect(setInputMock).toHaveBeenCalledWith('Use the "Sales 2024" dataset');
+  });
+
+  it("renders a correction hint for a failed structured query", async () => {
+    mockStructuredHeaders = { "X-Chat-Structured-State": "correction" };
+
+    renderPage();
+
+    expect(
+      await screen.findByText("Couldn't run that query — try rephrasing"),
+    ).toBeDefined();
+  });
+
+  it("renders an empty-dataset hint when no dataset matches", async () => {
+    mockStructuredHeaders = { "X-Chat-Structured-State": "empty" };
+
+    renderPage();
+
+    expect(
+      await screen.findByText("No matching dataset for this question"),
+    ).toBeDefined();
   });
 });

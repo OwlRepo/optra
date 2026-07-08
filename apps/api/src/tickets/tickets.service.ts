@@ -430,6 +430,9 @@ export class TicketsService implements OnModuleInit {
       usefulness: dto.usefulness,
       editState: dto.editState,
       feedbackNote: dto.feedbackNote,
+      category: dto.category?.trim().toLowerCase(),
+      resolvedAt: dto.resolvedAt ? new Date(dto.resolvedAt) : undefined,
+      assigneeId: dto.assigneeId,
     }
   }
 

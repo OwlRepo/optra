@@ -4,14 +4,21 @@ import type { EmbeddedChunk } from './types'
 
 export type { EmbeddedChunk }
 
-const embedder = new OpenAIEmbeddings({
-  modelName: process.env.OPENAI_EMBEDDING_MODEL ?? 'text-embedding-3-small',
-  openAIApiKey: process.env.OPENAI_API_KEY,
-})
+let embedder: OpenAIEmbeddings | undefined
+
+function getEmbedder(): OpenAIEmbeddings {
+  if (!embedder) {
+    embedder = new OpenAIEmbeddings({
+      modelName: process.env.OPENAI_EMBEDDING_MODEL ?? 'text-embedding-3-small',
+      openAIApiKey: process.env.OPENAI_API_KEY,
+    })
+  }
+  return embedder
+}
 
 export async function embedChunks(chunks: Chunk[]): Promise<EmbeddedChunk[]> {
   const texts = chunks.map(c => c.content)
-  const vectors = await embedder.embedDocuments(texts)
+  const vectors = await getEmbedder().embedDocuments(texts)
 
   return chunks.map((chunk, index) => ({
     ...chunk,
@@ -20,5 +27,5 @@ export async function embedChunks(chunks: Chunk[]): Promise<EmbeddedChunk[]> {
 }
 
 export async function embedQuery(text: string): Promise<number[]> {
-  return embedder.embedQuery(text)
+  return getEmbedder().embedQuery(text)
 }

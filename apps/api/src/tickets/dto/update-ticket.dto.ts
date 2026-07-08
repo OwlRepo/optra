@@ -1,4 +1,4 @@
-import { IsEnum, IsOptional, IsString, MaxLength } from 'class-validator'
+import { IsDateString, IsEnum, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator'
 
 const severityValues = ['low', 'medium', 'high'] as const
 const usefulnessValues = ['useful', 'not_useful'] as const
@@ -51,4 +51,17 @@ export class UpdateTicketDto {
   @IsString()
   @MaxLength(2000)
   feedbackNote?: string
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  category?: string
+
+  @IsOptional()
+  @IsDateString()
+  resolvedAt?: string
+
+  @IsOptional()
+  @IsUUID()
+  assigneeId?: string
 }

@@ -63,6 +63,11 @@ services:
       context: .
       dockerfile: apps/api/Dockerfile
       target: prod
+    # Pinned, not left to host default: Hetzner CX21 is linux/amd64 native,
+    # so this is a no-op here — duckdb has no arm64 Linux prebuilt binary
+    # and no in-image toolchain to compile one, so an explicit pin prevents
+    # ever silently building the wrong arch on a different host later.
+    platform: linux/amd64
     container_name: mnemra-prod-api
     restart: unless-stopped
     env_file:
@@ -82,7 +87,7 @@ services:
       - web
     healthcheck:
       test:
-        ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:3001/health"]
+        ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://127.0.0.1:3001/health"]
       interval: 15s
       timeout: 5s
       retries: 5

@@ -2,7 +2,7 @@
 // rewrite/grade are cheap classification-style calls that can run on a faster,
 // cheaper model. Each role resolves to its own env var, then falls back to the
 // shared OPENAI_CHAT_MODEL, then to a safe default — so existing configs keep working.
-export type ModelRole = 'answer' | 'rewrite' | 'grade' | 'extraction' | 'refine' | 'condense'
+export type ModelRole = 'answer' | 'rewrite' | 'grade' | 'extraction' | 'refine' | 'condense' | 'sql' | 'faq'
 
 const ROLE_ENV: Record<ModelRole, string> = {
   answer: 'OPENAI_ANSWER_MODEL',
@@ -11,6 +11,8 @@ const ROLE_ENV: Record<ModelRole, string> = {
   extraction: 'OPENAI_EXTRACTION_MODEL',
   refine: 'OPENAI_REFINE_MODEL',
   condense: 'OPENAI_CONDENSE_MODEL',
+  sql: 'OPENAI_SQL_MODEL',
+  faq: 'OPENAI_FAQ_MODEL',
 }
 
 const DEFAULT_MODEL = 'gpt-4-turbo'

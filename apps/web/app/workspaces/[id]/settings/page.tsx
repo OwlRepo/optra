@@ -8,12 +8,14 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { AppShell, Badge, Button, Input, PageSection, useToast } from '@repo/ui'
 import { changePassword, logout } from '@/lib/api/auth'
+import { getDigestSettings, previewDigest, updateDigestSettings } from '@/lib/api/digest-settings'
 import { isUnauthorized } from '@/lib/api/handle-unauthorized'
 import { getWorkspace, listWorkspaces, updateWorkspace } from '@/lib/api/workspaces'
 import { WorkspaceNav } from '@/components/workspace-nav'
 
 type Workspace = { id: string; name: string }
 type WorkspaceMembership = { id: string; role: 'owner' | 'admin' | 'member' }
+type DigestSettings = { emailEnabled: boolean; slackWebhookUrl: string | null; slackEnabled: boolean }
 
 const renameSchema = z.object({
   name: z.string().trim().min(1, 'Workspace name is required').max(255, 'Workspace name is too long'),
@@ -40,6 +42,11 @@ export default function SettingsPage({ params }: { params: { id: string } }) {
   const workspaceId = params.id
   const [workspace, setWorkspace] = React.useState<Workspace | null>(null)
   const [role, setRole] = React.useState<WorkspaceMembership['role'] | null>(null)
+  const [digestSettings, setDigestSettings] = React.useState<DigestSettings | null>(null)
+  const [slackWebhookInput, setSlackWebhookInput] = React.useState('')
+  const [isSavingDigest, setIsSavingDigest] = React.useState(false)
+  const [isPreviewingDigest, setIsPreviewingDigest] = React.useState(false)
+  const [digestPreviewText, setDigestPreviewText] = React.useState<string | null>(null)
 
   const {
     register,
@@ -92,6 +99,18 @@ export default function SettingsPage({ params }: { params: { id: string } }) {
     }
     void loadPage()
   }, [reset, router, toast, workspaceId])
+
+  React.useEffect(() => {
+    if (role !== 'owner' && role !== 'admin') return
+    void getDigestSettings(workspaceId)
+      .then((data) => {
+        setDigestSettings(data);
+        setSlackWebhookInput(data?.slackWebhookUrl ?? '');
+      })
+      .catch((err) => {
+        if (isUnauthorized(err)) router.push('/login')
+      })
+  }, [role, router, workspaceId])
 
   const handleLogout = React.useCallback(async () => {
     try {
@@ -146,6 +165,74 @@ export default function SettingsPage({ params }: { params: { id: string } }) {
       setPasswordApiError(message)
     }
   })
+
+  const handleToggleEmail = async () => {
+    if (!digestSettings) return
+    setIsSavingDigest(true)
+    try {
+      const updated = await updateDigestSettings(workspaceId, { emailEnabled: !digestSettings.emailEnabled })
+      setDigestSettings(updated)
+      toast({ variant: 'success', title: 'Digest settings updated' })
+    } catch (err) {
+      if (isUnauthorized(err)) {
+        router.push('/login')
+        return
+      }
+      toast({
+        variant: 'error',
+        title: 'Failed to update digest settings',
+        description: err instanceof Error ? err.message : 'Try again in a moment.',
+      })
+    } finally {
+      setIsSavingDigest(false)
+    }
+  }
+
+  const handleSaveSlackWebhook = async () => {
+    setIsSavingDigest(true)
+    try {
+      const updated = await updateDigestSettings(workspaceId, {
+        slackWebhookUrl: slackWebhookInput.trim() || null,
+      })
+      setDigestSettings(updated)
+      toast({ variant: 'success', title: 'Slack webhook saved' })
+    } catch (err) {
+      if (isUnauthorized(err)) {
+        router.push('/login')
+        return
+      }
+      toast({
+        variant: 'error',
+        title: 'Failed to save Slack webhook',
+        description: err instanceof Error ? err.message : 'Try again in a moment.',
+      })
+    } finally {
+      setIsSavingDigest(false)
+    }
+  }
+
+  const handlePreviewDigest = async () => {
+    setIsPreviewingDigest(true)
+    try {
+      const data = await previewDigest(workspaceId)
+      // Plain-text (Slack) form is shown, not the raw HTML — avoids ever
+      // needing dangerouslySetInnerHTML for content that could later include
+      // free text (e.g. a topic-gap label).
+      setDigestPreviewText(data?.slackPayload?.text ?? null)
+    } catch (err) {
+      if (isUnauthorized(err)) {
+        router.push('/login')
+        return
+      }
+      toast({
+        variant: 'error',
+        title: 'Failed to load digest preview',
+        description: err instanceof Error ? err.message : 'Try again in a moment.',
+      })
+    } finally {
+      setIsPreviewingDigest(false)
+    }
+  }
 
   return (
     <AppShell
@@ -240,6 +327,76 @@ export default function SettingsPage({ params }: { params: { id: string } }) {
             </div>
           </form>
         </PageSection>
+
+        {(role === 'owner' || role === 'admin') && digestSettings ? (
+          <PageSection
+            eyebrow={<Badge variant="outline">Notifications</Badge>}
+            title="Weekly digest"
+            description="A weekly summary of activity, sent by email and/or posted to Slack."
+          >
+            <div className="space-y-4">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <p className="text-sm font-medium">Email digest</p>
+                  <p className="text-xs text-muted-foreground">Sent to the workspace owner.</p>
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={digestSettings.emailEnabled ? 'default' : 'ghost'}
+                  isLoading={isSavingDigest}
+                  onClick={() => void handleToggleEmail()}
+                >
+                  {digestSettings.emailEnabled ? 'On' : 'Off'}
+                </Button>
+              </div>
+
+              <div className="space-y-2">
+                <label htmlFor="slack-webhook-input" className="text-sm font-medium">
+                  Slack webhook URL
+                </label>
+                <div className="flex gap-2">
+                  <Input
+                    id="slack-webhook-input"
+                    placeholder="https://hooks.slack.com/services/..."
+                    value={slackWebhookInput}
+                    onChange={(event) => setSlackWebhookInput(event.target.value)}
+                  />
+                  <Button
+                    type="button"
+                    isLoading={isSavingDigest}
+                    loadingText="Saving"
+                    onClick={() => void handleSaveSlackWebhook()}
+                  >
+                    Save
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {digestSettings.slackEnabled ? 'Slack posting is enabled.' : 'Leave blank to disable Slack posting.'}
+                </p>
+              </div>
+
+              <div className="flex justify-end">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  isLoading={isPreviewingDigest}
+                  loadingText="Loading"
+                  onClick={() => void handlePreviewDigest()}
+                >
+                  Preview digest
+                </Button>
+              </div>
+
+              {digestPreviewText ? (
+                <pre className="whitespace-pre-wrap rounded-lg border border-border/70 p-4 text-sm">
+                  {digestPreviewText}
+                </pre>
+              ) : null}
+            </div>
+          </PageSection>
+        ) : null}
       </div>
     </AppShell>
   )

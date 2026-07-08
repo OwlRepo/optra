@@ -44,6 +44,14 @@ describe('NotificationsService', () => {
 
       expect(logSpy).toHaveBeenCalledWith('[DEV INVITE] user@example.com -> https://example.com/invite/abc')
     })
+
+    it('sendDigestEmail logs to console instead of calling Resend', async () => {
+      const service = await buildService({ EMAIL_OTP_ENABLED: 'false' })
+
+      await service.sendDigestEmail('user@example.com', '<p>digest</p>')
+
+      expect(logSpy).toHaveBeenCalledWith('[DEV DIGEST] user@example.com\n<p>digest</p>')
+    })
   })
 
   describe('when EMAIL_OTP_ENABLED is "true" (Resend path)', () => {
@@ -92,6 +100,17 @@ describe('NotificationsService', () => {
       await expect(
         service.sendInvite('user@example.com', 'https://example.com/invite/abc'),
       ).rejects.toThrow(InternalServerErrorException)
+    })
+
+    it('sendDigestEmail also throws when Resend resolves with an error object', async () => {
+      const service = await buildServiceWithStubbedResend(async () => ({
+        data: null,
+        error: { name: 'validation_error', message: 'Domain not verified', statusCode: 403 },
+      }))
+
+      await expect(service.sendDigestEmail('user@example.com', '<p>digest</p>')).rejects.toThrow(
+        InternalServerErrorException,
+      )
     })
   })
 })

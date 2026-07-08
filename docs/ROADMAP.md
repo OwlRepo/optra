@@ -63,6 +63,7 @@ Workspace, KB, document ingest, and corresponding web pages are implemented.
 - JWT middleware injects `tenantId` into every request from token
 - All DB queries automatically scoped by `tenantId`
 - RLS policies on `chunks` and `documents` tables
+- *(Drift note 2026-07-08: live code uses `workspaceId`, and RLS is NOT enabled — isolation is app-level `WHERE workspace_id` filters in every query; see `docs/PRODUCTION-READINESS.md` A7.)*
 
 ---
 
@@ -75,7 +76,13 @@ Workspace, KB, document ingest, and corresponding web pages are implemented.
 - User profile/settings page
 - Section-aware chunking (steel beams already in place, just needs implementation per file type)
 - Ticket ingestion flow — support ticket format → KB
-- Analytics — answer quality, KB coverage, usage per workspace
+- Analytics — answer quality, KB coverage, usage per workspace *(addressed by V2 feature F7a — see below)*
+
+---
+
+### V2 — Structured Query & Insights (planned 2026-07-08)
+
+Approved batch plan for 7 features: structured CSV querying (DuckDB), ticket trend analysis, runbook freshness detector, auto-FAQ from ticket clusters, cross-file comparison queries, Slack/email digest, confidence/coverage dashboard. Full dependency, risk, migration, and build-order analysis lives in `docs/ai/planning/v2-features.md` — read that before touching any v2 slice. Respects the gates below: nothing enables or extends the RAG LangGraph, and the RAGAS-dependent dashboard half (F7b) sequences after Stage 2 / D1.
 
 ---
 
