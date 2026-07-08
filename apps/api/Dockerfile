@@ -13,7 +13,19 @@ WORKDIR /app
 # DuckDB fetching its prebuilt binary from npm.duckdb.org) fail with "unable
 # to get local issuer certificate" — verified via a real failed build, not
 # assumed; --no-install-recommends skips it since it's only "Recommended".
-RUN apt-get update && apt-get install -y --no-install-recommends nodejs ca-certificates \
+#
+# Debian bookworm's own "nodejs" apt package is pinned at 18.20.4 (Node ABI
+# 108). duckdb@1.4.4 no longer publishes a prebuilt binary for that ABI
+# (verified: npm.duckdb.org 404s for node-v108-linux-x64, but 200s for
+# node-v115 [Node 20] and node-v127 [Node 22]), so bun install falls back to
+# compiling from source via node-gyp — which then fails too, since this image
+# has no Python. Installing Node 20.x from NodeSource instead of the Debian
+# default gets an ABI duckdb actually ships a prebuilt binary for, so the
+# postinstall script downloads instead of compiling — no build toolchain
+# needed at all.
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl gnupg \
+    && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
     && rm -rf /var/lib/apt/lists/*
 
 # --- deps stage: install workspace deps ---
@@ -59,6 +71,6 @@ RUN --mount=type=cache,id=mnemra-turbo-api-v1,target=/app/.turbo,sharing=locked 
 WORKDIR /app
 EXPOSE 3001
 HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
-  CMD ["sh", "-c", "wget -q -O /dev/null \"http://127.0.0.1:${PORT:-3001}/health\" || exit 1"]
+  CMD ["sh", "-c", "curl -fsS -o /dev/null \"http://127.0.0.1:${PORT:-3001}/health\" || exit 1"]
 
 CMD ["sh", "-c", "cd packages/db && bun run db:migrate && cd /app/apps/api && exec node dist/main"]

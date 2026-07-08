@@ -23,6 +23,7 @@ needs_install() {
     bun.lock \
     turbo.json \
     apps/api/package.json \
+    apps/api/Dockerfile \
     packages/db/package.json \
     packages/ai/package.json \
     packages/types/package.json
