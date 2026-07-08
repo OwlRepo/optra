@@ -84,7 +84,7 @@ jobs:
             api_ok=0
             for i in $(seq 1 15); do
               docker compose -f docker-compose.prod.yml exec -T api \
-                wget -q -O /dev/null http://127.0.0.1:3001/health && { api_ok=1; break; }
+                curl -fsS -o /dev/null http://127.0.0.1:3001/health && { api_ok=1; break; }
               echo "api health check retry $i..."; sleep 4
             done
             if [ "$api_ok" -ne 1 ]; then
