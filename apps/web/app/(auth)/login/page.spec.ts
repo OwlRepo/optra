@@ -6,7 +6,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import LoginPage from './page'
 
 const pushMock = vi.fn()
-const routerMock = { push: pushMock }
+const refreshMock = vi.fn()
+const routerMock = { push: pushMock, refresh: refreshMock }
 const loginMock = vi.fn()
 const markLoggedInMock = vi.fn()
 
@@ -25,6 +26,7 @@ vi.mock('@/lib/auth', () => ({
 describe('LoginPage', () => {
   beforeEach(() => {
     pushMock.mockReset()
+    refreshMock.mockReset()
     loginMock.mockReset()
     markLoggedInMock.mockReset()
   })
@@ -49,6 +51,7 @@ describe('LoginPage', () => {
       expect(loginMock).toHaveBeenCalledWith('owner@example.com', 'password123')
       expect(markLoggedInMock).toHaveBeenCalledTimes(1)
       expect(markLoggedInMock).toHaveBeenCalledWith()
+      expect(refreshMock).toHaveBeenCalledTimes(1)
       expect(pushMock).toHaveBeenCalledWith('/chat')
     })
   })
@@ -66,6 +69,7 @@ describe('LoginPage', () => {
       expect(screen.getByText('Invalid credentials')).toBeDefined()
     })
     expect(markLoggedInMock).not.toHaveBeenCalled()
+    expect(refreshMock).not.toHaveBeenCalled()
     expect(pushMock).not.toHaveBeenCalled()
   })
 })

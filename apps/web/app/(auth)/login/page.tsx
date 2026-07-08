@@ -33,6 +33,7 @@ export default function LoginPage() {
     try {
       await login(data.email, data.password)
       markLoggedIn()
+      router.refresh()
       router.push('/chat')
     } catch (err: unknown) {
       const message = err && typeof err === 'object' && 'message' in err

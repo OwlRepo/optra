@@ -6,7 +6,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import VerifyOtpPage from './page'
 
 const pushMock = vi.fn()
-const routerMock = { push: pushMock }
+const refreshMock = vi.fn()
+const routerMock = { push: pushMock, refresh: refreshMock }
 const searchParamsMock = { get: vi.fn().mockReturnValue('owner@example.com') }
 const verifyOtpMock = vi.fn()
 const markLoggedInMock = vi.fn()
@@ -27,6 +28,7 @@ vi.mock('@/lib/auth', () => ({
 describe('VerifyOtpPage', () => {
   beforeEach(() => {
     pushMock.mockReset()
+    refreshMock.mockReset()
     verifyOtpMock.mockReset()
     markLoggedInMock.mockReset()
   })
@@ -50,6 +52,7 @@ describe('VerifyOtpPage', () => {
       expect(verifyOtpMock).toHaveBeenCalledWith('owner@example.com', '123456')
       expect(markLoggedInMock).toHaveBeenCalledTimes(1)
       expect(markLoggedInMock).toHaveBeenCalledWith()
+      expect(refreshMock).toHaveBeenCalledTimes(1)
       expect(pushMock).toHaveBeenCalledWith('/chat')
     })
   })
@@ -66,6 +69,7 @@ describe('VerifyOtpPage', () => {
       expect(screen.getByText('Invalid code')).toBeDefined()
     })
     expect(markLoggedInMock).not.toHaveBeenCalled()
+    expect(refreshMock).not.toHaveBeenCalled()
     expect(pushMock).not.toHaveBeenCalled()
   })
 })
