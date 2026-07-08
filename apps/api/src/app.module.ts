@@ -16,6 +16,7 @@ import { EventsModule } from './events/events.module'
 import { SearchModule } from './search/search.module'
 import { RefineModule } from './refine/refine.module'
 import { DatasetsModule } from './datasets/datasets.module'
+import { InsightsModule } from './insights/insights.module'
 import { HealthController } from './health/health.controller'
 
 @Module({
@@ -42,6 +43,7 @@ import { HealthController } from './health/health.controller'
     SearchModule,
     RefineModule,
     DatasetsModule,
+    InsightsModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })

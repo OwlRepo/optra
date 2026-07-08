@@ -120,6 +120,13 @@
       "when": 1783488976211,
       "tag": "0016_overrated_inhumans",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "5",
+      "when": 1783492828033,
+      "tag": "0017_minor_captain_marvel",
+      "breakpoints": true
     }
   ]
 }
