@@ -55,6 +55,11 @@ services:
       context: .
       dockerfile: apps/api/Dockerfile
       target: dev
+    # Pinned: production (Hetzner CX21) is linux/amd64 native, and duckdb's
+    # only reliable prebuilt Linux binary is amd64 (no arm64 build, no
+    # toolchain in the image to compile from source). On Apple Silicon this
+    # builds/runs under emulation instead of crashing/hanging at dlopen.
+    platform: linux/amd64
     container_name: mnemra-api
     ports:
       - "${MNEMRA_API_PORT:-3101}:3001"
