@@ -293,6 +293,7 @@ describe("WorkspaceChatPage", () => {
   it("hides relevance scores by default and reveals them on toggle", async () => {
     renderPage();
 
+    fireEvent.click(await screen.findByRole("button", { name: "Sources (1)" }));
     await waitFor(() => {
       expect(screen.getByText("Support SOP")).toBeDefined();
     });
@@ -311,8 +312,11 @@ describe("WorkspaceChatPage", () => {
     renderPage();
 
     await waitFor(() => {
-      expect(screen.getByText("Support SOP")).toBeDefined();
       expect(screen.getByText("Sources (1)")).toBeDefined();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Sources (1)" }));
+    await waitFor(() => {
+      expect(screen.getByText("Support SOP")).toBeDefined();
     });
     expect(screen.queryByText("Latest assistant citations")).toBeNull();
   });
@@ -320,6 +324,7 @@ describe("WorkspaceChatPage", () => {
   it("downloads a document source that carries a knowledge base id", async () => {
     renderPage();
 
+    fireEvent.click(await screen.findByRole("button", { name: "Sources (1)" }));
     await screen.findByText("Support SOP");
     fireEvent.click(screen.getByRole("button", { name: "Download document" }));
 
@@ -350,6 +355,7 @@ describe("WorkspaceChatPage", () => {
 
     renderPage();
 
+    fireEvent.click(await screen.findByRole("button", { name: "Sources (1)" }));
     await waitFor(() => {
       expect(screen.getByRole("link", { name: "Legacy doc" })).toBeDefined();
     });
@@ -380,6 +386,7 @@ describe("WorkspaceChatPage", () => {
 
     renderPage();
 
+    fireEvent.click(await screen.findByRole("button", { name: "Sources (1)" }));
     await waitFor(() => {
       expect(screen.getByText("Ticket citation")).toBeDefined();
     });
