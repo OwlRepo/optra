@@ -25,3 +25,7 @@ export function rejectFaqDraft(workspaceId: string, draftId: string) {
     method: 'PATCH',
   })
 }
+
+export function getCoverage(workspaceId: string) {
+  return apiFetch(`/api/workspaces/${workspaceId}/insights/coverage`)
+}

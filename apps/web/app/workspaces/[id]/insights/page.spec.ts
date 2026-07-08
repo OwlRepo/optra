@@ -13,6 +13,7 @@ const dismissFreshnessFlagMock = vi.fn();
 const listFaqDraftsMock = vi.fn();
 const approveFaqDraftMock = vi.fn();
 const rejectFaqDraftMock = vi.fn();
+const getCoverageMock = vi.fn();
 const getWorkspaceMock = vi.fn();
 const logoutMock = vi.fn();
 
@@ -27,6 +28,7 @@ vi.mock("@/lib/api/insights", () => ({
   listFaqDrafts: (...args: unknown[]) => listFaqDraftsMock(...args),
   approveFaqDraft: (...args: unknown[]) => approveFaqDraftMock(...args),
   rejectFaqDraft: (...args: unknown[]) => rejectFaqDraftMock(...args),
+  getCoverage: (...args: unknown[]) => getCoverageMock(...args),
 }));
 
 vi.mock("@/lib/api/workspaces", () => ({
@@ -59,11 +61,17 @@ describe("WorkspaceInsightsPage", () => {
     listFaqDraftsMock.mockReset();
     approveFaqDraftMock.mockReset();
     rejectFaqDraftMock.mockReset();
+    getCoverageMock.mockReset();
     getWorkspaceMock.mockReset();
     logoutMock.mockReset();
     getWorkspaceMock.mockResolvedValue({ id: "ws-1", name: "Acme Support" });
     listFreshnessFlagsMock.mockResolvedValue([]);
     listFaqDraftsMock.mockResolvedValue([]);
+    getCoverageMock.mockResolvedValue({
+      summary: { totalQueries: 0, fallbackRate: 0, cacheHitRate: 0, avgTopScore: null },
+      lowScoreQueries: [],
+      topicGaps: [],
+    });
   });
 
   afterEach(() => {
@@ -181,5 +189,35 @@ describe("WorkspaceInsightsPage", () => {
       expect(rejectFaqDraftMock).toHaveBeenCalledWith("ws-1", "draft-1");
     });
     expect(await screen.findByText("No FAQ drafts")).toBeDefined();
+  });
+
+  it("switches to the Coverage tab and renders summary stats", async () => {
+    getCoverageMock.mockResolvedValue({
+      summary: { totalQueries: 40, fallbackRate: 0.25, cacheHitRate: 0.5, avgTopScore: 0.82 },
+      lowScoreQueries: [{ id: "m-1", question: "why is billing broken", topScore: 0.2, isFallback: false, createdAt: "" }],
+      topicGaps: [{ label: "Billing sync issues", questionCount: 6, exampleQuestion: "why is billing broken" }],
+    });
+
+    renderPage();
+    await screen.findByText("No freshness flags");
+
+    fireEvent.click(screen.getByRole("button", { name: "Coverage" }));
+
+    expect(await screen.findByText("25%")).toBeDefined();
+    expect(screen.getByText("50%")).toBeDefined();
+    expect(screen.getByText("0.82")).toBeDefined();
+    expect(screen.getByText("why is billing broken")).toBeDefined();
+    expect(screen.getByText("Billing sync issues")).toBeDefined();
+    expect(screen.getByText("6 questions")).toBeDefined();
+  });
+
+  it("renders empty states on the Coverage tab when there is no data yet", async () => {
+    renderPage();
+    await screen.findByText("No freshness flags");
+
+    fireEvent.click(screen.getByRole("button", { name: "Coverage" }));
+
+    expect(await screen.findByText("No low-confidence questions")).toBeDefined();
+    expect(screen.getByText("No topic gaps yet")).toBeDefined();
   });
 });
