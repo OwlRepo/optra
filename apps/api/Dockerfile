@@ -37,7 +37,7 @@ COPY packages/types/package.json ./packages/types/
 COPY packages/db/package.json ./packages/db/
 COPY packages/ai/package.json ./packages/ai/
 COPY packages/ui/package.json ./packages/ui/
-RUN --mount=type=cache,id=mnemra-bun-api-v1,target=/root/.bun/install/cache,sharing=locked \
+RUN --mount=type=cache,id=optra-bun-api-v1,target=/root/.bun/install/cache,sharing=locked \
     bun install --frozen-lockfile --filter './' --filter '@repo/api' --filter '@repo/ai' --filter '@repo/db'
 
 # --- dev target: run nest start --watch with bind-mounted source ---
@@ -65,7 +65,7 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
 ENV NODE_ENV=production
-RUN --mount=type=cache,id=mnemra-turbo-api-v1,target=/app/.turbo,sharing=locked \
+RUN --mount=type=cache,id=optra-turbo-api-v1,target=/app/.turbo,sharing=locked \
     bunx turbo run build --filter=@repo/api...
 
 WORKDIR /app

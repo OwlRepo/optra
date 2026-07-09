@@ -53,7 +53,7 @@ docker compose -f docker-compose.prod.yml build api web
 echo "🚀 Starting production services..."
 if [ "$public_ingress_enabled" -ne 1 ]; then
     echo "ℹ️  Bundled Caddy profile disabled; removing old Caddy container if present"
-    docker rm -f mnemra-prod-caddy >/dev/null 2>&1 || true
+    docker rm -f optra-prod-caddy >/dev/null 2>&1 || true
 fi
 docker compose -f docker-compose.prod.yml up -d --remove-orphans --force-recreate
 

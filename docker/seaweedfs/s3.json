@@ -1,11 +1,11 @@
 {
   "identities": [
     {
-      "name": "mnemra",
+      "name": "optra",
       "credentials": [
         {
-          "accessKey": "mnemra-local",
-          "secretKey": "mnemra-local-secret"
+          "accessKey": "4ec7af4df6681cc7c51dfd44b372e353f68094e868c835f0",
+          "secretKey": "abf9c738cb378408b18ff4c392c23b2cb4df9b516b5596adf6cc6234ab62335f0277d578f5a5acc0d22a6c4d55053ab4"
         }
       ],
       "actions": ["Admin", "Read", "Write"]

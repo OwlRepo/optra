@@ -41,10 +41,15 @@ Confirmed from `apps/api/package.json` as of 2026-06-28:
 - `bun run test:e2e` — Jest e2e tests (`apps/api/test/**/*.e2e-spec.ts`), boots a real `AppModule` instance and hits it with Supertest
 - `bun run type-check` — `tsc --noEmit`
 
-Storage integration note as of 2026-06-30:
+Storage integration note as of 2026-06-30 (CONTEXT DRIFT fix 2026-07-09 — port renamed with the Optra rebrand, see `risk-register.md`'s PO ↔ Invoice Comparison note):
 - `apps/api/src/storage/storage.service.spec.ts` is a real integration test against an S3-compatible endpoint.
-- Expected local dependency: SeaweedFS at `S3_ENDPOINT=http://localhost:8333`.
+- Expected local dependency: SeaweedFS at `S3_ENDPOINT=http://localhost:8433` (was `8333` under the legacy `mnemra` local stack).
 - The spec is skipped when `S3_ENDPOINT` is absent so non-storage environments can still run the rest of the API suite.
+
+Procurement (PO ↔ Invoice discrepancy) note as of 2026-07-09:
+- `apps/api/src/procurement/column-mapping.spec.ts`, `procurement-parse.service.spec.ts`, `procurement-documents.service.spec.ts`, `procurement-parse.processor.spec.ts`, and `comparison.service.spec.ts` (29 tests total) cover header-alias mapping, Bull enqueue/reconcile lifecycle for both `purchase_order`/`invoice` kinds, upload/list/remove with workspace isolation, CSV/XLSX parse + delete-then-insert idempotency, and the DuckDB comparison join (quantity/price mismatch, missing-on-po/invoice, description-fallback matching, re-compare idempotency) — all against a real Postgres + real `DuckDbQueryService`, no mocks on the DB/SQL layer.
+- `apps/api/test/procurement.e2e-spec.ts` boots the real `AppModule` (mirrors `documents.e2e-spec.ts`'s pattern) and deliberately does NOT mock `ProcurementParseService` — it exercises the real Bull queue + real processor in-process, polling for `status='done'` before comparing, since the queue lifecycle itself is the Deep-risk surface worth proving end-to-end.
+- `procurement-parse.processor.spec.ts` explicitly asserts `embedQuery` (mocked `@repo/ai`) is never called — proves the parse path makes zero OpenAI calls, matching the plan's "no new external integration" requirement.
 
 Scrape/upload security note as of 2026-07-01:
 - `packages/ai/src/web/ssrf.spec.ts` covers blocked hostnames, private/loopback/link-local IP ranges, IPv6 / IPv4-mapped cases, DNS rebinding, and public-host allow path.
@@ -172,9 +177,9 @@ For everything else infra-shaped, the pragmatic verification checklist is:
    the corresponding container's logs show a rebuild/reload (`nest start --watch` recompile log for
    api, Fast Refresh log for web) within a few seconds — this is the hot-reload verification the
    bind-mount + polling setup exists to guarantee.
-6. `curl http://localhost:3101/health` returns `200 {"status":"ok"}` (dev) — confirms the endpoint
+6. `curl http://localhost:3301/health` returns `200 {"status":"ok"}` (dev) — confirms the endpoint
    and the api container's port mapping both work.
-7. `curl http://localhost:3100` returns `200` with the Next.js app HTML (dev).
+7. `curl http://localhost:3300` returns `200` with the Next.js app HTML (dev).
 8. Run each app's existing test suite (`cd apps/api && bun run test`, `cd apps/web && bun run test`,
    plus `packages/db`/`packages/ai`/`packages/ui`'s `bun run test` where defined) to confirm
    infra/rebrand changes did not silently break any test that happened to assert on old

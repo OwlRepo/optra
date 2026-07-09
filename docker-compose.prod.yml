@@ -1,14 +1,14 @@
-name: mnemra-prod
+name: optra-prod
 
 services:
   postgres:
     image: pgvector/pgvector:pg16
-    container_name: mnemra-prod-db
+    container_name: optra-prod-db
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD required}
-      POSTGRES_DB: ${POSTGRES_DB:-mnemra}
+      POSTGRES_DB: ${POSTGRES_DB:-optra}
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./docker/init-db.sql:/docker-entrypoint-initdb.d/init.sql
@@ -22,7 +22,7 @@ services:
 
   redis:
     image: redis:7-alpine
-    container_name: mnemra-prod-redis
+    container_name: optra-prod-redis
     restart: unless-stopped
     volumes:
       - redis_data:/data
@@ -36,7 +36,7 @@ services:
 
   seaweedfs:
     image: chrislusf/seaweedfs
-    container_name: mnemra-prod-seaweedfs
+    container_name: optra-prod-seaweedfs
     restart: unless-stopped
     command: server -s3 -s3.config=/etc/seaweedfs/s3.json -dir=/data
     volumes:
@@ -68,20 +68,20 @@ services:
     # and no in-image toolchain to compile one, so an explicit pin prevents
     # ever silently building the wrong arch on a different host later.
     platform: linux/amd64
-    container_name: mnemra-prod-api
+    container_name: optra-prod-api
     restart: unless-stopped
     env_file:
       - .env
     environment:
       NODE_ENV: production
-      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-mnemra}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-optra}
       REDIS_HOST: redis
       REDIS_PORT: 6379
       S3_ENDPOINT: http://seaweedfs:8333
       WEB_URL: https://${DOMAIN}
       OPENAI_API_KEY: ${OPENAI_API_KEY:?OPENAI_API_KEY required}
       LANGSMITH_API_KEY: ${LANGSMITH_API_KEY:-}
-      LANGSMITH_PROJECT: ${LANGSMITH_PROJECT:-mnemra-prod}
+      LANGSMITH_PROJECT: ${LANGSMITH_PROJECT:-optra-prod}
     networks:
       - internal
       - web
@@ -107,21 +107,21 @@ services:
       target: runner
       args:
         NEXT_PUBLIC_API_URL: https://${DOMAIN}/api
-    container_name: mnemra-prod-web
+    container_name: optra-prod-web
     restart: unless-stopped
     ports:
-      - "127.0.0.1:3100:3000"
+      - "127.0.0.1:3300:3000"
     env_file:
       - .env
     environment:
       NODE_ENV: production
       API_URL: http://api:3001
       NEXT_PUBLIC_API_URL: https://${DOMAIN}/api
-      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-mnemra}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-optra}
       WEB_URL: https://${DOMAIN}
       OPENAI_API_KEY: ${OPENAI_API_KEY:?OPENAI_API_KEY required}
       LANGSMITH_API_KEY: ${LANGSMITH_API_KEY:-}
-      LANGSMITH_PROJECT: ${LANGSMITH_PROJECT:-mnemra-prod}
+      LANGSMITH_PROJECT: ${LANGSMITH_PROJECT:-optra-prod}
     networks:
       - internal
       - web
@@ -137,7 +137,7 @@ services:
 
   caddy:
     image: caddy:2-alpine
-    container_name: mnemra-prod-caddy
+    container_name: optra-prod-caddy
     profiles: ["public"]
     restart: unless-stopped
     ports:

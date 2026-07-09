@@ -6,6 +6,9 @@ import { StorageModule } from '../storage/storage.module'
 @Module({
   imports: [StorageModule],
   providers: [StructuredQueryService, DuckDbQueryService],
-  exports: [StructuredQueryService],
+  // DuckDbQueryService additionally exported for ProcurementModule's
+  // comparison.service.ts, which reuses this same sandboxed execution
+  // engine for a fixed (non-LLM-generated) comparison query.
+  exports: [StructuredQueryService, DuckDbQueryService],
 })
 export class StructuredQueryModule {}

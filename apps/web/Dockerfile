@@ -15,7 +15,7 @@ COPY packages/types/package.json ./packages/types/
 COPY packages/db/package.json ./packages/db/
 COPY packages/ai/package.json ./packages/ai/
 COPY packages/ui/package.json ./packages/ui/
-RUN --mount=type=cache,id=mnemra-bun-web-v1,target=/root/.bun/install/cache,sharing=locked \
+RUN --mount=type=cache,id=optra-bun-web-v1,target=/root/.bun/install/cache,sharing=locked \
     bun install --frozen-lockfile --filter './' --filter '@repo/web' --filter '@repo/ui'
 
 # --- dev target: run next dev with bind-mounted source ---
@@ -48,7 +48,7 @@ COPY . .
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
-RUN --mount=type=cache,id=mnemra-turbo-web-v1,target=/app/.turbo,sharing=locked \
+RUN --mount=type=cache,id=optra-turbo-web-v1,target=/app/.turbo,sharing=locked \
     bunx turbo run build --filter=@repo/web...
 
 RUN mkdir -p /app/prod-public && \

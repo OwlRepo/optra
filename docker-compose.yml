@@ -1,15 +1,15 @@
-name: mnemra
+name: optra
 
 services:
   postgres:
     image: pgvector/pgvector:pg16
-    container_name: mnemra-db
+    container_name: optra-db
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: mnemra
+      POSTGRES_DB: optra
     ports:
-      - "54321:5432"
+      - "54322:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./docker/init-db.sql:/docker-entrypoint-initdb.d/init.sql
@@ -21,9 +21,9 @@ services:
 
   redis:
     image: redis:7-alpine
-    container_name: mnemra-redis
+    container_name: optra-redis
     ports:
-      - "6379:6379"
+      - "6380:6379"
     volumes:
       - redis_data:/data
     healthcheck:
@@ -34,12 +34,12 @@ services:
 
   seaweedfs:
     image: chrislusf/seaweedfs
-    container_name: mnemra-seaweedfs
+    container_name: optra-seaweedfs
     command: server -s3 -s3.config=/etc/seaweedfs/s3.json -dir=/data
     ports:
-      - "8333:8333"
-      - "8888:8888"
-      - "9333:9333"
+      - "8433:8333"
+      - "8988:8888"
+      - "9433:9333"
     volumes:
       - seaweedfs_data:/data
       - ./docker/seaweedfs/s3.json:/etc/seaweedfs/s3.json:ro
@@ -60,22 +60,22 @@ services:
     # toolchain in the image to compile from source). On Apple Silicon this
     # builds/runs under emulation instead of crashing/hanging at dlopen.
     platform: linux/amd64
-    container_name: mnemra-api
+    container_name: optra-api
     ports:
-      - "${MNEMRA_API_PORT:-3101}:3001"
+      - "${OPTRA_API_PORT:-3301}:3001"
     env_file:
       - .env
     environment:
-      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/mnemra
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/optra
       REDIS_HOST: redis
       REDIS_PORT: 6379
       S3_ENDPOINT: http://seaweedfs:8333
       S3_REGION: us-east-1
-      S3_ACCESS_KEY: mnemra-local
-      S3_SECRET_KEY: mnemra-local-secret
-      S3_BUCKET: mnemra-documents
+      S3_ACCESS_KEY: 4ec7af4df6681cc7c51dfd44b372e353f68094e868c835f0
+      S3_SECRET_KEY: abf9c738cb378408b18ff4c392c23b2cb4df9b516b5596adf6cc6234ab62335f0277d578f5a5acc0d22a6c4d55053ab4
+      S3_BUCKET: optra-documents
       S3_FORCE_PATH_STYLE: "true"
-      WEB_URL: http://localhost:${MNEMRA_WEB_PORT:-3100}
+      WEB_URL: http://localhost:${OPTRA_WEB_PORT:-3300}
     volumes:
       - .:/app
       - api_node_modules:/app/node_modules
@@ -98,13 +98,13 @@ services:
       context: .
       dockerfile: apps/web/Dockerfile
       target: dev
-    container_name: mnemra-web
+    container_name: optra-web
     ports:
-      - "${MNEMRA_WEB_PORT:-3100}:3000"
+      - "${OPTRA_WEB_PORT:-3300}:3000"
     env_file:
       - .env
     environment:
-      NEXT_PUBLIC_API_URL: http://localhost:${MNEMRA_API_PORT:-3101}
+      NEXT_PUBLIC_API_URL: http://localhost:${OPTRA_API_PORT:-3301}
       API_URL: http://api:3001
     volumes:
       - .:/app
