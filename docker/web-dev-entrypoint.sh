@@ -3,7 +3,7 @@ set -eu
 
 cd /app
 
-DEPS_STAMP="node_modules/.mnemra-web-deps.stamp"
+DEPS_STAMP="node_modules/.optra-web-deps.stamp"
 
 needs_install() {
   if [ ! -d node_modules/next ]; then

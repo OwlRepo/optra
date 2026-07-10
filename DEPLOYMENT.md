@@ -63,8 +63,8 @@ sh get-docker.sh
 apt install docker-compose-plugin -y
 
 # Create app directory
-mkdir -p /opt/mnemra
-chown -R $USER:$USER /opt/mnemra
+mkdir -p /opt/optra
+chown -R $USER:$USER /opt/optra
 
 # Create non-root user (optional but recommended)
 adduser deploy
@@ -138,7 +138,7 @@ This will:
 
 ```bash
 # On server
-cd /opt/mnemra
+cd /opt/optra
 
 # Clone repo or upload code
 git clone YOUR_REPO .
@@ -155,7 +155,7 @@ nano .env  # Fill in values
 
 `.github/workflows/deploy.yml` deploys automatically on every push to `main` (or via manual `workflow_dispatch`). It SSHes into the VPS, pulls latest, backs up Postgres, rebuilds `api`/`web`, brings the stack up, and runs internal API/Web/S3 checks before declaring success.
 
-This assumes the deploy directory already has a working checkout with `.env` in place (i.e. you've already done Option A or B once). If `docker/seaweedfs/s3.prod.json` is missing, the workflow creates it from `S3_ACCESS_KEY`/`S3_SECRET_KEY` in `.env`. Set `COMPOSE_PROFILES=public` only when Mnemra's bundled Caddy should own host ports `80`/`443`; otherwise the workflow skips the public HTTPS smoke and leaves ingress to an external host proxy.
+This assumes the deploy directory already has a working checkout with `.env` in place (i.e. you've already done Option A or B once). If `docker/seaweedfs/s3.prod.json` is missing, the workflow creates it from `S3_ACCESS_KEY`/`S3_SECRET_KEY` in `.env`. Set `COMPOSE_PROFILES=public` only when Optra's bundled Caddy should own host ports `80`/`443`; otherwise the workflow skips the public HTTPS smoke and leaves ingress to an external host proxy.
 
 Configure these **GitHub Secrets** on the repo (`Settings → Secrets and variables → Actions`):
 | Secret | Value |
@@ -245,7 +245,7 @@ docker compose -f docker-compose.prod.yml logs caddy | grep -i certificate
 ./scripts/deploy-remote.sh deploy@YOUR_SERVER_IP
 
 # Or on server
-cd /opt/mnemra
+cd /opt/optra
 git pull  # or re-sync code
 ./scripts/deploy.sh
 
@@ -270,7 +270,7 @@ docker compose -f docker-compose.prod.yml exec -T postgres \
   sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB"' > backup_$(date +%Y%m%d_%H%M%S).sql
 ```
 
-The GitHub Actions deploy workflow also takes an automatic backup before every deploy, stored in `/home/deploy/apps/mnemra-backups/`, retained 14 days.
+The GitHub Actions deploy workflow also takes an automatic backup before every deploy, stored in `/home/deploy/apps/optra-backups/`, retained 14 days.
 
 ### Restore Database
 
@@ -330,7 +330,7 @@ sudo lsof -i :443
 sudo lsof -i :5432
 
 # On a shared VPS, leave COMPOSE_PROFILES unset so bundled Caddy does not bind 80/443.
-# Enable COMPOSE_PROFILES=public only when Mnemra owns those ports.
+# Enable COMPOSE_PROFILES=public only when Optra owns those ports.
 ```
 
 ### SSL not working

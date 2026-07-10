@@ -14,7 +14,7 @@ json_escape() {
 
 is_placeholder() {
     case "$1" in
-        ""|*"REPLACE_WITH"*|*"your-key-here"*|"mnemra-local"|"mnemra-local-secret")
+        ""|*"REPLACE_WITH"*|*"your-key-here"*|"mnemra-local"|"mnemra-local-secret"|"optra-local"|"optra-local-secret")
             return 0
             ;;
         *)
@@ -45,7 +45,7 @@ cat > "$OUTPUT_FILE" <<EOF
 {
   "identities": [
     {
-      "name": "mnemra",
+      "name": "optra",
       "credentials": [
         {
           "accessKey": "$ACCESS_KEY_JSON",

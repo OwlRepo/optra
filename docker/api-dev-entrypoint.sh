@@ -3,7 +3,7 @@ set -eu
 
 cd /app
 
-DEPS_STAMP="node_modules/.mnemra-api-deps.stamp"
+DEPS_STAMP="node_modules/.optra-api-deps.stamp"
 
 needs_install() {
   if [ ! -d node_modules/@nestjs/core ]; then

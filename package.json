@@ -1,5 +1,5 @@
 {
-  "name": "mnemra",
+  "name": "optra",
   "private": true,
   "packageManager": "bun@1.2.22",
   "workspaces": [

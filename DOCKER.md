@@ -22,14 +22,14 @@ docker compose up -d
 ```
 
 **Services:**
-- 🌐 **Web**: http://localhost:3100 (Next.js with hot reload; override with `MNEMRA_WEB_PORT`)
-- 🔌 **API**: http://localhost:3101 (NestJS with hot reload; override with `MNEMRA_API_PORT`)
+- 🌐 **Web**: http://localhost:3100 (Next.js with hot reload; override with `OPTRA_WEB_PORT`)
+- 🔌 **API**: http://localhost:3101 (NestJS with hot reload; override with `OPTRA_API_PORT`)
 - 🐘 **Postgres**: localhost:54321
 - 🔴 **Redis**: localhost:6379
 - 🪣 **SeaweedFS S3**: http://localhost:8333
 - 🗂️ **SeaweedFS Filer UI**: http://localhost:8888
 - 🌱 **SeaweedFS Master UI**: http://localhost:9333
-- 📦 **Default bucket**: `mnemra-documents`
+- 📦 **Default bucket**: `optra-documents`
 
 ### Stop Everything
 
@@ -57,7 +57,7 @@ docker compose logs -f postgres
 # Stop everything
 docker compose down
 
-# Remove data volumes (postgres_data, redis_data, seaweedfs_data — prefixed mnemra_ per the compose `name:` pin)
+# Remove data volumes (postgres_data, redis_data, seaweedfs_data — prefixed optra_ per the compose `name:` pin)
 docker compose down -v
 
 # Start fresh
@@ -91,7 +91,7 @@ bun run deploy:remote user@your-server-ip
 
 **On server directly:**
 ```bash
-cd /opt/mnemra
+cd /opt/optra
 ./scripts/deploy.sh
 ```
 
@@ -154,7 +154,7 @@ bun run deploy:remote user@your-server-ip
 
 ```bash
 # On server
-cd /opt/mnemra
+cd /opt/optra
 
 # Stop current version
 docker compose -f docker-compose.prod.yml down
@@ -193,13 +193,13 @@ Multi-stage build (`base` → `deps` → `dev` → `prod`):
 
 ```bash
 # Web (dev target)
-docker build -f apps/web/Dockerfile --target dev -t mnemra-web:dev .
+docker build -f apps/web/Dockerfile --target dev -t optra-web:dev .
 
 # Web (prod target)
-docker build -f apps/web/Dockerfile --target runner -t mnemra-web:prod .
+docker build -f apps/web/Dockerfile --target runner -t optra-web:prod .
 
 # API
-docker build -f apps/api/Dockerfile --target prod -t mnemra-api:prod .
+docker build -f apps/api/Dockerfile --target prod -t optra-api:prod .
 ```
 
 ---
@@ -238,7 +238,7 @@ Database, Redis, and SeaweedFS **not exposed** to internet.
 
 Local development:
 - `S3_ENDPOINT=http://localhost:8333` (host) / `http://seaweedfs:8333` (inside `api`/`web` containers)
-- `S3_BUCKET=mnemra-documents`
+- `S3_BUCKET=optra-documents`
 - credentials come from `docker/seaweedfs/s3.json`
 
 Production:
@@ -255,13 +255,13 @@ Production:
 # List volumes
 docker volume ls
 
-# Inspect (name: mnemra pin in docker-compose.yml means these are mnemra_-prefixed
+# Inspect (name: optra pin in docker-compose.yml means these are optra_-prefixed
 # regardless of the on-disk folder name)
-docker volume inspect mnemra_postgres_data
-docker volume inspect mnemra_redis_data
+docker volume inspect optra_postgres_data
+docker volume inspect optra_redis_data
 
 # Backup
-docker run --rm -v mnemra_postgres_data:/data \
+docker run --rm -v optra_postgres_data:/data \
   -v $(pwd):/backup alpine tar czf /backup/postgres-backup.tar.gz /data
 ```
 
@@ -269,7 +269,7 @@ docker run --rm -v mnemra_postgres_data:/data \
 
 ```bash
 # List
-docker volume ls | grep mnemra
+docker volume ls | grep optra
 
 # Backup Postgres
 docker compose -f docker-compose.prod.yml exec -T postgres \
@@ -328,7 +328,7 @@ docker system prune -a --volumes
 docker compose ps
 
 # Test connection
-docker compose exec postgres psql -U postgres -d mnemra -c "SELECT 1"
+docker compose exec postgres psql -U postgres -d optra -c "SELECT 1"
 
 # Check env vars
 docker compose exec api env | grep DATABASE_URL

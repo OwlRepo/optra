@@ -10,7 +10,7 @@ if [ -z "$1" ]; then
 fi
 
 SERVER=$1
-APP_DIR="/opt/mnemra"
+APP_DIR="/opt/optra"
 
 echo "🚀 Deploying to $SERVER..."
 
@@ -35,7 +35,7 @@ fi
 # Run deployment on server
 echo "🔧 Running deployment on server..."
 ssh $SERVER << 'ENDSSH'
-cd /opt/mnemra
+cd /opt/optra
 chmod +x scripts/deploy.sh
 ./scripts/deploy.sh
 ENDSSH

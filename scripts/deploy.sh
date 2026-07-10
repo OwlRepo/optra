@@ -165,7 +165,7 @@ if [ "$public_ingress_enabled" -eq 1 ]; then
         exit 1
     fi
 else
-    echo "ℹ️  Skipping public HTTPS smoke; set COMPOSE_PROFILES=public only when Mnemra owns 80/443"
+    echo "ℹ️  Skipping public HTTPS smoke; set COMPOSE_PROFILES=public only when Optra owns 80/443"
 fi
 
 echo "✅ Deployment complete!"

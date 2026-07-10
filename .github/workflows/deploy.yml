@@ -25,7 +25,7 @@ jobs:
           command_timeout: 25m
           script: |
             set -eu
-            cd /home/deploy/apps/mnemra
+            cd /home/deploy/apps/optra
 
             command -v docker >/dev/null
             docker compose version >/dev/null
@@ -55,16 +55,16 @@ jobs:
 
             sh scripts/ensure-seaweedfs-s3-config.sh
 
-            mkdir -p /home/deploy/apps/mnemra-backups
+            mkdir -p /home/deploy/apps/optra-backups
             postgres_container_id="$(docker compose -f docker-compose.prod.yml ps -q postgres || true)"
 
             if [ -n "$postgres_container_id" ]; then
-              backup_file=/home/deploy/apps/mnemra-backups/mnemra-$(date +%F-%H%M%S).sql
+              backup_file=/home/deploy/apps/optra-backups/optra-$(date +%F-%H%M%S).sql
               echo "creating PostgreSQL backup: $backup_file"
               docker compose -f docker-compose.prod.yml exec -T postgres \
                 sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB"' > "$backup_file"
               test -s "$backup_file"
-              find /home/deploy/apps/mnemra-backups -type f -name 'mnemra-*.sql' -mtime +14 -delete
+              find /home/deploy/apps/optra-backups -type f -name 'optra-*.sql' -mtime +14 -delete
             else
               echo "skipping backup: postgres container not running yet"
             fi
@@ -183,7 +183,7 @@ jobs:
                 echo "public smoke check found dev artifacts"; exit 1
               fi
             else
-              echo "skipping public HTTPS smoke; set COMPOSE_PROFILES=public only when Mnemra owns 80/443"
+              echo "skipping public HTTPS smoke; set COMPOSE_PROFILES=public only when Optra owns 80/443"
             fi
 
             echo "deployment completed successfully"
