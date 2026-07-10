@@ -123,9 +123,9 @@ type MessageTemplate = {
 const TEXTAREA_MAX_HEIGHT_PX = 160;
 
 const suggestedPrompts = [
-  "How do I reset a password for a customer account?",
-  "What is our refund policy for annual plans?",
-  "Customer cannot access invoices after SSO migration. What should support do?",
+  "What's our approval threshold for purchase orders over $10,000?",
+  "What's the standard process for resolving a flagged price discrepancy with a vendor?",
+  "Which vendors are approved for steel fastener purchases per our sourcing policy?",
 ];
 
 const thinkingWords = [
