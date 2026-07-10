@@ -36,7 +36,7 @@ const PhotoCompare = React.forwardRef<HTMLDivElement, PhotoCompareProps>(
   ({ query, candidate, verdict, isLoading, className, ...props }, ref) => {
     return (
       <div ref={ref} className={cn('flex flex-col gap-4', className)} {...props}>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2">
           <Card variant="subtle" data-testid="photo-compare-query-panel">
             <CardHeader>
               <CardDescription>Requested</CardDescription>
