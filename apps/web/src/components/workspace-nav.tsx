@@ -4,7 +4,7 @@ import * as React from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { Badge, cn } from '@repo/ui'
-import { BriefcaseBusiness, Database, FileSpreadsheet, LineChart, MessageSquareText, Settings, Ticket, Users } from 'lucide-react'
+import { BriefcaseBusiness, ClipboardList, Database, FileSpreadsheet, FileWarning, LineChart, MessageSquareText, PackageSearch, Settings, Store, Ticket, Users } from 'lucide-react'
 import { getUnreadCount } from '@/lib/api/events'
 import { WorkspaceSearch } from './workspace-search'
 
@@ -18,6 +18,10 @@ export function workspaceNavItems(workspaceId: string) {
     { label: 'Tickets', href: `/workspaces/${workspaceId}/tickets`, icon: <Ticket className="size-4" /> },
     { label: 'Insights', href: `/workspaces/${workspaceId}/insights`, icon: <LineChart className="size-4" /> },
     { label: 'Settings', href: `/workspaces/${workspaceId}/settings`, icon: <Settings className="size-4" /> },
+    { label: 'Vendors', href: `/workspaces/${workspaceId}/vendors`, icon: <Store className="size-4" /> },
+    { label: 'Purchase Orders', href: `/workspaces/${workspaceId}/procurement`, icon: <ClipboardList className="size-4" /> },
+    { label: 'Discrepancies', href: `/workspaces/${workspaceId}/discrepancies`, icon: <FileWarning className="size-4" /> },
+    { label: 'Catalog Matches', href: `/workspaces/${workspaceId}/catalog-matches`, icon: <PackageSearch className="size-4" /> },
   ]
 }
 
