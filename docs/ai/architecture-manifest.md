@@ -56,7 +56,7 @@ NestJS 10, Bull 4 job queues on Redis, Passport JWT + email OTP (Resend). Runtim
 
 ### Key Modules
 
-`auth`, `workspaces`, `knowledge-bases`, `documents`, `ingest`, `chat`, `cache`, `limits`, `refine`, `scrape`, `tickets`, `search`, `events`, `storage`, `health` (Priority 1-3 product surface), plus the V2 batch: `datasets`, `structured-query` (DuckDB text-to-SQL engine), `insights` (freshness detector, auto-FAQ, coverage dashboard, weekly digest — all built on a shared Bull-repeatable-job scheduler substrate first introduced in this batch). Full per-file detail in `docs/ai/file-index/repository-map.md`.
+`auth`, `workspaces`, `knowledge-bases`, `documents`, `ingest`, `chat`, `cache`, `limits`, `refine`, `scrape`, `tickets`, `search`, `events`, `storage`, `health` (Priority 1-3 product surface), plus the V2 batch: `datasets`, `structured-query` (DuckDB text-to-SQL engine), `insights` (freshness detector, auto-FAQ, coverage dashboard, weekly digest — all built on a shared Bull-repeatable-job scheduler substrate first introduced in this batch), plus the Optra Track A batch (2026-07-09/10): `procurement` (PO/invoice upload, PDF+vision extraction, DuckDB discrepancy comparison) and `catalog` (vendor CRUD, catalog upload/scrape, vision-LLM catalog-item matching). Full per-file detail in `docs/ai/file-index/repository-map.md`.
 
 ### API Routes
 
@@ -83,11 +83,11 @@ Drizzle ORM on PostgreSQL 16 + the `pgvector` extension (0.8.3 installed, hnsw i
 
 ### Key Models
 
-Core product tables: `users`, `otps`, `refresh_tokens`, `workspaces`, `workspace_members`, `invitations`, `knowledge_bases`, `documents`, `chunks` (shared vector store for both document- and ticket-backed embeddings, exactly-one-parent CHECK constraint), `chat_sessions`, `chat_messages`, `chat_cache`, `saved_refined_messages`, `scrape_runs`, `tickets`, `workspace_events`. V2 batch tables (all 2026-07-08): `chat_query_metrics`, `datasets`, `background_runs`, `document_review_flags`, `faq_drafts`, `workspace_digest_settings`. Every tenant table carries `workspace_id` and every query hand-carries a `WHERE workspace_id = ...` guard — there is no Postgres RLS (see `docs/PRODUCTION-READINESS.md` A7). Full field/invariant/mutation-path table: `docs/ai/contracts/db-contracts.md`.
+Core product tables: `users`, `otps`, `refresh_tokens`, `workspaces`, `workspace_members`, `invitations`, `knowledge_bases`, `documents`, `chunks` (shared vector store for both document- and ticket-backed embeddings, exactly-one-parent CHECK constraint), `chat_sessions`, `chat_messages`, `chat_cache`, `saved_refined_messages`, `scrape_runs`, `tickets`, `workspace_events`. V2 batch tables (all 2026-07-08): `chat_query_metrics`, `datasets`, `background_runs`, `document_review_flags`, `faq_drafts`, `workspace_digest_settings`. Optra Track A batch: `purchase_orders`, `invoices`, `po_line_items`, `invoice_line_items`, `discrepancy_flags` (A1/A2, migration `0020`); `vendors`, `catalogs`, `catalog_items`, `catalog_matches` (A3, migration `0021`). Every tenant table carries `workspace_id` and every query hand-carries a `WHERE workspace_id = ...` guard — there is no Postgres RLS (see `docs/PRODUCTION-READINESS.md` A7). Full field/invariant/mutation-path table: `docs/ai/contracts/db-contracts.md`.
 
 ### Migrations
 
-`packages/db/drizzle/*`, numbered sequentially `0000`–`0019` as of 2026-07-08. All additive except migration `0016` (F2 ticket trends), which `ALTER`s the hot `tickets` table to add nullable `category`/`resolvedAt`/`assigneeId` columns — the one non-purely-additive change in the set, still non-destructive. Known drizzle-kit quirk: generated `vector(1536)` columns come out quoted (`"vector(1536)"`), which Postgres rejects — hand-fix to unquoted `vector(1536)` before applying (hit in migrations `0014`/`0015`, see `docs/ai/risk-register.md`). After any `packages/db/src/schema/*` change, run `bun run --cwd packages/db build` before API e2e/runtime verification so `@repo/db`'s `dist/*` stays aligned with the schema `apps/api`'s Nest runtime actually resolves.
+`packages/db/drizzle/*`, numbered sequentially `0000`–`0021` as of 2026-07-10. All additive except migration `0016` (F2 ticket trends), which `ALTER`s the hot `tickets` table to add nullable `category`/`resolvedAt`/`assigneeId` columns — the one non-purely-additive change in the set, still non-destructive. `0020`/`0021` (Optra Track A) are purely additive `CREATE TABLE`/`CREATE TYPE` migrations, no `ALTER` on any existing table. Known drizzle-kit quirk: generated `vector(1536)` columns come out quoted (`"vector(1536)"`), which Postgres rejects — hand-fix to unquoted `vector(1536)` before applying (hit in migrations `0014`/`0015`, see `docs/ai/risk-register.md`). After any `packages/db/src/schema/*` change, run `bun run --cwd packages/db build` before API e2e/runtime verification so `@repo/db`'s `dist/*` stays aligned with the schema `apps/api`'s Nest runtime actually resolves.
 
 ## API Contracts
 
@@ -139,7 +139,7 @@ Workspace-scoped RBAC with three roles (`owner`/`admin`/`member`), resolved fres
 
 ### Job Queue
 
-Bull 4 on Redis. Queues as of 2026-07-08: `ingest-queue`, `scrape-queue`, `ticket-extraction-queue` (Priority 1-3 product surface); `dataset-profiling-queue` (V2 S1); and the V2 S2 scheduler substrate's repeatable "tick" + per-workspace fan-out pairs — `freshness-tick-queue`/`freshness-check-queue`, `faq-cluster-tick-queue`/`faq-cluster-queue`, `topic-gap-tick-queue`/`topic-gap-queue`, `digest-tick-queue`/`digest-queue`. All Bull processors run in-process with the API HTTP server (no separate worker process yet — see `docs/PRODUCTION-READINESS.md` C4).
+Bull 4 on Redis. Queues as of 2026-07-10: `ingest-queue`, `scrape-queue`, `ticket-extraction-queue` (Priority 1-3 product surface); `dataset-profiling-queue` (V2 S1); the V2 S2 scheduler substrate's repeatable "tick" + per-workspace fan-out pairs — `freshness-tick-queue`/`freshness-check-queue`, `faq-cluster-tick-queue`/`faq-cluster-queue`, `topic-gap-tick-queue`/`topic-gap-queue`, `digest-tick-queue`/`digest-queue`; and the Optra Track A batch — `procurement-parse-queue` (PO/invoice CSV/XLSX/PDF parsing), `catalog-parse-queue` (catalog upload parsing), `catalog-scrape-queue` (vendor site crawl for catalog images). All Bull processors run in-process with the API HTTP server (no separate worker process yet — see `docs/PRODUCTION-READINESS.md` C4).
 
 ### Background Jobs
 
@@ -186,7 +186,7 @@ Root: `bun run lint` (turbo). Historically flagged broken in `docs/PRODUCTION-RE
 
 ### Test
 
-`apps/api`: `bun run test` (Jest unit), `bun run test:e2e` (Jest e2e, boots a real `AppModule` via Supertest), `bun run test:cov`. `apps/web`: `bun run test` (Vitest, config must stay named `.mts` — see `testing-strategy.md`). `packages/ai`: `bun run test` (Vitest). `packages/db`/`packages/ui` currently expose no test command, only `type-check`/`build`/`lint`. No Playwright/browser e2e exists anywhere in the repo yet (a logged, known gap — see the "Post-Login Redirect Target" and "Client-Side Session Refresh" rows in `docs/ai/risk-register.md`).
+`apps/api`: `bun run test` (Jest unit), `bun run test:e2e` (Jest e2e, boots a real `AppModule` via Supertest), `bun run test:cov`. `apps/web`: `bun run test` (Vitest, config must stay named `.mts` — see `testing-strategy.md`). `packages/ai`, `packages/db`, `packages/ui` all expose `bun run test` (Vitest, `vitest run`) — CONTEXT DRIFT fixed 2026-07-10: this section previously claimed `packages/db`/`packages/ui` had no test command, only `type-check`/`build`/`lint`; verified against both packages' real `package.json` scripts, both have had a working `vitest run` test script all along. No Playwright/browser e2e exists anywhere in the repo yet (a logged, known gap — see the "Post-Login Redirect Target" and "Client-Side Session Refresh" rows in `docs/ai/risk-register.md`).
 
 ### Build
 
