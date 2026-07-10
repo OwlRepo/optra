@@ -105,6 +105,73 @@ describe('extractTicketFromTranscript', () => {
     expect(invokeMock).toHaveBeenCalledTimes(2)
   })
 
+  it('does not fail extraction when reproSteps is blank -- falls back to a descriptive default', async () => {
+    // Regression: found by /qa on 2026-07-10 -- a real, valid bug-shaped
+    // transcript (narrative symptom description, no explicit numbered
+    // steps) made the model return an empty reproSteps, which used to hard
+    // fail the entire extraction via requireNonEmptyString.
+    invokeMock.mockResolvedValue({
+      content: JSON.stringify({
+        shouldCreateTicket: true,
+        title: 'Catalog photo upload silently fails for partial photo_url data',
+        issueSummary: 'Vendor catalog rows with an empty photo_url column never show a photo, no error surfaced.',
+        reproSteps: '',
+        severity: 'medium',
+        productArea: 'catalog',
+        hypothesizedRootCause: 'Photo fetch step may skip rows with an empty photo_url instead of flagging them.',
+        nextAction: 'Check CatalogImageService for silent skips on empty photo_url values.',
+        fieldConfidence: {
+          title: 0.8,
+          issueSummary: 0.75,
+          reproSteps: 0.2,
+          severity: 0.6,
+          productArea: 0.7,
+          hypothesizedRootCause: 0.5,
+          nextAction: 0.6,
+        },
+      }),
+    })
+
+    const { extractTicketFromTranscript } = await import('./ticket-extraction')
+    const result = await extractTicketFromTranscript('customer transcript')
+
+    expect(result.reproSteps.length).toBeGreaterThan(0)
+    expect(result.title).toBe('Catalog photo upload silently fails for partial photo_url data')
+  })
+
+  it('allows hypothesizedRootCause to be null when the model has weak evidence', async () => {
+    // Regression: the system prompt explicitly tells the model
+    // "hypothesizedRootCause may be null if evidence is weak," but
+    // normalizeExtraction threw ExtractionParseError on null -- code
+    // contradicted its own documented contract.
+    invokeMock.mockResolvedValue({
+      content: JSON.stringify({
+        shouldCreateTicket: true,
+        title: 'Vendor invoice missing expected line item',
+        issueSummary: 'Invoice for PO-4417 is missing a line item that was on the original purchase order.',
+        reproSteps: 'Customer noticed the discrepancy while reconciling the invoice against the PO.',
+        severity: 'medium',
+        productArea: 'procurement',
+        hypothesizedRootCause: null,
+        nextAction: 'Ask the vendor to confirm whether the item shipped separately or was omitted in error.',
+        fieldConfidence: {
+          title: 0.85,
+          issueSummary: 0.8,
+          reproSteps: 0.7,
+          severity: 0.6,
+          productArea: 0.75,
+          hypothesizedRootCause: 0.3,
+          nextAction: 0.65,
+        },
+      }),
+    })
+
+    const { extractTicketFromTranscript } = await import('./ticket-extraction')
+    const result = await extractTicketFromTranscript('customer transcript')
+
+    expect(result.hypothesizedRootCause).toBeNull()
+  })
+
   it('ignores transcript prompt injection and still returns structured extraction', async () => {
     invokeMock.mockResolvedValue({
       content: JSON.stringify({
