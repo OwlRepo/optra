@@ -94,7 +94,7 @@ export class ComparisonService {
     const invItems = await db.select().from(invoiceLineItems).where(eq(invoiceLineItems.invoiceId, invoice.id))
 
     if (poItems.length === 0 || invItems.length === 0) {
-      throw new BadRequestException('Both documents must have no parsed line items to compare')
+      throw new BadRequestException('Both documents must have parsed line items to compare')
     }
 
     const dir = await mkdtemp(join(tmpdir(), 'optra-cmp-'))

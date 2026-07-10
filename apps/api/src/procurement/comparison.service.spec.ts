@@ -210,7 +210,7 @@ describe('ComparisonService', () => {
       .values({ workspaceId: workspace.id, name: 'invoice.csv', status: 'done', rowCount: 0 })
       .returning()
 
-    await expect(service.compare(workspace.id, po.id, invoice.id)).rejects.toThrow('no parsed line items')
+    await expect(service.compare(workspace.id, po.id, invoice.id)).rejects.toThrow('must have parsed line items')
   })
 
   it('lists flags filtered by status and supports dismissing one', async () => {
