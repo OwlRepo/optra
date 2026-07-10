@@ -18,6 +18,7 @@ import { RefineModule } from './refine/refine.module'
 import { DatasetsModule } from './datasets/datasets.module'
 import { InsightsModule } from './insights/insights.module'
 import { ProcurementModule } from './procurement/procurement.module'
+import { CatalogModule } from './catalog/catalog.module'
 import { HealthController } from './health/health.controller'
 
 @Module({
@@ -46,6 +47,7 @@ import { HealthController } from './health/health.controller'
     DatasetsModule,
     InsightsModule,
     ProcurementModule,
+    CatalogModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
