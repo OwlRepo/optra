@@ -2,7 +2,16 @@
 
 import React from 'react'
 import { render, screen } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+
+// DotGrid renders a real <canvas> 2D context, which jsdom cannot provide
+// (same reason Strands is mocked in thinking-indicator.spec.ts) -- mock it so
+// the landing page's ambient background doesn't spam "not implemented"
+// canvas errors on every test in this file.
+vi.mock('@/components/DotGrid', () => ({
+  default: () => React.createElement('div', { 'data-testid': 'dot-grid-mock' }),
+}))
+
 import Home from './page'
 
 describe('Home', () => {
@@ -54,6 +63,41 @@ describe('Home', () => {
 
     expect(container.querySelector('svg.lucide-file-search.size-5.text-primary')).not.toBeNull()
     expect(container.querySelector('svg.lucide-search.size-5')).not.toBeNull()
+    expect(container.querySelector('.rounded-2xl.bg-primary\\/10')).toBeNull()
+  })
+
+  it('gives the four anchor-linked sections a matching id so header/footer nav links actually resolve', () => {
+    const { container } = render(React.createElement(Home))
+
+    expect(container.querySelector('#product')).not.toBeNull()
+    expect(container.querySelector('#workflow')).not.toBeNull()
+    expect(container.querySelector('#use-cases')).not.toBeNull()
+    expect(container.querySelector('#faq')).not.toBeNull()
+  })
+
+  it('renders the workflow step titles by name', () => {
+    render(React.createElement(Home))
+
+    expect(screen.getAllByText('Connect your vendors').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Optra matches automatically').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Review what got flagged').length).toBeGreaterThan(0)
+  })
+
+  it('renders all six use-case persona strings by name', () => {
+    render(React.createElement(Home))
+
+    expect(screen.getAllByText('Procurement teams').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('AP / accounts payable teams').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Multi-vendor sourcing teams').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Operations & supply chain teams').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Small business buyers').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Founder-led purchasing workflows').length).toBeGreaterThan(0)
+  })
+
+  it('renders the hero match confidence as a real progressbar meter, not plain text', () => {
+    render(React.createElement(Home))
+
+    expect(screen.getAllByRole('progressbar').length).toBeGreaterThan(0)
   })
 
   it('rewrites hero copy around the pain point instead of the feature, removing the old self-referential copy', () => {
@@ -108,7 +152,7 @@ describe('Home', () => {
       '@context': 'https://schema.org',
       '@type': 'Organization',
       name: 'Optra',
-      url: 'https://mnemra.tyvera.app',
+      url: 'https://optra.example.com',
     })
     expect(app).toMatchObject({
       '@context': 'https://schema.org',

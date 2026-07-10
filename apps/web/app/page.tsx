@@ -3,6 +3,7 @@ import {
   Badge,
   Button,
   Card,
+  ConfidenceMeter,
   EmptyState,
   PageSection,
   PageShell,
@@ -10,7 +11,6 @@ import {
 import {
   Archive,
   ArrowRight,
-  CheckCircle2,
   FileSearch,
   Search,
   ShieldCheck,
@@ -24,17 +24,21 @@ import {
 import { Accordion } from "@/components/accordion";
 import { BrandMark } from "@/components/brand-mark";
 import { ComparisonTable } from "@/components/comparison-table";
-import { FeatureList } from "@/components/feature-list";
 import { LandingHeader } from "@/components/landing-header";
+import { AmbientDotGrid } from "@/components/landing/ambient-dot-grid";
+import { DiscrepancyChip } from "@/components/landing/discrepancy-chip";
+import { ExtractionReveal } from "@/components/landing/extraction-reveal";
+import { PillarShowcase } from "@/components/landing/pillar-showcase";
+import { UseCaseCloud } from "@/components/landing/use-case-cloud";
+import { ValueShowcase } from "@/components/landing/value-showcase";
+import { WorkflowPipeline } from "@/components/landing/workflow-pipeline";
 import { CountUp } from "@/components/motion/count-up";
-import { Marquee } from "@/components/motion/marquee";
 import { Reveal } from "@/components/motion/reveal";
-import { SpotlightCard } from "@/components/motion/spotlight-card";
 import { TypingText } from "@/components/motion/typing-text";
-import { Stepper } from "@/components/stepper";
 import { WorkspaceTabs } from "@/components/workspace-tabs";
+import { HERO_MATCH_EXAMPLE } from "@/lib/landing-example";
 
-const WEB_URL = process.env.WEB_URL ?? "https://mnemra.tyvera.app";
+const WEB_URL = process.env.WEB_URL ?? "https://optra.example.com";
 
 const metrics = [
   { label: "Avg. match time", prefix: "<", value: 10, suffix: "s" },
@@ -118,19 +122,16 @@ const features = [
 
 const workflowSteps = [
   {
-    step: "01",
     title: "Connect your vendors",
     description:
       "Upload vendor catalogs, purchase orders, and invoices — PDFs, spreadsheets, or scanned copies — into your workspace.",
   },
   {
-    step: "02",
     title: "Optra matches automatically",
     description:
       "Optra reads each line item, matches it to the vendor's catalog entry — including the product photo — and checks the price and quantity against the PO.",
   },
   {
-    step: "03",
     title: "Review what got flagged",
     description:
       "Get a clear result for every line: confirmed, or flagged with the exact catalog source and the price or item difference.",
@@ -138,12 +139,18 @@ const workflowSteps = [
 ];
 
 const useCases = [
-  "Procurement teams",
-  "AP / accounts payable teams",
-  "Multi-vendor sourcing teams",
-  "Operations & supply chain teams",
-  "Small business buyers",
-  "Founder-led purchasing workflows",
+  {
+    label: "Procurement teams",
+    detail: "Match every PO against the vendor catalog before it is approved.",
+  },
+  {
+    label: "AP / accounts payable teams",
+    detail: "Catch a price or quantity mismatch before the invoice gets paid.",
+  },
+  { label: "Multi-vendor sourcing teams" },
+  { label: "Operations & supply chain teams" },
+  { label: "Small business buyers" },
+  { label: "Founder-led purchasing workflows" },
 ];
 
 const comparisons = [
@@ -202,6 +209,8 @@ const jsonLd = [
     operatingSystem: "Web",
   },
 ];
+
+const heroLineItemText = `"PO #${HERO_MATCH_EXAMPLE.poNumber} · Line ${HERO_MATCH_EXAMPLE.lineNumber} — ${HERO_MATCH_EXAMPLE.quantity} × ${HERO_MATCH_EXAMPLE.itemDescription}, vendor ${HERO_MATCH_EXAMPLE.vendorName}, $${HERO_MATCH_EXAMPLE.poUnitPrice.toFixed(2)}/unit."`;
 
 export default function Home() {
   return (
@@ -262,8 +271,7 @@ export default function Home() {
 
       <main>
         <section className="relative overflow-hidden pb-20 pt-16 lg:pb-28 lg:pt-24">
-          <div className="pointer-events-none absolute left-1/2 top-0 -z-10 size-[42rem] -translate-x-1/2 animate-float-slow rounded-full bg-primary/10 blur-3xl" />
-          <div className="pointer-events-none absolute right-0 top-40 -z-10 size-[22rem] animate-float-slower rounded-full bg-secondary blur-3xl" />
+          <AmbientDotGrid className="pointer-events-none absolute inset-0 -z-10" />
 
           <div className="grid gap-12 lg:grid-cols-[1.08fr_0.92fr] lg:items-center">
             <div className="space-y-8">
@@ -357,9 +365,11 @@ export default function Home() {
                       </p>
                     </div>
 
-                    <Badge variant="warning" className="shrink-0">
-                      Flagged
-                    </Badge>
+                    <DiscrepancyChip>
+                      <Badge variant="warning" className="shrink-0">
+                        Flagged
+                      </Badge>
+                    </DiscrepancyChip>
                   </div>
 
                   <div className="space-y-4 rounded-3xl border border-border/70 bg-background/80 p-5 shadow-sm">
@@ -367,10 +377,9 @@ export default function Home() {
                       <FileSearch className="mt-1 size-5 shrink-0 text-primary" />
                       <div>
                         <p className="text-sm font-semibold">PO line item</p>
-                        <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                          “PO #4417 · Line 3 — 200 × 3/8in steel hex bolts,
-                          vendor Ironclad Supply, $0.42/unit.”
-                        </p>
+                        <ExtractionReveal className="mt-1 text-sm leading-6 text-muted-foreground">
+                          {heroLineItemText}
+                        </ExtractionReveal>
                       </div>
                     </div>
 
@@ -389,9 +398,11 @@ export default function Home() {
                         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
                           Match confidence
                         </p>
-                        <p className="mt-3 text-2xl font-semibold text-foreground">
-                          High
-                        </p>
+                        <ConfidenceMeter
+                          value={HERO_MATCH_EXAMPLE.matchConfidence}
+                          label={HERO_MATCH_EXAMPLE.matchConfidenceLabel}
+                          className="mt-3"
+                        />
                       </div>
 
                       <div className="rounded-3xl border border-border/70 bg-secondary/50 p-5">
@@ -399,7 +410,7 @@ export default function Home() {
                           Catalog sources checked
                         </p>
                         <p className="mt-3 text-2xl font-semibold text-foreground">
-                          03
+                          {String(HERO_MATCH_EXAMPLE.catalogSourcesChecked).padStart(2, "0")}
                         </p>
                       </div>
                     </div>
@@ -424,35 +435,16 @@ export default function Home() {
           </div>
         </section>
 
-        <PageSection
-          className="py-20"
-          eyebrow={<Badge variant="outline">Product</Badge>}
-          title="Stop approving invoices you have not actually checked"
-          description="Optra gives buyers one place to match purchase orders, vendor catalogs, and invoices — including the product photos — instead of comparing PDFs by hand."
-        >
-          <div className="grid gap-5 lg:grid-cols-3">
-            {pillars.map(({ icon: Icon, title, description }, index) => (
-              <Reveal key={title} delay={index * 90}>
-                <SpotlightCard
-                  variant="elevated"
-                  className="group h-full rounded-3xl border-border/70 p-6 transition hover:-translate-y-1 hover:border-primary/30 hover:shadow-xl hover:shadow-primary/10"
-                >
-                  <div className="flex size-11 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-                    <Icon className="size-5" />
-                  </div>
-
-                  <h3 className="mt-6 text-2xl font-semibold tracking-[-0.02em]">
-                    {title}
-                  </h3>
-
-                  <p className="mt-3 text-sm leading-7 text-muted-foreground">
-                    {description}
-                  </p>
-                </SpotlightCard>
-              </Reveal>
-            ))}
-          </div>
-        </PageSection>
+        <div id="product" className="scroll-mt-28">
+          <PageSection
+            className="py-20"
+            eyebrow={<Badge variant="outline">Product</Badge>}
+            title="Stop approving invoices you have not actually checked"
+            description="Optra gives buyers one place to match purchase orders, vendor catalogs, and invoices — including the product photos — instead of comparing PDFs by hand."
+          >
+            <PillarShowcase pillars={pillars} />
+          </PageSection>
+        </div>
 
         <PageSection
           className="py-16"
@@ -471,49 +463,30 @@ export default function Home() {
           title="Everything a buyer needs, connected"
           description="Vendor catalogs, PO matching, and invoice extraction all pull from the same workspace so a price check today matches the one from last quarter."
         >
-          <FeatureList items={features} />
+          <ValueShowcase items={features} />
         </PageSection>
 
-        <PageSection
-          className="py-16"
-          eyebrow={<Badge variant="outline">Workflow</Badge>}
-          title="A simple path from a stack of PDFs to a checked invoice"
-          description="No complex migration. Start with the purchase orders and vendor catalogs you already have."
-        >
-          <Stepper steps={workflowSteps} />
-        </PageSection>
+        <div id="workflow" className="scroll-mt-28">
+          <PageSection
+            className="py-16"
+            eyebrow={<Badge variant="outline">Workflow</Badge>}
+            title="A simple path from a stack of PDFs to a checked invoice"
+            description="No complex migration. Start with the purchase orders and vendor catalogs you already have."
+          >
+            <WorkflowPipeline steps={workflowSteps} />
+          </PageSection>
+        </div>
 
-        <PageSection
-          className="py-16"
-          eyebrow={<Badge variant="secondary">Use cases</Badge>}
-          title="Built for teams who check the same vendor invoices repeatedly"
-          description="Optra fits any procurement workflow where purchase orders, vendor catalogs, and invoices are scattered across email, PDFs, and spreadsheets."
-        >
-          <div className="space-y-3">
-            <Marquee>
-              {useCases.slice(0, 3).map((item) => (
-                <div
-                  key={item}
-                  className="flex items-center gap-3 whitespace-nowrap rounded-2xl border border-border/70 bg-card/80 p-4 text-sm font-medium shadow-sm"
-                >
-                  <CheckCircle2 className="size-5 shrink-0 text-primary" />
-                  <span>{item}</span>
-                </div>
-              ))}
-            </Marquee>
-            <Marquee reverse>
-              {useCases.slice(3).map((item) => (
-                <div
-                  key={item}
-                  className="flex items-center gap-3 whitespace-nowrap rounded-2xl border border-border/70 bg-card/80 p-4 text-sm font-medium shadow-sm"
-                >
-                  <CheckCircle2 className="size-5 shrink-0 text-primary" />
-                  <span>{item}</span>
-                </div>
-              ))}
-            </Marquee>
-          </div>
-        </PageSection>
+        <div id="use-cases" className="scroll-mt-28">
+          <PageSection
+            className="py-16"
+            eyebrow={<Badge variant="secondary">Use cases</Badge>}
+            title="Built for teams who check the same vendor invoices repeatedly"
+            description="Optra fits any procurement workflow where purchase orders, vendor catalogs, and invoices are scattered across email, PDFs, and spreadsheets."
+          >
+            <UseCaseCloud useCases={useCases} />
+          </PageSection>
+        </div>
 
         <PageSection
           className="py-16"
@@ -524,16 +497,18 @@ export default function Home() {
           <ComparisonTable rows={comparisons} beforeLabel="Without Optra" afterLabel="With Optra" />
         </PageSection>
 
-        <PageSection
-          className="py-16"
-          eyebrow={<Badge variant="outline">FAQ</Badge>}
-          title="Common questions before you connect a vendor"
-          description="Straight answers about how Optra is meant to fit into a procurement workflow."
-        >
-          <Reveal>
-            <Accordion items={faqItems} />
-          </Reveal>
-        </PageSection>
+        <div id="faq" className="scroll-mt-28">
+          <PageSection
+            className="py-16"
+            eyebrow={<Badge variant="outline">FAQ</Badge>}
+            title="Common questions before you connect a vendor"
+            description="Straight answers about how Optra is meant to fit into a procurement workflow."
+          >
+            <Reveal>
+              <Accordion items={faqItems} />
+            </Reveal>
+          </PageSection>
+        </div>
 
         <section className="py-20">
           <Reveal>
