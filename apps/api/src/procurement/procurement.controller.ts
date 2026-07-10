@@ -35,14 +35,21 @@ const MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024
 // Mirrors DatasetsController exactly (datasets.controller.ts): same
 // extension/mime allow-list, same size limit, same 413/400 exception
 // filter. XLSX is converted to CSV during parsing (ProcurementParseProcessor)
-// so nothing downstream ever reads XLSX directly.
-const SUPPORTED_EXTENSIONS = new Set(['.csv', '.xlsx'])
+// so nothing downstream ever reads XLSX directly. PDF is text-only (A2) —
+// scanned/image-only PDFs are accepted here (can't know until parse) but
+// fail clearly at parse time (procurement-extraction.ts), not silently.
+const SUPPORTED_EXTENSIONS = new Set(['.csv', '.xlsx', '.pdf'])
 const SUPPORTED_MIME_TYPES = new Set([
   'text/csv',
   'application/vnd.ms-excel',
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   'application/octet-stream',
+  'application/pdf',
 ])
+
+function pdfExtractionEnabled(): boolean {
+  return process.env.PROCUREMENT_PDF_EXTRACTION_ENABLED === 'true'
+}
 
 function fileFilter(
   _req: unknown,
@@ -54,7 +61,12 @@ function fileFilter(
   const isAllowedMime = SUPPORTED_MIME_TYPES.has(file.mimetype)
 
   if (!isAllowedExtension || !isAllowedMime) {
-    callback(new BadRequestException('Only CSV or XLSX files are supported'), false)
+    callback(new BadRequestException('Only CSV, XLSX, or PDF files are supported'), false)
+    return
+  }
+
+  if (extension === '.pdf' && !pdfExtractionEnabled()) {
+    callback(new BadRequestException('PDF uploads are not enabled for this workspace'), false)
     return
   }
 

@@ -73,6 +73,21 @@ describe('ProcurementDocumentsService', () => {
 
     const [row] = await db.select().from(purchaseOrders).where(eq(purchaseOrders.id, result.id))
     expect(row.workspaceId).toBe(workspace.id)
+    expect(row.sourceKind).toBe('csv')
+  })
+
+  it('derives sourceKind pdf for a .pdf upload', async () => {
+    const workspace = await seedWorkspace(`${prefix}po-pdf-upload@example.com`, 'PO PDF Upload')
+    const file = {
+      originalname: 'po.pdf',
+      mimetype: 'application/pdf',
+      buffer: Buffer.from('%PDF-1.4 fake'),
+    } as Express.Multer.File
+
+    const result = await service.upload(workspace.id, 'purchase_order', file)
+
+    const [row] = await db.select().from(purchaseOrders).where(eq(purchaseOrders.id, result.id))
+    expect(row.sourceKind).toBe('pdf')
   })
 
   it('uploads an invoice into the invoices table', async () => {

@@ -1,4 +1,5 @@
 import { randomUUID } from 'crypto'
+import { extname } from 'path'
 import { Injectable, Logger, NotFoundException } from '@nestjs/common'
 import { desc, eq } from 'drizzle-orm'
 import { db, invoices, purchaseOrders } from '@repo/db'
@@ -22,7 +23,8 @@ export class ProcurementDocumentsService {
     const storageKey = `${workspaceId}/procurement/${kind}/${randomUUID()}-${file.originalname}`
     await this.storage.save(storageKey, file.buffer, file.mimetype)
 
-    const values = { workspaceId, name: file.originalname, storageKey, status: 'pending' as const }
+    const sourceKind = extname(file.originalname).toLowerCase() === '.pdf' ? 'pdf' : 'csv'
+    const values = { workspaceId, name: file.originalname, storageKey, status: 'pending' as const, sourceKind }
     const [doc] =
       kind === 'purchase_order'
         ? await db.insert(purchaseOrders).values(values).returning()

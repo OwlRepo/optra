@@ -1,7 +1,7 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common'
 import { Test } from '@nestjs/testing'
 import cookieParser from 'cookie-parser'
-import { mkdtemp, writeFile } from 'fs/promises'
+import { mkdtemp, readFile, writeFile } from 'fs/promises'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { eq, like } from 'drizzle-orm'
@@ -22,6 +22,7 @@ import {
 } from '@repo/db'
 import { AppModule } from '../src/app.module'
 import { StorageService } from '../src/storage/storage.service'
+import { ProcurementExtractionService } from '../src/procurement/procurement-extraction.service'
 
 jest.setTimeout(30_000)
 
@@ -122,9 +123,36 @@ describe('Procurement flow (e2e)', () => {
       }),
     }
 
+    // Fake extraction keyed off uploaded content (not the real @repo/ai chain) —
+    // proves the PDF branch end-to-end (upload -> queue -> processor -> seam ->
+    // line items -> compare) with zero OpenAI calls.
+    const extraction = {
+      extract: jest.fn(async (path: string) => {
+        const content = await readFile(path, 'utf-8')
+        if (content.includes('PDF-PO-MARKER')) {
+          return {
+            items: [
+              { sku: 'A1', description: 'Widget', quantity: '10', unitPrice: '5.00', lineTotal: '50.00', confidence: 0.9 },
+              { sku: 'B2', description: 'Gadget', quantity: '3', unitPrice: '9.99', lineTotal: '29.97', confidence: 0.9 },
+              { sku: 'C3', description: 'Only On PO', quantity: '1', unitPrice: '1.00', lineTotal: '1.00', confidence: 0.9 },
+            ],
+          }
+        }
+        return {
+          items: [
+            { sku: 'A1', description: 'Widget', quantity: '8', unitPrice: '5.00', lineTotal: '40.00', confidence: 0.9 },
+            { sku: 'B2', description: 'Gadget', quantity: '3', unitPrice: '12.00', lineTotal: '36.00', confidence: 0.9 },
+            { sku: 'D4', description: 'Only On Invoice', quantity: '1', unitPrice: '1.00', lineTotal: '1.00', confidence: 0.9 },
+          ],
+        }
+      }),
+    }
+
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
       .overrideProvider(StorageService)
       .useValue(storage)
+      .overrideProvider(ProcurementExtractionService)
+      .useValue(extraction)
       .compile()
 
     app = moduleRef.createNestApplication()
@@ -235,6 +263,48 @@ describe('Procurement flow (e2e)', () => {
       .set('Authorization', `Bearer ${outsider.accessToken}`)
       .send({ purchaseOrderId: poUpload.body.id, invoiceId: invoiceUpload.body.id })
       .expect(404)
+  })
+
+  it('uploads PO + invoice as PDF, parses via the extraction seam, and compares identically to CSV', async () => {
+    const owner = await registerAndVerify(app, `${prefix}pdf-owner@example.com`, password)
+    const ownerMine = await request(app.getHttpServer())
+      .get('/workspaces/me')
+      .set('Authorization', `Bearer ${owner.accessToken}`)
+      .expect(200)
+    const workspaceId = ownerMine.body.items[0].id as string
+
+    const poUpload = await request(app.getHttpServer())
+      .post(`/workspaces/${workspaceId}/procurement/purchase-orders`)
+      .set('Authorization', `Bearer ${owner.accessToken}`)
+      .attach('file', Buffer.from('%PDF-1.4 PDF-PO-MARKER'), 'po.pdf')
+      .expect(201)
+
+    const invoiceUpload = await request(app.getHttpServer())
+      .post(`/workspaces/${workspaceId}/procurement/invoices`)
+      .set('Authorization', `Bearer ${owner.accessToken}`)
+      .attach('file', Buffer.from('%PDF-1.4 PDF-INVOICE-MARKER'), 'invoice.pdf')
+      .expect(201)
+
+    await waitForPoDone(poUpload.body.id)
+    await waitForInvoiceDone(invoiceUpload.body.id)
+
+    const [poRow] = await db.select().from(purchaseOrders).where(eq(purchaseOrders.id, poUpload.body.id))
+    expect(poRow.sourceKind).toBe('pdf')
+    const [poLineItem] = await db.select().from(poLineItems).where(eq(poLineItems.purchaseOrderId, poUpload.body.id))
+    expect(poLineItem.sourceKind).toBe('pdf-extraction')
+
+    const compareRes = await request(app.getHttpServer())
+      .post(`/workspaces/${workspaceId}/procurement/discrepancies/compare`)
+      .set('Authorization', `Bearer ${owner.accessToken}`)
+      .send({ purchaseOrderId: poUpload.body.id, invoiceId: invoiceUpload.body.id })
+      .expect(201)
+
+    expect(compareRes.body.counts).toEqual({
+      quantity_mismatch: 1,
+      price_mismatch: 1,
+      missing_on_invoice: 1,
+      missing_on_po: 1,
+    })
   })
 
   it('rejects non-CSV/XLSX uploads', async () => {

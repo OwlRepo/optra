@@ -10,6 +10,16 @@ import { db, invoiceLineItems, invoices, poLineItems, purchaseOrders } from '@re
 import { StorageService } from '../storage/storage.service'
 import { mapRowToLineItem } from './column-mapping'
 import { ProcurementDocKind } from './procurement-parse.service'
+import { ProcurementExtractionService } from './procurement-extraction.service'
+
+interface MappedLineItemRow {
+  sku: string | null
+  description: string | null
+  quantity: string | null
+  unitPrice: string | null
+  lineTotal: string | null
+  rawRow: Record<string, unknown>
+}
 
 // Mirrors DatasetProfilingProcessor's XLSX->CSV conversion exactly (first
 // sheet only) — DuckDbQueryService (used later, in comparison.service.ts)
@@ -26,7 +36,10 @@ function convertXlsxToCsv(buffer: Buffer): string {
 export class ProcurementParseProcessor {
   private readonly logger = new Logger(ProcurementParseProcessor.name)
 
-  constructor(private readonly storage: StorageService) {}
+  constructor(
+    private readonly storage: StorageService,
+    private readonly extraction: ProcurementExtractionService,
+  ) {}
 
   @Process()
   async handleParse(job: Job<{ kind: ProcurementDocKind; id: string }>): Promise<void> {
@@ -56,23 +69,41 @@ export class ProcurementParseProcessor {
 
     try {
       tempPath = await this.storage.getToTempFile(doc.storageKey)
-      const isXlsx = extname(doc.name).toLowerCase() === '.xlsx'
+      const isPdf = extname(doc.name).toLowerCase() === '.pdf'
 
-      let csvContent: string
-      if (isXlsx) {
-        csvContent = convertXlsxToCsv(await readFile(tempPath))
-        // Overwrite with the converted CSV so every later read of this
-        // storageKey (comparison.service.ts export step) sees plain CSV.
-        await this.storage.save(doc.storageKey, Buffer.from(csvContent, 'utf-8'), 'text/csv')
+      let rows: MappedLineItemRow[]
+      let sourceKind: string
+
+      if (isPdf) {
+        const result = await this.extraction.extract(tempPath)
+        rows = result.items.map((item) => ({
+          sku: item.sku,
+          description: item.description,
+          quantity: item.quantity,
+          unitPrice: item.unitPrice,
+          lineTotal: item.lineTotal,
+          rawRow: { ...item },
+        }))
+        sourceKind = 'pdf-extraction'
       } else {
-        csvContent = await readFile(tempPath, 'utf-8')
+        const isXlsx = extname(doc.name).toLowerCase() === '.xlsx'
+        let csvContent: string
+        if (isXlsx) {
+          csvContent = convertXlsxToCsv(await readFile(tempPath))
+          // Overwrite with the converted CSV so every later read of this
+          // storageKey (comparison.service.ts export step) sees plain CSV.
+          await this.storage.save(doc.storageKey, Buffer.from(csvContent, 'utf-8'), 'text/csv')
+        } else {
+          csvContent = await readFile(tempPath, 'utf-8')
+        }
+
+        const parsed = Papa.parse<Record<string, string>>(csvContent, { header: true, skipEmptyLines: true })
+        rows = parsed.data.map((row) => ({ ...mapRowToLineItem(row), rawRow: row }))
+        sourceKind = 'csv'
       }
 
-      const parsed = Papa.parse<Record<string, string>>(csvContent, { header: true, skipEmptyLines: true })
-      const rowCount = parsed.data.length
-
-      await this.replaceLineItems(kind, id, doc.workspaceId, parsed.data)
-      await this.setDone(kind, id, rowCount)
+      await this.replaceLineItems(kind, id, doc.workspaceId, rows, sourceKind)
+      await this.setDone(kind, id, rows.length)
 
       this.logger.log(`Procurement parse completed kind=${kind} id=${id} jobId=${String(job.id)}`)
     } catch (error) {
@@ -88,31 +119,32 @@ export class ProcurementParseProcessor {
 
   // Delete-then-insert makes a retried job (Bull attempts:3, or a manual
   // re-upload) idempotent — a partial insert from a prior failed attempt
-  // never doubles up against the fresh parse.
+  // never doubles up against the fresh parse. Rows arrive pre-mapped (CSV
+  // rows via mapRowToLineItem, PDF rows via the extraction chain) so this
+  // method is agnostic to source format.
   private async replaceLineItems(
     kind: ProcurementDocKind,
     id: string,
     workspaceId: string,
-    rows: Record<string, string>[],
+    rows: MappedLineItemRow[],
+    sourceKind: string,
   ) {
     if (kind === 'purchase_order') {
       await db.delete(poLineItems).where(eq(poLineItems.purchaseOrderId, id))
       if (rows.length > 0) {
         await db.insert(poLineItems).values(
-          rows.map((row, index) => {
-            const mapped = mapRowToLineItem(row)
-            return {
-              workspaceId,
-              purchaseOrderId: id,
-              lineNumber: index + 1,
-              sku: mapped.sku,
-              description: mapped.description,
-              quantity: mapped.quantity,
-              unitPrice: mapped.unitPrice,
-              lineTotal: mapped.lineTotal,
-              rawRow: row,
-            }
-          }),
+          rows.map((row, index) => ({
+            workspaceId,
+            purchaseOrderId: id,
+            lineNumber: index + 1,
+            sku: row.sku,
+            description: row.description,
+            quantity: row.quantity,
+            unitPrice: row.unitPrice,
+            lineTotal: row.lineTotal,
+            rawRow: row.rawRow,
+            sourceKind,
+          })),
         )
       }
       return
@@ -121,20 +153,18 @@ export class ProcurementParseProcessor {
     await db.delete(invoiceLineItems).where(eq(invoiceLineItems.invoiceId, id))
     if (rows.length > 0) {
       await db.insert(invoiceLineItems).values(
-        rows.map((row, index) => {
-          const mapped = mapRowToLineItem(row)
-          return {
-            workspaceId,
-            invoiceId: id,
-            lineNumber: index + 1,
-            sku: mapped.sku,
-            description: mapped.description,
-            quantity: mapped.quantity,
-            unitPrice: mapped.unitPrice,
-            lineTotal: mapped.lineTotal,
-            rawRow: row,
-          }
-        }),
+        rows.map((row, index) => ({
+          workspaceId,
+          invoiceId: id,
+          lineNumber: index + 1,
+          sku: row.sku,
+          description: row.description,
+          quantity: row.quantity,
+          unitPrice: row.unitPrice,
+          lineTotal: row.lineTotal,
+          rawRow: row.rawRow,
+          sourceKind,
+        })),
       )
     }
   }

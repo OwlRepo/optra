@@ -16,12 +16,25 @@ import {
   workspaces,
 } from '@repo/db'
 import { ProcurementParseProcessor } from './procurement-parse.processor'
+import { ProcurementExtractionService } from './procurement-extraction.service'
 import { StorageService } from '../storage/storage.service'
 
 const mockEmbedQuery = jest.fn()
 
 jest.mock('@repo/ai', () => ({
   embedQuery: (...args: unknown[]) => mockEmbedQuery(...args),
+  ProcurementExtractionUnsupportedError: class ProcurementExtractionUnsupportedError extends Error {
+    constructor(message = 'PDF has no extractable text — scanned or image-only PDFs are not supported yet') {
+      super(message)
+      this.name = 'ProcurementExtractionUnsupportedError'
+    }
+  },
+  ProcurementExtractionEmptyError: class ProcurementExtractionEmptyError extends Error {
+    constructor(message = 'No line items were found in this document') {
+      super(message)
+      this.name = 'ProcurementExtractionEmptyError'
+    }
+  },
 }))
 
 async function cleanupFixtures(prefix: string) {
@@ -47,13 +60,18 @@ describe('ProcurementParseProcessor', () => {
   const prefix = `procurement-parse-proc-spec-${Date.now()}-`
   let dir: string
   let storage: { getToTempFile: jest.Mock; save: jest.Mock }
+  let extraction: { extract: jest.Mock }
   let processor: ProcurementParseProcessor
 
   beforeEach(() => {
     jest.clearAllMocks()
     dir = mkdtempSync(join(tmpdir(), 'procurement-parse-proc-spec-'))
     storage = { getToTempFile: jest.fn(), save: jest.fn().mockResolvedValue(undefined) }
-    processor = new ProcurementParseProcessor(storage as unknown as StorageService)
+    extraction = { extract: jest.fn() }
+    processor = new ProcurementParseProcessor(
+      storage as unknown as StorageService,
+      extraction as unknown as ProcurementExtractionService,
+    )
   })
 
   afterEach(() => {
@@ -110,10 +128,12 @@ describe('ProcurementParseProcessor', () => {
       quantity: '10',
       unitPrice: '5.00',
       workspaceId: workspace.id,
+      sourceKind: 'csv',
     })
     expect(items[0].rawRow).toEqual({ sku: 'A1', description: 'Widget', qty: '10', 'unit price': '5.00' })
 
     expect(mockEmbedQuery).not.toHaveBeenCalled()
+    expect(extraction.extract).not.toHaveBeenCalled()
   })
 
   it('parses invoice line items into invoice_line_items', async () => {
@@ -189,5 +209,74 @@ describe('ProcurementParseProcessor', () => {
 
     const items = await db.select().from(poLineItems).where(eq(poLineItems.purchaseOrderId, po.id))
     expect(items).toHaveLength(1)
+  })
+
+  it('parses a PDF PO via the extraction service and marks done with sourceKind pdf-extraction', async () => {
+    const workspace = await seedWorkspace(`${prefix}po-pdf@example.com`, prefix)
+    const pdfPath = join(dir, `${randomUUID()}.pdf`)
+    writeFileSync(pdfPath, 'fake pdf bytes')
+    storage.getToTempFile.mockResolvedValue(pdfPath)
+    extraction.extract.mockResolvedValue({
+      items: [
+        { sku: 'A1', description: 'Widget', quantity: '10', unitPrice: '5.00', lineTotal: '50.00', confidence: 0.92 },
+        { sku: 'B2', description: 'Gadget', quantity: '3', unitPrice: '9.99', lineTotal: null, confidence: null },
+      ],
+    })
+
+    const [po] = await db
+      .insert(purchaseOrders)
+      .values({ workspaceId: workspace.id, name: 'po.pdf', storageKey: `k/${randomUUID()}`, status: 'pending' })
+      .returning()
+
+    await processor.handleParse({ id: 'job-pdf', data: { kind: 'purchase_order', id: po.id } } as any)
+
+    const [updated] = await db.select().from(purchaseOrders).where(eq(purchaseOrders.id, po.id))
+    expect(updated.status).toBe('done')
+    expect(updated.rowCount).toBe(2)
+
+    expect(extraction.extract).toHaveBeenCalledWith(pdfPath)
+    // XLSX->CSV conversion is the only thing that ever calls storage.save — a
+    // PDF taking that branch would be a real bug (Papa.parse on PDF bytes).
+    expect(storage.save).not.toHaveBeenCalled()
+
+    const items = await db
+      .select()
+      .from(poLineItems)
+      .where(eq(poLineItems.purchaseOrderId, po.id))
+      .orderBy(poLineItems.lineNumber)
+    expect(items).toHaveLength(2)
+    expect(items[0]).toMatchObject({
+      sku: 'A1',
+      description: 'Widget',
+      quantity: '10',
+      unitPrice: '5.00',
+      sourceKind: 'pdf-extraction',
+    })
+    expect(items[0].rawRow).toMatchObject({ sku: 'A1', confidence: 0.92 })
+  })
+
+  it('marks the PDF PO failed with a clear lastError when the document has no extractable text', async () => {
+    const { ProcurementExtractionUnsupportedError } = jest.requireMock('@repo/ai') as {
+      ProcurementExtractionUnsupportedError: new (message?: string) => Error
+    }
+    const workspace = await seedWorkspace(`${prefix}po-pdf-scan@example.com`, prefix)
+    const pdfPath = join(dir, `${randomUUID()}.pdf`)
+    writeFileSync(pdfPath, 'fake scanned pdf bytes')
+    storage.getToTempFile.mockResolvedValue(pdfPath)
+    extraction.extract.mockRejectedValue(new ProcurementExtractionUnsupportedError())
+
+    const [po] = await db
+      .insert(purchaseOrders)
+      .values({ workspaceId: workspace.id, name: 'scan.pdf', storageKey: `k/${randomUUID()}`, status: 'pending' })
+      .returning()
+
+    await processor.handleParse({ id: 'job-pdf-scan', data: { kind: 'purchase_order', id: po.id } } as any)
+
+    const [updated] = await db.select().from(purchaseOrders).where(eq(purchaseOrders.id, po.id))
+    expect(updated.status).toBe('failed')
+    expect(updated.lastError).toContain('not supported yet')
+
+    const items = await db.select().from(poLineItems).where(eq(poLineItems.purchaseOrderId, po.id))
+    expect(items).toHaveLength(0)
   })
 })
