@@ -1,11 +1,11 @@
-# Design System — Mnemra
+# Design System — Optra
 
 ## Product Context
 - **What this is:** Workspace-based RAG/knowledge-base SaaS — grounded chat assistant, ticket-extraction copilot, web-source crawling.
 - **Who it's for:** Customer support teams who need instant, cited answers from their own docs instead of digging through tabs.
 - **Space/industry:** Support tooling, adjacent to Zendesk/Intercom (ticketing) and Linear/Notion/claude.ai (workspace IA).
 - **Project type:** Authenticated web app (Next.js) + REST API (NestJS).
-- **Memorable thing:** *Serious tool for serious support work.* Calm, competent, no-nonsense — every design choice should serve that, not decoration for its own sake.
+- **Memorable thing:** *Serious tool for serious procurement work.* Calm, competent, no-nonsense — every design choice should serve that, not decoration for its own sake. (Retargeted 2026-07-10 from the original support-team framing — see Decisions Log; the RAG/support surfaces this system also serves are unchanged and additive, not replaced.)
 
 ## Aesthetic Direction
 - **Direction:** Calm Utility — restrained, content-first, minimal decoration.
@@ -21,8 +21,8 @@
 - **Scale:** existing Tailwind type scale, no change — headings use `text-wrap: balance`, body uses `text-wrap: pretty` (`globals.css:143,153`).
 
 ## Color
-- **Approach:** Balanced — primary + accent + semantic colors (unchanged).
-- **Source of truth:** `packages/ui/src/globals.css:42-103` — full oklch token set, light + dark variants. **Not modified by this consultation.** Confirmed by design review as already disciplined and consumed correctly via Tailwind semantic classes almost everywhere.
+- **Approach:** Balanced — primary + accent + semantic colors.
+- **Source of truth:** `packages/ui/src/globals.css:42-103` — full oklch token set, light + dark variants, plus the Optra brand kit (`svg`/`favicon`/`web`/`covers` assets) as the palette source for the brand-identity tokens specifically. **`--primary`/`--accent`/`--ring` were recolored 2026-07-10** from the original placeholder violet/amber to the real Optra teal (Iris `#1FB6A3` / Petrol `#0A5056` / Teal-flat `#0F8A7E`, computed to oklch) — see Decisions Log. `--success`/`--warning`/`--destructive`/`--border`/`--input` and all other tokens are unchanged; consumed correctly via Tailwind semantic classes almost everywhere, per the original design review.
 - **One cleanup item:** `apps/web/app/page.tsx:135` uses a raw `rgba()` gradient overlay instead of a token-based value — fix as part of implementation, not a new color decision. (Resolved 2026-07-04 — replaced with `bg-gradient-to-br ... via-white/40 ...` Tailwind utilities as part of the landing-page copy rewrite.)
 
 ## Spacing
@@ -87,5 +87,6 @@ The sidebar shell above had zero mobile treatment until this pass — a real gap
 | 2026-07-06 | Landing page given a dedicated motion/animation pass (scroll reveals, count-up metrics, typing preview, spotlight cards, use-case marquee, floating hero blobs), scoped to `apps/web/app/page.tsx` only | Explicit user request to modernize the marketing page toward a more animated feel (reference: caveman.so) while keeping the existing oklch color tokens unchanged; authenticated app screens are out of scope and keep the Calm Utility / near-zero-motion direction from the 2026-07-01 consultation |
 | 2026-07-08 | Sidebar shell gets a responsive drawer at `lg` (1024px) cutover, hand-rolled to match `Modal`'s existing no-Radix pattern | Whole-app mobile-responsive pass; DESIGN.md previously had zero mobile/breakpoint spec — genuine gap, not a prior decision being reversed. `lg` chosen over `md` because tablet-portrait width is already cramped for the app's 3–4 column tables |
 | 2026-07-08 | Added an iOS-style bottom tab bar below `lg` on 8 of 9 workspace pages, plus a shared `WorkspaceBrandLink` sidebar-header component | Same mobile-responsive pass, later the same day; a drawer alone left primary nav one extra tap away on every page load, and per-page inline sidebar-header markup had a real truncation bug worth fixing once centrally |
+| 2026-07-10 | Recolored `--primary`/`--accent`/`--ring` (light+dark) to the real Optra brand teal; swapped logo/favicon/OG assets from the supplied Optra Brand Kit; retitled this doc and the memorable-thing statement to Optra | Optra Track A (backend) shipped headless; this is the frontend repositioning pass. Explicit user decision: recolor app-wide, not just the landing page/logo, so the teal mark doesn't clash with the old violet chrome. Semantic tokens (`--success`/`--warning`/`--destructive`) deliberately left untouched — only the 3 brand-identity tokens changed |
 | 2026-07-08 | Chat page opts into `mobileFullBleed` — full-viewport chat on mobile with its own compact header, no sidebar chrome | Same pass; explicit goal was matching Claude's own mobile chat pattern for the one page where message-list vertical space matters most; scoped to chat only, not a new default for other pages |
 | 2026-07-08 | Settings page redesigned from stacked forms to card-per-section (`Card`/`CardHeader`/`CardContent` per section) | Same-day settings pass; no field/validation/request-shape change, pure layout — groups workspace name, change password, and the new digest-settings section into visually distinct cards instead of one continuous scroll |

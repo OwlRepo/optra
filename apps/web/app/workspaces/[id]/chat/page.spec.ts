@@ -587,12 +587,12 @@ describe("WorkspaceChatPage", () => {
     renderPage();
 
     // Compact icon toolbar: the count renders as a small numeric badge next
-    // to the "Refine with Mnemra" icon button, not as verbose text anymore.
-    const refineButton = await screen.findByRole("button", { name: "Refine with Mnemra" });
+    // to the "Refine with Optra" icon button, not as verbose text anymore.
+    const refineButton = await screen.findByRole("button", { name: "Refine with Optra" });
     expect(within(refineButton.parentElement as HTMLElement).getByText("15")).toBeDefined();
   });
 
-  it("clicking Refine with Mnemra calls refine and replaces textarea content with refined text", async () => {
+  it("clicking Refine with Optra calls refine and replaces textarea content with refined text", async () => {
     refineMessageMock.mockResolvedValue({ original: "raw draft", refined: "Clean refined text" });
 
     renderPage();
@@ -600,7 +600,7 @@ describe("WorkspaceChatPage", () => {
     const textarea = await screen.findByPlaceholderText(/Ask a workspace question/);
     fireEvent.change(textarea, { target: { value: "raw draft" } });
 
-    fireEvent.click(await screen.findByRole("button", { name: "Refine with Mnemra" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Refine with Optra" }));
 
     await waitFor(() => {
       expect(refineMessageMock).toHaveBeenCalledWith("ws-1", "raw draft");
@@ -615,7 +615,7 @@ describe("WorkspaceChatPage", () => {
 
     const textarea = await screen.findByPlaceholderText(/Ask a workspace question/);
     fireEvent.change(textarea, { target: { value: "raw draft" } });
-    fireEvent.click(await screen.findByRole("button", { name: "Refine with Mnemra" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Refine with Optra" }));
 
     fireEvent.click(await screen.findByRole("button", { name: "Undo refine" }));
 
@@ -631,7 +631,7 @@ describe("WorkspaceChatPage", () => {
 
     const textarea = await screen.findByPlaceholderText(/Ask a workspace question/);
     fireEvent.change(textarea, { target: { value: "raw draft" } });
-    fireEvent.click(await screen.findByRole("button", { name: "Refine with Mnemra" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Refine with Optra" }));
     await screen.findByRole("button", { name: "Undo refine" });
 
     fireEvent.change(textarea, { target: { value: "Clean refined text, but hand-edited" } });
@@ -655,7 +655,7 @@ describe("WorkspaceChatPage", () => {
 
     const textarea = await screen.findByPlaceholderText(/Ask a workspace question/);
     fireEvent.change(textarea, { target: { value: "raw draft" } });
-    fireEvent.click(await screen.findByRole("button", { name: "Refine with Mnemra" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Refine with Optra" }));
     fireEvent.click(await screen.findByRole("button", { name: "Save refined message" }));
 
     await waitFor(() => {
@@ -675,7 +675,7 @@ describe("WorkspaceChatPage", () => {
 
     const textarea = await screen.findByPlaceholderText(/Ask a workspace question/);
     fireEvent.change(textarea, { target: { value: "raw draft" } });
-    fireEvent.click(await screen.findByRole("button", { name: "Refine with Mnemra" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Refine with Optra" }));
 
     expect(await screen.findByText("Refine produced no output. Try rephrasing.")).toBeDefined();
   });
@@ -687,7 +687,7 @@ describe("WorkspaceChatPage", () => {
 
     const textarea = await screen.findByPlaceholderText(/Ask a workspace question/);
     fireEvent.change(textarea, { target: { value: "raw draft" } });
-    fireEvent.click(await screen.findByRole("button", { name: "Refine with Mnemra" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Refine with Optra" }));
 
     expect(await screen.findByText("Daily refine limit reached")).toBeDefined();
   });

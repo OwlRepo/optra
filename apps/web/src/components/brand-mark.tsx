@@ -12,11 +12,11 @@ export function BrandMark({ className, decorative = false }: BrandMarkProps) {
         "inline-flex shrink-0 items-center justify-center",
         className,
       )}
-      data-brand-mark="mnemra-bloom"
+      data-brand-mark="optra-mark"
     >
       <img
-        src="/mnemra-mark.svg"
-        alt={decorative ? "" : "Mnemra logo"}
+        src="/optra-mark.svg"
+        alt={decorative ? "" : "Optra logo"}
         aria-hidden={decorative ? "true" : undefined}
         className="h-full w-full outline-0"
       />

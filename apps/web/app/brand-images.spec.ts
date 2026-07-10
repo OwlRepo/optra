@@ -9,13 +9,13 @@ function pngDimensions(name: string) {
 }
 
 describe('static brand image assets (Next app/ file-convention icons)', () => {
-  it('ships the source bloom SVG mark used by web chrome', () => {
-    const svgPath = join(__dirname, '../public/mnemra-mark.svg')
+  it('ships the source aperture SVG mark used by web chrome', () => {
+    const svgPath = join(__dirname, '../public/optra-mark.svg')
     expect(existsSync(svgPath)).toBe(true)
 
     const svg = readFileSync(svgPath, 'utf8')
-    expect(svg).toContain('<title>Mnemra bloom mark</title>')
-    expect(svg).toContain('data-mark="mnemra-bloom"')
+    expect(svg).toContain('<title>Optra aperture mark</title>')
+    expect(svg).toContain('data-mark="optra-mark"')
   })
 
   it('ships a 32x32 favicon', () => {

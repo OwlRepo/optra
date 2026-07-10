@@ -1222,7 +1222,7 @@ export default function WorkspaceChatPage({
                       type="button"
                       variant="ghost"
                       size="icon"
-                      aria-label={isRefining ? "Refining" : "Refine with Mnemra"}
+                      aria-label={isRefining ? "Refining" : "Refine with Optra"}
                       onClick={() => void handleRefine()}
                       disabled={!input.trim() || isLoading}
                       isLoading={isRefining}

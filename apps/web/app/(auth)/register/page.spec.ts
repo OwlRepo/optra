@@ -33,7 +33,7 @@ describe('RegisterPage', () => {
 
     const { container } = render(React.createElement(RegisterPage))
 
-    expect(container.querySelector('[data-brand-mark="mnemra-bloom"]')).not.toBeNull()
+    expect(container.querySelector('[data-brand-mark="optra-mark"]')).not.toBeNull()
 
     fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'new@example.com' } })
     fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'password123' } })

@@ -46,7 +46,7 @@ export default function RegisterPage() {
         <div className="space-y-4">
           <Link href="/" className="flex items-center gap-2 text-sm font-semibold">
             <BrandMark decorative className="size-9" />
-            Mnemra
+            Optra
           </Link>
           <div>
             <h1 className="text-2xl font-semibold">Create your account</h1>
