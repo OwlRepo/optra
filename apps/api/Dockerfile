@@ -23,7 +23,11 @@ WORKDIR /app
 # default gets an ABI duckdb actually ships a prebuilt binary for, so the
 # postinstall script downloads instead of compiling — no build toolchain
 # needed at all.
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl gnupg \
+# procps (ps): nest start --watch uses tree-kill to restart the process on
+# file change, which shells out to `ps -o pid --no-headers --ppid` on Linux —
+# without it, every dev-mode hot-reload crashes the container with
+# "spawn ps ENOENT" (verified against a real crash, not assumed).
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl gnupg procps \
     && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get install -y --no-install-recommends nodejs \
     && rm -rf /var/lib/apt/lists/*
