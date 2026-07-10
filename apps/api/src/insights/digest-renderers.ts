@@ -42,14 +42,14 @@ function buildLines(content: DigestContent): string[] {
 
 export function renderDigestEmailHtml(content: DigestContent): string {
   if (isQuietWeek(content)) {
-    return `<h2>Mnemra weekly digest</h2><p>Quiet week — no notable activity in the last ${content.windowDays} days.</p>`
+    return `<h2>Optra weekly digest</h2><p>Quiet week — no notable activity in the last ${content.windowDays} days.</p>`
   }
 
   const items = buildLines(content)
     .map((line) => `<li>${line}</li>`)
     .join('')
 
-  return `<h2>Mnemra weekly digest</h2><p>Here's what happened in the last ${content.windowDays} days:</p><ul>${items}</ul>`
+  return `<h2>Optra weekly digest</h2><p>Here's what happened in the last ${content.windowDays} days:</p><ul>${items}</ul>`
 }
 
 export interface SlackPayload {
@@ -58,12 +58,12 @@ export interface SlackPayload {
 
 export function renderDigestSlackPayload(content: DigestContent): SlackPayload {
   if (isQuietWeek(content)) {
-    return { text: `*Mnemra weekly digest*\nQuiet week — no notable activity in the last ${content.windowDays} days.` }
+    return { text: `*Optra weekly digest*\nQuiet week — no notable activity in the last ${content.windowDays} days.` }
   }
 
   const items = buildLines(content)
     .map((line) => `• ${line}`)
     .join('\n')
 
-  return { text: `*Mnemra weekly digest*\nLast ${content.windowDays} days:\n${items}` }
+  return { text: `*Optra weekly digest*\nLast ${content.windowDays} days:\n${items}` }
 }

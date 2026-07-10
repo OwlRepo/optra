@@ -49,7 +49,7 @@ export class RateLimitService {
     }
   }
 
-  /** Per-user daily cap on "Refine with Mnemra" requests. Resets at UTC midnight. */
+  /** Per-user daily cap on "Refine with Optra" requests. Resets at UTC midnight. */
   async checkRefineDaily(userId: string) {
     const limit = Number.parseInt(
       this.config.get<string>('REFINE_DAILY_LIMIT_PER_USER', '20'),

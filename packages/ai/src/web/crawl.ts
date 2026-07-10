@@ -45,7 +45,7 @@ type QueueEntry = {
   depth: number
 }
 
-const DEFAULT_USER_AGENT = 'MnemraBot/1.0 (+https://mnemra.com/bot)'
+const DEFAULT_USER_AGENT = 'OptraBot/1.0 (+https://optra.com/bot)'
 const MIN_CONTENT_LENGTH = 50
 type PLimit = typeof import('p-limit').default
 

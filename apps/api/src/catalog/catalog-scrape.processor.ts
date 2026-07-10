@@ -53,7 +53,7 @@ export class CatalogScrapeProcessor {
         concurrency: 3,
         requestDelayMs: 500,
         timeoutMs: 20_000,
-        userAgent: this.config.get<string>('CRAWLER_USER_AGENT') ?? 'MnemraBot/1.0 (+https://mnemra.com/bot)',
+        userAgent: this.config.get<string>('CRAWLER_USER_AGENT') ?? 'OptraBot/1.0 (+https://optra.com/bot)',
         respectRobots: true,
         onPage: async (page, progress) => {
           const lastProgressAt = new Date()

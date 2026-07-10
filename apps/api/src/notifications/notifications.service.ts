@@ -9,7 +9,7 @@ export class NotificationsService {
   private fromEmail: string
 
   constructor(private config: ConfigService) {
-    this.fromEmail = config.get<string>('RESEND_FROM_EMAIL') ?? 'noreply@mnemra.com'
+    this.fromEmail = config.get<string>('RESEND_FROM_EMAIL') ?? 'noreply@optra.com'
     if (config.get<string>('EMAIL_OTP_ENABLED') === 'true') {
       this.resend = new Resend(config.get<string>('RESEND_API_KEY'))
     }
@@ -24,9 +24,9 @@ export class NotificationsService {
       const { error } = await this.resend.emails.send({
         from: this.fromEmail,
         to: email,
-        subject: 'Your Mnemra verification code',
+        subject: 'Your Optra verification code',
         html: `
-          <p>Your Mnemra verification code is:</p>
+          <p>Your Optra verification code is:</p>
           <h2>${code}</h2>
           <p>This code expires in 10 minutes.</p>
         `,
@@ -45,9 +45,9 @@ export class NotificationsService {
       const { error } = await this.resend.emails.send({
         from: this.fromEmail,
         to: email,
-        subject: "You're invited to a Mnemra workspace",
+        subject: "You're invited to an Optra workspace",
         html: `
-          <p>You've been invited to join a Mnemra workspace.</p>
+          <p>You've been invited to join an Optra workspace.</p>
           <p><a href="${inviteUrl}">Accept your invite</a></p>
         `,
       })
@@ -67,7 +67,7 @@ export class NotificationsService {
       const { error } = await this.resend.emails.send({
         from: this.fromEmail,
         to: email,
-        subject: 'Your Mnemra weekly digest',
+        subject: 'Your Optra weekly digest',
         html,
       })
       if (error) {
