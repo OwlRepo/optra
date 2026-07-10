@@ -11,7 +11,7 @@ import {
   Archive,
   ArrowRight,
   CheckCircle2,
-  MessageSquareText,
+  FileSearch,
   Search,
   ShieldCheck,
   Sparkles,
@@ -37,29 +37,29 @@ import { WorkspaceTabs } from "@/components/workspace-tabs";
 const WEB_URL = process.env.WEB_URL ?? "https://mnemra.tyvera.app";
 
 const metrics = [
-  { label: "Avg. answer time", prefix: "<", value: 15, suffix: "s" },
-  { label: "Knowledge coverage", value: 94, suffix: "%" },
-  { label: "Team ramp time", prefix: "-", value: 42, suffix: "%" },
+  { label: "Avg. match time", prefix: "<", value: 10, suffix: "s" },
+  { label: "Catalog coverage", value: 94, suffix: "%" },
+  { label: "Manual review time", prefix: "-", value: 42, suffix: "%" },
 ];
 
 const pillars = [
   {
     icon: Search,
-    title: "Search once, not everywhere",
+    title: "Match it once, not line by line",
     description:
-      "Find answers across tickets, documents, support notes, Slack threads, and runbooks from one clean workspace.",
+      "Check every PO line item against the vendor's catalog, price list, and past invoices from one workspace.",
   },
   {
     icon: Workflow,
-    title: "Reuse proven fixes",
+    title: "Learn from every past order",
     description:
-      "Surface similar past issues, previous decisions, and the exact troubleshooting flow your team already used.",
+      "Surface prior orders from the same vendor, past pricing, and any discrepancy that was flagged before, so a pattern does not repeat unnoticed.",
   },
   {
     icon: ShieldCheck,
-    title: "Reply with confidence",
+    title: "Approve with evidence, not a guess",
     description:
-      "Every answer is grounded in source material so agents can verify before replying instead of guessing beautifully.",
+      "Every match is grounded in the vendor's actual catalog entry and product photo, so a buyer can verify before approving instead of assuming it is right.",
   },
 ];
 
@@ -68,26 +68,26 @@ const workspaceModes = [
     id: "personal",
     icon: <User className="size-4" />,
     label: "Personal",
-    title: "Your own second brain",
+    title: "Your own purchasing memory",
     description:
-      "Built for VAs, freelancers, and solo support agents juggling multiple clients without a team behind them.",
+      "Built for solo buyers and small-business owners juggling multiple vendors without a procurement team behind them.",
     bullets: [
-      "Save a fix the moment you find it, no formatting required",
-      "Search your own ticket history instead of relying on memory",
-      "Keep client-specific context separate without mixing accounts",
+      "Upload a PO or invoice the moment it lands, no formatting required",
+      "Search your own order history instead of relying on memory",
+      "Keep vendor-specific pricing history separate without mixing accounts",
     ],
   },
   {
     id: "team",
     icon: <Users className="size-4" />,
     label: "Team",
-    title: "One brain, every agent",
+    title: "One catalog, every buyer",
     description:
-      "Built for support teams and agencies where the right answer should not depend on who happens to be on shift.",
+      "Built for procurement teams where a price check should not depend on who happens to remember the last invoice.",
     bullets: [
-      "Every agent answers from the same approved knowledge",
-      "New hires search real ticket history starting day one",
-      "Senior agents stop re-explaining the same fix every week",
+      "Every buyer matches against the same approved vendor catalog",
+      "New buyers search real order and pricing history starting day one",
+      "Senior buyers stop re-checking the same vendor's pricing every week",
     ],
   },
 ];
@@ -95,23 +95,23 @@ const workspaceModes = [
 const features = [
   {
     eyebrow: "Onboarding",
-    title: "Ramp new agents faster",
+    title: "Ramp new buyers faster",
     description:
-      "Give new hires access to past support history, internal docs, and resolved cases without waiting months to absorb tribal knowledge.",
+      "Give new buyers access to vendor catalogs, price history, and past discrepancies without waiting months to learn which vendors run high.",
     icon: UserPlus,
   },
   {
     eyebrow: "Continuity",
-    title: "Keep knowledge when people leave",
+    title: "Keep vendor history when people leave",
     description:
-      "Preserve troubleshooting steps, customer context, and hard-won fixes even after the person who solved them moves on.",
+      "Preserve every match, flagged discrepancy, and price history even after the buyer who caught it moves on.",
     icon: Archive,
   },
   {
     eyebrow: "Efficiency",
-    title: "Reduce repeated interruptions",
+    title: "Cut manual line-by-line review",
     description:
-      "Let agents self-serve answers from trusted knowledge so senior teammates are not interrupted for the same questions all week.",
+      "Let the vision match run automatically so buyers only spend time on the line items that actually get flagged.",
     icon: Zap,
   },
 ];
@@ -119,68 +119,68 @@ const features = [
 const workflowSteps = [
   {
     step: "01",
-    title: "Add your knowledge",
+    title: "Connect your vendors",
     description:
-      "Upload support docs, SOPs, ticket exports, troubleshooting notes, or copied support threads into your workspace.",
+      "Upload vendor catalogs, purchase orders, and invoices — PDFs, spreadsheets, or scanned copies — into your workspace.",
   },
   {
     step: "02",
-    title: "Ask in natural language",
+    title: "Optra matches automatically",
     description:
-      "Agents ask questions the way they would ask a teammate, then Mnemra searches the workspace context behind the scenes.",
+      "Optra reads each line item, matches it to the vendor's catalog entry — including the product photo — and checks the price and quantity against the PO.",
   },
   {
     step: "03",
-    title: "Use sourced answers",
+    title: "Review what got flagged",
     description:
-      "Get a grounded answer with source context, confidence signals, and enough detail to move the ticket forward.",
+      "Get a clear result for every line: confirmed, or flagged with the exact catalog source and the price or item difference.",
   },
 ];
 
 const useCases = [
-  "Customer support teams",
-  "Virtual assistants",
-  "Agencies handling multiple clients",
-  "Internal operations teams",
-  "Product support specialists",
-  "Founder-led support workflows",
+  "Procurement teams",
+  "AP / accounts payable teams",
+  "Multi-vendor sourcing teams",
+  "Operations & supply chain teams",
+  "Small business buyers",
+  "Founder-led purchasing workflows",
 ];
 
 const comparisons = [
   {
-    before: "Agents check five different tools before they can answer one ticket.",
-    after: "One search across tickets, docs, and support threads finds it.",
+    before: "Checking a vendor invoice against the PO means opening five different files by hand.",
+    after: "One workspace matches the PO, catalog, and invoice automatically.",
   },
   {
-    before: "The fix leaves the company the day the person who found it does.",
-    after: "Every troubleshooting step stays searchable, permanently.",
+    before: "A catalog photo and the item that actually shipped do not always match, and nobody double-checks it.",
+    after: "Every line item gets a vision-based catalog match before it is approved.",
   },
   {
-    before: "A confident-sounding reply is still a guess dressed up nicely.",
-    after: "Every answer cites the source it came from before it sends.",
+    before: "A price increase buried in a PDF invoice gets approved because nobody compared it line by line.",
+    after: "Every price mismatch is flagged against the vendor catalog before payment goes out.",
   },
 ];
 
 const faqItems = [
   {
-    question: "Is Mnemra only for teams?",
+    question: "Is Optra only for procurement teams?",
     answer:
-      "No. You can use it as a personal workspace or as a shared team workspace. Solo agents can treat it as their private support memory, while teams can use it as a shared source of truth.",
+      "No. A solo buyer can run it as a personal workspace, and a procurement team can share it as one workspace across every buyer.",
   },
   {
-    question: "What kind of knowledge can it use?",
+    question: "What documents can Optra read?",
     answer:
-      "Mnemra is designed for support history, documents, SOPs, troubleshooting notes, copied chat threads, and other internal knowledge your agents already rely on.",
+      "Optra is designed for vendor catalogs (including product photos), purchase orders, invoices, and other PDFs your buyers already work from.",
   },
   {
-    question: "Does it replace support agents?",
+    question: "Does it replace a buyer's approval?",
     answer:
-      "No. It helps agents answer faster by finding relevant context. The agent still reviews, verifies, and decides what to send.",
+      "No. It flags likely mismatches between the PO, catalog, and invoice. A buyer still reviews and decides whether to approve.",
   },
   {
-    question: "Why not just use normal document search?",
+    question: "Why not just review the PDFs manually?",
     answer:
-      "Normal search returns files. Mnemra is designed to return usable support answers with context, source references, and patterns from previous fixes.",
+      "Manual review catches obvious errors. Optra checks every line item against the vendor's catalog automatically, including the product photo, so a subtle price change or a swapped item does not slip through.",
   },
 ];
 
@@ -188,16 +188,16 @@ const jsonLd = [
   {
     "@context": "https://schema.org",
     "@type": "Organization",
-    name: "Mnemra",
+    name: "Optra",
     url: WEB_URL,
     logo: `${WEB_URL}/icon.png`,
   },
   {
     "@context": "https://schema.org",
     "@type": "SoftwareApplication",
-    name: "Mnemra",
+    name: "Optra",
     description:
-      "Search past tickets, docs, and support threads to get sourced answers before replying to customers.",
+      "Match purchase orders against vendor catalogs and invoices, with vision-based product matching and automatic discrepancy flagging.",
     applicationCategory: "BusinessApplication",
     operatingSystem: "Web",
   },
@@ -218,8 +218,8 @@ export default function Home() {
             <BrandMark decorative className="size-11" />
           </Link>
         }
-        title="Mnemra"
-        description="Turn support history into instant, sourced answers"
+        title="Optra"
+        description="Vision-verified vendor sourcing and invoice matching"
         navigation={
           <>
             <a
@@ -272,24 +272,25 @@ export default function Home() {
                   variant="secondary"
                   className="w-fit border border-border/70"
                 >
-                  Modern support knowledge workspace
+                  Vision-verified vendor sourcing workspace
                 </Badge>
               </Reveal>
 
               <div className="space-y-5">
                 <Reveal delay={80}>
                   <h1 className="max-w-4xl text-5xl font-semibold leading-[0.95] tracking-[-0.055em] text-foreground md:text-7xl lg:text-[5.6rem]">
-                    Your team already solved this.
+                    The mismatch is already in the paperwork.
                     <span className="block text-primary">
-                      Mnemra helps you find it.
+                      Optra helps you catch it before you pay.
                     </span>
                   </h1>
                 </Reveal>
 
                 <Reveal delay={160}>
                   <p className="max-w-2xl text-lg leading-8 text-muted-foreground md:text-xl">
-                    Search past tickets, docs, and support threads to get a
-                    sourced answer before you start typing a reply.
+                    Match purchase orders against vendor catalogs, extract
+                    line items from PDFs, and flag price or item mismatches
+                    before an invoice gets approved.
                   </p>
                 </Reveal>
               </div>
@@ -349,36 +350,36 @@ export default function Home() {
                   <div className="flex items-start justify-between gap-4">
                     <div>
                       <p className="text-sm font-semibold text-primary">
-                        Live answer preview
+                        Live match preview
                       </p>
                       <p className="text-sm text-muted-foreground">
-                        Grounded response experience
+                        Vision-based catalog matching
                       </p>
                     </div>
 
-                    <Badge variant="success" className="shrink-0">
-                      Streaming
+                    <Badge variant="warning" className="shrink-0">
+                      Flagged
                     </Badge>
                   </div>
 
                   <div className="space-y-4 rounded-3xl border border-border/70 bg-background/80 p-5 shadow-sm">
                     <div className="flex gap-3">
-                      <MessageSquareText className="mt-1 size-5 shrink-0 text-primary" />
+                      <FileSearch className="mt-1 size-5 shrink-0 text-primary" />
                       <div>
-                        <p className="text-sm font-semibold">Agent question</p>
+                        <p className="text-sm font-semibold">PO line item</p>
                         <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                          “Customer cannot update billing email. What should I
-                          do?”
+                          “PO #4417 · Line 3 — 200 × 3/8in steel hex bolts,
+                          vendor Ironclad Supply, $0.42/unit.”
                         </p>
                       </div>
                     </div>
 
                     <div className="rounded-3xl border border-border/70 bg-card p-5 shadow-sm">
                       <p className="text-sm font-semibold text-primary">
-                        Recommended answer
+                        Match result
                       </p>
                       <TypingText
-                        text="Verify account ownership, confirm whether invoice history must be retained, then guide the customer through the billing contact email flow. If billing is managed by an admin, escalate to the workspace owner."
+                        text="Vendor catalog lists this SKU at $0.51/unit — 18% above the PO price. Product photo matches the catalog listing exactly, so the item itself is correct. Price mismatch flagged for review before this invoice is approved."
                         className="mt-3 text-sm leading-7 text-muted-foreground"
                       />
                     </div>
@@ -386,7 +387,7 @@ export default function Home() {
                     <div className="grid gap-3 sm:grid-cols-2">
                       <div className="rounded-3xl border border-border/70 bg-secondary/50 p-5">
                         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                          Confidence
+                          Match confidence
                         </p>
                         <p className="mt-3 text-2xl font-semibold text-foreground">
                           High
@@ -395,7 +396,7 @@ export default function Home() {
 
                       <div className="rounded-3xl border border-border/70 bg-secondary/50 p-5">
                         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                          Sources attached
+                          Catalog sources checked
                         </p>
                         <p className="mt-3 text-2xl font-semibold text-foreground">
                           03
@@ -412,13 +413,13 @@ export default function Home() {
         <section className="border-y border-border/70 bg-secondary py-6">
           <div className="grid gap-3 text-center sm:grid-cols-3">
             <div className="text-sm font-medium text-foreground/80">
-              Built for repeat support questions
+              Built for repeat vendor invoices
             </div>
             <div className="text-sm font-medium text-foreground/80">
-              Designed for personal and team workspaces
+              Designed for solo buyers and procurement teams
             </div>
             <div className="text-sm font-medium text-foreground/80">
-              Grounded answers with source context
+              Every match cites the catalog it came from
             </div>
           </div>
         </section>
@@ -426,8 +427,8 @@ export default function Home() {
         <PageSection
           className="py-20"
           eyebrow={<Badge variant="outline">Product</Badge>}
-          title="Stop losing time to knowledge you already have"
-          description="Mnemra gives support agents one clean place to search previous fixes, internal notes, support documents, and copied team conversations."
+          title="Stop approving invoices you have not actually checked"
+          description="Optra gives buyers one place to match purchase orders, vendor catalogs, and invoices — including the product photos — instead of comparing PDFs by hand."
         >
           <div className="grid gap-5 lg:grid-cols-3">
             {pillars.map(({ icon: Icon, title, description }, index) => (
@@ -456,8 +457,8 @@ export default function Home() {
         <PageSection
           className="py-16"
           eyebrow={<Badge variant="outline">Workspaces</Badge>}
-          title="Use it alone, or bring the whole team"
-          description="Start with your own support memory, then grow into a shared workspace when the team needs the same source of truth."
+          title="Use it alone, or bring the whole procurement team"
+          description="Start by matching your own purchase orders, then grow into a shared workspace when every buyer needs the same vendor history."
         >
           <Reveal>
             <WorkspaceTabs modes={workspaceModes} />
@@ -467,8 +468,8 @@ export default function Home() {
         <PageSection
           className="py-16"
           eyebrow={<Badge variant="secondary">Core value</Badge>}
-          title="Everything support teams need, connected"
-          description="Knowledge search, grounded chat, and support context all pull from the same workspace so answers stay consistent."
+          title="Everything a buyer needs, connected"
+          description="Vendor catalogs, PO matching, and invoice extraction all pull from the same workspace so a price check today matches the one from last quarter."
         >
           <FeatureList items={features} />
         </PageSection>
@@ -476,8 +477,8 @@ export default function Home() {
         <PageSection
           className="py-16"
           eyebrow={<Badge variant="outline">Workflow</Badge>}
-          title="A simple path from scattered notes to usable answers"
-          description="No complex migration ritual. Humanity has suffered enough. Start with the knowledge you already have."
+          title="A simple path from a stack of PDFs to a checked invoice"
+          description="No complex migration. Start with the purchase orders and vendor catalogs you already have."
         >
           <Stepper steps={workflowSteps} />
         </PageSection>
@@ -485,8 +486,8 @@ export default function Home() {
         <PageSection
           className="py-16"
           eyebrow={<Badge variant="secondary">Use cases</Badge>}
-          title="Built for people who answer the same painful questions repeatedly"
-          description="Mnemra fits any support-heavy workflow where past fixes, SOPs, and customer context are scattered across too many places."
+          title="Built for teams who check the same vendor invoices repeatedly"
+          description="Optra fits any procurement workflow where purchase orders, vendor catalogs, and invoices are scattered across email, PDFs, and spreadsheets."
         >
           <div className="space-y-3">
             <Marquee>
@@ -516,18 +517,18 @@ export default function Home() {
 
         <PageSection
           className="py-16"
-          eyebrow={<Badge variant="outline">Why Mnemra</Badge>}
-          title="Answers your team can verify, not just trust"
-          description="Blind AI confidence is not a product strategy, it is a workplace incident waiting politely. Here is what changes once every answer comes with its source."
+          eyebrow={<Badge variant="outline">Why Optra</Badge>}
+          title="Matches your team can verify, not just trust"
+          description="A missed price increase does not show up as an error. It shows up on the next invoice. Here is what changes once every match cites its source."
         >
-          <ComparisonTable rows={comparisons} beforeLabel="Without Mnemra" afterLabel="With Mnemra" />
+          <ComparisonTable rows={comparisons} beforeLabel="Without Optra" afterLabel="With Optra" />
         </PageSection>
 
         <PageSection
           className="py-16"
           eyebrow={<Badge variant="outline">FAQ</Badge>}
-          title="Questions before the obvious button-clicking begins"
-          description="Straight answers about how Mnemra is meant to fit into a support workflow."
+          title="Common questions before you connect a vendor"
+          description="Straight answers about how Optra is meant to fit into a procurement workflow."
         >
           <Reveal>
             <Accordion items={faqItems} />
@@ -538,8 +539,8 @@ export default function Home() {
           <Reveal>
             <EmptyState
               icon={<Sparkles className="size-5" />}
-              title="Ready to build your support memory?"
-              description="Create a workspace, add your first knowledge source, and start asking questions from your own support history."
+              title="Ready to check your first purchase order?"
+              description="Create a workspace, connect a vendor catalog, and match your first purchase order or invoice."
               actions={
                 <>
                   <Button asChild size="lg" className="btn-shine">
@@ -550,7 +551,7 @@ export default function Home() {
                   </Button>
 
                   <Button asChild size="lg" variant="outline">
-                    <Link href="/chat">Run live chat test</Link>
+                    <Link href="/chat">Run a live match test</Link>
                   </Button>
                 </>
               }
@@ -564,10 +565,10 @@ export default function Home() {
           <div className="flex items-start gap-4">
             <BrandMark decorative className="size-11 shrink-0" />
             <div>
-              <p className="text-lg font-semibold">Mnemra</p>
+              <p className="text-lg font-semibold">Optra</p>
               <p className="mt-2 max-w-md text-sm leading-7 text-muted-foreground">
-                Turn support history into instant, sourced answers for personal
-                and team support workflows.
+                Match purchase orders, vendor catalogs, and invoices for solo
+                buyers and procurement teams.
               </p>
             </div>
           </div>
@@ -611,7 +612,7 @@ export default function Home() {
                 href="/chat"
                 className="block text-muted-foreground transition hover:text-foreground"
               >
-                Live demo
+                Live match demo
               </Link>
               <Link
                 href="/workspaces"
@@ -624,10 +625,10 @@ export default function Home() {
         </div>
 
         <div className="mt-10 flex flex-col gap-3 border-t border-border/70 pt-6 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
-          <p>© {new Date().getFullYear()} Mnemra. All rights reserved.</p>
+          <p>© {new Date().getFullYear()} Optra. All rights reserved.</p>
           <p>
-            Built for support teams that are tired of solving the same thing
-            twice.
+            Built for buyers who are tired of catching a price mismatch after
+            it&apos;s already paid.
           </p>
         </div>
       </footer>

@@ -1,6 +1,6 @@
 import type { MetadataRoute } from 'next'
 
-const WEB_URL = process.env.WEB_URL ?? 'https://mnemra.tyvera.app'
+const WEB_URL = process.env.WEB_URL ?? 'https://optra.example.com'
 
 export default function sitemap(): MetadataRoute.Sitemap {
   return [

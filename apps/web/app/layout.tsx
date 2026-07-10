@@ -21,25 +21,25 @@ const mono = JetBrains_Mono({
   display: 'swap',
 })
 
-const description = 'Search past tickets, docs, and Slack threads to get a sourced answer before you start typing a reply.'
+const description = 'Match purchase orders against vendor catalogs and invoices, with vision-based product matching and automatic discrepancy flagging.'
 
 export const metadata: Metadata = {
   title: {
-    default: 'Mnemra',
-    template: '%s · Mnemra',
+    default: 'Optra',
+    template: '%s · Optra',
   },
   description,
-  metadataBase: new URL(process.env.WEB_URL ?? 'https://mnemra.tyvera.app'),
+  metadataBase: new URL(process.env.WEB_URL ?? 'https://optra.example.com'),
   alternates: { canonical: '/' },
   openGraph: {
-    title: 'Mnemra — Turn support history into instant, sourced answers',
+    title: 'Optra — Vision-verified vendor sourcing and invoice matching',
     description,
-    siteName: 'Mnemra',
+    siteName: 'Optra',
     type: 'website',
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Mnemra — Turn support history into instant, sourced answers',
+    title: 'Optra — Vision-verified vendor sourcing and invoice matching',
     description,
   },
 }

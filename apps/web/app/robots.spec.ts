@@ -13,6 +13,6 @@ describe('robots', () => {
 
   it('points crawlers at the sitemap on the real deployed domain', () => {
     const result = robots()
-    expect(result.sitemap).toBe('https://mnemra.tyvera.app/sitemap.xml')
+    expect(result.sitemap).toBe('https://optra.example.com/sitemap.xml')
   })
 })

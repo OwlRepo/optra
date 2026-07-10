@@ -4,11 +4,11 @@ import manifest from './manifest'
 describe('manifest', () => {
   it('identifies the app with real product copy and brand colors', () => {
     const result = manifest()
-    expect(result.name).toBe('Mnemra')
-    expect(result.short_name).toBe('Mnemra')
-    expect(result.description).toBe('Turn support history into instant, sourced answers.')
+    expect(result.name).toBe('Optra')
+    expect(result.short_name).toBe('Optra')
+    expect(result.description).toBe('Vision-verified vendor sourcing and invoice matching.')
     expect(result.start_url).toBe('/')
-    expect(result.theme_color).toBe('#525edc')
+    expect(result.theme_color).toBe('#0F8A7E')
     expect(result.background_color).toBe('#f8fafd')
   })
 

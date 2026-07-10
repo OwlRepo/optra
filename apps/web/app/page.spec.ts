@@ -21,16 +21,16 @@ describe('Home', () => {
     const logoLink = screen.getAllByRole('link', { name: 'Home' }).at(0)
 
     expect(logoLink?.getAttribute('href')).toBe('/')
-    expect(logoLink?.querySelector('[data-brand-mark="mnemra-bloom"]')).not.toBeNull()
+    expect(logoLink?.querySelector('[data-brand-mark="optra-mark"]')).not.toBeNull()
     expect(container.querySelector('a[aria-label="Home"] svg.lucide-sparkles')).toBeNull()
   })
 
   it('renders product-focused copy and removes the flagged UI-process copy', () => {
     render(React.createElement(Home))
 
-    expect(screen.getAllByText('Search once, not everywhere').length).toBeGreaterThan(0)
-    expect(screen.getAllByText('Ramp new agents faster').length).toBeGreaterThan(0)
-    expect(screen.getAllByText('Answers your team can verify, not just trust').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Match it once, not line by line').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Ramp new buyers faster').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Matches your team can verify, not just trust').length).toBeGreaterThan(0)
 
     expect(screen.queryByText('Designed like real software, not placeholder screens')).toBeNull()
     expect(screen.queryByText('No jargon-heavy UI. No flashy motion overload. Just clear structure, helpful defaults, and enough polish to feel premium.')).toBeNull()
@@ -42,26 +42,26 @@ describe('Home', () => {
     render(React.createElement(Home))
 
     expect(screen.queryAllByText('Dashboard surfaces empty states, onboarding checklist, and confidence-building feedback patterns.')).toHaveLength(0)
-    expect(screen.getAllByText('Use it alone, or bring the whole team').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Use it alone, or bring the whole procurement team').length).toBeGreaterThan(0)
   })
 
   it('keeps landing content icons visible while removing the colored-circle wrappers on the pillar cards', () => {
     const { container } = render(React.createElement(Home))
 
-    expect(screen.getAllByText('Agent question').length).toBeGreaterThan(0)
-    expect(screen.getAllByText('Search once, not everywhere').length).toBeGreaterThan(0)
-    expect(screen.getAllByText('Ramp new agents faster').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('PO line item').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Match it once, not line by line').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Ramp new buyers faster').length).toBeGreaterThan(0)
 
-    expect(container.querySelector('svg.lucide-message-square-text.size-5.text-primary')).not.toBeNull()
+    expect(container.querySelector('svg.lucide-file-search.size-5.text-primary')).not.toBeNull()
     expect(container.querySelector('svg.lucide-search.size-5')).not.toBeNull()
   })
 
   it('rewrites hero copy around the pain point instead of the feature, removing the old self-referential copy', () => {
     render(React.createElement(Home))
 
-    expect(screen.getAllByText('Your team already solved this.').length).toBeGreaterThan(0)
-    expect(screen.getAllByText('Mnemra helps you find it.').length).toBeGreaterThan(0)
-    expect(screen.getAllByText(/Search past tickets, docs, and support threads/).length).toBeGreaterThan(0)
+    expect(screen.getAllByText('The mismatch is already in the paperwork.').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Optra helps you catch it before you pay.').length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/Match purchase orders against vendor catalogs/).length).toBeGreaterThan(0)
 
     expect(screen.queryByText('Give every support teammate')).toBeNull()
     expect(screen.queryByText('expert-level context')).toBeNull()
@@ -71,17 +71,17 @@ describe('Home', () => {
   it('rewrites the pillars section title away from the retired UI-process framing', () => {
     render(React.createElement(Home))
 
-    expect(screen.getAllByText('Stop losing time to knowledge you already have').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Stop approving invoices you have not actually checked').length).toBeGreaterThan(0)
     expect(screen.queryByText('Fast answers for people who just need system to work')).toBeNull()
   })
 
   it('adds a workspaces section supporting both solo and team use as an interactive switcher', () => {
     const { container } = render(React.createElement(Home))
 
-    expect(screen.getAllByText('Use it alone, or bring the whole team').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Use it alone, or bring the whole procurement team').length).toBeGreaterThan(0)
     expect(screen.getAllByRole('tab', { name: /Personal/i }).length).toBeGreaterThan(0)
     expect(screen.getAllByRole('tab', { name: /Team/i }).length).toBeGreaterThan(0)
-    expect(screen.getAllByText('Your own second brain').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Your own purchasing memory').length).toBeGreaterThan(0)
 
     expect(container.querySelector('svg.lucide-user')).not.toBeNull()
     expect(container.querySelector('svg.lucide-users')).not.toBeNull()
@@ -90,7 +90,7 @@ describe('Home', () => {
   it('rewrites the final CTA to not re-narrow to teams-only after the solo/team section', () => {
     render(React.createElement(Home))
 
-    expect(screen.getAllByText('Ready to build your support memory?').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Ready to check your first purchase order?').length).toBeGreaterThan(0)
     expect(screen.queryByText('Ready to turn support knowledge into product advantage?')).toBeNull()
   })
 
@@ -107,15 +107,15 @@ describe('Home', () => {
     expect(org).toMatchObject({
       '@context': 'https://schema.org',
       '@type': 'Organization',
-      name: 'Mnemra',
+      name: 'Optra',
       url: 'https://mnemra.tyvera.app',
     })
     expect(app).toMatchObject({
       '@context': 'https://schema.org',
       '@type': 'SoftwareApplication',
-      name: 'Mnemra',
+      name: 'Optra',
       applicationCategory: 'BusinessApplication',
-      description: 'Search past tickets, docs, and support threads to get sourced answers before replying to customers.',
+      description: 'Match purchase orders against vendor catalogs and invoices, with vision-based product matching and automatic discrepancy flagging.',
     })
   })
 })
