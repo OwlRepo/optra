@@ -24,6 +24,7 @@ export interface CrawledPage {
   url: string
   title: string
   content: string
+  html: string
 }
 
 export interface CrawlProgress {
@@ -144,6 +145,45 @@ export function extractLinks(html: string, pageUrl: string): string[] {
   })
 
   return [...links]
+}
+
+export interface ProductImage {
+  url: string
+  alt: string | null
+}
+
+// Mirrors extractLinks's structure exactly (cheerio.load -> each -> resolve
+// -> canonicalizeUrl in try/catch -> dedup). Selector covers both eager
+// (src) and lazy-loaded (data-src) images since vendor catalog pages
+// commonly lazy-load product photos.
+export function extractProductImages(html: string, pageUrl: string): ProductImage[] {
+  const $ = cheerio.load(html)
+  const seen = new Set<string>()
+  const images: ProductImage[] = []
+
+  $('img[src], img[data-src]').each((_, element) => {
+    const src = $(element).attr('src') || $(element).attr('data-src')
+    if (!src) {
+      return
+    }
+
+    let absoluteUrl: string
+    try {
+      absoluteUrl = canonicalizeUrl(src, pageUrl)
+    } catch {
+      return
+    }
+
+    if (seen.has(absoluteUrl)) {
+      return
+    }
+    seen.add(absoluteUrl)
+
+    const alt = $(element).attr('alt')?.trim() || null
+    images.push({ url: absoluteUrl, alt })
+  })
+
+  return images
 }
 
 export async function crawlSite(seedUrl: string, options: CrawlOptions = {}): Promise<CrawledPage[]> {
@@ -309,7 +349,7 @@ async function crawlPage(
     return null
   }
 
-  const page = { url, title, content }
+  const page = { url, title, content, html }
   context.progress.pagesFound += 1
 
   await context.onPage?.(page, {

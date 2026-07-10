@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { readFileSync } from 'fs'
 
-import { canonicalizeUrl, crawlSite, extractContent, isInScope } from './crawl'
+import { canonicalizeUrl, crawlSite, extractContent, extractProductImages, isInScope } from './crawl'
 
 describe('crawl module packaging', () => {
   it('loads p-limit through the native import helper so CommonJS build does not require ESM', () => {
@@ -111,6 +111,72 @@ describe('extractContent', () => {
     expect(parsed.content).not.toContain('Navigation Link')
     expect(parsed.content).not.toContain('Sidebar promo')
     expect(parsed.content).not.toContain('Footer text')
+  })
+})
+
+describe('extractProductImages', () => {
+  it('resolves absolute and relative image URLs, capturing alt text', () => {
+    const images = extractProductImages(
+      htmlPage(
+        'Catalog',
+        `
+          <img src="https://cdn.example.com/a.png" alt="Widget A">
+          <img src="/images/b.png" alt="Widget B">
+        `,
+      ),
+      'https://vendor.example.com/catalog',
+    )
+
+    expect(images).toEqual([
+      { url: 'https://cdn.example.com/a.png', alt: 'Widget A' },
+      { url: 'https://vendor.example.com/images/b.png', alt: 'Widget B' },
+    ])
+  })
+
+  it('falls back to data-src for lazy-loaded images', () => {
+    const images = extractProductImages(
+      htmlPage('Catalog', `<img data-src="/lazy.png" alt="Lazy Widget">`),
+      'https://vendor.example.com/catalog',
+    )
+
+    expect(images).toEqual([{ url: 'https://vendor.example.com/lazy.png', alt: 'Lazy Widget' }])
+  })
+
+  it('dedupes repeated image URLs', () => {
+    const images = extractProductImages(
+      htmlPage(
+        'Catalog',
+        `
+          <img src="/a.png" alt="First">
+          <img src="/a.png" alt="Duplicate">
+        `,
+      ),
+      'https://vendor.example.com/catalog',
+    )
+
+    expect(images).toHaveLength(1)
+  })
+
+  it('skips images with no src/data-src and images with unresolvable URLs', () => {
+    const images = extractProductImages(
+      htmlPage(
+        'Catalog',
+        `
+          <img alt="No src at all">
+          <img src="javascript:alert(1)" alt="Unsupported protocol">
+          <img src="/good.png" alt="Good">
+        `,
+      ),
+      'https://vendor.example.com/catalog',
+    )
+
+    expect(images).toEqual([{ url: 'https://vendor.example.com/good.png', alt: 'Good' }])
+  })
+
+  it('returns null alt when the attribute is absent', () => {
+    const images = extractProductImages(htmlPage('Catalog', `<img src="/a.png">`), 'https://vendor.example.com/catalog')
+
+    expect(images).toEqual([{ url: 'https://vendor.example.com/a.png', alt: null }])
   })
 })
 
