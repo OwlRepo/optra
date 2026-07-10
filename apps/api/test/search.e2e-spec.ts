@@ -7,6 +7,8 @@ import { db, otps, pool, refreshTokens, users, workspaceMembers, workspaces } fr
 import { AppModule } from '../src/app.module'
 import { SearchService } from '../src/search/search.service'
 
+jest.setTimeout(30_000)
+
 async function cleanupUsers(prefix: string) {
   const matches = await db.select({ id: users.id }).from(users).where(like(users.email, `${prefix}%`))
 

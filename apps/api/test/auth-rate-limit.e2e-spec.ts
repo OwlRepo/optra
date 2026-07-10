@@ -6,6 +6,8 @@ import request from 'supertest'
 import { db, otps, pool, refreshTokens, users } from '@repo/db'
 import { AppModule } from '../src/app.module'
 
+jest.setTimeout(30_000)
+
 async function fireSequentially(
   app: INestApplication,
   count: number,

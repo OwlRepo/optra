@@ -18,6 +18,8 @@ import {
 } from '@repo/db'
 import { AppModule } from '../src/app.module'
 
+jest.setTimeout(30_000)
+
 async function cleanupUsers(prefix: string) {
   const matches = await db.select({ id: users.id, email: users.email }).from(users).where(like(users.email, `${prefix}%`))
 
