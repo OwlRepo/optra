@@ -1,0 +1,5 @@
+# Local Graphify runtime state; generated deliverables remain tracked.
+cache/
+.graphify_*
+.vocab.txt
+cost.json

@@ -46,6 +46,10 @@ yarn-error.log*
 # Testing
 coverage
 
+# Python tooling caches
+__pycache__/
+*.py[cod]
+
 # Stray compiled output committed inside src/ instead of dist/ (happened once — see docs/ai/file-index/repository-map.md)
 packages/*/src/**/*.js
 packages/*/src/**/*.js.map
