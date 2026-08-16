@@ -1,0 +1,64 @@
+autonomy_level: 2
+
+agents:
+  - coordinator
+  - product-manager
+  - architect
+  - implementer
+  - reviewer
+  - qa
+  - reporter
+
+schedule:
+  planning: "08:00"
+  engineering: "10:00"
+  reporting: "19:00"
+
+approval:
+  production: required
+  destructive_actions: required
+  db_migrations: required
+  auth_and_workspace_permissions: required
+  rate_limits_and_token_budgets: required
+  deploy_and_infra: required
+  new_dependencies: required
+
+project:
+  name: optra
+  product_name: Optra
+  package_manager: bun@1.2.22
+  monorepo: turborepo
+  apps:
+    - apps/web
+    - apps/api
+  packages:
+    - packages/ai
+    - packages/db
+    - packages/types
+    - packages/ui
+
+validation_commands:
+  root:
+    - bun run lint
+    - bun run type-check
+    - bun run build
+  apps/api:
+    - bun run test
+    - bun run test:cov
+    - bun run test:e2e
+  apps/web:
+    - bun run test
+  packages/db:
+    - bun run test
+  packages/ai:
+    - bun run test
+  packages/ui:
+    - bun run test
+
+existing_instructions:
+  - CLAUDE.md
+  - DESIGN.md
+  - docs/ai/
+
+scheduler:
+  activated: false
