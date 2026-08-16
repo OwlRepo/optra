@@ -189,7 +189,9 @@ export type TourVignette = {
   line?: readonly [number, number]
 }
 
-export const TOUR_VIGNETTES = [
+// Annotated rather than `as const satisfies`: const-narrowing drops `line`
+// from the union member that omits it, so `active.line` stops type-checking.
+export const TOUR_VIGNETTES: readonly TourVignette[] = [
   {
     id: 'price',
     chip: 'Price increase',
@@ -225,7 +227,7 @@ export const TOUR_VIGNETTES = [
     description:
       'Every past match stays searchable, with the file and page behind each answer.',
   },
-] as const satisfies readonly TourVignette[]
+]
 
 // The chat vignette needs its own copy -- it is the one tour frame with no
 // corresponding line in DEMO_DOCS.
