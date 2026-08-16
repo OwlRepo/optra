@@ -325,3 +325,23 @@ TODO: Fill after repository analysis. Do not treat as verified. (Auth rows below
 | `apps/web/app/workspaces/[id]/vendors/[vendorId]/page.spec.ts` | jsdom coverage for catalogs list, upload/scrape flows, view-items modal, polling, and role gating | Vendor Catalog / Vision Matching Frontend | Standard | Mocks `@/lib/api/catalog`, `@/lib/api/workspaces`, `@/lib/api/auth` |
 | `apps/web/app/workspaces/[id]/catalog-matches/page.tsx` | Client workspace page listing/searching/verifying/dismissing vendor `catalog_matches`; renders each match via `PhotoCompare` using truncated ids as query/candidate labels (no endpoint yet resolves `catalogItemId`/query line-item ids to sku/description/photo) | Vendor Catalog / Vision Matching Frontend | Express | Added 2026-07-10. First page-level use of `PhotoCompare`. Reachable via nav or `poLineItemId`/`invoiceLineItemId`/`vendorId` query params from the Discrepancies page's "Find catalog matches" link; intentionally no line-item picker — no backend endpoint exists yet to browse arbitrary PO/invoice line items. Calls existing `@/lib/api/catalog#searchCatalogMatches`/`verifyCatalogMatches`/`listCatalogMatches`/`dismissCatalogMatch`/`listVendors` — no API/schema change. |
 | `apps/web/app/workspaces/[id]/catalog-matches/page.spec.ts` | jsdom coverage for loading skeleton, empty states (pre- and post-search), role-gated search/verify/dismiss controls, vendor/status filter refetch, search/verify success+error toasts, dismiss flow, and 401 redirects | Vendor Catalog / Vision Matching Frontend | Standard | Mocks `@/lib/api/catalog`, `@/lib/api/workspaces`, `@/lib/api/auth`, and `next/navigation` (`useSearchParams`) |
+
+## Landing page (rebuilt 2026-08-16)
+
+| Symbol | Location | Purpose |
+|---|---|---|
+| `LandingNav` | `apps/web/src/components/landing/landing-nav.tsx` | Sticky blurred header; nav anchors + "Start free trial" |
+| `Hero` | `apps/web/src/components/landing/hero.tsx` | Hero copy column; renders `HeroMatchDemo` |
+| `HeroMatchDemo` | `apps/web/src/components/landing/hero-match-demo.tsx` | **client** — scanning/verdict state machine over `DEMO_DOCS`; pauses off-screen and under reduced motion |
+| `MetricsStrip` | `apps/web/src/components/landing/metrics-strip.tsx` | Three illustrative metrics + vendor wordmarks (`src` slot awaits real logo files) |
+| `ProductCards` | `apps/web/src/components/landing/product-cards.tsx` | Three "how an invoice costs you" cards |
+| `ProductTour` | `apps/web/src/components/landing/product-tour.tsx` | **client** — four animated app-screen vignettes; replaces the old `/chat` demo link. Has a visible pause control (WCAG 2.2.2) |
+| `WorkspaceModes` | `apps/web/src/components/landing/workspace-modes.tsx` | **client** — Personal/Team segmented control + value cards (replaces `workspace-tabs.tsx`, adds the missing `tabpanel` wiring) |
+| `WorkflowSteps` | `apps/web/src/components/landing/workflow-steps.tsx` | Three numbered steps; step 3 is amber |
+| `UseCaseGrid` | `apps/web/src/components/landing/use-case-grid.tsx` | Six audience cards |
+| `FilesTrust` | `apps/web/src/components/landing/files-trust.tsx` | File-type chips + 4-row trust table (claims must stay true to the deployment) |
+| `PricingPlans` | `apps/web/src/components/landing/pricing-plans.tsx` | Solo / Team / Scale. Copy only — line-item metering is not implemented |
+| `FinalCta` | `apps/web/src/components/landing/final-cta.tsx` | Inverted `--cta-surface` block |
+| `SiteFooter` | `apps/web/src/components/landing/site-footer.tsx` | Brand + three link columns + disclaimer bar |
+| `DEMO_DOCS`, `DEMO_SCANNING`, `TOUR_VIGNETTES`, `TOUR_CHAT_EXCHANGE`, `DEMO_HISTORY_ROWS`, `DEMO_CATALOG_PHOTO` | `apps/web/src/lib/landing-demo-docs.ts` | Static demo scenarios. **L05's row price ($2.05) intentionally differs from its `poPrice` ($1.80)** — that disagreement is the flag |
+| `REVEAL_FALLBACK_MS` | `apps/web/src/hooks/use-in-view.ts` | 2600ms net so a silent IntersectionObserver can't strand content at `opacity: 0` |
