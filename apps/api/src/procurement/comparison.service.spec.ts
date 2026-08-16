@@ -12,7 +12,7 @@ import {
   workspaces,
 } from '@repo/db'
 import { ComparisonService } from './comparison.service'
-import { DuckDbQueryService } from '../structured-query/duckdb-query.service'
+import { DuckDbQueryService, SqlExecutionError } from '../structured-query/duckdb-query.service'
 
 async function cleanupFixtures(prefix: string) {
   const testUsers = await db.select({ id: users.id }).from(users).where(like(users.email, `${prefix}%`))
@@ -211,6 +211,65 @@ describe('ComparisonService', () => {
       .returning()
 
     await expect(service.compare(workspace.id, po.id, invoice.id)).rejects.toThrow('must have parsed line items')
+  })
+
+  // Regression: DuckDB's read_csv_auto infers each CSV's column types independently.
+  // An all-numeric SKU column on one side infers BIGINT while an empty/text SKU column
+  // on the other infers VARCHAR, and COALESCE(po_sku, inv_sku) then fails to bind:
+  // "Cannot mix values of type BIGINT and VARCHAR in COALESCE operator". This is the
+  // exact shape of a real Cin7 PO (numeric SKUs) compared against a vendor invoice
+  // (no SKUs) — it 500'd in production.
+  it('compares a numeric-SKU purchase order against an invoice with no SKUs', async () => {
+    const { workspace } = await seedWorkspace(`${prefix}numeric-sku@example.com`, 'Numeric SKU')
+    const { po, invoice } = await seedReadyPoAndInvoice(
+      workspace.id,
+      [
+        { sku: '123456', description: 'Product A', quantity: '27', unitPrice: '220.00' },
+        { sku: '789012', description: 'Product B', quantity: '3', unitPrice: '55.00' },
+      ],
+      [{ description: 'Laundry service (towels)', quantity: '71', unitPrice: '0.50' }],
+    )
+
+    const result = await service.compare(workspace.id, po.id, invoice.id)
+
+    // Nothing matches on either key, so every line is missing on the opposite side.
+    expect(result.counts.missing_on_invoice).toBe(2)
+    expect(result.counts.missing_on_po).toBe(1)
+    expect(result.flags.every((flag) => flag.sku === null || typeof flag.sku === 'string')).toBe(true)
+  })
+
+  it('compares when both sides have numeric SKUs', async () => {
+    const { workspace } = await seedWorkspace(`${prefix}numeric-both@example.com`, 'Numeric Both')
+    const { po, invoice } = await seedReadyPoAndInvoice(
+      workspace.id,
+      [{ sku: '123456', description: 'Product A', quantity: '27', unitPrice: '220.00' }],
+      [{ sku: '123456', description: 'Product A', quantity: '25', unitPrice: '220.00' }],
+    )
+
+    const result = await service.compare(workspace.id, po.id, invoice.id)
+
+    expect(result.counts.quantity_mismatch).toBe(1)
+    expect(result.flags[0].sku).toBe('123456')
+  })
+
+  it('surfaces a DuckDB engine failure as 503 with a real message, not a bare 500', async () => {
+    const { workspace } = await seedWorkspace(`${prefix}engine-fail@example.com`, 'Engine Fail')
+    const { po, invoice } = await seedReadyPoAndInvoice(
+      workspace.id,
+      [{ sku: 'A-1', description: 'Widget', quantity: '2', unitPrice: '10.00' }],
+      [{ sku: 'A-1', description: 'Widget', quantity: '3', unitPrice: '10.00' }],
+    )
+
+    const failing = new DuckDbQueryService()
+    jest
+      .spyOn(failing, 'runReadOnlyMultiTableQuery')
+      .mockRejectedValue(new SqlExecutionError('Out of Memory Error: failed to allocate'))
+    const failingService = new ComparisonService(failing)
+
+    await expect(failingService.compare(workspace.id, po.id, invoice.id)).rejects.toMatchObject({
+      status: 503,
+      message: expect.stringContaining('Out of Memory Error'),
+    })
   })
 
   it('lists flags filtered by status and supports dismissing one', async () => {

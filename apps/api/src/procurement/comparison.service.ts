@@ -1,7 +1,13 @@
 import { mkdtemp, rm, writeFile } from 'fs/promises'
 import { tmpdir } from 'os'
 import { join } from 'path'
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  ServiceUnavailableException,
+} from '@nestjs/common'
 import { and, eq } from 'drizzle-orm'
 import Papa from 'papaparse'
 import {
@@ -13,7 +19,7 @@ import {
   purchaseOrders,
   type DiscrepancyFlag,
 } from '@repo/db'
-import { DuckDbQueryService } from '../structured-query/duckdb-query.service'
+import { DuckDbQueryService, SqlExecutionError } from '../structured-query/duckdb-query.service'
 
 const PO_TABLE = 'po_items'
 const INV_TABLE = 'inv_items'
@@ -25,15 +31,23 @@ const INV_TABLE = 'inv_items'
 // defense-in-depth. SKU match key falls back to normalized description
 // when a side has no SKU (COALESCE+NULLIF), matching the approved match
 // strategy.
+//
+// Every sku/description reference is explicitly CAST to VARCHAR. read_csv_auto
+// infers each file's column types independently, so an all-numeric SKU column
+// (a Cin7 PO: 123456, 789012) infers BIGINT while an empty or text SKU column
+// on the other side infers VARCHAR — and COALESCE(po_sku, inv_sku) below then
+// refuses to bind: "Cannot mix values of type BIGINT and VARCHAR in COALESCE
+// operator". These casts are load-bearing, not cosmetic: without them any
+// numeric-SKU document compared against a non-numeric-SKU one is a hard 500.
 const COMPARISON_SQL = `
 WITH po AS (
-  SELECT id AS po_line_item_id, sku AS po_sku, description AS po_desc,
+  SELECT id AS po_line_item_id, CAST(sku AS VARCHAR) AS po_sku, CAST(description AS VARCHAR) AS po_desc,
          TRY_CAST(quantity AS DOUBLE) AS po_qty, TRY_CAST(unit_price AS DOUBLE) AS po_price,
          COALESCE(NULLIF(lower(trim(CAST(sku AS VARCHAR))), ''), 'desc::' || lower(trim(CAST(description AS VARCHAR)))) AS mk
   FROM ${PO_TABLE}
 ),
 inv AS (
-  SELECT id AS invoice_line_item_id, sku AS inv_sku, description AS inv_desc,
+  SELECT id AS invoice_line_item_id, CAST(sku AS VARCHAR) AS inv_sku, CAST(description AS VARCHAR) AS inv_desc,
          TRY_CAST(quantity AS DOUBLE) AS inv_qty, TRY_CAST(unit_price AS DOUBLE) AS inv_price,
          COALESCE(NULLIF(lower(trim(CAST(sku AS VARCHAR))), ''), 'desc::' || lower(trim(CAST(description AS VARCHAR)))) AS mk
   FROM ${INV_TABLE}
@@ -84,6 +98,8 @@ function serializeForCsv(item: LineItemForCsv) {
 
 @Injectable()
 export class ComparisonService {
+  private readonly logger = new Logger(ComparisonService.name)
+
   constructor(private readonly duckDb: DuckDbQueryService) {}
 
   async compare(workspaceId: string, purchaseOrderId: string, invoiceId: string) {
@@ -136,6 +152,20 @@ export class ComparisonService {
         counts: this.countByType(inserted),
         flags: inserted,
       }
+    } catch (error) {
+      // Ids and counts only — never row values or document contents. Without
+      // this, a comparison failure reaches the browser as a bare 500 with no
+      // way to tell WHICH pair of documents blew up.
+      this.logger.error(
+        `Comparison failed workspace=${workspaceId} po=${po.id} invoice=${invoice.id} ` +
+          `poItems=${poItems.length} invItems=${invItems.length}: ${error instanceof Error ? error.message : String(error)}`,
+        error instanceof Error ? error.stack : undefined,
+      )
+
+      if (error instanceof SqlExecutionError) {
+        throw new ServiceUnavailableException(`Comparison engine failed: ${error.message}`)
+      }
+      throw error
     } finally {
       await rm(dir, { recursive: true, force: true })
     }

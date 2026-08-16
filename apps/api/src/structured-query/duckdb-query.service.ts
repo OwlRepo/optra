@@ -84,8 +84,14 @@ export class DuckDbQueryService {
         throw error
       }
       const message = error instanceof Error ? error.message : String(error)
-      this.logger.warn(`Structured query execution failed: ${message}`)
-      throw new SqlExecutionError(message)
+      // error, not warn: this is the only place the real DuckDB message exists.
+      // Everything downstream sees a SqlExecutionError, and before the cause was
+      // attached the original stack was unrecoverable from the logs.
+      this.logger.error(
+        `Structured query execution failed: ${message}`,
+        error instanceof Error ? error.stack : undefined,
+      )
+      throw new SqlExecutionError(message, { cause: error })
     } finally {
       conn.close()
       db.close(() => undefined)

@@ -23,6 +23,7 @@ import {
 import { AppModule } from '../src/app.module'
 import { StorageService } from '../src/storage/storage.service'
 import { ProcurementExtractionService } from '../src/procurement/procurement-extraction.service'
+import { AllExceptionsFilter } from '../src/common/filters/all-exceptions.filter'
 
 jest.setTimeout(30_000)
 
@@ -138,6 +139,24 @@ describe('Procurement flow (e2e)', () => {
             ],
           }
         }
+        // Numeric SKUs on the PO side, no SKUs at all on the invoice side —
+        // the shape that used to 500 (read_csv_auto infers BIGINT vs VARCHAR
+        // per file, breaking COALESCE(po_sku, inv_sku) in COMPARISON_SQL).
+        if (content.includes('PDF-NUMERIC-PO-MARKER')) {
+          return {
+            items: [
+              { sku: '123456', description: 'Product A', quantity: '27', unitPrice: '220.00', lineTotal: '5940.00', confidence: 0.95 },
+              { sku: '789012', description: 'Product B', quantity: '3', unitPrice: '55.00', lineTotal: '165.00', confidence: 0.95 },
+            ],
+          }
+        }
+        if (content.includes('PDF-NOSKU-INVOICE-MARKER')) {
+          return {
+            items: [
+              { sku: null, description: 'Laundry service (towels)', quantity: '71', unitPrice: '0.50', lineTotal: '35.50', confidence: 0.9 },
+            ],
+          }
+        }
         return {
           items: [
             { sku: 'A1', description: 'Widget', quantity: '8', unitPrice: '5.00', lineTotal: '40.00', confidence: 0.9 },
@@ -158,6 +177,8 @@ describe('Procurement flow (e2e)', () => {
     app = moduleRef.createNestApplication()
     app.use(cookieParser())
     app.useGlobalPipes(new ValidationPipe({ whitelist: true }))
+    // Mirror main.ts so e2e sees the same error shape production does.
+    app.useGlobalFilters(new AllExceptionsFilter())
     await app.init()
   })
 
@@ -303,6 +324,46 @@ describe('Procurement flow (e2e)', () => {
       quantity_mismatch: 1,
       price_mismatch: 1,
       missing_on_invoice: 1,
+      missing_on_po: 1,
+    })
+  })
+
+  // Regression for the production 500: a Cin7-style PO with all-numeric SKUs
+  // compared against a vendor invoice with no SKUs. read_csv_auto typed the two
+  // sku columns differently (BIGINT vs VARCHAR) and COMPARISON_SQL failed to bind.
+  it('compares a numeric-SKU PO against a no-SKU invoice over HTTP without a 500', async () => {
+    const owner = await registerAndVerify(app, `${prefix}numeric-sku-owner@example.com`, password)
+    const ownerMine = await request(app.getHttpServer())
+      .get('/workspaces/me')
+      .set('Authorization', `Bearer ${owner.accessToken}`)
+      .expect(200)
+    const workspaceId = ownerMine.body.items[0].id as string
+
+    const poUpload = await request(app.getHttpServer())
+      .post(`/workspaces/${workspaceId}/procurement/purchase-orders`)
+      .set('Authorization', `Bearer ${owner.accessToken}`)
+      .attach('file', Buffer.from('%PDF-1.4 PDF-NUMERIC-PO-MARKER'), 'cin7-po.pdf')
+      .expect(201)
+
+    const invoiceUpload = await request(app.getHttpServer())
+      .post(`/workspaces/${workspaceId}/procurement/invoices`)
+      .set('Authorization', `Bearer ${owner.accessToken}`)
+      .attach('file', Buffer.from('%PDF-1.4 PDF-NOSKU-INVOICE-MARKER'), 'vendor-invoice.pdf')
+      .expect(201)
+
+    await waitForPoDone(poUpload.body.id)
+    await waitForInvoiceDone(invoiceUpload.body.id)
+
+    const compareRes = await request(app.getHttpServer())
+      .post(`/workspaces/${workspaceId}/procurement/discrepancies/compare`)
+      .set('Authorization', `Bearer ${owner.accessToken}`)
+      .send({ purchaseOrderId: poUpload.body.id, invoiceId: invoiceUpload.body.id })
+      .expect(201)
+
+    expect(compareRes.body.counts).toEqual({
+      quantity_mismatch: 0,
+      price_mismatch: 0,
+      missing_on_invoice: 2,
       missing_on_po: 1,
     })
   })
