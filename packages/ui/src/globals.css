@@ -26,6 +26,17 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  --color-primary-strong: var(--primary-strong);
+  --color-primary-strong-hover: var(--primary-strong-hover);
+  --color-primary-strong-foreground: var(--primary-strong-foreground);
+  --color-flag: var(--flag);
+  --color-flag-foreground: var(--flag-foreground);
+  --color-flag-text: var(--flag-text);
+  --color-flag-strong: var(--flag-strong);
+  --color-cta-surface: var(--cta-surface);
+  --color-cta-surface-foreground: var(--cta-surface-foreground);
+  --color-cta-surface-muted: var(--cta-surface-muted);
+  --color-cta-surface-accent: var(--cta-surface-accent);
   --radius-sm: calc(var(--radius) - 0.5rem);
   --radius-md: calc(var(--radius) - 0.25rem);
   --radius-lg: var(--radius);
@@ -62,6 +73,22 @@
     --border: oklch(0.913 0.012 255);
     --input: oklch(0.945 0.012 255);
     --ring: oklch(0.571 0.098 184);
+    /* Landing action teal -- darker sibling of --primary, for AA-contrast text
+       and solid CTAs on white. --primary itself is unchanged. */
+    --primary-strong: oklch(0.5 0.09 184);
+    --primary-strong-hover: oklch(0.44 0.085 184);
+    --primary-strong-foreground: oklch(1 0 0);
+    /* Discrepancy flag amber -- a distinct role from --warning, which is a
+       status color and stays untouched. */
+    --flag: oklch(0.62 0.15 62);
+    --flag-foreground: oklch(1 0 0);
+    --flag-text: oklch(0.55 0.13 62);
+    --flag-strong: oklch(0.45 0.12 62);
+    /* Inverted CTA field (dark block on a light page). */
+    --cta-surface: oklch(0.32 0.045 200);
+    --cta-surface-foreground: oklch(0.97 0.01 200);
+    --cta-surface-muted: oklch(0.86 0.02 200);
+    --cta-surface-accent: oklch(0.8 0.09 184);
     --radius: 1rem;
     --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.05), 0 1px 1px rgba(15, 23, 42, 0.03);
     --shadow-md: 0 10px 20px rgba(15, 23, 42, 0.06), 0 2px 6px rgba(15, 23, 42, 0.04);
@@ -97,6 +124,20 @@
     --border: oklch(0.29 0.016 264);
     --input: oklch(0.24 0.016 264);
     --ring: oklch(0.806 0.132 181.4);
+    /* Dark-mode siblings. Contrast inverts: on a dark ground the "strong"
+       teal must get lighter, not darker, so it tracks the dark --primary. */
+    --primary-strong: oklch(0.806 0.132 181.4);
+    --primary-strong-hover: oklch(0.86 0.12 181.4);
+    --primary-strong-foreground: oklch(0.16 0.018 264);
+    --flag: oklch(0.75 0.14 62);
+    --flag-foreground: oklch(0.16 0.018 264);
+    --flag-text: oklch(0.8 0.12 62);
+    --flag-strong: oklch(0.86 0.1 62);
+    /* Already dark; keeps its identity in both schemes. */
+    --cta-surface: oklch(0.26 0.04 200);
+    --cta-surface-foreground: oklch(0.97 0.01 200);
+    --cta-surface-muted: oklch(0.86 0.02 200);
+    --cta-surface-accent: oklch(0.8 0.09 184);
     --shadow-sm: 0 1px 2px rgba(2, 6, 23, 0.2), 0 1px 1px rgba(2, 6, 23, 0.2);
     --shadow-md: 0 12px 22px rgba(2, 6, 23, 0.25), 0 2px 6px rgba(2, 6, 23, 0.2);
     --shadow-lg: 0 20px 40px rgba(2, 6, 23, 0.34), 0 8px 18px rgba(2, 6, 23, 0.24);
@@ -260,6 +301,36 @@
     to {
       transform: translateX(220%) skewX(-12deg);
     }
+  }
+
+  /* Landing hero match demo: the scanning sweep across an evidence row. */
+  @keyframes rf-sweep {
+    from {
+      transform: translateX(-120%);
+    }
+    to {
+      transform: translateX(320%);
+    }
+  }
+
+  /* Landing hero match demo: the verdict pill's entry. */
+  @keyframes rf-pop {
+    from {
+      opacity: 0;
+      transform: translateY(6px) scale(0.96);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  .animate-rf-sweep {
+    animation: rf-sweep 1.1s cubic-bezier(0.4, 0, 0.6, 1) 1;
+  }
+
+  .animate-rf-pop {
+    animation: rf-pop 300ms var(--ease-spring) both;
   }
 
   .font-display {
