@@ -57,6 +57,13 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning className={`${display.variable} ${body.variable} ${mono.variable}`}>
       <body className="font-body antialiased selection:bg-primary/15 selection:text-foreground">
+        {/* Scroll reveals start at opacity 0 and are switched on by client JS.
+            With JS disabled that never happens, which would leave the whole
+            marketing page blank -- so force every reveal wrapper visible.
+            (The observer-never-fires case is handled inside useInView.) */}
+        <noscript>
+          <style>{`[data-inview]{opacity:1 !important;transform:none !important}`}</style>
+        </noscript>
         <ToastProvider>{children}</ToastProvider>
       </body>
     </html>

@@ -1,9 +1,9 @@
 /** @vitest-environment jsdom */
 
 import React from 'react'
-import { render, screen } from '@testing-library/react'
+import { act, cleanup, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { prefersReducedMotion, useInView } from './use-in-view'
+import { prefersReducedMotion, REVEAL_FALLBACK_MS, useInView } from './use-in-view'
 
 function Probe() {
   const { ref, inView } = useInView<HTMLDivElement>()
@@ -12,6 +12,9 @@ function Probe() {
 
 describe('useInView', () => {
   afterEach(() => {
+    // This file has no global auto-cleanup; without an explicit cleanup the
+    // probes from earlier cases stay mounted and getByText matches several.
+    cleanup()
     vi.unstubAllGlobals()
   })
 
@@ -19,6 +22,28 @@ describe('useInView', () => {
     render(<Probe />)
 
     expect(screen.getByText('in-view')).not.toBeNull()
+  })
+
+  it('reveals anyway if the observer is present but never fires', () => {
+    vi.useFakeTimers()
+
+    class SilentIntersectionObserver {
+      observe = vi.fn()
+      disconnect = vi.fn()
+      unobserve = vi.fn()
+    }
+
+    vi.stubGlobal('IntersectionObserver', SilentIntersectionObserver)
+
+    render(<Probe />)
+    expect(screen.getByText('not-in-view')).not.toBeNull()
+
+    act(() => {
+      vi.advanceTimersByTime(REVEAL_FALLBACK_MS)
+    })
+
+    expect(screen.getByText('in-view')).not.toBeNull()
+    vi.useRealTimers()
   })
 
   it('waits for an intersecting entry when IntersectionObserver is available', () => {
@@ -42,7 +67,13 @@ describe('useInView', () => {
     expect(screen.getByText('not-in-view')).not.toBeNull()
     expect(observe).toHaveBeenCalledTimes(1)
 
-    capturedCallback([{ isIntersecting: true } as IntersectionObserverEntry], {} as IntersectionObserver)
+    // Wrapped in act so the resulting setState is flushed before asserting.
+    act(() => {
+      capturedCallback(
+        [{ isIntersecting: true } as IntersectionObserverEntry],
+        {} as IntersectionObserver,
+      )
+    })
 
     expect(screen.getByText('in-view')).not.toBeNull()
     expect(disconnect).toHaveBeenCalledTimes(1)
@@ -51,6 +82,9 @@ describe('useInView', () => {
 
 describe('prefersReducedMotion', () => {
   afterEach(() => {
+    // This file has no global auto-cleanup; without an explicit cleanup the
+    // probes from earlier cases stay mounted and getByText matches several.
+    cleanup()
     vi.unstubAllGlobals()
   })
 

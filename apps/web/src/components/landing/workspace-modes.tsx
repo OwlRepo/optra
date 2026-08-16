@@ -81,7 +81,7 @@ export function WorkspaceModes() {
                 aria-selected={mode.id === modeId}
                 aria-controls={`workspace-panel-${mode.id}`}
                 onClick={() => setModeId(mode.id)}
-                className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors duration-200 ${
+                className={`inline-flex min-h-10 items-center rounded-lg px-4 py-2 text-sm font-medium transition-colors duration-200 ${
                   mode.id === modeId
                     ? 'bg-card text-primary-strong shadow-[0_1px_3px_oklch(0.238_0.03_264/0.12)]'
                     : 'text-muted-foreground hover:text-foreground'

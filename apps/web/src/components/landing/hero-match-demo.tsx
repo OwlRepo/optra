@@ -104,7 +104,7 @@ export function HeroMatchDemo() {
             type="button"
             onClick={() => pick(0, i)}
             aria-pressed={i === doc}
-            className={`rounded-lg border px-3 py-2 font-mono text-[12.5px] transition-colors duration-200 ${
+            className={`inline-flex min-h-11 items-center rounded-lg border px-3 py-2 font-mono text-[12.5px] transition-colors duration-200 ${
               i === doc
                 ? 'border-primary-strong bg-primary-strong text-primary-strong-foreground'
                 : 'border-border bg-card text-muted-foreground hover:border-primary-strong/50'

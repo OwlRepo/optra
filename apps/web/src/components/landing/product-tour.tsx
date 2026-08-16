@@ -58,7 +58,7 @@ export function ProductTour() {
             type="button"
             onClick={() => setPaused((p) => !p)}
             aria-pressed={paused}
-            className="inline-flex items-center gap-2 rounded-xl border border-border bg-background px-4 py-2.5 text-sm font-medium text-foreground transition-colors duration-200 hover:border-primary-strong/50"
+            className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-border bg-background px-4 py-2.5 text-sm font-medium text-foreground transition-colors duration-200 hover:border-primary-strong/50"
           >
             {paused ? (
               <Play aria-hidden="true" className="size-4" />
@@ -83,7 +83,7 @@ export function ProductTour() {
                 setIndex(i)
                 setPaused(true)
               }}
-              className={`rounded-full border px-4 py-2 text-sm transition-colors duration-200 ${
+              className={`inline-flex min-h-11 items-center rounded-full border px-4 py-2 text-sm transition-colors duration-200 ${
                 i === index
                   ? 'border-primary-strong bg-primary-strong text-primary-strong-foreground'
                   : 'border-border bg-background text-muted-foreground hover:border-primary-strong/50'
