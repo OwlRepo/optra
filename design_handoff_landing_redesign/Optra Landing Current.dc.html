@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="" />
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  body { margin: 0; background: oklch(0.985 0.004 255); color: oklch(0.238 0.03 264); font-family: "DM Sans", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+  a { color: inherit; text-decoration: none; }
+  a:hover { color: oklch(0.571 0.098 184); }
+  button { font: inherit; }
+</style>
+</helmet>
+<div style="position: relative; min-height: 100vh; overflow: hidden; background: oklch(0.985 0.004 255); background-image: radial-gradient(circle at top, oklch(0.571 0.098 184 / 0.08), transparent 26%), radial-gradient(circle at 82% 18%, oklch(0.699 0.12 181.5 / 0.09), transparent 22%);">
+  <div style="position: absolute; inset: 0; pointer-events: none; opacity: 0.5; background-image: url(&quot;data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180' viewBox='0 0 180 180'%3E%3Cfilter id='a'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23a)' opacity='.04'/%3E%3C/svg%3E&quot;);"></div>
+  <div style="position: absolute; inset: 0; pointer-events: none; color: oklch(0.238 0.03 264 / 0.1); background-image: linear-gradient(to right, color-mix(in srgb, currentColor 4%, transparent) 1px, transparent 1px), linear-gradient(to bottom, color-mix(in srgb, currentColor 4%, transparent) 1px, transparent 1px); background-size: 24px 24px; mask-image: radial-gradient(circle at center, black 40%, transparent 88%);"></div>
+  <div style="position: absolute; top: -8rem; left: 50%; transform: translateX(-50%); height: 20rem; width: 20rem; border-radius: 9999px; background: oklch(0.571 0.098 184 / 0.1); filter: blur(48px); pointer-events: none;"></div>
+  <div style="position: absolute; right: 0; top: 6rem; height: 18rem; width: 18rem; border-radius: 9999px; background: oklch(0.699 0.12 181.5 / 0.1); filter: blur(48px); pointer-events: none;"></div>
+
+  <div style="position: relative; margin: 0 auto; width: 100%; max-width: 80rem; padding: 0 2rem;">
+
+    <header style="position: sticky; top: 0; z-index: 30; margin-top: 1rem; border: 1px solid oklch(0.913 0.012 255 / 0.7); border-radius: 2rem; background: oklch(0.985 0.004 255 / 0.8); backdrop-filter: blur(24px); box-shadow: 0 1px 2px rgba(15,23,42,0.05), 0 1px 1px rgba(15,23,42,0.03);">
+      <div style="display: flex; flex-direction: column; gap: 1rem; padding: 1rem 2rem;">
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 1rem;">
+          <div style="display: flex; min-width: 0; align-items: center; gap: 0.75rem;">
+            <img src="assets/optra-mark.svg" alt="" style="width: 2.75rem; height: 2.75rem; flex-shrink: 0;" />
+            <div style="min-width: 0; display: flex; flex-direction: column; gap: 0.25rem;">
+              <div style="font-family: Outfit, sans-serif; font-size: 1.25rem; font-weight: 600; letter-spacing: -0.03em;">Optra</div>
+              <p style="margin: 0; font-size: 0.875rem; color: oklch(0.52 0.02 264);">Vision-verified vendor sourcing and invoice matching</p>
+            </div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 0.75rem;">
+            <a href="#" style="display: inline-flex; align-items: center; height: 2.25rem; padding: 0 0.75rem; border-radius: 0.75rem; font-size: 0.75rem; font-weight: 500;">Live demo</a>
+            <a href="#" style="display: inline-flex; align-items: center; height: 2.25rem; padding: 0 0.75rem; border-radius: 0.75rem; font-size: 0.75rem; font-weight: 500; background: oklch(0.571 0.098 184); color: oklch(0.985 0.004 255); box-shadow: 0 10px 20px rgba(15,23,42,0.06), 0 2px 6px rgba(15,23,42,0.04);">Open workspace</a>
+          </div>
+        </div>
+        <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem;">
+          <a href="#product" style="border-radius: 9999px; padding: 0.375rem 0.75rem; font-size: 0.875rem; color: oklch(0.52 0.02 264);">Product</a>
+          <a href="#workflow" style="border-radius: 9999px; padding: 0.375rem 0.75rem; font-size: 0.875rem; color: oklch(0.52 0.02 264);">Workflow</a>
+          <a href="#use-cases" style="border-radius: 9999px; padding: 0.375rem 0.75rem; font-size: 0.875rem; color: oklch(0.52 0.02 264);">Use cases</a>
+          <a href="#faq" style="border-radius: 9999px; padding: 0.375rem 0.75rem; font-size: 0.875rem; color: oklch(0.52 0.02 264);">FAQ</a>
+        </div>
+      </div>
+    </header>
+
+    <main>
+      <section style="position: relative; overflow: hidden; padding: 6rem 0 7rem;">
+        <div style="position: absolute; inset: 0; z-index: -1; pointer-events: none; background-image: radial-gradient(oklch(0.571 0.098 184 / 0.15) 1px, transparent 1px); background-size: 24px 24px;"></div>
+        <div style="display: grid; gap: 3rem; grid-template-columns: 1.08fr 0.92fr; align-items: center;">
+          <div style="display: flex; flex-direction: column; gap: 2rem;">
+            <div style="display: inline-flex; width: fit-content; align-items: center; gap: 0.25rem; border: 1px solid oklch(0.913 0.012 255); border-radius: 9999px; background: oklch(0.968 0.007 255); color: oklch(0.302 0.028 264); padding: 0.25rem 0.625rem; font-size: 0.75rem; font-weight: 600;">Vision-verified vendor sourcing workspace</div>
+            <div style="display: flex; flex-direction: column; gap: 1.25rem;">
+              <h1 style="margin: 0; max-width: 56rem; font-family: Outfit, sans-serif; font-size: 5.6rem; font-weight: 600; line-height: 0.95; letter-spacing: -0.055em;">
+                The mismatch is already in the paperwork.
+                <span style="display: block; color: oklch(0.571 0.098 184);">Optra helps you catch it before you pay.</span>
+              </h1>
+              <p style="margin: 0; max-width: 42rem; font-size: 1.25rem; line-height: 2rem; color: oklch(0.52 0.02 264);">Match purchase orders against vendor catalogs, extract line items from PDFs, and flag price or item mismatches before an invoice gets approved.</p>
+            </div>
+            <div style="display: flex; gap: 0.75rem;">
+              <a href="#" style="display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; height: 3.5rem; min-width: 12rem; padding: 0 1.75rem; border-radius: 1rem; background: oklch(0.571 0.098 184); color: oklch(0.985 0.004 255); font-size: 1rem; font-weight: 500; box-shadow: 0 18px 40px oklch(0.571 0.098 184 / 0.2);">Launch workspace <span style="font-size: 0.9rem;">&#8594;</span></a>
+              <a href="#" style="display: inline-flex; align-items: center; justify-content: center; height: 3.5rem; min-width: 12rem; padding: 0 1.75rem; border-radius: 1rem; border: 1px solid oklch(0.913 0.012 255); background: oklch(0.985 0.004 255 / 0.7); font-size: 1rem; font-weight: 500;">Try chat assistant</a>
+            </div>
+            <div style="display: grid; gap: 1rem; grid-template-columns: repeat(3, minmax(0, 1fr));">
+              <div style="border: 1px solid oklch(0.913 0.012 255 / 0.7); border-radius: 1.5rem; background: oklch(1 0 0 / 0.8); backdrop-filter: blur(8px); padding: 1.25rem; box-shadow: 0 1px 2px rgba(15,23,42,0.05);">
+                <p style="margin: 0; font-size: 0.875rem; color: oklch(0.52 0.02 264);">Avg. match time</p>
+                <p style="margin: 0.75rem 0 0; font-family: Outfit, sans-serif; font-size: 1.875rem; font-weight: 600;">&lt;10s</p>
+              </div>
+              <div style="border: 1px solid oklch(0.913 0.012 255 / 0.7); border-radius: 1.5rem; background: oklch(1 0 0 / 0.8); backdrop-filter: blur(8px); padding: 1.25rem; box-shadow: 0 1px 2px rgba(15,23,42,0.05);">
+                <p style="margin: 0; font-size: 0.875rem; color: oklch(0.52 0.02 264);">Catalog coverage</p>
+                <p style="margin: 0.75rem 0 0; font-family: Outfit, sans-serif; font-size: 1.875rem; font-weight: 600;">94%</p>
+              </div>
+              <div style="border: 1px solid oklch(0.913 0.012 255 / 0.7); border-radius: 1.5rem; background: oklch(1 0 0 / 0.8); backdrop-filter: blur(8px); padding: 1.25rem; box-shadow: 0 1px 2px rgba(15,23,42,0.05);">
+                <p style="margin: 0; font-size: 0.875rem; color: oklch(0.52 0.02 264);">Manual review time</p>
+                <p style="margin: 0.75rem 0 0; font-family: Outfit, sans-serif; font-size: 1.875rem; font-weight: 600;">-42%</p>
+              </div>
+            </div>
+          </div>
+
+          <div style="position: relative; overflow: hidden; border: 1px solid oklch(0.913 0.012 255 / 0.7); border-radius: 2rem; background: oklch(1 0 0 / 0.9); backdrop-filter: blur(8px); padding: 2rem; box-shadow: 0 28px 80px oklch(0.571 0.098 184 / 0.1);">
+            <div style="position: absolute; inset: 0; pointer-events: none; background: oklch(0.571 0.098 184 / 0.03);"></div>
+            <div style="position: relative; display: flex; flex-direction: column; gap: 1.5rem;">
+              <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem;">
+                <div>
+                  <p style="margin: 0; font-size: 0.875rem; font-weight: 600; color: oklch(0.571 0.098 184);">Live match preview</p>
+                  <p style="margin: 0; font-size: 0.875rem; color: oklch(0.52 0.02 264);">Vision-based catalog matching</p>
+                </div>
+                <div style="flex-shrink: 0; display: inline-flex; align-items: center; border: 1px solid oklch(0.77 0.144 84 / 0.2); border-radius: 9999px; background: oklch(0.77 0.144 84 / 0.1); color: oklch(0.35 0.06 70); padding: 0.25rem 0.625rem; font-size: 0.75rem; font-weight: 600;">Flagged</div>
+              </div>
+
+              <div style="display: flex; flex-direction: column; gap: 1rem; border: 1px solid oklch(0.913 0.012 255 / 0.7); border-radius: 1.5rem; background: oklch(0.985 0.004 255 / 0.8); padding: 1.25rem; box-shadow: 0 1px 2px rgba(15,23,42,0.05);">
+                <div style="display: flex; gap: 0.75rem;">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="oklch(0.571 0.098 184)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-top: 0.25rem; width: 1.25rem; height: 1.25rem; flex-shrink: 0;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h6.5"></path><path d="M14 2v6h6"></path><circle cx="17" cy="17" r="3"></circle><path d="m21 21-1.5-1.5"></path></svg>
+                  <div>
+                    <p style="margin: 0; font-size: 0.875rem; font-weight: 600;">PO line item</p>
+                    <p style="margin: 0.25rem 0 0; font-family: 'JetBrains Mono', monospace; font-size: 0.875rem; line-height: 1.5rem; color: oklch(0.52 0.02 264);">"PO #4417 · Line 3 — 200 × 3/8in steel hex bolts, vendor Ironclad Supply, $0.42/unit."</p>
+                  </div>
+                </div>
+                <div style="border: 1px solid oklch(0.913 0.012 255 / 0.7); border-radius: 1.5rem; background: oklch(1 0 0); padding: 1.25rem; box-shadow: 0 1px 2px rgba(15,23,42,0.05);">
+                  <p style="margin: 0; font-size: 0.875rem; font-weight: 600; color: oklch(0.571 0.098 184);">Match result</p>
+                  <p style="margin: 0.75rem 0 0; font-size: 0.875rem; line-height: 1.75rem; color: oklch(0.52 0.02 264);">Vendor catalog lists this SKU at $0.51/unit — 18% above the PO price. Product photo matches the catalog listing exactly, so the item itself is correct. Price mismatch flagged for review before this invoice is approved.</p>
+                </div>
+                <div style="display: grid; gap: 0.75rem; grid-template-columns: repeat(2, minmax(0, 1fr));">
+                  <div style="border: 1px solid oklch(0.913 0.012 255 / 0.7); border-radius: 1.5rem; background: oklch(0.968 0.007 255 / 0.5); padding: 1.25rem;">
+                    <p style="margin: 0; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.2em; color: oklch(0.52 0.02 264);">Match confidence</p>
+                    <div style="margin-top: 0.75rem; display: flex; flex-direction: column; gap: 0.375rem;">
+                      <div style="width: 100%; height: 0.5rem; border-radius: 9999px; background: oklch(0.968 0.007 255); overflow: hidden;">
+                        <div style="height: 100%; width: 92%; border-radius: 9999px; background: oklch(0.659 0.151 154);"></div>
+                      </div>
+                      <span style="font-size: 0.75rem; font-weight: 500; color: oklch(0.52 0.02 264);">High</span>
+                    </div>
+                  </div>
+                  <div style="border: 1px solid oklch(0.913 0.012 255 / 0.7); border-radius: 1.5rem; background: oklch(0.968 0.007 255 / 0.5); padding: 1.25rem;">
+                    <p style="margin: 0; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.2em; color: oklch(0.52 0.02 264);">Catalog sources checked</p>
+                    <p style="margin: 0.75rem 0 0; font-family: Outfit, sans-serif; font-size: 1.5rem; font-weight: 600;">03</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section style="border-top: 1px solid oklch(0.913 0.012 255 / 0.7); border-bottom: 1px solid oklch(0.913 0.012 255 / 0.7); background: oklch(0.968 0.007 255); padding: 1.5rem 0;">
+        <div style="display: grid; gap: 0.75rem; text-align: center; grid-template-columns: repeat(3, minmax(0, 1fr));">
+          <div style="font-size: 0.875rem; font-weight: 500; color: oklch(0.238 0.03 264 / 0.8);">Built for repeat vendor invoices</div>
+          <div style="font-size: 0.875rem; font-weight: 500; color: oklch(0.238 0.03 264 / 0.8);">Designed for solo buyers and procurement teams</div>
+          <div style="font-size: 0.875rem; font-weight: 500; color: oklch(0.238 0.03 264 / 0.8);">Every match cites the catalog it came from</div>
+        </div>
+      </section>
+
+      <section id="product" style="display: flex; flex-direction: column; gap: 1.5rem; padding: 5rem 0;">
+        <div style="max-width: 48rem; display: flex; flex-direction: column; gap: 0.75rem;">
+          <div style="display: inline-flex; width: fit-content; border: 1px solid oklch(0.913 0.012 255 / 0.8); border-radius: 9999px; background: oklch(0.985 0.004 255 / 0.8); padding: 0.25rem 0.625rem; font-size: 0.75rem; font-weight: 600;">Product</div>
+          <h2 style="margin: 0; font-family: Outfit, sans-serif; font-size: 2.25rem; font-weight: 600; letter-spacing: -0.03em; line-height: 1.15;">Stop approving invoices you have not actually checked</h2>
+          <p style="margin: 0; font-size: 1.125rem; line-height: 1.75rem; color: oklch(0.52 0.02 264);">Optra gives buyers one place to match purchase orders, vendor catalogs, and invoices — including the product photos — instead of comparing PDFs by hand.</p>
+        </div>
+        <div style="display: grid; gap: 1.5rem; grid-template-columns: 1.5fr 1fr;">
+          <div style="border: 1px solid oklch(0.913 0.012 255 / 0.7); border-radius: 1.25rem; background: oklch(1 0 0); box-shadow: 0 1px 2px rgba(15,23,42,0.05); padding: 2rem; display: flex; flex-direction: column; gap: 1.5rem;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="oklch(0.571 0.098 184)" stroke-width="2" stroke-linecap="round" style="width: 1.25rem; height: 1.25rem;"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg>
+            <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+              <h3 style="margin: 0; font-family: Outfit, sans-serif; font-size: 1.25rem; font-weight: 600; letter-spacing: -0.03em;">Match it once, not line by line</h3>
+              <p style="margin: 0; color: oklch(0.52 0.02 264);">Check every PO line item against the vendor's catalog, price list, and past invoices from one workspace.</p>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 1rem;">
+              <div style="display: grid; gap: 1rem; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start;">
+                <div style="border: 1px solid oklch(0.913 0.012 255 / 0.6); border-radius: 1.25rem; background: oklch(1 0 0 / 0.75); box-shadow: 0 10px 20px rgba(15,23,42,0.06);">
+                  <div style="padding: 1.5rem;"><p style="margin: 0; font-size: 0.875rem; color: oklch(0.52 0.02 264);">Requested</p></div>
+                  <div style="padding: 0 1.5rem 1.5rem;"><p style="margin: 0; font-size: 0.875rem; color: oklch(0.52 0.02 264);">PO #4417 · Line 3 — 200 × 3/8in steel hex bolts</p></div>
+                </div>
+                <div style="border: 1px solid oklch(0.913 0.012 255 / 0.6); border-radius: 1.25rem; background: oklch(1 0 0 / 0.75); box-shadow: 0 10px 20px rgba(15,23,42,0.06);">
+                  <div style="padding: 1.5rem;"><p style="margin: 0; font-size: 0.875rem; color: oklch(0.52 0.02 264);">Ironclad Supply</p></div>
+                  <div style="padding: 0 1.5rem 1.5rem; display: flex; flex-direction: column; gap: 0.75rem;">
+                    <div style="position: relative; overflow: hidden; border-radius: 1rem; aspect-ratio: 4 / 3;">
+                      <img src="https://images.unsplash.com/photo-1564226591723-659ff3852b2a?q=80&amp;w=800&amp;auto=format&amp;fit=crop" alt="3/8in steel hex bolts" style="width: 100%; height: 100%; object-fit: cover;" />
+                    </div>
+                    <p style="margin: 0; font-size: 0.875rem; color: oklch(0.52 0.02 264);">3/8in steel hex bolts</p>
+                  </div>
+                </div>
+              </div>
+              <div style="display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; border: 1px solid oklch(0.913 0.012 255 / 0.7); border-radius: 1rem; background: oklch(0.968 0.007 255 / 0.4); padding: 1rem;">
+                <div style="display: flex; align-items: center; gap: 0.75rem;">
+                  <span style="display: inline-flex; border: 1px solid oklch(0.659 0.151 154 / 0.2); border-radius: 9999px; background: oklch(0.659 0.151 154 / 0.1); color: oklch(0.5 0.13 154); padding: 0.25rem 0.625rem; font-size: 0.75rem; font-weight: 600;">Match</span>
+                  <p style="margin: 0; font-size: 0.875rem; color: oklch(0.52 0.02 264);">Product photo matches the catalog listing</p>
+                </div>
+                <div style="width: 10rem; display: flex; flex-direction: column; gap: 0.375rem;">
+                  <div style="width: 100%; height: 0.375rem; border-radius: 9999px; background: oklch(0.968 0.007 255); overflow: hidden;"><div style="height: 100%; width: 92%; border-radius: 9999px; background: oklch(0.659 0.151 154);"></div></div>
+                  <span style="font-size: 0.75rem; font-weight: 500; color: oklch(0.52 0.02 264);">92%</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 1rem;">
+            <div style="border: 1px solid oklch(0.913 0.012 255 / 0.7); border-radius: 1.25rem; background: oklch(1 0 0); box-shadow: 0 1px 2px rgba(15,23,42,0.05); padding: 1.5rem; display: flex; flex-direction: column; gap: 0.75rem;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="oklch(0.571 0.098 184)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 1.25rem; height: 1.25rem;"><rect x="3" y="3" width="6" height="6" rx="1"></rect><rect x="15" y="15" width="6" height="6" rx="1"></rect><path d="M9 6h3a3 3 0 0 1 3 3v9"></path></svg>
+              <h3 style="margin: 0; font-family: Outfit, sans-serif; font-size: 1rem; font-weight: 600;">Learn from every past order</h3>
+              <p style="margin: 0; font-size: 0.875rem; color: oklch(0.52 0.02 264);">Surface prior orders from the same vendor, past pricing, and any discrepancy that was flagged before, so a pattern does not repeat unnoticed.</p>
+            </div>
+            <div style="border: 1px solid oklch(0.913 0.012 255 / 0.7); border-radius: 1.25rem; background: oklch(1 0 0); box-shadow: 0 1px 2px rgba(15,23,42,0.05); padding: 1.5rem; display: flex; flex-direction: column; gap: 0.75rem;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="oklch(0.571 0.098 184)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 1.25rem; height: 1.25rem;"><path d="M20 13c0 5-3.5 7.5-7.7 8.9a1 1 0 0 1-.6 0C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.2-2.7a1 1 0 0 1 1.5 0C14.5 3.8 17 5 19 5a1 1 0 0 1 1 1z"></path><path d="m9 12 2 2 4-4"></path></svg>
+              <h3 style="margin: 0; font-family: Outfit, sans-serif; font-size: 1rem; font-weight: 600;">Approve with evidence, not a guess</h3>
+              <p style="margin: 0; font-size: 0.875rem; color: oklch(0.52 0.02 264);">Every match is grounded in the vendor's actual catalog entry and product photo, so a buyer can verify before approving instead of assuming it is right.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section style="display: flex; flex-direction: column; gap: 1.5rem; padding: 4rem 0;">
+        <div style="max-width: 48rem; display: flex; flex-direction: column; gap: 0.75rem;">
+          <div style="display: inline-flex; width: fit-content; border: 1px solid oklch(0.913 0.012 255 / 0.8); border-radius: 9999px; background: oklch(0.985 0.004 255 / 0.8); padding: 0.25rem 0.625rem; font-size: 0.75rem; font-weight: 600;">Workspaces</div>
+          <h2 style="margin: 0; font-family: Outfit, sans-serif; font-size: 2.25rem; font-weight: 600; letter-spacing: -0.03em;">Use it alone, or bring the whole procurement team</h2>
+          <p style="margin: 0; font-size: 1.125rem; line-height: 1.75rem; color: oklch(0.52 0.02 264);">Start by matching your own purchase orders, then grow into a shared workspace when every buyer needs the same vendor history.</p>
+        </div>
+        <div style="border: 1px solid oklch(0.913 0.012 255 / 0.7); border-radius: 2rem; background: oklch(1 0 0 / 0.9); padding: 1rem; box-shadow: 0 1px 2px rgba(15,23,42,0.05);">
+          <div style="display: inline-flex; gap: 0.25rem; border-radius: 9999px; background: oklch(0.968 0.007 255 / 0.6); padding: 0.25rem;">
+            <button type="button" onClick="{{ selectPersonal }}" style="{{ personalTabStyle }}">Personal</button>
+            <button type="button" onClick="{{ selectTeam }}" style="{{ teamTabStyle }}">Team</button>
+          </div>
+          <div style="margin-top: 1.5rem; display: grid; gap: 1.5rem; padding: 1rem; grid-template-columns: minmax(0,1fr) minmax(0,1fr); align-items: start;">
+            <div>
+              <h3 style="margin: 0; font-family: Outfit, sans-serif; font-size: 1.5rem; font-weight: 600; letter-spacing: -0.02em;">{{ modeTitle }}</h3>
+              <p style="margin: 0.75rem 0 0; font-size: 0.875rem; line-height: 1.75rem; color: oklch(0.52 0.02 264);">{{ modeDescription }}</p>
+            </div>
+            <ul style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 0.75rem;">
+              <sc-for list="{{ modeBullets }}" as="bullet" hint-placeholder-count="3">
+                <li style="display: flex; align-items: flex-start; gap: 0.75rem; font-size: 0.875rem; line-height: 1.5rem;">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="oklch(0.571 0.098 184)" stroke-width="2" style="margin-top: 0.125rem; width: 1rem; height: 1rem; flex-shrink: 0;"><circle cx="12" cy="12" r="10"></circle><path d="m9 12 2 2 4-4"></path></svg>
+                  <span>{{ bullet }}</span>
+                </li>
+              </sc-for>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <section style="display: flex; flex-direction: column; gap: 1.5rem; padding: 4rem 0;">
+        <div style="max-width: 48rem; display: flex; flex-direction: column; gap: 0.75rem;">
+          <div style="display: inline-flex; width: fit-content; border: 1px solid oklch(0.913 0.012 255); border-radius: 9999px; background: oklch(0.968 0.007 255); padding: 0.25rem 0.625rem; font-size: 0.75rem; font-weight: 600;">Core value</div>
+          <h2 style="margin: 0; font-family: Outfit, sans-serif; font-size: 2.25rem; font-weight: 600; letter-spacing: -0.03em;">Everything a buyer needs, connected</h2>
+          <p style="margin: 0; font-size: 1.125rem; line-height: 1.75rem; color: oklch(0.52 0.02 264);">Vendor catalogs, PO matching, and invoice extraction all pull from the same workspace so a price check today matches the one from last quarter.</p>
+        </div>
+        <div style="display: grid; gap: 1.5rem; grid-template-columns: 1.1fr 0.9fr;">
+          <div style="border: 1px solid oklch(0.913 0.012 255 / 0.7); border-radius: 1.25rem; background: oklch(1 0 0); box-shadow: 0 1px 2px rgba(15,23,42,0.05); padding: 2rem; display: flex; flex-direction: column; justify-content: center; gap: 1rem;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="oklch(0.571 0.098 184)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 1.5rem; height: 1.5rem;"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M19 8v6"></path><path d="M22 11h-6"></path></svg>
+            <p style="margin: 0; font-size: 0.875rem; font-weight: 500; color: oklch(0.571 0.098 184);">Onboarding</p>
+            <h3 style="margin: 0; font-family: Outfit, sans-serif; font-size: 1.25rem; font-weight: 600;">Ramp new buyers faster</h3>
+            <p style="margin: 0; color: oklch(0.52 0.02 264);">Give new buyers access to vendor catalogs, price history, and past discrepancies without waiting months to learn which vendors run high.</p>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 1rem;">
+            <div style="border: 1px solid oklch(0.913 0.012 255 / 0.7); border-radius: 1.25rem; background: oklch(1 0 0); box-shadow: 0 1px 2px rgba(15,23,42,0.05); padding: 1.5rem; display: flex; flex-direction: column; gap: 0.5rem;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="oklch(0.571 0.098 184)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 1.25rem; height: 1.25rem;"><rect x="2" y="3" width="20" height="5" rx="1"></rect><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"></path><path d="M10 12h4"></path></svg>
+              <p style="margin: 0; font-size: 0.75rem; font-weight: 500; color: oklch(0.571 0.098 184);">Continuity</p>
+              <h3 style="margin: 0; font-family: Outfit, sans-serif; font-size: 1rem; font-weight: 600;">Keep vendor history when people leave</h3>
+              <p style="margin: 0; font-size: 0.875rem; color: oklch(0.52 0.02 264);">Preserve every match, flagged discrepancy, and price history even after the buyer who caught it moves on.</p>
+            </div>
+            <div style="border: 1px solid oklch(0.913 0.012 255 / 0.7); border-radius: 1.25rem; background: oklch(1 0 0); box-shadow: 0 1px 2px rgba(15,23,42,0.05); padding: 1.5rem; display: flex; flex-direction: column; gap: 0.5rem;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="oklch(0.571 0.098 184)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 1.25rem; height: 1.25rem;"><path d="M13 2 3 14h9l-1 8 10-12h-9z"></path></svg>
+              <p style="margin: 0; font-size: 0.75rem; font-weight: 500; color: oklch(0.571 0.098 184);">Efficiency</p>
+              <h3 style="margin: 0; font-family: Outfit, sans-serif; font-size: 1rem; font-weight: 600;">Cut manual line-by-line review</h3>
+              <p style="margin: 0; font-size: 0.875rem; color: oklch(0.52 0.02 264);">Let the vision match run automatically so buyers only spend time on the line items that actually get flagged.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="workflow" style="display: flex; flex-direction: column; gap: 1.5rem; padding: 4rem 0;">
+        <div style="max-width: 48rem; display: flex; flex-direction: column; gap: 0.75rem;">
+          <div style="display: inline-flex; width: fit-content; border: 1px solid oklch(0.913 0.012 255 / 0.8); border-radius: 9999px; background: oklch(0.985 0.004 255 / 0.8); padding: 0.25rem 0.625rem; font-size: 0.75rem; font-weight: 600;">Workflow</div>
+          <h2 style="margin: 0; font-family: Outfit, sans-serif; font-size: 2.25rem; font-weight: 600; letter-spacing: -0.03em;">A simple path from a stack of PDFs to a checked invoice</h2>
+          <p style="margin: 0; font-size: 1.125rem; line-height: 1.75rem; color: oklch(0.52 0.02 264);">No complex migration. Start with the purchase orders and vendor catalogs you already have.</p>
+        </div>
+        <div style="display: grid; gap: 1.5rem; grid-template-columns: 0.8fr 0.8fr 1.2fr;">
+          <div style="border: 1px dashed oklch(0.913 0.012 255); border-radius: 1.25rem; background: oklch(1 0 0); padding: 1.5rem; display: flex; flex-direction: column; gap: 0.75rem;">
+            <div style="display: flex; min-height: 84px; align-items: center; justify-content: center; border: 1px dashed oklch(0.913 0.012 255); border-radius: 0.75rem; text-align: center; font-size: 0.875rem; color: oklch(0.52 0.02 264);">Drop PO, invoice, or catalog files</div>
+            <h3 style="margin: 0; font-family: Outfit, sans-serif; font-size: 1rem; font-weight: 600;">Connect your vendors</h3>
+            <p style="margin: 0; font-size: 0.875rem; color: oklch(0.52 0.02 264);">Upload vendor catalogs, purchase orders, and invoices — PDFs, spreadsheets, or scanned copies — into your workspace.</p>
+          </div>
+          <div style="border: 1px solid oklch(0.913 0.012 255 / 0.7); border-radius: 1.25rem; background: oklch(1 0 0); padding: 1.5rem; display: flex; flex-direction: column; gap: 0.75rem;">
+            <div style="display: flex; min-height: 84px; flex-direction: column; justify-content: center; gap: 0.375rem;">
+              <div style="width: 100%; height: 0.375rem; border-radius: 9999px; background: oklch(0.968 0.007 255); overflow: hidden;"><div style="height: 100%; width: 92%; border-radius: 9999px; background: oklch(0.659 0.151 154);"></div></div>
+              <span style="font-size: 0.75rem; font-weight: 500; color: oklch(0.52 0.02 264);">High</span>
+            </div>
+            <h3 style="margin: 0; font-family: Outfit, sans-serif; font-size: 1rem; font-weight: 600;">Optra matches automatically</h3>
+            <p style="margin: 0; font-size: 0.875rem; color: oklch(0.52 0.02 264);">Optra reads each line item, matches it to the vendor's catalog entry — including the product photo — and checks the price and quantity against the PO.</p>
+          </div>
+          <div style="border: 1px solid oklch(0.77 0.144 84 / 0.4); border-radius: 1.25rem; background: oklch(0.77 0.144 84 / 0.05); padding: 1.5rem; display: flex; flex-direction: column; gap: 0.75rem;">
+            <div style="display: flex; min-height: 84px; align-items: center;">
+              <div style="width: fit-content; border: 1px solid oklch(0.77 0.144 84 / 0.2); border-radius: 9999px; background: oklch(0.77 0.144 84 / 0.1); color: oklch(0.35 0.06 70); padding: 0.25rem 0.625rem; font-size: 0.75rem; font-weight: 600;">Flagged</div>
+            </div>
+            <h3 style="margin: 0; font-family: Outfit, sans-serif; font-size: 1rem; font-weight: 600;">Review what got flagged</h3>
+            <p style="margin: 0; font-size: 0.875rem; color: oklch(0.52 0.02 264);">Get a clear result for every line: confirmed, or flagged with the exact catalog source and the price or item difference.</p>
+          </div>
+        </div>
+      </section>
+
+      <section id="use-cases" style="display: flex; flex-direction: column; gap: 1.5rem; padding: 4rem 0;">
+        <div style="max-width: 48rem; display: flex; flex-direction: column; gap: 0.75rem;">
+          <div style="display: inline-flex; width: fit-content; border: 1px solid oklch(0.913 0.012 255); border-radius: 9999px; background: oklch(0.968 0.007 255); padding: 0.25rem 0.625rem; font-size: 0.75rem; font-weight: 600;">Use cases</div>
+          <h2 style="margin: 0; font-family: Outfit, sans-serif; font-size: 2.25rem; font-weight: 600; letter-spacing: -0.03em;">Built for teams who check the same vendor invoices repeatedly</h2>
+          <p style="margin: 0; font-size: 1.125rem; line-height: 1.75rem; color: oklch(0.52 0.02 264);">Optra fits any procurement workflow where purchase orders, vendor catalogs, and invoices are scattered across email, PDFs, and spreadsheets.</p>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 1rem;">
+          <div style="display: grid; gap: 1rem; grid-template-columns: repeat(2, minmax(0, 1fr));">
+            <div style="border: 1px solid oklch(0.913 0.012 255 / 0.7); border-radius: 1.25rem; background: oklch(1 0 0); box-shadow: 0 1px 2px rgba(15,23,42,0.05); padding: 1.5rem; display: flex; align-items: flex-start; gap: 0.75rem;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="oklch(0.571 0.098 184)" stroke-width="2" style="width: 1.25rem; height: 1.25rem; flex-shrink: 0;"><circle cx="12" cy="12" r="10"></circle><path d="m9 12 2 2 4-4"></path></svg>
+              <div style="display: flex; flex-direction: column; gap: 0.25rem;">
+                <p style="margin: 0; font-weight: 500;">Procurement teams</p>
+                <p style="margin: 0; font-size: 0.875rem; color: oklch(0.52 0.02 264);">Match every PO against the vendor catalog before it is approved.</p>
+              </div>
+            </div>
+            <div style="border: 1px solid oklch(0.913 0.012 255 / 0.7); border-radius: 1.25rem; background: oklch(1 0 0); box-shadow: 0 1px 2px rgba(15,23,42,0.05); padding: 1.5rem; display: flex; align-items: flex-start; gap: 0.75rem;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="oklch(0.571 0.098 184)" stroke-width="2" style="width: 1.25rem; height: 1.25rem; flex-shrink: 0;"><circle cx="12" cy="12" r="10"></circle><path d="m9 12 2 2 4-4"></path></svg>
+              <div style="display: flex; flex-direction: column; gap: 0.25rem;">
+                <p style="margin: 0; font-weight: 500;">AP / accounts payable teams</p>
+                <p style="margin: 0; font-size: 0.875rem; color: oklch(0.52 0.02 264);">Catch a price or quantity mismatch before the invoice gets paid.</p>
+              </div>
+            </div>
+          </div>
+          <div style="display: flex; flex-wrap: wrap; gap: 0.5rem;">
+            <span style="display: inline-flex; align-items: center; gap: 0.375rem; border: 1px solid oklch(0.913 0.012 255 / 0.7); border-radius: 9999px; background: oklch(0.968 0.007 255 / 0.6); padding: 0.375rem 0.75rem; font-size: 0.875rem; color: oklch(0.52 0.02 264);"><svg viewBox="0 0 24 24" fill="none" stroke="oklch(0.571 0.098 184)" stroke-width="2" style="width: 0.875rem; height: 0.875rem;"><circle cx="12" cy="12" r="10"></circle><path d="m9 12 2 2 4-4"></path></svg>Multi-vendor sourcing teams</span>
+            <span style="display: inline-flex; align-items: center; gap: 0.375rem; border: 1px solid oklch(0.913 0.012 255 / 0.7); border-radius: 9999px; background: oklch(0.968 0.007 255 / 0.6); padding: 0.375rem 0.75rem; font-size: 0.875rem; color: oklch(0.52 0.02 264);"><svg viewBox="0 0 24 24" fill="none" stroke="oklch(0.571 0.098 184)" stroke-width="2" style="width: 0.875rem; height: 0.875rem;"><circle cx="12" cy="12" r="10"></circle><path d="m9 12 2 2 4-4"></path></svg>Operations &amp; supply chain teams</span>
+            <span style="display: inline-flex; align-items: center; gap: 0.375rem; border: 1px solid oklch(0.913 0.012 255 / 0.7); border-radius: 9999px; background: oklch(0.968 0.007 255 / 0.6); padding: 0.375rem 0.75rem; font-size: 0.875rem; color: oklch(0.52 0.02 264);"><svg viewBox="0 0 24 24" fill="none" stroke="oklch(0.571 0.098 184)" stroke-width="2" style="width: 0.875rem; height: 0.875rem;"><circle cx="12" cy="12" r="10"></circle><path d="m9 12 2 2 4-4"></path></svg>Small business buyers</span>
+            <span style="display: inline-flex; align-items: center; gap: 0.375rem; border: 1px solid oklch(0.913 0.012 255 / 0.7); border-radius: 9999px; background: oklch(0.968 0.007 255 / 0.6); padding: 0.375rem 0.75rem; font-size: 0.875rem; color: oklch(0.52 0.02 264);"><svg viewBox="0 0 24 24" fill="none" stroke="oklch(0.571 0.098 184)" stroke-width="2" style="width: 0.875rem; height: 0.875rem;"><circle cx="12" cy="12" r="10"></circle><path d="m9 12 2 2 4-4"></path></svg>Founder-led purchasing workflows</span>
+          </div>
+        </div>
+      </section>
+
+      <section style="display: flex; flex-direction: column; gap: 1.5rem; padding: 4rem 0;">
+        <div style="max-width: 48rem; display: flex; flex-direction: column; gap: 0.75rem;">
+          <div style="display: inline-flex; width: fit-content; border: 1px solid oklch(0.913 0.012 255 / 0.8); border-radius: 9999px; background: oklch(0.985 0.004 255 / 0.8); padding: 0.25rem 0.625rem; font-size: 0.75rem; font-weight: 600;">Why Optra</div>
+          <h2 style="margin: 0; font-family: Outfit, sans-serif; font-size: 2.25rem; font-weight: 600; letter-spacing: -0.03em;">Matches your team can verify, not just trust</h2>
+          <p style="margin: 0; font-size: 1.125rem; line-height: 1.75rem; color: oklch(0.52 0.02 264);">A missed price increase does not show up as an error. It shows up on the next invoice. Here is what changes once every match cites its source.</p>
+        </div>
+        <div style="overflow: hidden; border: 1px solid oklch(0.913 0.012 255 / 0.7); border-radius: 2rem; background: oklch(1 0 0);">
+          <div style="display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); border-bottom: 1px solid oklch(0.913 0.012 255 / 0.7); background: oklch(0.968 0.007 255); font-size: 0.875rem; font-weight: 600;">
+            <div style="padding: 1rem; border-right: 1px solid oklch(0.913 0.012 255 / 0.7);">Without Optra</div>
+            <div style="padding: 1rem; color: oklch(0.571 0.098 184);">With Optra</div>
+          </div>
+          <sc-for list="{{ comparisons }}" as="row" hint-placeholder-count="3">
+            <div style="display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); border-top: 1px solid oklch(0.913 0.012 255 / 0.7);">
+              <div style="display: flex; align-items: flex-start; gap: 0.75rem; padding: 1.25rem; border-right: 1px solid oklch(0.913 0.012 255 / 0.7); font-size: 0.875rem; line-height: 1.5rem; color: oklch(0.238 0.03 264 / 0.75);">
+                <svg viewBox="0 0 24 24" fill="none" stroke="oklch(0.615 0.209 27 / 0.7)" stroke-width="2" stroke-linecap="round" style="margin-top: 0.125rem; width: 1rem; height: 1rem; flex-shrink: 0;"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg>
+                <span>{{ row.before }}</span>
+              </div>
+              <div style="display: flex; align-items: flex-start; gap: 0.75rem; padding: 1.25rem; font-size: 0.875rem; line-height: 1.5rem;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="oklch(0.571 0.098 184)" stroke-width="2" style="margin-top: 0.125rem; width: 1rem; height: 1rem; flex-shrink: 0;"><circle cx="12" cy="12" r="10"></circle><path d="m9 12 2 2 4-4"></path></svg>
+                <span>{{ row.after }}</span>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </section>
+
+      <section id="faq" style="display: flex; flex-direction: column; gap: 1.5rem; padding: 4rem 0;">
+        <div style="max-width: 48rem; display: flex; flex-direction: column; gap: 0.75rem;">
+          <div style="display: inline-flex; width: fit-content; border: 1px solid oklch(0.913 0.012 255 / 0.8); border-radius: 9999px; background: oklch(0.985 0.004 255 / 0.8); padding: 0.25rem 0.625rem; font-size: 0.75rem; font-weight: 600;">FAQ</div>
+          <h2 style="margin: 0; font-family: Outfit, sans-serif; font-size: 2.25rem; font-weight: 600; letter-spacing: -0.03em;">Common questions before you connect a vendor</h2>
+          <p style="margin: 0; font-size: 1.125rem; line-height: 1.75rem; color: oklch(0.52 0.02 264);">Straight answers about how Optra is meant to fit into a procurement workflow.</p>
+        </div>
+        <div style="overflow: hidden; border: 1px solid oklch(0.913 0.012 255 / 0.7); border-radius: 2rem; background: oklch(1 0 0 / 0.6);">
+          <sc-for list="{{ faqRows }}" as="row" hint-placeholder-count="4">
+            <div style="{{ row.wrapStyle }}">
+              <button type="button" onClick="{{ row.toggle }}" style="display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 1rem; padding: 1.5rem; text-align: left; background: transparent; border: 0; cursor: pointer;">
+                <span style="font-family: Outfit, sans-serif; font-size: 1.125rem; font-weight: 600; letter-spacing: -0.01em;">{{ row.question }}</span>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="{{ row.chevronStyle }}"><path d="m6 9 6 6 6-6"></path></svg>
+              </button>
+              <div style="{{ row.panelStyle }}">
+                <div style="overflow: hidden;">
+                  <p style="margin: 0; padding: 0 1.5rem 1.5rem; font-size: 0.875rem; line-height: 1.75rem; color: oklch(0.52 0.02 264);">{{ row.answer }}</p>
+                </div>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </section>
+
+      <section style="padding: 5rem 0;">
+        <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; border: 1px dashed oklch(0.913 0.012 255 / 0.8); border-radius: 1.25rem; background: oklch(0.968 0.007 255 / 0.4); padding: 3rem 1.5rem; text-align: center;">
+          <div style="margin-bottom: 1.25rem; display: flex; width: 3.5rem; height: 3.5rem; align-items: center; justify-content: center; border: 1px solid oklch(0.913 0.012 255 / 0.7); border-radius: 1rem; background: oklch(0.985 0.004 255); color: oklch(0.571 0.098 184); box-shadow: 0 1px 2px rgba(15,23,42,0.05);">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 1.25rem; height: 1.25rem;"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"></path><path d="M19 15l.9 2.1L22 18l-2.1.9L19 21l-.9-2.1L16 18l2.1-.9z"></path></svg>
+          </div>
+          <div style="max-width: 28rem; display: flex; flex-direction: column; gap: 0.5rem;">
+            <h3 style="margin: 0; font-family: Outfit, sans-serif; font-size: 1.25rem; font-weight: 600;">Ready to check your first purchase order?</h3>
+            <p style="margin: 0; font-size: 0.875rem; line-height: 1.5rem; color: oklch(0.52 0.02 264);">Create a workspace, connect a vendor catalog, and match your first purchase order or invoice.</p>
+          </div>
+          <div style="margin-top: 1.5rem; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 0.75rem;">
+            <a href="#" style="display: inline-flex; align-items: center; gap: 0.5rem; height: 3rem; padding: 0 1.5rem; border-radius: 1rem; background: oklch(0.571 0.098 184); color: oklch(0.985 0.004 255); font-size: 0.875rem; font-weight: 500; box-shadow: 0 10px 20px rgba(15,23,42,0.06);">Explore workspace <span>&#8594;</span></a>
+            <a href="#" style="display: inline-flex; align-items: center; height: 3rem; padding: 0 1.5rem; border-radius: 1rem; border: 1px solid oklch(0.913 0.012 255); background: oklch(0.985 0.004 255 / 0.9); font-size: 0.875rem; font-weight: 500;">Run a live match test</a>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer style="border-top: 1px solid oklch(0.913 0.012 255 / 0.7); padding: 2.5rem 0;">
+      <div style="display: grid; gap: 2rem; grid-template-columns: 1.2fr 0.8fr; align-items: start;">
+        <div style="display: flex; align-items: flex-start; gap: 1rem;">
+          <img src="assets/optra-mark.svg" alt="" style="width: 2.75rem; height: 2.75rem; flex-shrink: 0;" />
+          <div>
+            <p style="margin: 0; font-family: Outfit, sans-serif; font-size: 1.125rem; font-weight: 600;">Optra</p>
+            <p style="margin: 0.5rem 0 0; max-width: 28rem; font-size: 0.875rem; line-height: 1.75rem; color: oklch(0.52 0.02 264);">Match purchase orders, vendor catalogs, and invoices for solo buyers and procurement teams.</p>
+          </div>
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 1.5rem; font-size: 0.875rem;">
+          <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+            <p style="margin: 0; font-weight: 600;">Product</p>
+            <a href="#product" style="color: oklch(0.52 0.02 264);">Overview</a>
+            <a href="#workflow" style="color: oklch(0.52 0.02 264);">Workflow</a>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+            <p style="margin: 0; font-weight: 600;">Use cases</p>
+            <a href="#use-cases" style="color: oklch(0.52 0.02 264);">Who it helps</a>
+            <a href="#faq" style="color: oklch(0.52 0.02 264);">FAQ</a>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+            <p style="margin: 0; font-weight: 600;">App</p>
+            <a href="#" style="color: oklch(0.52 0.02 264);">Live match demo</a>
+            <a href="#" style="color: oklch(0.52 0.02 264);">Workspace</a>
+          </div>
+        </div>
+      </div>
+      <div style="margin-top: 2.5rem; display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; border-top: 1px solid oklch(0.913 0.012 255 / 0.7); padding-top: 1.5rem; font-size: 0.875rem; color: oklch(0.52 0.02 264);">
+        <p style="margin: 0;">© 2026 Optra. All rights reserved.</p>
+        <p style="margin: 0;">Built for buyers who are tired of catching a price mismatch after it's already paid.</p>
+      </div>
+    </footer>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = { mode: 'personal', openFaq: 0 };
+
+  renderVals() {
+    const modes = {
+      personal: {
+        title: 'Your own purchasing memory',
+        description: 'Built for solo buyers and small-business owners juggling multiple vendors without a procurement team behind them.',
+        bullets: [
+          'Upload a PO or invoice the moment it lands, no formatting required',
+          'Search your own order history instead of relying on memory',
+          'Keep vendor-specific pricing history separate without mixing accounts',
+        ],
+      },
+      team: {
+        title: 'One catalog, every buyer',
+        description: 'Built for procurement teams where a price check should not depend on who happens to remember the last invoice.',
+        bullets: [
+          'Every buyer matches against the same approved vendor catalog',
+          'New buyers search real order and pricing history starting day one',
+          "Senior buyers stop re-checking the same vendor's pricing every week",
+        ],
+      },
+    };
+    const active = modes[this.state.mode];
+    const tab = (on) =>
+      'display: flex; align-items: center; gap: 0.5rem; border: 0; cursor: pointer; border-radius: 9999px; padding: 0.5rem 1rem; font-size: 0.875rem; font-weight: 500; transition: background-color 200ms, color 200ms; ' +
+      (on
+        ? 'background: oklch(0.571 0.098 184); color: oklch(0.985 0.004 255); box-shadow: 0 1px 2px rgba(15,23,42,0.05);'
+        : 'background: transparent; color: oklch(0.52 0.02 264);');
+
+    const faq = [
+      { question: 'Is Optra only for procurement teams?', answer: 'No. A solo buyer can run it as a personal workspace, and a procurement team can share it as one workspace across every buyer.' },
+      { question: 'What documents can Optra read?', answer: 'Optra is designed for vendor catalogs (including product photos), purchase orders, invoices, and other PDFs your buyers already work from.' },
+      { question: "Does it replace a buyer's approval?", answer: 'No. It flags likely mismatches between the PO, catalog, and invoice. A buyer still reviews and decides whether to approve.' },
+      { question: 'Why not just review the PDFs manually?', answer: "Manual review catches obvious errors. Optra checks every line item against the vendor's catalog automatically, including the product photo, so a subtle price change or a swapped item does not slip through." },
+    ];
+
+    return {
+      modeTitle: active.title,
+      modeDescription: active.description,
+      modeBullets: active.bullets,
+      personalTabStyle: tab(this.state.mode === 'personal'),
+      teamTabStyle: tab(this.state.mode === 'team'),
+      selectPersonal: () => this.setState({ mode: 'personal' }),
+      selectTeam: () => this.setState({ mode: 'team' }),
+      comparisons: [
+        { before: 'Checking a vendor invoice against the PO means opening five different files by hand.', after: 'One workspace matches the PO, catalog, and invoice automatically.' },
+        { before: 'A catalog photo and the item that actually shipped do not always match, and nobody double-checks it.', after: 'Every line item gets a vision-based catalog match before it is approved.' },
+        { before: 'A price increase buried in a PDF invoice gets approved because nobody compared it line by line.', after: 'Every price mismatch is flagged against the vendor catalog before payment goes out.' },
+      ],
+      faqRows: faq.map((item, i) => {
+        const open = this.state.openFaq === i;
+        return {
+          question: item.question,
+          answer: item.answer,
+          wrapStyle: i === 0 ? '' : 'border-top: 1px solid oklch(0.913 0.012 255 / 0.7);',
+          toggle: () => this.setState({ openFaq: open ? null : i }),
+          chevronStyle:
+            'width: 1.25rem; height: 1.25rem; flex-shrink: 0; transition: transform 300ms; ' +
+            (open ? 'transform: rotate(180deg); color: oklch(0.571 0.098 184);' : 'color: oklch(0.52 0.02 264);'),
+          panelStyle:
+            'display: grid; transition: grid-template-rows 300ms cubic-bezier(0.23,1,0.32,1); grid-template-rows: ' +
+            (open ? '1fr;' : '0fr;'),
+        };
+      }),
+    };
+  }
+}
+</script>
+</body>
+</html>

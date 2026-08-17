@@ -1,0 +1,705 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="" />
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+<style>
+  body { margin: 0; background: oklch(0.968 0.009 85); color: oklch(0.21 0.012 60); font-family: Archivo, system-ui, sans-serif; font-size: 17px; -webkit-font-smoothing: antialiased; }
+  a { color: oklch(0.21 0.012 60); text-decoration: none; }
+  a:hover { color: oklch(0.46 0.09 182); }
+  button { font: inherit; }
+  @keyframes ledger-scan { from { transform: translateY(0); } to { transform: translateY(100%); } }
+  @keyframes ledger-stamp { from { opacity: 0; transform: scale(1.5) rotate(-8deg); } to { opacity: 1; transform: scale(1) rotate(-4deg); } }
+  @keyframes ledger-tick { from { opacity: 0.2; } to { opacity: 1; } }
+  @keyframes ledger-drift { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+</style>
+</helmet>
+<div style="background: oklch(0.968 0.009 85); min-height: 100vh;">
+  <div style="position: fixed; inset: 0; pointer-events: none; z-index: 0; background-image: linear-gradient(to right, oklch(0.21 0.012 60 / 0.045) 1px, transparent 1px); background-size: 103.33px 100%; background-position: 40px 0;"></div>
+
+  <header style="position: sticky; top: 0; z-index: 40; border-bottom: 1px solid oklch(0.21 0.012 60 / 0.14); background: oklch(0.968 0.009 85 / 0.92); backdrop-filter: blur(10px);">
+    <div style="margin: 0 auto; max-width: 1280px; padding: 0 40px; display: flex; align-items: stretch; justify-content: space-between; gap: 32px;">
+      <a href="#top" style="display: flex; align-items: center; gap: 12px; padding: 18px 0;">
+        <img src="assets/optra-mark.svg" alt="" style="width: 26px; height: 26px;" />
+        <span style="font-weight: 700; font-size: 19px; letter-spacing: -0.03em;">Optra</span>
+        <span style="font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: oklch(0.46 0.09 182); border: 1px solid oklch(0.46 0.09 182 / 0.35); padding: 3px 6px;">PO&nbsp;×&nbsp;CATALOG</span>
+      </a>
+      <nav style="display: flex; align-items: stretch; gap: 0;">
+        <a href="#match" style="display: flex; align-items: center; padding: 0 18px; font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: oklch(0.42 0.014 60); border-left: 1px solid oklch(0.21 0.012 60 / 0.14);">Matching</a>
+        <a href="#workflow" style="display: flex; align-items: center; padding: 0 18px; font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: oklch(0.42 0.014 60); border-left: 1px solid oklch(0.21 0.012 60 / 0.14);">Workflow</a>
+        <a href="#trust" style="display: flex; align-items: center; padding: 0 18px; font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: oklch(0.42 0.014 60); border-left: 1px solid oklch(0.21 0.012 60 / 0.14);">Trust</a>
+        <a href="#pricing" style="display: flex; align-items: center; padding: 0 18px; font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: oklch(0.42 0.014 60); border-left: 1px solid oklch(0.21 0.012 60 / 0.14);">Pricing</a>
+        <a href="#trial" style="display: flex; align-items: center; gap: 8px; padding: 0 22px; margin-left: 18px; font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; background: oklch(0.21 0.012 60); color: oklch(0.968 0.009 85);" style-hover="background: oklch(0.46 0.09 182); color: oklch(0.98 0.01 85);">Start free trial</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="top" style="position: relative; z-index: 1;">
+    <section style="border-bottom: 1px solid oklch(0.21 0.012 60 / 0.14);">
+      <div style="margin: 0 auto; max-width: 1280px; padding: 0 40px; display: grid; grid-template-columns: 1.02fr 0.98fr;">
+        <div style="padding: 72px 56px 64px 0; border-right: 1px solid oklch(0.21 0.012 60 / 0.14);">
+          <div data-reveal="" style="display: flex; align-items: center; gap: 10px; font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: oklch(0.42 0.014 60);">
+            <span style="width: 28px; height: 1px; background: oklch(0.46 0.09 182);"></span>Vendor invoice verification
+          </div>
+          <h1 data-reveal="" style="margin: 26px 0 0; font-size: 76px; font-weight: 700; line-height: 0.98; letter-spacing: -0.045em; text-wrap: balance;">The price went up.<br />The paperwork<br />didn't mention it.</h1>
+          <p data-reveal="" style="margin: 28px 0 0; max-width: 40ch; font-size: 19px; line-height: 1.6; color: oklch(0.40 0.014 60);">Optra reads every purchase-order line, finds the vendor's own catalog entry — price, quantity, product photo — and flags the difference <em style="font-style: normal; border-bottom: 2px solid oklch(0.62 0.15 62);">before</em> anyone signs off on the invoice.</p>
+          <div data-reveal="" style="margin: 36px 0 0; display: flex; flex-wrap: wrap; gap: 12px;">
+            <a href="#trial" style="display: inline-flex; align-items: center; gap: 10px; padding: 16px 26px; background: oklch(0.21 0.012 60); color: oklch(0.968 0.009 85); font-family: 'JetBrains Mono', monospace; font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase;" style-hover="background: oklch(0.46 0.09 182);">Start free trial <span>→</span></a>
+            <a href="#match" style="display: inline-flex; align-items: center; gap: 10px; padding: 16px 26px; border: 1px solid oklch(0.21 0.012 60 / 0.3); font-family: 'JetBrains Mono', monospace; font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase;" style-hover="border-color: oklch(0.21 0.012 60);">See a line get flagged</a>
+          </div>
+          <p style="margin: 18px 0 0; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: oklch(0.55 0.014 60);">14 days · no card · your own workspace</p>
+        </div>
+
+        <div style="padding: 32px 0 32px 40px; display: flex; align-items: stretch;">
+          <div style="width: 100%; border: 1px solid oklch(0.21 0.012 60 / 0.22); background: oklch(0.995 0.004 85); display: flex; flex-direction: column;">
+            <div style="display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid oklch(0.21 0.012 60 / 0.14); background: oklch(0.955 0.01 85);">
+              <span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase;">PO&nbsp;#4417 — Ironclad Supply</span>
+              <span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; color: oklch(0.55 0.014 60);">{{ demoStatusLabel }}</span>
+            </div>
+
+            <div style="display: flex; flex-direction: column;">
+              <sc-for list="{{ demoLines }}" as="line" hint-placeholder-count="3">
+                <button type="button" onClick="{{ line.select }}" style="{{ line.rowStyle }}">
+                  <span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; color: oklch(0.55 0.014 60); width: 46px; text-align: left;">{{ line.no }}</span>
+                  <span style="flex: 1; text-align: left; font-size: 14px;">{{ line.item }}</span>
+                  <span style="font-family: 'JetBrains Mono', monospace; font-size: 13px;">{{ line.price }}</span>
+                  <span style="{{ line.tagStyle }}">{{ line.tag }}</span>
+                </button>
+              </sc-for>
+            </div>
+
+            <div style="position: relative; flex: 1; border-top: 1px solid oklch(0.21 0.012 60 / 0.14); padding: 20px 16px 18px; display: flex; flex-direction: column; gap: 14px; min-height: 268px; overflow: hidden;">
+              <div style="{{ scanStyle }}"></div>
+              <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 12px;">
+                <span style="font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase; color: oklch(0.55 0.014 60);">Catalog evidence</span>
+                <span style="{{ verdictStampStyle }}">{{ verdictStamp }}</span>
+              </div>
+
+              <div style="display: grid; grid-template-columns: 96px 1fr; gap: 14px; align-items: start;">
+                <div style="{{ photoStyle }}">
+                  <img src="https://images.unsplash.com/photo-1564226591723-659ff3852b2a?q=80&amp;w=400&amp;auto=format&amp;fit=crop" alt="Vendor catalog photo" style="width: 100%; height: 96px; object-fit: cover; display: block; filter: saturate(0.85);" />
+                  <span style="display: block; font-family: 'JetBrains Mono', monospace; font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; padding: 4px 6px; color: oklch(0.55 0.014 60); border-top: 1px solid oklch(0.21 0.012 60 / 0.14);">Catalog photo</span>
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 8px;">
+                  <p style="margin: 0; font-size: 14px; line-height: 1.55; color: oklch(0.32 0.014 60);">{{ verdictText }}</p>
+                  <p style="margin: 0; font-family: 'JetBrains Mono', monospace; font-size: 11px; line-height: 1.5; color: oklch(0.55 0.014 60);">src: {{ verdictSource }}</p>
+                </div>
+              </div>
+
+              <div style="margin-top: auto; display: grid; grid-template-columns: repeat(3, 1fr); border-top: 1px solid oklch(0.21 0.012 60 / 0.14);">
+                <div style="padding: 12px 12px 4px 0;">
+                  <p style="margin: 0; font-family: 'JetBrains Mono', monospace; font-size: 9px; letter-spacing: 0.14em; text-transform: uppercase; color: oklch(0.55 0.014 60);">PO price</p>
+                  <p style="margin: 6px 0 0; font-family: 'JetBrains Mono', monospace; font-size: 18px;">{{ poPrice }}</p>
+                </div>
+                <div style="padding: 12px; border-left: 1px solid oklch(0.21 0.012 60 / 0.14);">
+                  <p style="margin: 0; font-family: 'JetBrains Mono', monospace; font-size: 9px; letter-spacing: 0.14em; text-transform: uppercase; color: oklch(0.55 0.014 60);">Catalog price</p>
+                  <p style="{{ catPriceStyle }}">{{ catPrice }}</p>
+                </div>
+                <div style="padding: 12px; border-left: 1px solid oklch(0.21 0.012 60 / 0.14);">
+                  <p style="margin: 0; font-family: 'JetBrains Mono', monospace; font-size: 9px; letter-spacing: 0.14em; text-transform: uppercase; color: oklch(0.55 0.014 60);">Confidence</p>
+                  <p style="margin: 6px 0 0; font-family: 'JetBrains Mono', monospace; font-size: 18px;">{{ confidence }}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section style="border-bottom: 1px solid oklch(0.21 0.012 60 / 0.14); background: oklch(0.955 0.01 85);">
+      <div style="margin: 0 auto; max-width: 1280px; padding: 0 40px; display: grid; grid-template-columns: repeat(4, 1fr);">
+        <div style="padding: 22px 24px 22px 0;">
+          <p style="margin: 0; font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: oklch(0.55 0.014 60);">Avg. match time</p>
+          <p style="margin: 8px 0 0; font-size: 34px; font-weight: 700; letter-spacing: -0.04em;">&lt;10s</p>
+        </div>
+        <div style="padding: 22px 24px; border-left: 1px solid oklch(0.21 0.012 60 / 0.14);">
+          <p style="margin: 0; font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: oklch(0.55 0.014 60);">Catalog coverage</p>
+          <p style="margin: 8px 0 0; font-size: 34px; font-weight: 700; letter-spacing: -0.04em;">94%</p>
+        </div>
+        <div style="padding: 22px 24px; border-left: 1px solid oklch(0.21 0.012 60 / 0.14);">
+          <p style="margin: 0; font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: oklch(0.55 0.014 60);">Manual review time</p>
+          <p style="margin: 8px 0 0; font-size: 34px; font-weight: 700; letter-spacing: -0.04em; color: oklch(0.46 0.09 182);">−42%</p>
+        </div>
+        <div style="padding: 22px 0 22px 24px; border-left: 1px solid oklch(0.21 0.012 60 / 0.14); display: flex; align-items: flex-end;">
+          <p style="margin: 0; font-family: 'JetBrains Mono', monospace; font-size: 10px; line-height: 1.7; color: oklch(0.55 0.014 60);">Illustrative figures from internal test runs on repeat vendor invoices. Not a customer average.</p>
+        </div>
+      </div>
+    </section>
+
+    <sc-if value="{{ showLogoStrip }}" hint-placeholder-val="{{ true }}">
+    <section style="border-bottom: 1px solid oklch(0.21 0.012 60 / 0.14); overflow: hidden;">
+      <div style="margin: 0 auto; max-width: 1280px; padding: 20px 40px; display: flex; align-items: center; gap: 28px;">
+        <span style="flex-shrink: 0; font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase; color: oklch(0.55 0.014 60);">Checked against catalogs from</span>
+        <div style="flex: 1; overflow: hidden;">
+          <div style="display: flex; gap: 12px; width: max-content; animation: ledger-drift 34s linear infinite;">
+            <sc-for list="{{ vendorSlots }}" as="slot" hint-placeholder-count="10">
+              <span style="display: inline-flex; align-items: center; justify-content: center; width: 148px; height: 40px; border: 1px dashed oklch(0.21 0.012 60 / 0.28); font-family: 'JetBrains Mono', monospace; font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase; color: oklch(0.6 0.014 60);">{{ slot }}</span>
+            </sc-for>
+          </div>
+        </div>
+      </div>
+    </section>
+    </sc-if>
+
+    <section id="match" style="border-bottom: 1px solid oklch(0.21 0.012 60 / 0.14);">
+      <div style="margin: 0 auto; max-width: 1280px; padding: 0 40px;">
+        <div data-reveal="" style="padding: 72px 0 40px; display: grid; grid-template-columns: 1fr 1fr; gap: 48px; align-items: end;">
+          <div>
+            <p style="margin: 0; font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: oklch(0.46 0.09 182);">01 — Matching</p>
+            <h2 style="margin: 18px 0 0; font-size: 46px; font-weight: 700; line-height: 1.02; letter-spacing: -0.04em;">Three ways an invoice lies to you</h2>
+          </div>
+          <p style="margin: 0; font-size: 18px; line-height: 1.65; color: oklch(0.40 0.014 60);">Wrong price. Wrong item. Wrong quantity. All three look identical on a PDF — and all three cost money quietly. Optra checks each one against a source you can open.</p>
+        </div>
+
+        <div style="display: grid; grid-template-columns: repeat(3, 1fr); border-top: 1px solid oklch(0.21 0.012 60 / 0.14);">
+          <div data-reveal="" style="padding: 34px 30px 40px 0;">
+            <p style="margin: 0; font-family: 'JetBrains Mono', monospace; font-size: 40px; font-weight: 400; color: oklch(0.21 0.012 60 / 0.16);">01</p>
+            <h3 style="margin: 14px 0 0; font-size: 21px; font-weight: 600; letter-spacing: -0.02em;">Match once, not line by line</h3>
+            <p style="margin: 12px 0 0; font-size: 15px; line-height: 1.65; color: oklch(0.42 0.014 60);">Every PO line is checked against the vendor's catalog, current price list, and your past invoices from that vendor — in one pass.</p>
+            <div style="margin-top: 20px; border: 1px solid oklch(0.21 0.012 60 / 0.16); font-family: 'JetBrains Mono', monospace; font-size: 11px;">
+              <div style="display: flex; justify-content: space-between; padding: 9px 12px; border-bottom: 1px solid oklch(0.21 0.012 60 / 0.12);"><span style="color: oklch(0.55 0.014 60);">PO line</span><span>200 × 3/8in hex bolt</span></div>
+              <div style="display: flex; justify-content: space-between; padding: 9px 12px; border-bottom: 1px solid oklch(0.21 0.012 60 / 0.12);"><span style="color: oklch(0.55 0.014 60);">catalog</span><span>IRN-38HXB · $0.51</span></div>
+              <div style="display: flex; justify-content: space-between; padding: 9px 12px; background: oklch(0.62 0.15 62 / 0.1);"><span style="color: oklch(0.42 0.1 62);">delta</span><span style="color: oklch(0.42 0.1 62);">+18.0%</span></div>
+            </div>
+          </div>
+          <div data-reveal="" style="padding: 34px 30px 40px; border-left: 1px solid oklch(0.21 0.012 60 / 0.14);">
+            <p style="margin: 0; font-family: 'JetBrains Mono', monospace; font-size: 40px; font-weight: 400; color: oklch(0.21 0.012 60 / 0.16);">02</p>
+            <h3 style="margin: 14px 0 0; font-size: 21px; font-weight: 600; letter-spacing: -0.02em;">The photo is part of the check</h3>
+            <p style="margin: 12px 0 0; font-size: 15px; line-height: 1.65; color: oklch(0.42 0.014 60);">A swapped part number reads fine in text. Optra compares the catalog product photo to what was ordered, so a substituted item surfaces as a mismatch instead of a delivery surprise.</p>
+            <div style="margin-top: 20px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+              <div style="border: 1px solid oklch(0.21 0.012 60 / 0.16);">
+                <img src="https://images.unsplash.com/photo-1564226591723-659ff3852b2a?q=80&amp;w=400&amp;auto=format&amp;fit=crop" alt="Ordered item photo" style="width: 100%; height: 84px; object-fit: cover; display: block; filter: saturate(0.85);" />
+                <span style="display: block; padding: 5px 8px; font-family: 'JetBrains Mono', monospace; font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; color: oklch(0.55 0.014 60);">Ordered</span>
+              </div>
+              <div style="border: 1px solid oklch(0.46 0.09 182 / 0.5);">
+                <img src="https://images.unsplash.com/photo-1564226591723-659ff3852b2a?q=80&amp;w=400&amp;auto=format&amp;fit=crop" alt="Catalog item photo" style="width: 100%; height: 84px; object-fit: cover; display: block; filter: saturate(0.85) contrast(1.05);" />
+                <span style="display: block; padding: 5px 8px; font-family: 'JetBrains Mono', monospace; font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; color: oklch(0.46 0.09 182);">Catalog · 92%</span>
+              </div>
+            </div>
+          </div>
+          <div data-reveal="" style="padding: 34px 0 40px 30px; border-left: 1px solid oklch(0.21 0.012 60 / 0.14);">
+            <p style="margin: 0; font-family: 'JetBrains Mono', monospace; font-size: 40px; font-weight: 400; color: oklch(0.21 0.012 60 / 0.16);">03</p>
+            <h3 style="margin: 14px 0 0; font-size: 21px; font-weight: 600; letter-spacing: -0.02em;">Approve on evidence, not memory</h3>
+            <p style="margin: 12px 0 0; font-size: 15px; line-height: 1.65; color: oklch(0.42 0.014 60);">Every verdict cites the file, page, and price it came from. Your history of past orders and past flags stays searchable, so the same vendor can't run the same increase twice.</p>
+            <div style="margin-top: 20px; display: flex; flex-direction: column; gap: 6px; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: oklch(0.42 0.014 60);">
+              <span style="border-left: 2px solid oklch(0.46 0.09 182); padding: 6px 10px; background: oklch(0.46 0.09 182 / 0.06);">2026-01-14 · flagged +18% · resolved</span>
+              <span style="border-left: 2px solid oklch(0.21 0.012 60 / 0.25); padding: 6px 10px;">2025-10-02 · matched · $0.42</span>
+              <span style="border-left: 2px solid oklch(0.21 0.012 60 / 0.25); padding: 6px 10px;">2025-06-19 · matched · $0.42</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section style="border-bottom: 1px solid oklch(0.21 0.012 60 / 0.14); background: oklch(0.955 0.01 85);">
+      <div style="margin: 0 auto; max-width: 1280px; padding: 0 40px;">
+        <div data-reveal="" style="padding: 72px 0 36px;">
+          <p style="margin: 0; font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: oklch(0.46 0.09 182);">02 — Workspaces</p>
+          <h2 style="margin: 18px 0 0; max-width: 22ch; font-size: 46px; font-weight: 700; line-height: 1.02; letter-spacing: -0.04em;">One buyer or twelve, same ledger</h2>
+        </div>
+
+        <div style="display: flex; gap: 0; border: 1px solid oklch(0.21 0.012 60 / 0.22); border-bottom: 0; width: fit-content;">
+          <button type="button" onClick="{{ selectPersonal }}" style="{{ personalTabStyle }}">Personal</button>
+          <button type="button" onClick="{{ selectTeam }}" style="{{ teamTabStyle }}">Team</button>
+        </div>
+        <div style="border: 1px solid oklch(0.21 0.012 60 / 0.22); background: oklch(0.995 0.004 85); display: grid; grid-template-columns: 0.9fr 1.1fr;">
+          <div style="padding: 34px; border-right: 1px solid oklch(0.21 0.012 60 / 0.14);">
+            <h3 style="margin: 0; font-size: 26px; font-weight: 600; letter-spacing: -0.03em;">{{ modeTitle }}</h3>
+            <p style="margin: 14px 0 0; font-size: 16px; line-height: 1.7; color: oklch(0.42 0.014 60);">{{ modeDescription }}</p>
+            <p style="margin: 22px 0 0; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: oklch(0.55 0.014 60);">{{ modeMeta }}</p>
+          </div>
+          <div style="display: flex; flex-direction: column;">
+            <sc-for list="{{ modeBullets }}" as="bullet" hint-placeholder-count="3">
+              <div style="display: flex; gap: 14px; padding: 22px 34px; border-bottom: 1px solid oklch(0.21 0.012 60 / 0.1); font-size: 15px; line-height: 1.6;">
+                <span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; color: oklch(0.46 0.09 182); padding-top: 3px;">{{ bullet.no }}</span>
+                <span>{{ bullet.text }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+
+        <div style="padding: 56px 0 72px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background: oklch(0.21 0.012 60 / 0.14);">
+          <div style="background: oklch(0.955 0.01 85); padding: 26px 26px 26px 0;">
+            <p style="margin: 0; font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: oklch(0.46 0.09 182);">Onboarding</p>
+            <h4 style="margin: 10px 0 0; font-size: 18px; font-weight: 600;">Ramp new buyers in a week, not a quarter</h4>
+            <p style="margin: 10px 0 0; font-size: 14px; line-height: 1.65; color: oklch(0.42 0.014 60);">They inherit the catalogs, the price history, and every discrepancy the team already caught.</p>
+          </div>
+          <div style="background: oklch(0.955 0.01 85); padding: 26px;">
+            <p style="margin: 0; font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: oklch(0.46 0.09 182);">Continuity</p>
+            <h4 style="margin: 10px 0 0; font-size: 18px; font-weight: 600;">Vendor history outlasts the buyer</h4>
+            <p style="margin: 10px 0 0; font-size: 14px; line-height: 1.65; color: oklch(0.42 0.014 60);">Matches, flags, and prices stay in the workspace after the person who caught them moves on.</p>
+          </div>
+          <div style="background: oklch(0.955 0.01 85); padding: 26px 0 26px 26px;">
+            <p style="margin: 0; font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: oklch(0.46 0.09 182);">Efficiency</p>
+            <h4 style="margin: 10px 0 0; font-size: 18px; font-weight: 600;">Only read the lines that failed</h4>
+            <p style="margin: 10px 0 0; font-size: 14px; line-height: 1.65; color: oklch(0.42 0.014 60);">Matching runs on upload. Buyers spend their attention on the handful of flagged lines.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="workflow" style="border-bottom: 1px solid oklch(0.21 0.012 60 / 0.14);">
+      <div style="margin: 0 auto; max-width: 1280px; padding: 0 40px;">
+        <div data-reveal="" style="padding: 72px 0 40px; display: grid; grid-template-columns: 1fr 1fr; gap: 48px; align-items: end;">
+          <div>
+            <p style="margin: 0; font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: oklch(0.46 0.09 182);">03 — Workflow</p>
+            <h2 style="margin: 18px 0 0; font-size: 46px; font-weight: 700; line-height: 1.02; letter-spacing: -0.04em;">From a folder of PDFs to a checked invoice</h2>
+          </div>
+          <p style="margin: 0; font-size: 18px; line-height: 1.65; color: oklch(0.40 0.014 60);">No migration, no data model to design. Drop in what your vendors already send you and Optra takes it from there.</p>
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(3, 1fr); border-top: 1px solid oklch(0.21 0.012 60 / 0.14);">
+          <div data-reveal="" style="padding: 32px 30px 36px 0;">
+            <div style="display: flex; align-items: baseline; gap: 12px;">
+              <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: oklch(0.46 0.09 182);">STEP 01</span>
+              <span style="flex: 1; height: 1px; background: oklch(0.21 0.012 60 / 0.18);"></span>
+            </div>
+            <h3 style="margin: 18px 0 0; font-size: 22px; font-weight: 600; letter-spacing: -0.02em;">Drop the files in</h3>
+            <p style="margin: 10px 0 0; font-size: 15px; line-height: 1.65; color: oklch(0.42 0.014 60);">Vendor catalogs, POs, invoices — PDF, scan, or spreadsheet. Nothing needs reformatting first.</p>
+            <div style="margin-top: 20px; display: flex; align-items: center; justify-content: center; height: 92px; border: 1px dashed oklch(0.21 0.012 60 / 0.3); font-family: 'JetBrains Mono', monospace; font-size: 11px; color: oklch(0.55 0.014 60);">drop zone · pdf / xlsx / csv / jpg</div>
+          </div>
+          <div data-reveal="" style="padding: 32px 30px 36px; border-left: 1px solid oklch(0.21 0.012 60 / 0.14);">
+            <div style="display: flex; align-items: baseline; gap: 12px;">
+              <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: oklch(0.46 0.09 182);">STEP 02</span>
+              <span style="flex: 1; height: 1px; background: oklch(0.21 0.012 60 / 0.18);"></span>
+            </div>
+            <h3 style="margin: 18px 0 0; font-size: 22px; font-weight: 600; letter-spacing: -0.02em;">Optra reads and matches</h3>
+            <p style="margin: 10px 0 0; font-size: 15px; line-height: 1.65; color: oklch(0.42 0.014 60);">Line items are extracted, then matched to a catalog entry — price, quantity, and photo checked together.</p>
+            <div style="margin-top: 20px; height: 92px; border: 1px solid oklch(0.21 0.012 60 / 0.16); padding: 12px; display: flex; flex-direction: column; justify-content: center; gap: 10px;">
+              <sc-for list="{{ pipelineBars }}" as="bar" hint-placeholder-count="3">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                  <span style="font-family: 'JetBrains Mono', monospace; font-size: 9px; width: 62px; color: oklch(0.55 0.014 60);">{{ bar.label }}</span>
+                  <span style="flex: 1; height: 4px; background: oklch(0.21 0.012 60 / 0.1);"><span style="{{ bar.fillStyle }}"></span></span>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+          <div data-reveal="" style="padding: 32px 0 36px 30px; border-left: 1px solid oklch(0.21 0.012 60 / 0.14);">
+            <div style="display: flex; align-items: baseline; gap: 12px;">
+              <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: oklch(0.62 0.15 62);">STEP 03</span>
+              <span style="flex: 1; height: 1px; background: oklch(0.62 0.15 62 / 0.4);"></span>
+            </div>
+            <h3 style="margin: 18px 0 0; font-size: 22px; font-weight: 600; letter-spacing: -0.02em;">You review the exceptions</h3>
+            <p style="margin: 10px 0 0; font-size: 15px; line-height: 1.65; color: oklch(0.42 0.014 60);">Confirmed lines pass silently. Flagged lines arrive with the catalog source and the exact difference.</p>
+            <div style="margin-top: 20px; height: 92px; border: 1px solid oklch(0.62 0.15 62 / 0.45); background: oklch(0.62 0.15 62 / 0.07); padding: 12px; display: flex; flex-direction: column; justify-content: center; gap: 8px;">
+              <span style="font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: oklch(0.42 0.1 62);">2 of 14 lines flagged</span>
+              <span style="font-size: 13px; color: oklch(0.32 0.014 60);">Line 3 · +18% price · Line 7 · item mismatch</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section style="border-bottom: 1px solid oklch(0.21 0.012 60 / 0.14);">
+      <div style="margin: 0 auto; max-width: 1280px; padding: 72px 40px;">
+        <div data-reveal="" style="max-width: 46ch;">
+          <p style="margin: 0; font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: oklch(0.46 0.09 182);">04 — Evidence</p>
+          <h2 style="margin: 18px 0 0; font-size: 46px; font-weight: 700; line-height: 1.02; letter-spacing: -0.04em;">A missed increase isn't an error. It's the next invoice.</h2>
+        </div>
+        <div style="margin-top: 40px; border: 1px solid oklch(0.21 0.012 60 / 0.22);">
+          <div style="display: grid; grid-template-columns: 1fr 1fr; background: oklch(0.21 0.012 60); color: oklch(0.968 0.009 85); font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase;">
+            <div style="padding: 12px 20px;">Today, by hand</div>
+            <div style="padding: 12px 20px; border-left: 1px solid oklch(0.968 0.009 85 / 0.2); color: oklch(0.82 0.09 182);">With Optra</div>
+          </div>
+          <sc-for list="{{ comparisons }}" as="row" hint-placeholder-count="4">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; border-top: 1px solid oklch(0.21 0.012 60 / 0.14);">
+              <div style="padding: 20px; display: flex; gap: 12px; font-size: 15px; line-height: 1.6; color: oklch(0.42 0.014 60); background: oklch(0.955 0.01 85);">
+                <span style="font-family: 'JetBrains Mono', monospace; color: oklch(0.5 0.16 30);">×</span><span>{{ row.before }}</span>
+              </div>
+              <div style="padding: 20px; display: flex; gap: 12px; font-size: 15px; line-height: 1.6; border-left: 1px solid oklch(0.21 0.012 60 / 0.14); background: oklch(0.995 0.004 85);">
+                <span style="font-family: 'JetBrains Mono', monospace; color: oklch(0.46 0.09 182);">✓</span><span>{{ row.after }}</span>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </section>
+
+    <section style="border-bottom: 1px solid oklch(0.21 0.012 60 / 0.14); background: oklch(0.955 0.01 85);">
+      <div style="margin: 0 auto; max-width: 1280px; padding: 72px 40px;">
+        <div data-reveal="" style="display: grid; grid-template-columns: 1fr 1fr; gap: 48px; align-items: end;">
+          <div>
+            <p style="margin: 0; font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: oklch(0.46 0.09 182);">05 — Who it's for</p>
+            <h2 style="margin: 18px 0 0; font-size: 46px; font-weight: 700; line-height: 1.02; letter-spacing: -0.04em;">If you buy the same things twice, this pays for itself</h2>
+          </div>
+          <p style="margin: 0; font-size: 18px; line-height: 1.65; color: oklch(0.40 0.014 60);">Optra fits anywhere purchase orders, catalogs, and invoices are spread across email, PDFs, and spreadsheets.</p>
+        </div>
+        <div style="margin-top: 40px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background: oklch(0.21 0.012 60 / 0.16); border: 1px solid oklch(0.21 0.012 60 / 0.16);">
+          <sc-for list="{{ useCases }}" as="uc" hint-placeholder-count="6">
+            <div style="background: oklch(0.995 0.004 85); padding: 24px;">
+              <p style="margin: 0; font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: oklch(0.55 0.014 60);">{{ uc.no }}</p>
+              <h3 style="margin: 10px 0 0; font-size: 18px; font-weight: 600;">{{ uc.label }}</h3>
+              <p style="margin: 8px 0 0; font-size: 14px; line-height: 1.6; color: oklch(0.42 0.014 60);">{{ uc.detail }}</p>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </section>
+
+    <section id="trust" style="border-bottom: 1px solid oklch(0.21 0.012 60 / 0.14);">
+      <div style="margin: 0 auto; max-width: 1280px; padding: 72px 40px; display: grid; grid-template-columns: 0.85fr 1.15fr; gap: 56px;">
+        <div data-reveal="">
+          <p style="margin: 0; font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: oklch(0.46 0.09 182);">06 — Files &amp; trust</p>
+          <h2 style="margin: 18px 0 0; font-size: 42px; font-weight: 700; line-height: 1.04; letter-spacing: -0.04em;">Reads what your vendors already send</h2>
+          <p style="margin: 16px 0 0; font-size: 17px; line-height: 1.7; color: oklch(0.40 0.014 60);">No portal for your vendors to log into, no format to enforce. If a human could read the file, Optra can extract line items from it.</p>
+          <div style="margin-top: 26px; display: flex; flex-wrap: wrap; gap: 8px;">
+            <sc-for list="{{ fileTypes }}" as="ft" hint-placeholder-count="7">
+              <span style="border: 1px solid oklch(0.21 0.012 60 / 0.22); padding: 7px 12px; font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;">{{ ft }}</span>
+            </sc-for>
+          </div>
+        </div>
+        <div data-reveal="" style="border: 1px solid oklch(0.21 0.012 60 / 0.22);">
+          <sc-for list="{{ trustRows }}" as="row" hint-placeholder-count="4">
+            <div style="display: grid; grid-template-columns: 150px 1fr; border-bottom: 1px solid oklch(0.21 0.012 60 / 0.12);">
+              <div style="padding: 20px; font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: oklch(0.46 0.09 182); background: oklch(0.955 0.01 85);">{{ row.label }}</div>
+              <div style="padding: 20px; font-size: 15px; line-height: 1.6; color: oklch(0.32 0.014 60);">{{ row.text }}</div>
+            </div>
+          </sc-for>
+          <p style="margin: 0; padding: 16px 20px; font-family: 'JetBrains Mono', monospace; font-size: 10px; line-height: 1.7; color: oklch(0.55 0.014 60);">Optra flags. A buyer approves. No line item is ever paid on the model's word alone.</p>
+        </div>
+      </div>
+    </section>
+
+    <sc-if value="{{ showPricing }}" hint-placeholder-val="{{ true }}">
+    <section id="pricing" style="border-bottom: 1px solid oklch(0.21 0.012 60 / 0.14); background: oklch(0.955 0.01 85);">
+      <div style="margin: 0 auto; max-width: 1280px; padding: 72px 40px;">
+        <div data-reveal="" style="display: flex; align-items: end; justify-content: space-between; gap: 40px;">
+          <div>
+            <p style="margin: 0; font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: oklch(0.46 0.09 182);">07 — Pricing</p>
+            <h2 style="margin: 18px 0 0; font-size: 46px; font-weight: 700; line-height: 1.02; letter-spacing: -0.04em;">One flagged invoice covers the month</h2>
+          </div>
+          <p style="margin: 0; max-width: 34ch; font-family: 'JetBrains Mono', monospace; font-size: 11px; line-height: 1.8; color: oklch(0.55 0.014 60);">Every plan starts with a 14-day trial. No card, no vendor onboarding call.</p>
+        </div>
+        <div style="margin-top: 40px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background: oklch(0.21 0.012 60 / 0.18); border: 1px solid oklch(0.21 0.012 60 / 0.18);">
+          <sc-for list="{{ plans }}" as="plan" hint-placeholder-count="3">
+            <div style="{{ plan.cardStyle }}">
+              <div style="display: flex; align-items: center; justify-content: space-between;">
+                <p style="margin: 0; font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase;">{{ plan.name }}</p>
+                <span style="{{ plan.tagStyle }}">{{ plan.tag }}</span>
+              </div>
+              <p style="margin: 22px 0 0; font-size: 44px; font-weight: 700; letter-spacing: -0.045em;">{{ plan.price }}</p>
+              <p style="margin: 4px 0 0; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: oklch(0.55 0.014 60);">{{ plan.unit }}</p>
+              <p style="margin: 18px 0 0; font-size: 15px; line-height: 1.6; color: oklch(0.42 0.014 60);">{{ plan.blurb }}</p>
+              <div style="margin: 22px 0 0; display: flex; flex-direction: column; gap: 9px;">
+                <sc-for list="{{ plan.features }}" as="f" hint-placeholder-count="4">
+                  <span style="display: flex; gap: 10px; font-size: 14px; line-height: 1.5;"><span style="font-family: 'JetBrains Mono', monospace; color: oklch(0.46 0.09 182);">+</span>{{ f }}</span>
+                </sc-for>
+              </div>
+              <a href="#trial" style="{{ plan.ctaStyle }}">{{ plan.cta }}</a>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </section>
+    </sc-if>
+
+    <section style="border-bottom: 1px solid oklch(0.21 0.012 60 / 0.14);">
+      <div style="margin: 0 auto; max-width: 1280px; padding: 72px 40px; display: grid; grid-template-columns: 0.7fr 1.3fr; gap: 56px;">
+        <div data-reveal="">
+          <p style="margin: 0; font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: oklch(0.46 0.09 182);">08 — Questions</p>
+          <h2 style="margin: 18px 0 0; font-size: 42px; font-weight: 700; line-height: 1.04; letter-spacing: -0.04em;">Before you connect a vendor</h2>
+        </div>
+        <div style="border-top: 1px solid oklch(0.21 0.012 60 / 0.2);">
+          <sc-for list="{{ faqRows }}" as="row" hint-placeholder-count="5">
+            <div style="border-bottom: 1px solid oklch(0.21 0.012 60 / 0.14);">
+              <button type="button" onClick="{{ row.toggle }}" style="display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 20px; padding: 22px 0; background: transparent; border: 0; cursor: pointer; text-align: left;">
+                <span style="display: flex; gap: 16px; align-items: baseline;">
+                  <span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; color: oklch(0.55 0.014 60);">{{ row.no }}</span>
+                  <span style="font-size: 20px; font-weight: 600; letter-spacing: -0.02em;">{{ row.question }}</span>
+                </span>
+                <span style="{{ row.iconStyle }}">{{ row.icon }}</span>
+              </button>
+              <div style="{{ row.panelStyle }}">
+                <div style="overflow: hidden;">
+                  <p style="margin: 0; padding: 0 0 24px 43px; max-width: 68ch; font-size: 16px; line-height: 1.7; color: oklch(0.40 0.014 60);">{{ row.answer }}</p>
+                </div>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </section>
+
+    <section id="trial" style="background: oklch(0.21 0.012 60); color: oklch(0.968 0.009 85);">
+      <div style="margin: 0 auto; max-width: 1280px; padding: 84px 40px; display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 56px; align-items: center;">
+        <div>
+          <p style="margin: 0; font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: oklch(0.82 0.09 182);">Start free</p>
+          <h2 style="margin: 18px 0 0; font-size: 52px; font-weight: 700; line-height: 1.02; letter-spacing: -0.045em;">Check one purchase order tonight.</h2>
+          <p style="margin: 18px 0 0; max-width: 46ch; font-size: 18px; line-height: 1.65; color: oklch(0.78 0.01 85);">Upload a vendor catalog and a PO you've already paid. If Optra finds nothing, you've lost ten minutes. If it finds something, you know what it's worth.</p>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 14px;">
+          <a href="#" style="display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 20px 24px; background: oklch(0.968 0.009 85); color: oklch(0.21 0.012 60); font-family: 'JetBrains Mono', monospace; font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase;" style-hover="background: oklch(0.82 0.09 182);">Start free trial <span>→</span></a>
+          <a href="#" style="display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 20px 24px; border: 1px solid oklch(0.968 0.009 85 / 0.3); color: oklch(0.968 0.009 85); font-family: 'JetBrains Mono', monospace; font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase;" style-hover="border-color: oklch(0.968 0.009 85);">Run the live match demo <span>→</span></a>
+          <p style="margin: 4px 0 0; font-family: 'JetBrains Mono', monospace; font-size: 10px; line-height: 1.7; color: oklch(0.7 0.01 85);">14 days · no card · delete the workspace and every file goes with it</p>
+        </div>
+      </div>
+    </section>
+
+    <footer style="background: oklch(0.21 0.012 60); color: oklch(0.968 0.009 85); border-top: 1px solid oklch(0.968 0.009 85 / 0.16);">
+      <div style="margin: 0 auto; max-width: 1280px; padding: 44px 40px; display: grid; grid-template-columns: 1.4fr 0.6fr 0.6fr 0.6fr; gap: 40px;">
+        <div>
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <img src="assets/optra-mark.svg" alt="" style="width: 24px; height: 24px;" />
+            <span style="font-weight: 700; letter-spacing: -0.03em;">Optra</span>
+          </div>
+          <p style="margin: 14px 0 0; max-width: 34ch; font-size: 14px; line-height: 1.65; color: oklch(0.74 0.01 85);">Purchase orders, vendor catalogs, and invoices — matched, cited, and flagged before payment.</p>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 10px; font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;">
+          <p style="margin: 0; color: oklch(0.66 0.06 182);">Product</p>
+          <a href="#match" style="color: oklch(0.86 0.01 85);">Matching</a>
+          <a href="#workflow" style="color: oklch(0.86 0.01 85);">Workflow</a>
+          <a href="#pricing" style="color: oklch(0.86 0.01 85);">Pricing</a>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 10px; font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;">
+          <p style="margin: 0; color: oklch(0.66 0.06 182);">Company</p>
+          <a href="#trust" style="color: oklch(0.86 0.01 85);">Trust</a>
+          <a href="#" style="color: oklch(0.86 0.01 85);">Contact</a>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 10px; font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;">
+          <p style="margin: 0; color: oklch(0.66 0.06 182);">App</p>
+          <a href="#" style="color: oklch(0.86 0.01 85);">Workspace</a>
+          <a href="#" style="color: oklch(0.86 0.01 85);">Live demo</a>
+        </div>
+      </div>
+      <div style="margin: 0 auto; max-width: 1280px; padding: 0 40px 40px; display: flex; justify-content: space-between; gap: 20px; font-family: 'JetBrains Mono', monospace; font-size: 10px; color: oklch(0.66 0.01 85); border-top: 1px solid oklch(0.968 0.009 85 / 0.14); padding-top: 20px;">
+        <span>© 2026 Optra</span>
+        <span>Figures on this page are illustrative examples, not customer results.</span>
+      </div>
+    </footer>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;showLogoStrip&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Sections&quot;},&quot;showPricing&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Sections&quot;},&quot;autoplayDemo&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Hero demo&quot;},&quot;demoDwellMs&quot;:{&quot;editor&quot;:&quot;range&quot;,&quot;default&quot;:3800,&quot;min&quot;:1500,&quot;max&quot;:8000,&quot;step&quot;:100,&quot;unit&quot;:&quot;ms&quot;,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;Hero demo&quot;}}">
+class Component extends DCLogic {
+  state = { line: 1, phase: 'verdict', mode: 'personal', openFaq: 0 };
+
+  componentDidMount() {
+    this.reveal();
+    if (this.props.autoplayDemo !== false) this.cycle();
+  }
+
+  get dwell() {
+    return this.props.demoDwellMs ?? 3800;
+  }
+
+  componentWillUnmount() {
+    clearTimeout(this._t);
+    if (this._io) this._io.disconnect();
+  }
+
+  reveal() {
+    const nodes = Array.from(document.querySelectorAll('[data-reveal]'));
+    nodes.forEach((n) => {
+      n.style.opacity = '0';
+      n.style.transform = 'translateY(18px)';
+      n.style.transition = 'opacity 700ms cubic-bezier(0.23,1,0.32,1), transform 700ms cubic-bezier(0.23,1,0.32,1)';
+    });
+    const show = (n) => { n.style.opacity = '1'; n.style.transform = 'none'; };
+    if (!('IntersectionObserver' in window)) { nodes.forEach(show); return; }
+    this._io = new IntersectionObserver((entries) => {
+      entries.forEach((e) => { if (e.isIntersecting) { show(e.target); this._io.unobserve(e.target); } });
+    }, { rootMargin: '-8% 0px -12% 0px' });
+    nodes.forEach((n) => this._io.observe(n));
+    setTimeout(() => nodes.forEach(show), 2600);
+  }
+
+  cycle() {
+    clearTimeout(this._t);
+    if (this.props.autoplayDemo === false) return;
+    const next = () => {
+      if (this.state.phase === 'verdict') {
+        this.setState((s) => ({ line: (s.line + 1) % 3, phase: 'scanning' }));
+        this._t = setTimeout(next, 1150);
+      } else {
+        this.setState({ phase: 'verdict' });
+        this._t = setTimeout(next, this.dwell);
+      }
+    };
+    this._t = setTimeout(next, this.dwell);
+  }
+
+  pick(i) {
+    clearTimeout(this._t);
+    this.setState({ line: i, phase: 'scanning' });
+    this._t = setTimeout(() => { this.setState({ phase: 'verdict' }); this.cycle(); }, 1150);
+  }
+
+  renderVals() {
+    const ink = 'oklch(0.21 0.012 60)';
+    const rule = 'oklch(0.21 0.012 60 / 0.12)';
+    const teal = 'oklch(0.46 0.09 182)';
+    const amber = 'oklch(0.62 0.15 62)';
+    const scanning = this.state.phase === 'scanning';
+
+    const lines = [
+      { no: 'L01', item: '40 × 1/2in galvanised elbow', price: '$1.12', tag: 'MATCHED', kind: 'ok',
+        poPrice: '$1.12', catPrice: '$1.12', confidence: '96%',
+        text: 'Catalog entry matches on part number, price, and photo. Quantity available. Nothing to review.',
+        source: 'ironclad-supply/catalog-2026-Q1.pdf · p.07' },
+      { no: 'L03', item: '200 × 3/8in steel hex bolts', price: '$0.42', tag: 'FLAGGED', kind: 'warn',
+        poPrice: '$0.42', catPrice: '$0.51', confidence: '92%',
+        text: 'Vendor catalog lists this SKU at $0.51/unit — 18% above the PO price. The product photo matches, so the item is right and the price is not. Flagged before approval.',
+        source: 'ironclad-supply/catalog-2026-Q1.pdf · p.14' },
+      { no: 'L07', item: '12 × pipe wrench, 14in', price: '$18.40', tag: 'MISMATCH', kind: 'bad',
+        poPrice: '$18.40', catPrice: '$18.40', confidence: '61%',
+        text: 'Price agrees, but the catalog photo for this SKU shows a 10in wrench. Likely a substituted item — verify with the vendor before receiving.',
+        source: 'ironclad-supply/catalog-2026-Q1.pdf · p.31' },
+    ];
+    const active = lines[this.state.line];
+    const tone = { ok: teal, warn: amber, bad: 'oklch(0.5 0.16 30)' }[active.kind];
+
+    const tag = (kind, on) => {
+      const c = { ok: teal, warn: amber, bad: 'oklch(0.5 0.16 30)' }[kind];
+      return `font-family: 'JetBrains Mono', monospace; font-size: 9px; letter-spacing: 0.12em; padding: 3px 7px; border: 1px solid ${c}; color: ${on ? 'oklch(0.995 0.004 85)' : c}; background: ${on ? c : 'transparent'};`;
+    };
+
+    const modes = {
+      personal: {
+        title: 'Your own purchasing memory',
+        description: "For solo buyers and owners juggling a dozen vendors with nobody to hand the checking to. Upload, match, move on.",
+        meta: 'workspace: private · 1 seat · unlimited vendors',
+        bullets: [
+          'Upload a PO or invoice the moment it lands — no formatting first',
+          'Search your own order history instead of trusting your memory',
+          'Keep each vendor\u2019s pricing history separate and citable',
+        ],
+      },
+      team: {
+        title: 'One catalog, every buyer',
+        description: 'For procurement teams where a price check should not depend on who happens to remember the last invoice.',
+        meta: 'workspace: shared · roles · shared vendor catalog',
+        bullets: [
+          'Every buyer matches against the same approved vendor catalog',
+          'New buyers search real order and pricing history from day one',
+          'Senior buyers stop re-checking the same vendor every week',
+        ],
+      },
+    };
+    const mode = modes[this.state.mode];
+    const modeTab = (on) =>
+      `border: 0; cursor: pointer; padding: 12px 26px; font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; background: ${on ? ink : 'transparent'}; color: ${on ? 'oklch(0.968 0.009 85)' : 'oklch(0.42 0.014 60)'};`;
+
+    const faq = [
+      { q: 'Is Optra only for procurement teams?', a: 'No. A solo buyer runs it as a private workspace; a procurement team shares one workspace across every buyer. Same matching engine, different seat count.' },
+      { q: 'What documents can it read?', a: 'Vendor catalogs including product photos, purchase orders, invoices, and price lists — PDF, scanned PDF, spreadsheet, or image. If a person could read it, Optra can extract line items from it.' },
+      { q: "Does it replace a buyer's approval?", a: 'Never. Optra flags likely mismatches between the PO, catalog, and invoice and shows the source. A human decides whether to approve, dispute, or ignore.' },
+      { q: 'Why not just review the PDFs by hand?', a: 'Manual review catches obvious errors on the lines you happen to check. Optra checks all of them, every time, including the photo — so a 9-cent increase on line 3 of 14 does not slip through.' },
+      { q: 'What happens to my files?', a: 'They live in your workspace and are used to answer your matches. Delete the workspace and the files, matches, and history go with it.' },
+    ];
+
+    return {
+      showLogoStrip: this.props.showLogoStrip !== false,
+      showPricing: this.props.showPricing !== false,
+      demoStatusLabel: scanning ? 'matching…' : `${active.no} · ${active.tag.toLowerCase()}`,
+      demoLines: lines.map((l, i) => {
+        const on = i === this.state.line;
+        return {
+          no: l.no, item: l.item, price: l.price, tag: l.tag,
+          select: () => this.pick(i),
+          rowStyle: `display: flex; align-items: center; gap: 14px; width: 100%; padding: 13px 16px; border: 0; border-bottom: 1px solid ${rule}; cursor: pointer; background: ${on ? 'oklch(0.955 0.01 85)' : 'transparent'}; border-left: 3px solid ${on ? tone : 'transparent'}; transition: background-color 200ms, border-color 200ms;`,
+          tagStyle: tag(l.kind, on && !scanning),
+        };
+      }),
+      scanStyle: scanning
+        ? 'position: absolute; left: 0; right: 0; top: 0; height: 34%; background-image: linear-gradient(to bottom, transparent, oklch(0.46 0.09 182 / 0.16), transparent); animation: ledger-scan 1.1s cubic-bezier(0.4,0,0.6,1) 2; pointer-events: none;'
+        : 'display: none;',
+      verdictStamp: scanning ? '' : active.tag,
+      verdictStampStyle: scanning
+        ? 'display: none;'
+        : `display: inline-block; font-family: 'JetBrains Mono', monospace; font-size: 12px; letter-spacing: 0.18em; padding: 5px 12px; border: 2px solid ${tone}; color: ${tone}; transform: rotate(-4deg); animation: ledger-stamp 320ms cubic-bezier(0.34,1.56,0.64,1) both;`,
+      verdictText: scanning ? 'Reading line item, locating catalog entry, comparing price and photo…' : active.text,
+      verdictSource: scanning ? 'searching 3 catalog sources' : active.source,
+      photoStyle: `border: 1px solid ${scanning ? rule : tone}; transition: border-color 250ms; ${scanning ? 'opacity: 0.55;' : ''}`,
+      poPrice: active.poPrice,
+      catPrice: scanning ? '——' : active.catPrice,
+      catPriceStyle: `margin: 6px 0 0; font-family: 'JetBrains Mono', monospace; font-size: 18px; color: ${!scanning && active.kind === 'warn' ? amber : ink};`,
+      confidence: scanning ? '——' : active.confidence,
+
+      vendorSlots: Array.from({ length: 12 }, () => 'vendor logo'),
+
+      selectPersonal: () => this.setState({ mode: 'personal' }),
+      selectTeam: () => this.setState({ mode: 'team' }),
+      personalTabStyle: modeTab(this.state.mode === 'personal'),
+      teamTabStyle: modeTab(this.state.mode === 'team'),
+      modeTitle: mode.title,
+      modeDescription: mode.description,
+      modeMeta: mode.meta,
+      modeBullets: mode.bullets.map((text, i) => ({ no: `0${i + 1}`, text })),
+
+      pipelineBars: [
+        { label: 'extract', pct: 100 },
+        { label: 'catalog', pct: 92 },
+        { label: 'photo', pct: 78 },
+      ].map((b) => ({
+        label: b.label,
+        fillStyle: `display: block; height: 100%; width: ${b.pct}%; background: ${teal};`,
+      })),
+
+      comparisons: [
+        { before: 'Checking one invoice means opening five files by hand.', after: 'One workspace matches PO, catalog, and invoice on upload.' },
+        { before: 'The catalog photo and what actually shipped are never compared.', after: 'Every line gets a photo-level catalog match before approval.' },
+        { before: 'A price increase buried on line 9 gets approved.', after: 'Every price delta is flagged against the vendor\u2019s own catalog.' },
+        { before: 'The buyer who knew this vendor left in March.', after: 'The workspace remembers the price history and the old flags.' },
+      ],
+
+      useCases: [
+        { label: 'Procurement teams', detail: 'Match every PO against the vendor catalog before it is approved.' },
+        { label: 'AP / accounts payable', detail: 'Catch a price or quantity mismatch before the invoice is paid.' },
+        { label: 'Multi-vendor sourcing', detail: 'Compare the same SKU across catalogs from several suppliers.' },
+        { label: 'Ops & supply chain', detail: 'Confirm the item that shipped is the item that was ordered.' },
+        { label: 'Small business buyers', detail: 'Run vendor checks without hiring a procurement function.' },
+        { label: 'Founder-led purchasing', detail: 'Keep every order and price in one searchable place from day one.' },
+      ].map((u, i) => ({ ...u, no: `0${i + 1}` })),
+
+      fileTypes: ['PDF', 'Scanned PDF', 'XLSX', 'CSV', 'JPG / PNG', 'Email attachment', 'Price list'],
+
+      trustRows: [
+        { label: 'Isolation', text: 'Every workspace is separate. Your catalogs and invoices are never pooled with another buyer\u2019s.' },
+        { label: 'Citations', text: 'Each verdict records the file, page, and price it was based on — openable, not paraphrased.' },
+        { label: 'Human sign-off', text: 'Optra flags and explains. Approval stays with the buyer, always.' },
+        { label: 'Deletion', text: 'Remove a workspace and its files, matches, and history are removed with it.' },
+      ],
+
+      plans: (() => {
+        const base = [
+          { name: 'Solo', tag: '', price: '$29', unit: 'per month · 1 buyer', blurb: 'For an owner or single buyer checking their own vendors.', cta: 'Start free trial',
+            features: ['Unlimited vendors and catalogs', '200 matched line items / month', 'Photo-level catalog matching', 'Full order and price history'] },
+          { name: 'Team', tag: 'Most buyers', price: '$79', unit: 'per buyer / month', blurb: 'For a procurement team sharing one approved catalog.', cta: 'Start free trial',
+            features: ['Everything in Solo, unmetered', 'Shared workspace and roles', 'Flag history across every buyer', 'Exportable evidence trail'] },
+          { name: 'Scale', tag: '', price: 'Talk', unit: 'annual · custom volume', blurb: 'For high-volume AP with its own review process.', cta: 'Contact sales',
+            features: ['Volume line-item pricing', 'Custom retention and deletion', 'Priority extraction queue', 'Onboarding for existing archives'] },
+        ];
+        return base.map((p, i) => ({
+          ...p,
+          cardStyle: `background: ${i === 1 ? 'oklch(0.995 0.004 85)' : 'oklch(0.955 0.01 85)'}; padding: 28px; display: flex; flex-direction: column; ${i === 1 ? `box-shadow: inset 0 0 0 2px ${teal};` : ''}`,
+          tagStyle: p.tag
+            ? `font-family: 'JetBrains Mono', monospace; font-size: 9px; letter-spacing: 0.14em; text-transform: uppercase; padding: 3px 8px; background: ${teal}; color: oklch(0.995 0.004 85);`
+            : 'display: none;',
+          ctaStyle: `margin-top: 26px; display: flex; align-items: center; justify-content: center; padding: 14px; font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; ${i === 1 ? `background: ${ink}; color: oklch(0.968 0.009 85);` : `border: 1px solid ${ink}; color: ${ink};`}`,
+        }));
+      })(),
+
+      faqRows: faq.map((item, i) => {
+        const open = this.state.openFaq === i;
+        return {
+          no: `0${i + 1}`,
+          question: item.q,
+          answer: item.a,
+          icon: open ? '−' : '+',
+          iconStyle: `font-family: 'JetBrains Mono', monospace; font-size: 18px; color: ${open ? teal : 'oklch(0.55 0.014 60)'};`,
+          toggle: () => this.setState({ openFaq: open ? null : i }),
+          panelStyle: `display: grid; grid-template-rows: ${open ? '1fr' : '0fr'}; transition: grid-template-rows 320ms cubic-bezier(0.23,1,0.32,1);`,
+        };
+      }),
+    };
+  }
+}
+</script>
+</body>
+</html>

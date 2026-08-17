@@ -30,13 +30,21 @@ describe('MetricsStrip', () => {
     ).not.toBeNull()
   })
 
-  it('lists the vendor slots, ending in a placeholder rather than a fourth name', () => {
+  it('renders four generic vendor slots', () => {
     render(<MetricsStrip />)
 
-    expect(screen.getByText('ABENSONS')).not.toBeNull()
-    expect(screen.getByText('Robinsons Appliances')).not.toBeNull()
-    expect(screen.getByText('CellBoy')).not.toBeNull()
+    expect(screen.getAllByText('Vendor logo')).toHaveLength(3)
     expect(screen.getByText('Your company')).not.toBeNull()
+  })
+
+  // "Catalogs from" asserts a relationship with whoever is named. Until real
+  // vendors are actually users, naming one would be a false endorsement claim
+  // rather than placeholder copy -- so the slots must stay generic.
+  it('names no real company under the catalogs-from label', () => {
+    const { container } = render(<MetricsStrip />)
+
+    const slots = Array.from(container.querySelectorAll('li')).map((li) => li.textContent?.trim())
+    expect(slots).toEqual(['Vendor logo', 'Vendor logo', 'Vendor logo', 'Your company'])
   })
 
   // Until real logo files land, the slots render text wordmarks. If someone

@@ -8,16 +8,19 @@ const METRICS = [
 ]
 
 // TODO(pre-launch): drop real logo files into `apps/web/public/vendors/` and
-// set `src` on each slot -- the wordmark below is the fallback, not the goal.
-// Also confirm with the product owner that naming these vendors here is
-// accurate; "Catalogs from" asserts a relationship with each of them.
-type VendorSlot = { name: string; src?: string; placeholder?: boolean }
+// set `src` on each slot -- the label below is the fallback, not the goal.
+//
+// These are deliberately generic. "Catalogs from" asserts a relationship with
+// whoever is named here, so real vendor names must not go in until they are
+// actually users -- naming a company that isn't a customer is a false
+// endorsement claim, not a copy placeholder.
+type VendorSlot = { name: string; src?: string }
 
 const VENDORS: VendorSlot[] = [
-  { name: 'ABENSONS' },
-  { name: 'Robinsons Appliances' },
-  { name: 'CellBoy' },
-  { name: 'Your company', placeholder: true },
+  { name: 'Vendor logo' },
+  { name: 'Vendor logo' },
+  { name: 'Vendor logo' },
+  { name: 'Your company' },
 ]
 
 export function MetricsStrip() {
@@ -42,13 +45,16 @@ export function MetricsStrip() {
             Catalogs from
           </span>
           <ul className="flex flex-wrap items-center gap-2">
-            {VENDORS.map((vendor) => (
+            {/* Index-keyed on purpose: the placeholder labels repeat, so the
+                name is not a stable identity. Swap to a stable id once real
+                logos land. */}
+            {VENDORS.map((vendor, i) => (
               <li
-                key={vendor.name}
+                key={i}
                 className={`flex h-[34px] w-24 items-center justify-center rounded-lg px-2 ${
-                  vendor.placeholder
-                    ? 'border border-dashed border-[oklch(0.88_0.012_255)]'
-                    : 'border border-border bg-background'
+                  vendor.src
+                    ? 'border border-border bg-background'
+                    : 'border border-dashed border-[oklch(0.88_0.012_255)]'
                 }`}
               >
                 {vendor.src ? (
