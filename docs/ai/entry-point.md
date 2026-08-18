@@ -115,3 +115,11 @@ When context docs become stale, use `docs/ai/context-refresh.md`.
 Context refresh updates only context docs.
 
 Context refresh does not edit source files.
+
+## Populated local environment
+
+`bun run docker:dev:up`, then `bun run db:seed` gives a fully populated demo
+tenant (documents, chunks with real embeddings, tickets, chat history, insights
+metrics, procurement and catalog data) plus a login. The seeder is idempotent
+and scoped to its own workspace — see `scripts/seed/` and the seeder section of
+`docs/ai/testing-strategy.md`.

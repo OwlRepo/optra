@@ -345,3 +345,43 @@ TODO: Fill after repository analysis. Do not treat as verified. (Auth rows below
 | `SiteFooter` | `apps/web/src/components/landing/site-footer.tsx` | Brand + three link columns + disclaimer bar |
 | `DEMO_DOCS`, `DEMO_SCANNING`, `TOUR_VIGNETTES`, `TOUR_CHAT_EXCHANGE`, `DEMO_HISTORY_ROWS`, `DEMO_CATALOG_PHOTO` | `apps/web/src/lib/landing-demo-docs.ts` | Static demo scenarios. **L05's row price ($2.05) intentionally differs from its `poPrice` ($1.80)** — that disagreement is the flag |
 | `REVEAL_FALLBACK_MS` | `apps/web/src/hooks/use-in-view.ts` | 2600ms net so a silent IntersectionObserver can't strand content at `opacity: 0` |
+
+## Demo seeder (added 2026-08-18)
+
+Standalone script at repo root — NOT in `packages/db`, because it needs `@repo/ai`
+for embeddings and `@repo/ai` already depends on `@repo/db` (would be circular).
+Follows the `scripts/backfill-ticket-embeddings.ts` precedent. Writes rows only —
+zero DDL, no migration.
+
+| Symbol | Location | Purpose |
+|---|---|---|
+| seeder entrypoint | `scripts/seed/index.ts` | `bun run db:seed`. Guards against non-local `DATABASE_URL`, wipes the demo tenant in reverse-FK order, re-inserts everything in one transaction, then bumps `chat:ver:<wsId>` and writes `insights:topic-gaps:<wsId>` in Redis. Flags: `--no-embeddings`, `--wipe-only` |
+| `DEMO_USER_ID`, `DEMO_WORKSPACE_ID`, `KB_*_ID`, `DEMO_PASSWORD`, `daysAgo`, `hoursAgo` | `scripts/seed/config.ts` | Pinned demo identity (fixed UUIDs make the wipe scoped and workspace URLs stable) + timestamp helpers |
+| `getEmbeddings`, `cacheKey`, `roundVector`, `loadCache` | `scripts/seed/embeddings.ts` | Cached wrapper over `@repo/ai#embedChunks`; memoizes vectors to `scripts/seed/embeddings-cache.json` (committed) so re-seeds are free and offline |
+| `buildUsers`, `buildWorkspace`, `buildMembers`, `buildKnowledgeBases` | `scripts/seed/data/company.ts` | Demo tenant. Creates the `workspace_members` row itself — normally only `AuthService.verifyOtp()` does |
+| `seedDocuments`, `buildDocumentRows` | `scripts/seed/data/documents.ts` | 29 "Helio Labs" docs with real prose sections (the chunk corpus). `storageKey` always null — a fake key would 500 the download route |
+| `seedTickets`, `buildTicketRows`, `indexedTickets`, `ticketChunkContent`, `transcriptHash` | `scripts/seed/data/tickets.ts` | 27 tickets across every status/severity/usefulness facet; `indexedTickets()` are the ones that get a ticket chunk |
+| `buildChatSessionRows`, `buildChatMessageRows` | `scripts/seed/data/chat.ts` | 6 sessions owned by the demo user; assistant `sources` wired to real document/ticket ids |
+| `buildQueryMetricRows`, `TOPIC_GAPS` | `scripts/seed/data/metrics.ts` | 50 `chat_query_metrics` rows driving Insights → Coverage; `TOPIC_GAPS` is the Redis-only panel 3 payload |
+| `buildEventRows`, `buildScrapeRunRows` | `scripts/seed/data/events.ts` | Activity feed covering all six `workspace_event_type` values + the two scrape runs it references |
+| `buildReviewFlagRows`, `buildFaqDraftRows`, `buildDigestSettingsRow`, `buildBackgroundRunRows`, `buildSavedRefinedMessageRows` | `scripts/seed/data/insights.ts` | Insights V2 surfaces |
+| `buildPurchaseOrderRows`, `buildInvoiceRows`, `buildPoLineItemRows`, `buildInvoiceLineItemRows`, `buildDiscrepancyFlagRows`, `poLineId`, `invoiceLineId` | `scripts/seed/data/procurement.ts` | 3 PO/invoice pairs + all four discrepancy types. Numeric columns passed as strings |
+| `buildVendorRows`, `buildCatalogRows`, `buildCatalogItemRows`, `buildCatalogMatchRows`, `catalogItemId` | `scripts/seed/data/catalog.ts` | 3 vendors, 4 catalogs, 30 items, 8 matches (both `match_type` values, both verdicts) |
+| seeder tests | `scripts/seed/__tests__/{embeddings,data}.test.ts` | 47 tests: cache behavior + every data invariant (exactly-one-parent chunks, distinct transcript hashes, source referential integrity, numeric-as-string, no generated columns) |
+
+### Demo seeder — second pass (2026-08-18)
+
+| Symbol | Location | Purpose |
+|---|---|---|
+| `IMAGE_LIBRARY`, `fetchImages`, `imageSubject` | `scripts/seed/images.ts` | 27 curated Pexels stock photos (Pexels License: free, commercial, no attribution). Each URL was fetched and visually verified so its `subject` label is accurate. Bytes cached in the gitignored `scripts/seed/.image-cache/`; download failures are non-fatal |
+| `putObject`, `storageAvailable`, `s3Bucket`, `closeStorage` | `scripts/seed/storage.ts` | Thin S3 client mirroring `apps/api/src/storage/storage.service.ts` env contract, used to upload catalog photos and dataset CSVs. Host runs default to `SEED_S3_ENDPOINT`/`S3_ENDPOINT` (localhost:8433) |
+| `seedDatasets`, `buildDatasetRows`, `buildDatasetFiles`, `datasetCsv`, `datasetStorageKey` | `scripts/seed/data/datasets.ts` | Six CSV datasets (2,796 rows total) with embedded descriptions, uploaded to object storage so the text-to-SQL/DuckDB chat path has something real to query |
+| `EXTRA_SPECS` | `scripts/seed/data/documents-extra.ts` | 58 further documents, concatenated by `documents.ts` (88 total) |
+| `EXTRA_TICKET_SPECS` | `scripts/seed/data/tickets-extra.ts` | 54 further tickets, concatenated by `tickets.ts` (87 total) |
+| `catalogImageKeys`, `catalogPhotoKey`, `buildCatalogPhotoUploads` | `scripts/seed/data/catalog.ts` | Maps catalog items to stock images and to their storage keys; `buildCatalogItemRows(availableImages)` only sets `photoStorageKey` for images that actually uploaded |
+| `CatalogDocumentsService.getItemPhoto` | `apps/api/src/catalog/catalog-documents.service.ts` | Streams a catalog item photo, scoped by `workspaceId` in the WHERE clause |
+| `GET /workspaces/:workspaceId/catalog-items/:itemId/photo` | `apps/api/src/catalog/catalog.controller.ts` | Serves item photos to `<img>` via the web auth proxy. `JwtAuthGuard` + `WorkspaceMemberGuard` |
+| `CatalogMatchService.resolveMatchDetails` | `apps/api/src/catalog/catalog-match.service.ts` | Batch-resolves `catalogItem` + `queryItem` onto each match so the UI can render products instead of truncated ids (additive response fields) |
+| `catalogItemPhotoUrl` | `apps/web/src/lib/api/catalog.ts` | Builds the proxy URL for an item photo |
+| catalog photo proxy | `apps/web/app/api/workspaces/[id]/catalog-items/[itemId]/photo/route.ts` | `proxyRaw` passthrough that attaches the bearer token server-side |
+| `seed-demo-if-enabled.sh` | `docker/seed-demo-if-enabled.sh` | Prod start-up hook (wired into `apps/api/Dockerfile` CMD). No-op unless `SEED_DEMO_DATA=true`; runs the seeder with `--once` and never fails the container |

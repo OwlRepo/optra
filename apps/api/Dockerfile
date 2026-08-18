@@ -77,4 +77,6 @@ EXPOSE 3001
 HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
   CMD ["sh", "-c", "curl -fsS -o /dev/null \"http://127.0.0.1:${PORT:-3001}/health\" || exit 1"]
 
-CMD ["sh", "-c", "cd packages/db && bun run db:migrate && cd /app/apps/api && exec node dist/main"]
+# Migrations, then an optional one-time demo seed (no-op unless
+# SEED_DEMO_DATA=true, and idempotent even then — see the script), then serve.
+CMD ["sh", "-c", "cd packages/db && bun run db:migrate && sh /app/docker/seed-demo-if-enabled.sh && cd /app/apps/api && exec node dist/main"]

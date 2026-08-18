@@ -72,6 +72,29 @@ export class CatalogDocumentsService {
       .orderBy(catalogItems.lineNumber)
   }
 
+  /**
+   * Streams the photo attached to a catalog item. Scoped by workspaceId in the
+   * query itself rather than by a guard alone — this is a tenant-scoped read of
+   * object storage, so the isolation belongs in the WHERE clause.
+   */
+  async getItemPhoto(workspaceId: string, itemId: string): Promise<{ buffer: Buffer; contentType: string }> {
+    const [item] = await db
+      .select({ photoStorageKey: catalogItems.photoStorageKey })
+      .from(catalogItems)
+      .where(and(eq(catalogItems.id, itemId), eq(catalogItems.workspaceId, workspaceId)))
+      .limit(1)
+
+    if (!item) {
+      throw new NotFoundException('Catalog item not found')
+    }
+    if (!item.photoStorageKey) {
+      throw new NotFoundException('Catalog item has no photo')
+    }
+
+    const buffer = await this.storage.getBuffer(item.photoStorageKey)
+    return { buffer, contentType: item.photoStorageKey.endsWith('.png') ? 'image/png' : 'image/jpeg' }
+  }
+
   private async assertCatalogInWorkspaceAndVendor(workspaceId: string, vendorId: string, catalogId: string) {
     const [catalog] = await db
       .select()

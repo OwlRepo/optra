@@ -61,3 +61,6 @@ apps/*/src/**/*.js.map
 # Claude Code hook acknowledgment files (per-turn state, never committed)
 .claude/.predict-verify-ack
 .claude/.plan-ack
+
+# Seeder stock-image byte cache (re-downloadable from Pexels)
+scripts/seed/.image-cache/

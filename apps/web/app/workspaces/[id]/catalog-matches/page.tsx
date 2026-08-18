@@ -19,6 +19,7 @@ import { isUnauthorized } from '@/lib/api/handle-unauthorized'
 import { getWorkspace, listWorkspaces } from '@/lib/api/workspaces'
 import {
   dismissCatalogMatch,
+  catalogItemPhotoUrl,
   listCatalogMatches,
   listVendors,
   searchCatalogMatches,
@@ -332,18 +333,21 @@ export default function CatalogMatchesPage({ params }: { params: { id: string } 
                   </div>
                   <PhotoCompare
                     query={{
-                      sku: null,
-                      // No endpoint resolves queryPoLineItemId/queryInvoiceLineItemId to a
-                      // sku/description yet - show the truncated id as an honest placeholder.
-                      description: `Query item ${(match.queryPoLineItemId ?? match.queryInvoiceLineItemId ?? '').slice(0, 8)}...`,
+                      sku: match.queryItem?.sku ?? null,
+                      // Falls back to the truncated id only when the referenced
+                      // line item no longer exists.
+                      description:
+                        match.queryItem?.description ??
+                        `Query item ${(match.queryPoLineItemId ?? match.queryInvoiceLineItemId ?? '').slice(0, 8)}...`,
                     }}
                     candidate={{
-                      sku: null,
-                      // Same limitation as the Catalogs page: no endpoint resolves
-                      // catalogItemId to a sku/description/photo yet.
-                      description: `Catalog item ${match.catalogItemId.slice(0, 8)}...`,
-                      photoSrc: null,
-                      vendorName: undefined,
+                      sku: match.catalogItem?.sku ?? null,
+                      description:
+                        match.catalogItem?.description ?? `Catalog item ${match.catalogItemId.slice(0, 8)}...`,
+                      photoSrc: match.catalogItem?.photoStorageKey
+                        ? catalogItemPhotoUrl(workspaceId, match.catalogItemId)
+                        : null,
+                      vendorName: vendors.find((vendor) => vendor.id === match.vendorId)?.name,
                     }}
                     verdict={{
                       score: match.score !== null ? Number(match.score) : null,

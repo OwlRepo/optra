@@ -38,6 +38,20 @@ export type CatalogMatch = {
   reason: string
   status: CatalogMatchStatus
   createdAt: string
+  // Resolved server-side so the match can be rendered as products rather than
+  // as raw ids. Null when the referenced row no longer exists.
+  catalogItem: {
+    id: string
+    sku: string | null
+    description: string | null
+    photoStorageKey: string | null
+  } | null
+  queryItem: { id: string; sku: string | null; description: string | null } | null
+}
+
+/** URL of a catalog item photo, served through the web app's auth proxy. */
+export function catalogItemPhotoUrl(workspaceId: string, itemId: string): string {
+  return `/api/workspaces/${workspaceId}/catalog-items/${itemId}/photo`
 }
 export type CatalogMatchQuery =
   | { purchaseOrderLineItemId: string; invoiceLineItemId?: never }

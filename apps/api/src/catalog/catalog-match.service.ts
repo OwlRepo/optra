@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common'
-import { and, desc, eq, ilike, or } from 'drizzle-orm'
+import { and, desc, eq, ilike, inArray, or } from 'drizzle-orm'
 import { catalogItems, catalogMatches, catalogs, db, invoiceLineItems, poLineItems } from '@repo/db'
 import { StorageService } from '../storage/storage.service'
 import { CatalogExtractionService } from './catalog-extraction.service'
@@ -89,11 +89,64 @@ export class CatalogMatchService {
       conditions.push(eq(catalogMatches.status, filters.status))
     }
 
-    return db
+    const matches = await db
       .select()
       .from(catalogMatches)
       .where(and(...conditions))
       .orderBy(desc(catalogMatches.createdAt))
+
+    return this.resolveMatchDetails(workspaceId, matches)
+  }
+
+  /**
+   * Attaches the sku/description/photo of the catalog item and of the queried
+   * PO or invoice line to each match. Without this the UI can only render
+   * truncated ids, because a match row stores nothing but foreign keys.
+   * Resolved in three batched queries rather than one per row.
+   */
+  private async resolveMatchDetails(workspaceId: string, matches: (typeof catalogMatches.$inferSelect)[]) {
+    if (matches.length === 0) {
+      return []
+    }
+
+    const itemIds = [...new Set(matches.map(m => m.catalogItemId))]
+    const poIds = [...new Set(matches.map(m => m.queryPoLineItemId).filter((id): id is string => id !== null))]
+    const invoiceIds = [
+      ...new Set(matches.map(m => m.queryInvoiceLineItemId).filter((id): id is string => id !== null)),
+    ]
+
+    const [items, poLines, invoiceLines] = await Promise.all([
+      db
+        .select({
+          id: catalogItems.id,
+          sku: catalogItems.sku,
+          description: catalogItems.description,
+          photoStorageKey: catalogItems.photoStorageKey,
+        })
+        .from(catalogItems)
+        .where(and(eq(catalogItems.workspaceId, workspaceId), inArray(catalogItems.id, itemIds))),
+      poIds.length
+        ? db
+            .select({ id: poLineItems.id, sku: poLineItems.sku, description: poLineItems.description })
+            .from(poLineItems)
+            .where(and(eq(poLineItems.workspaceId, workspaceId), inArray(poLineItems.id, poIds)))
+        : Promise.resolve([]),
+      invoiceIds.length
+        ? db
+            .select({ id: invoiceLineItems.id, sku: invoiceLineItems.sku, description: invoiceLineItems.description })
+            .from(invoiceLineItems)
+            .where(and(eq(invoiceLineItems.workspaceId, workspaceId), inArray(invoiceLineItems.id, invoiceIds)))
+        : Promise.resolve([]),
+    ])
+
+    const itemById = new Map(items.map(item => [item.id, item]))
+    const queryById = new Map([...poLines, ...invoiceLines].map(line => [line.id, line]))
+
+    return matches.map(match => ({
+      ...match,
+      catalogItem: itemById.get(match.catalogItemId) ?? null,
+      queryItem: queryById.get(match.queryPoLineItemId ?? match.queryInvoiceLineItemId ?? '') ?? null,
+    }))
   }
 
   async dismissMatch(workspaceId: string, matchId: string, userId: string) {

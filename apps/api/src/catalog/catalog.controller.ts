@@ -10,6 +10,7 @@ import {
   Patch,
   Post,
   Query,
+  Res,
   UploadedFile,
   UseFilters,
   UseGuards,
@@ -159,6 +160,25 @@ export class CatalogController {
     @Param('catalogId') catalogId: string,
   ) {
     return this.documents.listItems(workspaceId, vendorId, catalogId)
+  }
+
+  // Photos are fetched by <img> through the web app's proxy route, which
+  // attaches the bearer token server-side. Cached for a day because a seeded
+  // or uploaded item photo never changes under the same key.
+  @Get('catalog-items/:itemId/photo')
+  @UseGuards(JwtAuthGuard, WorkspaceMemberGuard)
+  async catalogItemPhoto(
+    @Param('workspaceId') workspaceId: string,
+    @Param('itemId') itemId: string,
+    @Res() res: Response,
+  ) {
+    const { buffer, contentType } = await this.documents.getItemPhoto(workspaceId, itemId)
+    res.set({
+      'Content-Type': contentType,
+      'Content-Length': String(buffer.length),
+      'Cache-Control': 'private, max-age=86400',
+    })
+    res.send(buffer)
   }
 
   @Post('catalog-matches/search')

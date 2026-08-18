@@ -35,6 +35,8 @@ vi.mock('@/lib/api/catalog', () => ({
   searchCatalogMatches: (...args: unknown[]) => searchCatalogMatchesMock(...args),
   verifyCatalogMatches: (...args: unknown[]) => verifyCatalogMatchesMock(...args),
   dismissCatalogMatch: (...args: unknown[]) => dismissCatalogMatchMock(...args),
+  catalogItemPhotoUrl: (workspaceId: string, itemId: string) =>
+    `/api/workspaces/${workspaceId}/catalog-items/${itemId}/photo`,
 }))
 
 vi.mock('@/lib/api/auth', () => ({

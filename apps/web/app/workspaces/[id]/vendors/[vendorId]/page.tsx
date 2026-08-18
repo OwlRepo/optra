@@ -25,6 +25,7 @@ import { logout } from '@/lib/api/auth'
 import { isUnauthorized } from '@/lib/api/handle-unauthorized'
 import { getWorkspace, listWorkspaces } from '@/lib/api/workspaces'
 import {
+  catalogItemPhotoUrl,
   listCatalogItems,
   listCatalogs,
   listVendors,
@@ -439,7 +440,8 @@ export default function VendorDetailPage({ params }: { params: { id: string; ven
           isLoading={isLoadingItems}
           items={catalogItems.map((item) => ({
             id: item.id,
-            src: null,
+            // Items without a stored photo keep the placeholder tile.
+            src: item.photoStorageKey ? catalogItemPhotoUrl(workspaceId, item.id) : null,
             alt: item.sku ?? item.description ?? 'Item',
             caption: item.description ?? undefined,
           }))}

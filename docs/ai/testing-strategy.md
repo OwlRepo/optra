@@ -215,3 +215,38 @@ Claude must verify commands from:
 Do not claim commands as valid unless verified.
 
 If command does not exist in package scripts or repo docs, mark as unavailable or propose alternative.
+
+## Demo seeder (`scripts/seed/`)
+
+Populates the local Docker stack with a full demo tenant. Not part of any app's
+test suite — it is a developer tool — but it has its own pure-logic coverage
+because a silent mistake there produces a broken demo rather than a failure.
+
+- `bun run db:seed` — seed the local database (real, cached embeddings)
+- `bun run db:seed --no-embeddings` — skip OpenAI; chunks insert with null vectors
+- `bun run db:seed --wipe-only` — remove the demo tenant, insert nothing
+- `bun run db:seed:test` — Vitest over `scripts/seed/__tests__/*` (47 tests)
+
+Safety: the seeder refuses to run unless the `DATABASE_URL` host is local
+(`localhost`/`127.0.0.1`/`::1`/`postgres`/`optra-db`) — it deletes rows, and
+`SEED_ALLOW_REMOTE=true` is required to override. Deletes are always scoped to
+`DEMO_WORKSPACE_ID`/`DEMO_USER_ID`; there is no TRUNCATE and no wildcard delete.
+
+Redis defaults to `localhost:6380` (the compose host mapping), not the
+`REDIS_PORT=6379` in `.env`, which is only correct inside the container.
+Override with `SEED_REDIS_HOST` / `SEED_REDIS_PORT`. The Redis step is
+non-fatal: without it only the Insights topic-gaps panel is empty.
+
+### Seeder: production `--once` mode
+
+`bun run db:seed --once` seeds only if the demo workspace does not already
+exist, and exits without writing otherwise — no wipe, no re-seed, no overwrite
+of a tenant someone has since edited. This is what `docker/seed-demo-if-enabled.sh`
+runs from the prod image's CMD when `SEED_DEMO_DATA=true`, so it is safe on
+every boot. The script always exits 0: a seeding failure must never stop the API
+from starting.
+
+Object storage is required for catalog photos and datasets. If it is
+unreachable the seeder logs a warning, skips both, and inserts everything else —
+dataset rows in particular are skipped rather than written with a storage key
+pointing at a missing object.

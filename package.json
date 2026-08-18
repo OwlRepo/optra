@@ -11,6 +11,8 @@
     "build": "turbo build",
     "lint": "turbo lint",
     "type-check": "turbo type-check",
+    "db:seed": "bun run scripts/seed/index.ts",
+    "db:seed:test": "bunx vitest run scripts/seed",
     "docker:dev:up": "docker compose up -d",
     "docker:dev:build": "docker compose -f docker-compose.yml build",
     "docker:dev:down": "docker compose down",

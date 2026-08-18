@@ -33,6 +33,8 @@ vi.mock('@/lib/api/catalog', () => ({
   uploadCatalog: (...args: unknown[]) => uploadCatalogMock(...args),
   scrapeCatalog: (...args: unknown[]) => scrapeCatalogMock(...args),
   listCatalogItems: (...args: unknown[]) => listCatalogItemsMock(...args),
+  catalogItemPhotoUrl: (workspaceId: string, itemId: string) =>
+    `/api/workspaces/${workspaceId}/catalog-items/${itemId}/photo`,
 }))
 
 vi.mock('@/lib/api/auth', () => ({
@@ -266,7 +268,11 @@ describe('VendorDetailPage', () => {
       expect(screen.getByText('Widget, 10-pack')).toBeDefined()
       expect(screen.getByText('Gadget, single')).toBeDefined()
     })
-    expect(document.querySelectorAll('[data-testid="image-tile-fallback"]').length).toBe(2)
+    // item-1 has a stored photo, so it renders an <img> pointed at the auth
+    // proxy; only item-2 (photoStorageKey null) keeps the fallback tile.
+    expect(document.querySelectorAll('[data-testid="image-tile-fallback"]').length).toBe(1)
+    const photo = document.querySelector('img[alt="SKU-1"]')
+    expect(photo?.getAttribute('src')).toBe('/api/workspaces/ws-1/catalog-items/item-1/photo')
   })
 
   it('redirects to login when loading the vendor returns unauthorized', async () => {
