@@ -294,6 +294,7 @@ describe('ChatService', () => {
       existing.sessionId,
     )
     for await (const _token of followUp.stream) {
+      /* drain the stream */
     }
     await followUp.onComplete('second')
 
@@ -392,6 +393,7 @@ describe('ChatService', () => {
 
     const mineTurn = await service.answer(mine.workspace.id, mine.user.id, 'Need answer')
     for await (const _token of mineTurn.stream) {
+      /* drain the stream */
     }
     await mineTurn.onComplete('answer')
 
@@ -565,6 +567,7 @@ describe('ChatService', () => {
 
     const result = await service.answer(workspace.id, user.id, 'Count these tokens')
     for await (const _token of result.stream) {
+      /* drain the stream */
     }
     await result.onComplete('final answer')
 
@@ -652,7 +655,7 @@ describe('ChatService', () => {
   })
 
   it('reproduces pre-history behavior exactly when both history flags are disabled, even with prior turns present', async () => {
-    ;(historyCondenseEnabled as jest.Mock).mockReturnValue(false)
+    (historyCondenseEnabled as jest.Mock).mockReturnValue(false)
     ;(historyInAnswerEnabled as jest.Mock).mockReturnValue(false)
 
     const { user, workspace } = await seedWorkspaceFixture(

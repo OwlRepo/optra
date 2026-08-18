@@ -64,3 +64,7 @@ apps/*/src/**/*.js.map
 
 # Seeder stock-image byte cache (re-downloadable from Pexels)
 scripts/seed/.image-cache/
+
+# Nested git repository dropped into the worktree - not part of this project.
+# Staging it would record a gitlink, not files. Excluded rather than committed.
+autonomous-engineering-md-package/

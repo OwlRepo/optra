@@ -26,6 +26,16 @@ import { HealthController } from './health/health.controller'
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     BullModule.forRoot({
+      // 'bull' is Bull's own default, so leaving BULL_PREFIX unset produces
+      // byte-identical Redis keys to before this option existed - production
+      // behaviour is unchanged. It exists so e2e runs can namespace their
+      // queues: every spec boots the full AppModule, so each parallel jest
+      // worker AND the dev `optra-api` container are all consumers of the same
+      // queue, and any of them can steal a job whose uploaded file only exists
+      // in the enqueueing worker's in-memory StorageService stub. The victim
+      // then fails with a real S3 "The specified key does not exist".
+      // See apps/api/test/jest-e2e.setup.ts.
+      prefix: process.env.BULL_PREFIX || 'bull',
       redis: {
         host: process.env.REDIS_HOST || 'localhost',
         port: parseInt(process.env.REDIS_PORT || '6379'),

@@ -13,7 +13,8 @@
     "build": "tsc",
     "type-check": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "lint": "eslint \"src/**/*.{ts,tsx}\""
   },
   "dependencies": {
     "react": "^18.3.0",

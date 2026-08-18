@@ -76,7 +76,7 @@ describe('RefineService', () => {
   })
 
   it('refine() returns the original and refined text on the happy path', async () => {
-    ;(refineMessage as jest.Mock).mockResolvedValue('Refined question text')
+    (refineMessage as jest.Mock).mockResolvedValue('Refined question text')
 
     const result = await service.refine('raw rough question')
 
@@ -85,13 +85,13 @@ describe('RefineService', () => {
   })
 
   it('propagates RefineEmptyError uncaught for the controller to map', async () => {
-    ;(refineMessage as jest.Mock).mockRejectedValue(new RefineEmptyError())
+    (refineMessage as jest.Mock).mockRejectedValue(new RefineEmptyError())
 
     await expect(service.refine('raw')).rejects.toBeInstanceOf(RefineEmptyError)
   })
 
   it('propagates RefineRefusalError uncaught for the controller to map', async () => {
-    ;(refineMessage as jest.Mock).mockRejectedValue(new RefineRefusalError())
+    (refineMessage as jest.Mock).mockRejectedValue(new RefineRefusalError())
 
     await expect(service.refine('raw')).rejects.toBeInstanceOf(RefineRefusalError)
   })

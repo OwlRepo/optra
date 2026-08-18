@@ -9,7 +9,6 @@ import {
   Get,
   HttpCode,
   Param,
-  PayloadTooLargeException,
   Post,
   Query,
   Res,

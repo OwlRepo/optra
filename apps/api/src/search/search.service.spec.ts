@@ -1,6 +1,6 @@
 import { randomUUID } from 'crypto'
 import { Test } from '@nestjs/testing'
-import { and, eq, like } from 'drizzle-orm'
+import { eq, like } from 'drizzle-orm'
 import { similaritySearch } from '@repo/ai'
 import {
   chatMessages,

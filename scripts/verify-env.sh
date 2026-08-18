@@ -107,6 +107,79 @@ else
 fi
 
 echo ""
+
+# Check DuckDB native binding
+#
+# duckdb@1.4.4 ships a prebuilt native addon per Node ABI, not per Node
+# version range. Land on an ABI it does not publish and node-pre-gyp silently
+# falls back to compiling from source, fails, and leaves lib/binding/ empty —
+# which surfaces much later as four API test suites dying at module
+# resolution with an opaque "Cannot find module .../duckdb.node". This section
+# turns that into a one-line diagnosis. Known-good ABIs verified against
+# npm.duckdb.org on 2026-08-18; see the comment block in apps/api/Dockerfile.
+echo "🦆 Checking DuckDB native binding:"
+DUCKDB_BINDING="node_modules/duckdb/lib/binding/duckdb.node"
+DUCKDB_KNOWN_ABIS="115 127 137"   # Node 20, 22, 24
+DUCKDB_FIX="nvm use && rm -rf node_modules/duckdb && bun install --frozen-lockfile"
+
+if ! command -v node >/dev/null 2>&1; then
+    echo -e "${RED}✗${NC} node not found on PATH — cannot determine the ABI DuckDB needs"
+    echo "   → install Node 22 (see .nvmrc), then: $DUCKDB_FIX"
+else
+    NODE_VER="$(node -v 2>/dev/null || echo unknown)"
+    NODE_ABI="$(node -p process.versions.modules 2>/dev/null || echo unknown)"
+
+    # .nvmrc parity — a mismatch here is the usual reason the binding is wrong.
+    if [ -f .nvmrc ]; then
+        NVMRC_VER="$(tr -d ' \t\r\nv' < .nvmrc)"
+        NODE_MAJOR="$(echo "$NODE_VER" | sed -E 's/^v?([0-9]+).*/\1/')"
+        NVMRC_MAJOR="$(echo "$NVMRC_VER" | sed -E 's/^([0-9]+).*/\1/')"
+        if [ "$NODE_MAJOR" = "$NVMRC_MAJOR" ]; then
+            echo -e "${GREEN}✓${NC} Node $NODE_VER matches .nvmrc ($NVMRC_VER), ABI $NODE_ABI"
+        else
+            echo -e "${YELLOW}⚠${NC}  Node $NODE_VER does not match .nvmrc ($NVMRC_VER) — run: nvm use"
+        fi
+    else
+        echo -e "${YELLOW}⚠${NC}  .nvmrc missing — nothing pins the Node version for this repo"
+    fi
+
+    # ABI vs. binding, judged together — they mean different things.
+    #
+    # The addon is N-API (verified: 71 napi_* symbols), so once the .node file
+    # is on disk it loads under ANY Node version. What the ABI actually gates
+    # is node-pre-gyp's DOWNLOAD url, which is keyed on node_abi regardless.
+    # So an unpublished ABI is an install-time blocker, not a runtime one, and
+    # the two failure modes need different advice.
+    if echo " $DUCKDB_KNOWN_ABIS " | grep -q " $NODE_ABI "; then
+        ABI_PUBLISHED=1
+    else
+        ABI_PUBLISHED=0
+    fi
+
+    if [ -f "$DUCKDB_BINDING" ] && node -e "require('duckdb')" >/dev/null 2>&1; then
+        if [ "$ABI_PUBLISHED" -eq 1 ]; then
+            echo -e "${GREEN}✓${NC} DuckDB binding present and loadable; ABI $NODE_ABI is publishable"
+        else
+            echo -e "${YELLOW}⚠${NC}  DuckDB binding loads (N-API is runtime-portable), but Node $NODE_VER (ABI $NODE_ABI) has no published prebuilt"
+            echo "   → it works now, but a fresh clone or reinstall on this Node would leave lib/binding/ empty"
+            echo "   → switch first: nvm use"
+        fi
+    elif [ -f "$DUCKDB_BINDING" ]; then
+        echo -e "${RED}✗${NC} DuckDB binding present at $DUCKDB_BINDING but fails to load"
+        echo "   → fix: $DUCKDB_FIX"
+    else
+        echo -e "${RED}✗${NC} DuckDB binding missing ($DUCKDB_BINDING)"
+        echo "   → 4 API test suites will fail at module resolution until this exists"
+        if [ "$ABI_PUBLISHED" -eq 1 ]; then
+            echo "   → fix: $DUCKDB_FIX"
+        else
+            echo "   → Node $NODE_VER (ABI $NODE_ABI) cannot fetch it at all. DuckDB publishes ABI $DUCKDB_KNOWN_ABIS (Node 20, 22, 24); Node 23 and 25 are gaps."
+            echo "   → fix: $DUCKDB_FIX"
+        fi
+    fi
+fi
+
+echo ""
 echo "✨ Verification complete!"
 echo ""
 echo "Next steps:"

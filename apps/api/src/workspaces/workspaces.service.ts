@@ -1,12 +1,11 @@
 import {
   BadRequestException,
-  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
-import { and, asc, count, desc, eq, gt, ilike, isNull, lt, or, sql } from 'drizzle-orm'
+import { and, count, desc, eq, ilike, lt, or, sql } from 'drizzle-orm'
 import { randomBytes } from 'crypto'
 import {
   buildOffsetResult,

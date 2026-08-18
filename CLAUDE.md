@@ -379,6 +379,7 @@ Strict TDD, no exceptions — this is confirmed production software. Write the f
 
 **Verified test/verification commands (from real package scripts — never invent others):**
 - Root: `bun run lint`, `bun run type-check`, `bun run build`, `bun run dev` (turbo)
+  - **`bun run lint` correction 2026-08-18:** this entry was previously ASPIRATIONAL, not verified — it had never once run to completion. `apps/api`'s script invoked `eslint`, which was declared nowhere and installed nowhere (exit 127), and `apps/web`'s `next lint` had no config so it dropped into an interactive setup prompt and exited 1. There was no ESLint dependency and no config file anywhere in the monorepo, and 4 of 6 packages had no `lint` script at all. Now genuinely verified: ESLint 8 + `@typescript-eslint` + `eslint-config-next` as root devDependencies, a shared `.eslintrc.base.json` extended by `apps/api` and all four `packages/*`, `next/core-web-vitals` for `apps/web`, and a `lint` script in all 6 packages. `bun run lint` passes 6/6.
 - `apps/api`: `bun run test` (jest), `bun run test:watch`, `bun run test:cov`, `bun run test:e2e` (15 e2e suites in `apps/api/test/`)
 - `apps/web`: `bun run test` (vitest), `bun run test:watch`
 - `packages/db`: `bun run test` (vitest), `bun run db:generate`, `bun run db:migrate`, `bun run db:push`, `bun run db:studio`

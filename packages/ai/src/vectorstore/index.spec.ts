@@ -1,5 +1,5 @@
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { and, eq, like, sql } from 'drizzle-orm'
+import { eq, like, sql } from 'drizzle-orm'
 import {
   chunks,
   db,

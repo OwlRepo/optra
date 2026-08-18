@@ -4,6 +4,7 @@ import { promises as dns } from 'dns'
 import { JSDOM } from 'jsdom'
 import robotsParser from 'robots-parser'
 import { assertPublicUrl, type LookupFn } from './ssrf'
+import { createLimit } from './limit'
 
 export interface CrawlOptions {
   maxDepth?: number
@@ -47,11 +48,6 @@ type QueueEntry = {
 
 const DEFAULT_USER_AGENT = 'OptraBot/1.0 (+https://optra.com/bot)'
 const MIN_CONTENT_LENGTH = 50
-type PLimit = typeof import('p-limit').default
-
-const loadPLimit = new Function('specifier', 'return import(specifier)') as (
-  specifier: string,
-) => Promise<{ default: PLimit }>
 
 export function canonicalizeUrl(raw: string, base?: string): string {
   const url = new URL(raw, base)
@@ -216,8 +212,7 @@ export async function crawlSite(seedUrl: string, options: CrawlOptions = {}): Pr
   const results: CrawledPage[] = []
   const progress = { pagesFound: 0 }
   const queue: QueueEntry[] = [{ url: canonicalSeed, depth: 0 }]
-  const { default: pLimit } = await loadPLimit('p-limit')
-  const limit = pLimit(concurrency)
+  const limit = createLimit(concurrency)
   const waitForTurn = makeRequestScheduler(effectiveDelayMs)
 
   while (queue.length > 0 && results.length < maxPages) {

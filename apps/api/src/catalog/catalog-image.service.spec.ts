@@ -49,7 +49,7 @@ describe('CatalogImageService', () => {
   })
 
   it('returns null when the URL is not public', async () => {
-    ;(assertPublicUrl as jest.Mock).mockRejectedValue(new Error('Blocked non-public URL'))
+    (assertPublicUrl as jest.Mock).mockRejectedValue(new Error('Blocked non-public URL'))
 
     const result = await service.fetchAndStore('ws-1', 'cat-1', 'http://169.254.169.254/image.png')
 

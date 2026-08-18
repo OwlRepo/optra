@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common'
 import { Test } from '@nestjs/testing'
-import { and, eq, like } from 'drizzle-orm'
+import { eq, like } from 'drizzle-orm'
 import { db, documents, knowledgeBases, pool, users, workspaceMembers, workspaces } from '@repo/db'
 import { KnowledgeBasesService } from './knowledge-bases.service'
 

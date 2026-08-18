@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common'
-import { and, asc, count, desc, eq, gt, ilike, lt, ne, or, sql } from 'drizzle-orm'
+import { and, asc, count, desc, eq, gt, ilike, ne, or, sql } from 'drizzle-orm'
 import {
   buildOffsetResult,
   chatMessages,

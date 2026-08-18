@@ -1,7 +1,7 @@
 import { InternalServerErrorException, NotFoundException } from '@nestjs/common'
 import { getQueueToken } from '@nestjs/bull'
 import { Test } from '@nestjs/testing'
-import { and, eq, like } from 'drizzle-orm'
+import { eq, like } from 'drizzle-orm'
 import { createHash } from 'crypto'
 import {
   db,

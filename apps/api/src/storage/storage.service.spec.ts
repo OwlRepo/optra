@@ -1,9 +1,25 @@
 import { randomUUID } from 'crypto'
 import { readFile } from 'fs/promises'
 import { unlinkSync } from 'fs'
+import { resolve } from 'path'
+import { config as loadEnv } from 'dotenv'
 import { ConfigModule } from '@nestjs/config'
 import { Test } from '@nestjs/testing'
 import { StorageService } from './storage.service'
+
+// This is a REAL integration test: it round-trips bytes through the configured
+// S3-compatible endpoint (SeaweedFS locally), so it is gated on S3_ENDPOINT and
+// skips cleanly where no object store exists.
+//
+// The .env load is what makes the gate meaningful. The unit Jest config has no
+// setupFiles, and nothing else loads dotenv before collection, so S3_ENDPOINT
+// was never set here even though it IS defined in the repo's root .env - the
+// suite therefore skipped on every local run and had never once executed
+// (verified 2026-08-18; it passes 3/3 once the endpoint is actually visible).
+// Loading here rather than in the shared Jest config is deliberate: a global
+// .env load would also hand all 58 other unit suites live credentials, notably
+// EMAIL_OTP_ENABLED, which the e2e setup goes out of its way to force off.
+loadEnv({ path: resolve(__dirname, '../../../../.env') })
 
 const describeStorage = process.env.S3_ENDPOINT ? describe : describe.skip
 

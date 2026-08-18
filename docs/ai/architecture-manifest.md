@@ -52,7 +52,7 @@ No global state library (no Redux/Zustand/Context-based store) — each page own
 
 ### Framework
 
-NestJS 10, Bull 4 job queues on Redis, Passport JWT + email OTP (Resend). Runtime resolves `@repo/ai`/`@repo/db` as normal built workspace packages (each package's `dist/index.js`), not tsconfig `paths` source aliases — see the CONTEXT DRIFT note below for why that matters.
+NestJS 10, Bull 4 job queues on Redis, Passport JWT + email OTP (Resend). Node runtime is pinned to **22** (ABI 127) in both places it matters — the repo-root `.nvmrc` for host development and NodeSource `setup_22.x` in `apps/api/Dockerfile`'s `base` stage — because `duckdb@1.4.4` fetches its prebuilt native binding by Node ABI at install time and publishes none for Node 23 or 25 (see `docs/ai/risk-register.md`, 2026-08-18). Runtime resolves `@repo/ai`/`@repo/db` as normal built workspace packages (each package's `dist/index.js`), not tsconfig `paths` source aliases — see the CONTEXT DRIFT note below for why that matters.
 
 ### Key Modules
 
@@ -110,7 +110,7 @@ CONTEXT DRIFT resolved 2026-07-01/04 for workspace runtime packaging:
 - SWC/nest runtime now resolves those imports as normal workspace packages through `node_modules`, landing on each package `dist/index.js`.
 - `apps/api` Jest unit tests still map `@repo/*` to package `src`, while e2e maps to built `dist` packages to match real runtime boot.
 - `packages/ai/src/loaders/pdf.ts` now uses the exported `pdf-parse` API (`PDFParse`) instead of the no-longer-exported `pdf-parse/lib/pdf-parse.js` internal path, and lazy-imports it inside `loadPDF()` so API bootstrap does not load pdfjs/DOMMatrix code unless a PDF is ingested.
-- `packages/ai/src/web/crawl.ts` lazy-imports ESM-only `p-limit` inside `crawlSite()` so the CommonJS `@repo/ai` package can be imported by the API without a top-level `ERR_REQUIRE_ESM` boot failure.
+- `packages/ai/src/web/crawl.ts` bounds crawl concurrency with the in-house `createLimit` (`packages/ai/src/web/limit.ts`), imported statically. Until 2026-08-18 it lazy-imported ESM-only `p-limit@7` through a `new Function('specifier', 'return import(specifier)')` helper to keep the CommonJS `@repo/ai` build from an `ERR_REQUIRE_ESM` boot failure. That helper survived into `dist/` and worked in production, but Vitest's module runner gives `new Function`-compiled code no host dynamic-import callback, so ten `crawlSite` tests could never execute. `p-limit` was removed outright rather than worked around — the used surface was only `pLimit(n)` and `limit(fn)`.
 - `apps/web` source imports only `@repo/ui`; Docker/Turbo prod build graph is intentionally root + `@repo/web` + `@repo/ui`, and stale web deps/aliases for `@repo/ai`, `@repo/types`, `@ai-sdk/openai`, and `langchain` were removed.
 
 CONTEXT DRIFT resolved 2026-07-01 for queue reliability:

@@ -1,6 +1,6 @@
 import { createHash } from 'crypto'
 import { PDFDocument, StandardFonts, type PDFFont } from 'pdf-lib'
-import { getQueueToken, InjectQueue } from '@nestjs/bull'
+import { InjectQueue } from '@nestjs/bull'
 import {
   Injectable,
   InternalServerErrorException,
@@ -132,11 +132,7 @@ export class TicketsService implements OnModuleInit {
       )
     }
 
-    try {
-      await this.queueTicket(ticketId)
-    } catch (error) {
-      throw error
-    }
+    await this.queueTicket(ticketId)
 
     const [created] = await db.select().from(tickets).where(eq(tickets.id, ticketId)).limit(1)
     return { statusCode: 202, ticket: this.toCreateResponse(created) }

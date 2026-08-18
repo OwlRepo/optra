@@ -1,16 +1,21 @@
 {
-  "moduleFileExtensions": ["js", "json", "ts"],
+  "moduleFileExtensions": [
+    "js",
+    "json",
+    "ts"
+  ],
   "rootDir": ".",
   "testEnvironment": "node",
   "testRegex": ".e2e-spec.ts$",
-  "setupFiles": ["<rootDir>/jest-e2e.setup.ts"],
+  "setupFiles": [
+    "<rootDir>/jest-e2e.setup.ts"
+  ],
   "transform": {
     "^.+\\.(t|j)s$": "@swc/jest"
   },
-  "transformIgnorePatterns": [
-    "/node_modules/(?!(p-limit|yocto-queue)/)"
-  ],
   "moduleNameMapper": {
     "^@repo/(ai|db|types)$": "<rootDir>/../../../packages/$1/dist"
-  }
+  },
+  "testTimeout": 30000,
+  "globalTeardown": "<rootDir>/jest-e2e.teardown.ts"
 }

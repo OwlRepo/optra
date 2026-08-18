@@ -51,6 +51,44 @@ Procurement (PO ↔ Invoice discrepancy) note as of 2026-07-09:
 - `apps/api/test/procurement.e2e-spec.ts` boots the real `AppModule` (mirrors `documents.e2e-spec.ts`'s pattern) and deliberately does NOT mock `ProcurementParseService` — it exercises the real Bull queue + real processor in-process, polling for `status='done'` before comparing, since the queue lifecycle itself is the Deep-risk surface worth proving end-to-end.
 - `procurement-parse.processor.spec.ts` explicitly asserts `embedQuery` (mocked `@repo/ai`) is never called — proves the parse path makes zero OpenAI calls, matching the plan's "no new external integration" requirement.
 
+Every suite in the repo, and how to run them (there is no `turbo test` task and no root `test` script — each package runs its own):
+
+| Command | Runner | Count |
+|---|---|---|
+| `cd apps/api && bun run test` | Jest, 59 suites | 399 |
+| `cd apps/api && bun run test:e2e` | Jest, 14 suites | 40 |
+| `cd apps/web && bun run test` | Vitest 4.1.9 | 511 |
+| `cd packages/ai && bun run test` | Vitest 3.2.6 | 173 |
+| `cd packages/db && bun run test` | Vitest 3.2.6 | 12 |
+| `cd packages/ui && bun run test` | Vitest 4.1.9 | 91 |
+| `bun run db:seed:test` (root) | Vitest, `scripts/seed` | 47 |
+
+**1273 tests, zero skipped**, all green on Node 22 as of 2026-08-18. `packages/types` has no tests; `scripts/eval` holds two standalone Python scripts outside the bun surface.
+
+- **No suite is env-skipped any more.** `apps/api/src/storage/storage.service.spec.ts` gates on `S3_ENDPOINT` (it is a real S3 round-trip against SeaweedFS) and had therefore **never executed locally** — the var lives in the root `.env`, but the unit Jest config has no `setupFiles`, so nothing loaded dotenv before collection. The spec now loads the root `.env` itself. Doing it there rather than in the shared Jest config is deliberate: a global load would hand all 58 other unit suites live credentials, notably `EMAIL_OTP_ENABLED`, which the e2e setup deliberately forces off to avoid live Resend calls. The gate is kept so the suite still skips cleanly where no object store exists.
+- **`packages/ai` concurrency no longer depends on the Node version.** `crawl.ts` used `new Function('specifier','return import(specifier)')` to load ESM-only `p-limit@7` from a CommonJS package. Plain Node runs that fine, but Vitest's module runner supplies no host dynamic-import callback, so 10 `crawlSite` tests failed on Node 22/24 and passed only on Node 25. `p-limit` was removed and replaced by `createLimit` (`packages/ai/src/web/limit.ts`); the suite now passes 173/173 on Node **22, 24 and 25**. The packaging guard in `crawl.spec.ts` was inverted to assert the hack cannot return.
+- **`bun install` can silently corrupt native binaries.** An incremental `bun install` left `node_modules/vite/node_modules/esbuild/bin/esbuild` as a valid arm64 Mach-O that was SIGKILLed on exec (exit 137), with no matching `@esbuild/darwin-arm64@0.28.1` platform package installed. Symptom: `packages/ai`, `packages/db` and `scripts/seed` all died at config load with `The service was stopped: write EPIPE` — which reads like a test failure but is not. `bun install --force` re-extracts and repairs it. Same failure class as the DuckDB binding: a platform-specific package that install did not materialise.
+
+E2E suite requirements as of 2026-08-18 (`apps/api/test/jest-e2e.json`) — all three were fixed; e2e now passes 14/14 in parallel with the dev stack up:
+- **`testTimeout: 30000`** is load-bearing, not padding. Teardown (`cleanupUsers()` → `app.close()` → `pool.end()`) takes ~6.6s because it shuts down a full Nest app with Bull and Redis clients. Jest's 5s default failed 11 of 14 suites on the `afterAll` hook. Do NOT lower it. It is not a DB problem: `users` has 147 rows and the prefix scan measures 0.051 ms.
+- **Queue isolation via `BULL_PREFIX`.** `jest-e2e.setup.ts` sets `BULL_PREFIX=bull-e2e-<pid>`; `app.module.ts` reads `process.env.BULL_PREFIX || 'bull'`. Required because every spec boots the full `AppModule` and therefore registers real Bull consumers — so parallel jest workers, plus any running `optra-api` container, all compete for the same jobs. A stolen job runs against a different in-memory `StorageService` stub and fails with a real S3 `The specified key does not exist`, while the enqueueing spec times out polling for `status='done'`. `'bull'` is Bull's own default, so production Redis keys are unchanged.
+- **`globalTeardown` (`jest-e2e.teardown.ts`)** deletes `bull-e2e-*` keys afterwards, scoped so the production `bull:*` namespace is never touched. It loads the root `.env` itself — `globalTeardown` runs outside `setupFiles` and outside Nest's `ConfigModule`, so without that it targets Redis 6379 while this repo publishes 6380.
+- **Mock factories must cover the whole import surface.** `chat.e2e-spec.ts`'s `jest.mock('@repo/ai')` was missing `classifyQuery` and `classifyStructuredIntent`. Because `chat.controller.ts` converts any non-`HttpException` into `res.write(...) + res.end()`, the resulting `TypeError` surfaced as **201 with no headers**, so the failure read as `expect(undefined).toContain('text/plain')` rather than as a missing export. When adding a `@repo/ai` call to `ChatService`, update both the unit and e2e factories.
+
+Lint setup as of 2026-08-18 (previously nonexistent — see the correction in `CLAUDE.md`):
+- Tooling: ESLint **8** (not 9 — Next 14's `next lint` does not support v9 flat config), `@typescript-eslint/parser` + `/eslint-plugin`, and `eslint-config-next`, all root devDependencies.
+- Shared base: `.eslintrc.base.json` at the repo root (`eslint:recommended` + `plugin:@typescript-eslint/recommended`, no type-aware rules so it stays fast). Extended by `apps/api/.eslintrc.json` and each of `packages/{ai,db,types,ui}/.eslintrc.json`. `packages/ui` additionally enables `parserOptions.ecmaFeatures.jsx`.
+- `apps/web/.eslintrc.json` extends `next/core-web-vitals` instead, and turns **`react/no-children-prop` off for spec files only**. Reason: those specs are `.ts`, not `.tsx`, so they build elements with `React.createElement`; `ModalProps.children` is REQUIRED, so the typed overload demands `children` INSIDE the props object. Passing it as the third argument to satisfy the rule fails `bun run type-check` with TS2769. Verified both ways — the rule is wrong for this call shape, so it is scoped off rather than the code being bent around it.
+- `apps/api`'s lint glob was `{src,apps,libs,test}/**/*.ts`, but `apps/api/apps` and `apps/api/libs` never existed (NestJS generator boilerplate). Corrected to `{src,test}/**/*.ts`.
+- Baseline was 28 real violations, all fixed rather than rule-disabled: 19 dead imports/vars, 5 stray semicolons, 3 undocumented stream-drain blocks, and one genuine no-op `try { … } catch (error) { throw error }` wrapper in `tickets.service.ts`.
+- Two advisory WARNINGS remain in `apps/web` and do not fail the run: `react-hooks/exhaustive-deps` on `catalog-matches/page.tsx` and `@next/next/no-img-element` on `brand-mark.tsx`.
+
+DuckDB native-binding note as of 2026-08-18 (see `risk-register.md` "Structured SQL Execution"):
+- Three suites construct a REAL `DuckDbQueryService` and execute real SQL against real CSVs on disk: `duckdb-query.service.spec.ts`, `structured-query.service.spec.ts`, `comparison.service.spec.ts`. They are the only coverage of the sandbox that gates LLM-generated SQL (`FORBIDDEN_KEYWORDS`, `enable_external_access=false`, the 10s timeout, the 500-row cap). **Do NOT mock `duckdb` in these** — a mock makes them green while deleting the security coverage they exist for.
+- `chat.service.spec.ts` needs the binding only as collateral (`chat.service.ts → structured-query.service.ts → duckdb-query.service.ts:2`, a top-level static import). It asserts nothing about DuckDB.
+- The binding is fetched per Node ABI at install time. The repo pins Node 22 (ABI 127) via the root `.nvmrc`; run `nvm use` before `bun install`. On an unpinned Node 23/25 the download 404s and all four suites fail at module resolution with `Cannot find module .../duckdb.node`.
+- `bash scripts/verify-env.sh` diagnoses this directly (ABI published? binding present? loadable? `.nvmrc` parity?) and prints the recovery command.
+
 Scrape/upload security note as of 2026-07-01:
 - `packages/ai/src/web/ssrf.spec.ts` covers blocked hostnames, private/loopback/link-local IP ranges, IPv6 / IPv4-mapped cases, DNS rebinding, and public-host allow path.
 - `packages/ai/src/web/crawl.spec.ts` now covers blocked seed rejection and skipping in-scope links whose DNS resolves private.

@@ -221,7 +221,7 @@ describe('IngestProcessor', () => {
   })
 
   it('swallows event-record failures and still completes the ingest job terminal update', async () => {
-    const { workspace, knowledgeBase, document } = await seedDocument(fixtureEmailPrefix)
+    const { workspace, document } = await seedDocument(fixtureEmailPrefix)
     storage.getToTempFile.mockResolvedValue('/tmp/ingest-events-fail.txt')
     mockUnlink.mockResolvedValue(undefined)
     mockLoadDocument.mockResolvedValue({

@@ -1,0 +1,11 @@
+{
+  "root": true,
+  "extends": ["next/core-web-vitals"],
+  "ignorePatterns": [".next", "node_modules", "next-env.d.ts"],
+  "overrides": [
+    {
+      "files": ["**/*.spec.ts", "**/*.spec.tsx", "**/*.test.ts", "**/*.test.tsx"],
+      "rules": { "react/no-children-prop": "off" }
+    }
+  ]
+}

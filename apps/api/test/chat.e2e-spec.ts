@@ -1,7 +1,7 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common'
 import { Test } from '@nestjs/testing'
 import cookieParser from 'cookie-parser'
-import { and, eq, like } from 'drizzle-orm'
+import { eq, like } from 'drizzle-orm'
 import request from 'supertest'
 import { answerQuestion, embedQuery } from '@repo/ai'
 import {
@@ -23,6 +23,12 @@ import { DocumentsService } from '../src/documents/documents.service'
 
 jest.mock('@repo/ai', () => ({
   answerQuestion: jest.fn(),
+  classifyQuery: jest.fn(() => 'complex'),
+  // Mirrors the unit spec's factory (chat.service.spec.ts). Omitting it made
+  // ChatService throw "classifyStructuredIntent is not a function", which the
+  // controller swallowed into a 201 with no headers at all - so the assertions
+  // failed on `undefined` headers rather than on the real TypeError.
+  classifyStructuredIntent: jest.fn(() => false),
   condenseQuestion: jest.fn((question: string) => Promise.resolve(question)),
   countTokens: jest.fn((text: string) => text.length),
   embedQuery: jest.fn(),

@@ -1,4 +1,4 @@
-import { HttpException, Logger } from '@nestjs/common'
+import { Logger } from '@nestjs/common'
 import { Test } from '@nestjs/testing'
 import { ConfigService } from '@nestjs/config'
 import type Redis from 'ioredis'

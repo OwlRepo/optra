@@ -4,11 +4,22 @@ import { readFileSync } from 'fs'
 import { canonicalizeUrl, crawlSite, extractContent, extractProductImages, isInScope } from './crawl'
 
 describe('crawl module packaging', () => {
-  it('loads p-limit through the native import helper so CommonJS build does not require ESM', () => {
+  // Inverted 2026-08-18. This guard used to assert the OPPOSITE - that a
+  // `new Function('specifier', 'return import(specifier)')` helper was present -
+  // because `packages/ai` builds as CommonJS and `p-limit@7` is pure ESM, so a
+  // plain dynamic import would be downleveled to `require()` and throw. That
+  // workaround made the module untestable: Vitest's runner gives no host
+  // dynamic-import callback to `new Function` code, so ten crawlSite tests
+  // failed. p-limit is now replaced by the in-house `createLimit`, and this
+  // guard protects the new invariant instead - no ESM-only dependency and no
+  // compiler-evading import may creep back into this CommonJS module.
+  it('keeps the CommonJS build free of ESM-only imports and compiler-evading dynamic imports', () => {
     const source = readFileSync('src/web/crawl.ts', 'utf8')
 
-    expect(source).toContain('loadPLimit')
-    expect(source).not.toContain("await import('p-limit')")
+    expect(source).not.toContain('new Function')
+    expect(source).not.toContain('p-limit')
+    expect(source).not.toContain('loadPLimit')
+    expect(source).toContain("import { createLimit } from './limit'")
   })
 })
 
@@ -29,7 +40,7 @@ function htmlPage(title: string, body: string) {
 function makeFetch(site: Record<string, MockResponseInit>) {
   const counts = new Map<string, number>()
 
-  const fetchImpl: typeof fetch = vi.fn(async (input, init) => {
+  const fetchImpl: typeof fetch = vi.fn(async (input, _init) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
     counts.set(url, (counts.get(url) ?? 0) + 1)
 

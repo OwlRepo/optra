@@ -104,7 +104,7 @@ describe('Knowledge bases flow (e2e)', () => {
       .get('/workspaces/me')
       .set('Authorization', `Bearer ${member.accessToken}`)
       .expect(200)
-    const memberOwnWorkspaceId = memberMine.body.items[0].id as string
+    const _memberOwnWorkspaceId = memberMine.body.items[0].id as string
 
     const outsiderMine = await request(app.getHttpServer())
       .get('/workspaces/me')

@@ -2,7 +2,6 @@ import {
   ConflictException,
   ForbiddenException,
   InternalServerErrorException,
-  NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common'
 import { Test } from '@nestjs/testing'

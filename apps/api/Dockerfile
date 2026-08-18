@@ -14,21 +14,38 @@ WORKDIR /app
 # to get local issuer certificate" — verified via a real failed build, not
 # assumed; --no-install-recommends skips it since it's only "Recommended".
 #
-# Debian bookworm's own "nodejs" apt package is pinned at 18.20.4 (Node ABI
-# 108). duckdb@1.4.4 no longer publishes a prebuilt binary for that ABI
-# (verified: npm.duckdb.org 404s for node-v108-linux-x64, but 200s for
-# node-v115 [Node 20] and node-v127 [Node 22]), so bun install falls back to
-# compiling from source via node-gyp — which then fails too, since this image
-# has no Python. Installing Node 20.x from NodeSource instead of the Debian
-# default gets an ABI duckdb actually ships a prebuilt binary for, so the
-# postinstall script downloads instead of compiling — no build toolchain
-# needed at all.
+# Node 22 (NodeSource), deliberately — duckdb@1.4.4 resolves its prebuilt
+# native binary by Node ABI, so the Node version in this stage is a hard
+# INSTALL-time constraint. (The addon itself is N-API and therefore runs
+# under any Node once present; what the ABI gates is node-pre-gyp's download
+# URL, which is keyed on node_abi regardless. This stage is where deps get
+# installed, so the constraint fully applies here.)
+# Re-verified against npm.duckdb.org on 2026-08-18:
+#
+#   ABI 108 (Node 18) -> 404    <- Debian bookworm's own "nodejs" apt package
+#   ABI 115 (Node 20) -> 200
+#   ABI 127 (Node 22) -> 200    <- pinned here, and in the repo-root .nvmrc
+#   ABI 131 (Node 23) -> 404
+#   ABI 137 (Node 24) -> 200
+#   ABI 141 (Node 25) -> 404
+#
+# Land on a 404 ABI and `bun install` falls back to compiling from source via
+# node-gyp, which then fails too since this image has no Python. Node 22 is
+# an ABI duckdb actually ships prebuilt (linux-x64, linux-arm64, darwin-arm64
+# all 200), so the postinstall downloads instead of compiling — no build
+# toolchain needed at all. It also matches the repo-root .nvmrc, so the host
+# and this image load the identical ABI-127 binding, and it moves off Node 20,
+# which reached end-of-life in April 2026.
+#
+# The ABI-141 gap is not hypothetical: a developer on Node 25 gets an empty
+# lib/binding/ and four API test suites fail at module resolution. That is
+# what .nvmrc and the DuckDB section of scripts/verify-env.sh exist to catch.
 # procps (ps): nest start --watch uses tree-kill to restart the process on
 # file change, which shells out to `ps -o pid --no-headers --ppid` on Linux —
 # without it, every dev-mode hot-reload crashes the container with
 # "spawn ps ENOENT" (verified against a real crash, not assumed).
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl gnupg procps \
-    && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
     && apt-get install -y --no-install-recommends nodejs \
     && rm -rf /var/lib/apt/lists/*
 

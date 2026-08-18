@@ -29,6 +29,11 @@ bun run docker:dev:logs # Tail logs
 bun run docker:dev:down # Stop the stack
 ```
 
+**Use the pinned Node version** (required — `duckdb` fetches its native binding per Node ABI and publishes none for Node 23/25):
+```bash
+nvm use
+```
+
 **Verify environment setup:**
 ```bash
 bash scripts/verify-env.sh

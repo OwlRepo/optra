@@ -64,9 +64,15 @@ services:
       dockerfile: apps/api/Dockerfile
       target: prod
     # Pinned, not left to host default: Hetzner CX21 is linux/amd64 native,
-    # so this is a no-op here — duckdb has no arm64 Linux prebuilt binary
-    # and no in-image toolchain to compile one, so an explicit pin prevents
-    # ever silently building the wrong arch on a different host later.
+    # so this is a no-op here. The pin exists so a build run from a different
+    # host (e.g. an arm64 Mac) can never silently produce the wrong arch for
+    # this server — duckdb's native binding is arch-specific and there is no
+    # in-image toolchain to recompile it.
+    #
+    # Corrected 2026-08-18: this comment previously claimed duckdb has no
+    # arm64 Linux prebuilt. That is no longer true — npm.duckdb.org serves
+    # duckdb-v1.4.4-node-v127-linux-arm64 (and -v115-) with HTTP 200. The pin
+    # is still correct, but for arch-parity reasons, not availability.
     platform: linux/amd64
     container_name: optra-prod-api
     restart: unless-stopped
