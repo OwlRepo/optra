@@ -76,6 +76,37 @@ describe('ProcurementDocumentsService', () => {
     expect(row.sourceKind).toBe('csv')
   })
 
+  it('records sourceKind xlsx for an .xlsx upload instead of collapsing it into csv', async () => {
+    const workspace = await seedWorkspace(`${prefix}po-xlsx-upload@example.com`, 'PO XLSX Upload')
+    const file = {
+      originalname: 'po.xlsx',
+      mimetype: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      buffer: Buffer.from('xlsx bytes'),
+    } as Express.Multer.File
+
+    const result = await service.upload(workspace.id, 'purchase_order', file)
+
+    const [row] = await db.select().from(purchaseOrders).where(eq(purchaseOrders.id, result.id))
+    expect(row.sourceKind).toBe('xlsx')
+  })
+
+  it('deletes the stored object when the document row cannot be created', async () => {
+    const workspace = await seedWorkspace(`${prefix}po-orphan@example.com`, 'PO Orphan')
+    // `name` is varchar(500): a longer filename makes the header insert fail after
+    // the object has already been written to storage.
+    const file = {
+      originalname: `${'x'.repeat(600)}.csv`,
+      mimetype: 'text/csv',
+      buffer: Buffer.from('sku,qty\nA,1'),
+    } as Express.Multer.File
+
+    await expect(service.upload(workspace.id, 'purchase_order', file)).rejects.toThrow()
+
+    const savedKey = storage.save.mock.calls[0][0] as string
+    expect(storage.delete).toHaveBeenCalledWith(savedKey)
+    expect(parse.queueDoc).not.toHaveBeenCalled()
+  })
+
   it('derives sourceKind pdf for a .pdf upload', async () => {
     const workspace = await seedWorkspace(`${prefix}po-pdf-upload@example.com`, 'PO PDF Upload')
     const file = {

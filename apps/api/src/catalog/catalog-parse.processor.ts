@@ -12,6 +12,7 @@ import { renderPdfToImages } from '@repo/ai'
 import { StorageService } from '../storage/storage.service'
 import { CatalogExtractionService } from './catalog-extraction.service'
 import { CatalogImageService } from './catalog-image.service'
+import { CATALOG_RECONCILE_JOB_NAME, CatalogParseService } from './catalog-parse.service'
 
 interface MappedCatalogRow {
   sku: string | null
@@ -62,8 +63,23 @@ function mapRowToCatalogRow(row: Record<string, string>): MappedCatalogRow {
   }
 }
 
+// A problem with the catalog file itself: retrying cannot fix it, so the
+// worker fails the catalog at once instead of handing it back to Bull.
+export class CatalogParseInputError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'CatalogParseInputError'
+  }
+}
+
+// Converted in memory: the stored original stays what the vendor uploaded.
 function convertXlsxToCsv(buffer: Buffer): string {
-  const workbook = XLSX.read(buffer, { type: 'buffer' })
+  let workbook: XLSX.WorkBook
+  try {
+    workbook = XLSX.read(buffer, { type: 'buffer' })
+  } catch {
+    throw new CatalogParseInputError('Could not read this spreadsheet — it may be corrupt or password-protected')
+  }
   const firstSheetName = workbook.SheetNames[0]
   const sheet = workbook.Sheets[firstSheetName]
   const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '' })
@@ -78,7 +94,13 @@ export class CatalogParseProcessor {
     private readonly storage: StorageService,
     private readonly extraction: CatalogExtractionService,
     private readonly images: CatalogImageService,
+    private readonly parseService: CatalogParseService,
   ) {}
+
+  @Process(CATALOG_RECONCILE_JOB_NAME)
+  async handleReconcile(): Promise<void> {
+    await this.parseService.reconcile()
+  }
 
   @Process()
   async handleParse(job: Job<{ id: string }>): Promise<void> {
@@ -113,9 +135,24 @@ export class CatalogParseProcessor {
       await this.setDone(id, rowCount)
       this.logger.log(`Catalog parse completed id=${id} jobId=${String(job.id)}`)
     } catch (error) {
+      // File problems fail now (no retry). Anything else is handed back to
+      // Bull to retry with backoff; only the final attempt records `failed`.
       const message = error instanceof Error ? error.message : String(error)
-      this.logger.error(`Catalog parse failed for ${id}`, error instanceof Error ? error.stack : message)
-      await this.markFailed(id, message)
+      const attempt = (job.attemptsMade ?? 0) + 1
+      const attempts = job.opts?.attempts ?? 1
+      const permanent = error instanceof CatalogParseInputError
+      this.logger.error(
+        `Catalog parse failed for ${id} attempt=${attempt}/${attempts} permanent=${permanent}`,
+        error instanceof Error ? error.stack : message,
+      )
+      if (permanent) {
+        await this.markFailed(id, message)
+        return
+      }
+      if (attempt >= attempts) {
+        await this.markFailed(id, message)
+      }
+      throw error
     } finally {
       if (tempPath) {
         await unlink(tempPath).catch(() => undefined)
@@ -128,7 +165,12 @@ export class CatalogParseProcessor {
   // photoStorageKey — pages are stored once, not once per item.
   private async parsePdf(workspaceId: string, catalogId: string, tempPath: string): Promise<number> {
     const buffer = await readFile(tempPath)
-    const rendered = await renderPdfToImages(buffer)
+    let rendered: Awaited<ReturnType<typeof renderPdfToImages>>
+    try {
+      rendered = await renderPdfToImages(buffer)
+    } catch {
+      throw new CatalogParseInputError('Could not read this PDF — it may be corrupt or empty')
+    }
 
     if (rendered.truncated) {
       this.logger.warn(
@@ -178,7 +220,6 @@ export class CatalogParseProcessor {
 
     if (isXlsx) {
       csvContent = convertXlsxToCsv(await readFile(tempPath))
-      await this.storage.save(catalog.storageKey as string, Buffer.from(csvContent, 'utf-8'), 'text/csv')
     } else {
       csvContent = await readFile(tempPath, 'utf-8')
     }
@@ -209,8 +250,8 @@ export class CatalogParseProcessor {
     return rows.length
   }
 
-  // Delete-then-insert makes a retried job (Bull attempts:3) idempotent —
-  // same idiom as ProcurementParseProcessor#replaceLineItems.
+  // Delete-then-insert makes a retried job (Bull attempts:3, which now really
+  // retries transient failures) idempotent.
   private async replaceItems(catalogId: string, workspaceId: string, rows: ItemToInsert[]) {
     await db.delete(catalogItems).where(eq(catalogItems.catalogId, catalogId))
 

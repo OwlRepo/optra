@@ -37,6 +37,41 @@ function findValue(row: Record<string, string>, aliases: string[]): string | nul
   return null
 }
 
+// po_line_items.sku / invoice_line_items.sku are varchar(200).
+export const MAX_SKU_LENGTH = 200
+
+// Plain decimal, optional sign/exponent — the forms Postgres `numeric` reads
+// as the number a person means. Thousands separators, currency symbols, words
+// and hex are rejected rather than guessed at.
+const DECIMAL_PATTERN = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/
+
+function numericOrNull(value: string | null): string | null {
+  return value !== null && DECIMAL_PATTERN.test(value) ? value : null
+}
+
+// One bad cell must not fail a whole document: a value the column cannot hold
+// becomes null (the caller keeps the original in rawRow, and comparison flags
+// the unknown value) instead of aborting the bulk insert for every row.
+export function validateLineItem(item: MappedLineItem): MappedLineItem {
+  return {
+    sku: item.sku !== null && item.sku.length <= MAX_SKU_LENGTH ? item.sku : null,
+    description: item.description,
+    quantity: numericOrNull(item.quantity),
+    unitPrice: numericOrNull(item.unitPrice),
+    lineTotal: numericOrNull(item.lineTotal),
+  }
+}
+
+export function isEmptyLineItem(item: MappedLineItem): boolean {
+  return (
+    item.sku === null &&
+    item.description === null &&
+    item.quantity === null &&
+    item.unitPrice === null &&
+    item.lineTotal === null
+  )
+}
+
 export function mapRowToLineItem(row: Record<string, string>): MappedLineItem {
   return {
     sku: findValue(row, SKU_ALIASES),

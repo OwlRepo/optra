@@ -55,7 +55,7 @@ Every suite in the repo, and how to run them (there is no `turbo test` task and 
 
 | Command | Runner | Count |
 |---|---|---|
-| `cd apps/api && bun run test` | Jest, 59 suites | 411 (399 on 2026-08-18; +12 from S0a on 2026-09-20) |
+| `cd apps/api && bun run test` | Jest, 59 suites | 438 (399 on 2026-08-18; +12 S0a, +27 S0b on 2026-09-20) |
 | `cd apps/api && bun run test:e2e` | Jest, 14 suites | 40 |
 | `cd apps/web && bun run test` | Vitest 4.1.9 | 511 |
 | `cd packages/ai && bun run test` | Vitest 3.2.6 | 173 |
@@ -63,7 +63,7 @@ Every suite in the repo, and how to run them (there is no `turbo test` task and 
 | `cd packages/ui && bun run test` | Vitest 4.1.9 | 91 |
 | `bun run db:seed:test` (root) | Vitest, `scripts/seed` | 47 |
 
-**1273 tests, zero skipped**, all green on Node 22 as of 2026-08-18. 2026-09-20 (S0a): `apps/api` unit 59/59 suites, 411 tests; e2e 14/14 suites, 40 tests (procurement e2e gained cross-workspace-dismiss and non-UUID assertions) — both green on Node 22 with only `postgres`/`redis`/`seaweedfs` containers up. `packages/types` has no tests; `scripts/eval` holds two standalone Python scripts outside the bun surface.
+**1273 tests, zero skipped**, all green on Node 22 as of 2026-08-18. 2026-09-20 (S0a): `apps/api` unit 59/59 suites, 411 tests; e2e 14/14 suites, 40 tests (procurement e2e gained cross-workspace-dismiss and non-UUID assertions) — both green on Node 22 with only `postgres`/`redis`/`seaweedfs` containers up. 2026-09-20 (S0b): unit 59/59 suites, 438 tests; e2e 14/14, 40. `packages/types` has no tests; `scripts/eval` holds two standalone Python scripts outside the bun surface.
 
 - **No suite is env-skipped any more.** `apps/api/src/storage/storage.service.spec.ts` gates on `S3_ENDPOINT` (it is a real S3 round-trip against SeaweedFS) and had therefore **never executed locally** — the var lives in the root `.env`, but the unit Jest config has no `setupFiles`, so nothing loaded dotenv before collection. The spec now loads the root `.env` itself. Doing it there rather than in the shared Jest config is deliberate: a global load would hand all 58 other unit suites live credentials, notably `EMAIL_OTP_ENABLED`, which the e2e setup deliberately forces off to avoid live Resend calls. The gate is kept so the suite still skips cleanly where no object store exists.
 - **`packages/ai` concurrency no longer depends on the Node version.** `crawl.ts` used `new Function('specifier','return import(specifier)')` to load ESM-only `p-limit@7` from a CommonJS package. Plain Node runs that fine, but Vitest's module runner supplies no host dynamic-import callback, so 10 `crawlSite` tests failed on Node 22/24 and passed only on Node 25. `p-limit` was removed and replaced by `createLimit` (`packages/ai/src/web/limit.ts`); the suite now passes 173/173 on Node **22, 24 and 25**. The packaging guard in `crawl.spec.ts` was inverted to assert the hack cannot return.

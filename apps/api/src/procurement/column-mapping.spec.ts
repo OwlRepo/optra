@@ -1,4 +1,37 @@
-import { mapRowToLineItem } from './column-mapping'
+import { isEmptyLineItem, mapRowToLineItem, validateLineItem } from './column-mapping'
+
+describe('validateLineItem', () => {
+  const base = { sku: 'A1', description: 'Widget', quantity: '10', unitPrice: '5.50', lineTotal: '55' }
+
+  it('keeps plain decimal numbers, including signs and exponents', () => {
+    expect(validateLineItem({ ...base, quantity: '-3', unitPrice: '.5', lineTotal: '1e3' })).toEqual({
+      ...base,
+      quantity: '-3',
+      unitPrice: '.5',
+      lineTotal: '1e3',
+    })
+  })
+
+  it('nulls numeric cells Postgres numeric would reject or misread', () => {
+    const result = validateLineItem({ ...base, quantity: 'ten', unitPrice: '1,200', lineTotal: '0x1A' })
+    expect(result.quantity).toBeNull()
+    expect(result.unitPrice).toBeNull()
+    expect(result.lineTotal).toBeNull()
+  })
+
+  it('nulls a SKU longer than the 200-character column', () => {
+    expect(validateLineItem({ ...base, sku: 'S'.repeat(201) }).sku).toBeNull()
+    expect(validateLineItem({ ...base, sku: 'S'.repeat(200) }).sku).toBe('S'.repeat(200))
+  })
+})
+
+describe('isEmptyLineItem', () => {
+  it('is true only when every mapped field is null', () => {
+    const empty = { sku: null, description: null, quantity: null, unitPrice: null, lineTotal: null }
+    expect(isEmptyLineItem(empty)).toBe(true)
+    expect(isEmptyLineItem({ ...empty, quantity: '1' })).toBe(false)
+  })
+})
 
 describe('mapRowToLineItem', () => {
   it('maps common column aliases case-insensitively', () => {

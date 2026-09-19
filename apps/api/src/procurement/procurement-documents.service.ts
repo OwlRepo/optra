@@ -23,12 +23,27 @@ export class ProcurementDocumentsService {
     const storageKey = `${workspaceId}/procurement/${kind}/${randomUUID()}-${file.originalname}`
     await this.storage.save(storageKey, file.buffer, file.mimetype)
 
-    const sourceKind = extname(file.originalname).toLowerCase() === '.pdf' ? 'pdf' : 'csv'
+    const extension = extname(file.originalname).toLowerCase()
+    const sourceKind = extension === '.pdf' ? 'pdf' : extension === '.xlsx' ? 'xlsx' : 'csv'
     const values = { workspaceId, name: file.originalname, storageKey, status: 'pending' as const, sourceKind }
-    const [doc] =
-      kind === 'purchase_order'
-        ? await db.insert(purchaseOrders).values(values).returning()
-        : await db.insert(invoices).values(values).returning()
+
+    // The object is written first; if the row cannot be created the object
+    // would be unreachable forever, so remove it before surfacing the error.
+    let inserted: { id: string; name: string; status: 'pending' | 'processing' | 'done' | 'failed' }[]
+    try {
+      inserted =
+        kind === 'purchase_order'
+          ? await db.insert(purchaseOrders).values(values).returning()
+          : await db.insert(invoices).values(values).returning()
+    } catch (error) {
+      await this.storage.delete(storageKey).catch((cleanupError: unknown) => {
+        this.logger.warn(
+          `Procurement upload cleanup failed kind=${kind} key=${storageKey}: ${cleanupError instanceof Error ? cleanupError.message : String(cleanupError)}`,
+        )
+      })
+      throw error
+    }
+    const [doc] = inserted
 
     try {
       await this.parse.queueDoc(kind, doc.id)

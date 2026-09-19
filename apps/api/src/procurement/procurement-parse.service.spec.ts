@@ -86,7 +86,7 @@ describe('ProcurementParseService', () => {
     expect(row.lastError).toContain('queue down')
   })
 
-  it('reconcile marks a stale pending purchase order failed when its Bull job is gone', async () => {
+  it('reconcile re-enqueues a stale pending purchase order under a fresh jobId when its Bull job is gone', async () => {
     const workspace = await seedWorkspace(`${prefix}po-stale@example.com`, 'PO Stale')
     const staleEnqueuedAt = new Date(Date.now() - 3 * 60_000)
     const [po] = await db
@@ -102,9 +102,94 @@ describe('ProcurementParseService', () => {
 
     await service.reconcile()
 
+    // A fresh id matters: Bull's addJob silently no-ops on an id it still holds.
+    const requeuedJobId = `procurement-parse:purchase_order:${po.id}:r1`
+    expect(queue.add).toHaveBeenCalledWith(
+      { kind: 'purchase_order', id: po.id },
+      expect.objectContaining({ jobId: requeuedJobId, attempts: 3 }),
+    )
+    const [row] = await db.select().from(purchaseOrders).where(eq(purchaseOrders.id, po.id))
+    expect(row.status).toBe('pending')
+    expect(row.queueJobId).toBe(requeuedJobId)
+  })
+
+  it('reconcile fails a stale row once it has already been re-enqueued twice', async () => {
+    const workspace = await seedWorkspace(`${prefix}po-stale-cap@example.com`, 'PO Stale Cap')
+    const [po] = await db
+      .insert(purchaseOrders)
+      .values({
+        workspaceId: workspace.id,
+        name: 'po.csv',
+        status: 'pending',
+        queueJobId: 'procurement-parse:purchase_order:earlier:r2',
+        enqueuedAt: new Date(Date.now() - 3 * 60_000),
+      })
+      .returning()
+
+    await service.reconcile()
+
     const [row] = await db.select().from(purchaseOrders).where(eq(purchaseOrders.id, po.id))
     expect(row.status).toBe('failed')
-    expect(row.lastError).toContain('reconciliation')
+    expect(row.lastError).toContain('did not finish')
+    expect(queue.add).not.toHaveBeenCalledWith({ kind: 'purchase_order', id: po.id }, expect.anything())
+  })
+
+  it('reconcile fails a stale row whose Bull job already ended in the failed state', async () => {
+    const workspace = await seedWorkspace(`${prefix}po-stale-failed-job@example.com`, 'PO Stale Failed Job')
+    const [po] = await db
+      .insert(purchaseOrders)
+      .values({
+        workspaceId: workspace.id,
+        name: 'po.csv',
+        status: 'processing',
+        queueJobId: 'procurement-parse:purchase_order:failed-job',
+        processingStartedAt: new Date(Date.now() - 31 * 60_000),
+      })
+      .returning()
+    queue.getJob.mockImplementation(async (jobId: string) =>
+      jobId === 'procurement-parse:purchase_order:failed-job' ? { getState: async () => 'failed' } : null,
+    )
+
+    await service.reconcile()
+
+    const [row] = await db.select().from(purchaseOrders).where(eq(purchaseOrders.id, po.id))
+    expect(row.status).toBe('failed')
+    expect(row.lastError).toContain('failed after retries')
+  })
+
+  it('reconcile leaves a stale row alone while its Bull job is still waiting or running', async () => {
+    const workspace = await seedWorkspace(`${prefix}po-stale-active@example.com`, 'PO Stale Active')
+    const [po] = await db
+      .insert(purchaseOrders)
+      .values({
+        workspaceId: workspace.id,
+        name: 'po.csv',
+        status: 'pending',
+        queueJobId: 'procurement-parse:purchase_order:still-waiting',
+        enqueuedAt: new Date(Date.now() - 3 * 60_000),
+      })
+      .returning()
+    queue.getJob.mockImplementation(async (jobId: string) =>
+      jobId === 'procurement-parse:purchase_order:still-waiting' ? { getState: async () => 'waiting' } : null,
+    )
+
+    await service.reconcile()
+
+    const [row] = await db.select().from(purchaseOrders).where(eq(purchaseOrders.id, po.id))
+    expect(row.status).toBe('pending')
+    expect(row.queueJobId).toBe('procurement-parse:purchase_order:still-waiting')
+  })
+
+  it('registers a repeatable reconcile job on startup so stuck documents are caught without a restart', async () => {
+    jest.spyOn(service, 'reconcile').mockResolvedValue(undefined)
+
+    await service.onModuleInit()
+
+    expect(queue.add).toHaveBeenCalledWith(
+      'reconcile',
+      {},
+      expect.objectContaining({ jobId: 'procurement-parse-reconcile', repeat: { every: 5 * 60_000 } }),
+    )
   })
 
   it('reconcile leaves a fresh pending row untouched', async () => {

@@ -17,7 +17,14 @@ import {
 } from '@repo/db'
 import { ProcurementParseProcessor } from './procurement-parse.processor'
 import { ProcurementExtractionService } from './procurement-extraction.service'
+import { ProcurementParseService } from './procurement-parse.service'
 import { StorageService } from '../storage/storage.service'
+
+// Bull job shape the processor reads: attemptsMade counts prior failed attempts,
+// opts.attempts is the configured total. Missing opts means a single attempt.
+function job(id: string, data: { kind: 'purchase_order' | 'invoice'; id: string }, attemptsMade = 0, attempts = 3) {
+  return { id, data, attemptsMade, opts: { attempts } } as any
+}
 
 const mockEmbedQuery = jest.fn()
 
@@ -33,6 +40,12 @@ jest.mock('@repo/ai', () => ({
     constructor(message = 'No line items were found in this document') {
       super(message)
       this.name = 'ProcurementExtractionEmptyError'
+    }
+  },
+  ProcurementExtractionRefusalError: class ProcurementExtractionRefusalError extends Error {
+    constructor(message = 'Model refused procurement extraction request') {
+      super(message)
+      this.name = 'ProcurementExtractionRefusalError'
     }
   },
 }))
@@ -61,21 +74,28 @@ describe('ProcurementParseProcessor', () => {
   let dir: string
   let storage: { getToTempFile: jest.Mock; save: jest.Mock }
   let extraction: { extract: jest.Mock }
+  let parseService: { reconcile: jest.Mock }
   let processor: ProcurementParseProcessor
+  const originalPdfFlag = process.env.PROCUREMENT_PDF_EXTRACTION_ENABLED
 
   beforeEach(() => {
     jest.clearAllMocks()
+    process.env.PROCUREMENT_PDF_EXTRACTION_ENABLED = 'true'
     dir = mkdtempSync(join(tmpdir(), 'procurement-parse-proc-spec-'))
     storage = { getToTempFile: jest.fn(), save: jest.fn().mockResolvedValue(undefined) }
     extraction = { extract: jest.fn() }
+    parseService = { reconcile: jest.fn().mockResolvedValue(undefined) }
     processor = new ProcurementParseProcessor(
       storage as unknown as StorageService,
       extraction as unknown as ProcurementExtractionService,
+      parseService as unknown as ProcurementParseService,
     )
   })
 
   afterEach(() => {
     rmSync(dir, { recursive: true, force: true })
+    if (originalPdfFlag === undefined) delete process.env.PROCUREMENT_PDF_EXTRACTION_ENABLED
+    else process.env.PROCUREMENT_PDF_EXTRACTION_ENABLED = originalPdfFlag
   })
 
   afterAll(async () => {
@@ -156,7 +176,7 @@ describe('ProcurementParseProcessor', () => {
     expect(items[0].sku).toBe('A1')
   })
 
-  it('converts an XLSX PO upload to CSV, parses it, and overwrites storage with the converted CSV', async () => {
+  it('parses an XLSX PO in memory and never overwrites the stored original', async () => {
     const workspace = await seedWorkspace(`${prefix}po-xlsx@example.com`, prefix)
     const worksheet = XLSX.utils.json_to_sheet([{ sku: 'A1', qty: 5 }])
     const workbook = XLSX.utils.book_new()
@@ -175,11 +195,12 @@ describe('ProcurementParseProcessor', () => {
 
     const [updated] = await db.select().from(purchaseOrders).where(eq(purchaseOrders.id, po.id))
     expect(updated.status).toBe('done')
-    expect(storage.save).toHaveBeenCalledWith(po.storageKey, expect.any(Buffer), 'text/csv')
+    expect(storage.save).not.toHaveBeenCalled()
 
     const items = await db.select().from(poLineItems).where(eq(poLineItems.purchaseOrderId, po.id))
     expect(items).toHaveLength(1)
     expect(items[0].sku).toBe('A1')
+    expect(items[0].sourceKind).toBe('xlsx')
   })
 
   it('fails cleanly when the purchase order row has no storageKey', async () => {
@@ -278,5 +299,152 @@ describe('ProcurementParseProcessor', () => {
 
     const items = await db.select().from(poLineItems).where(eq(poLineItems.purchaseOrderId, po.id))
     expect(items).toHaveLength(0)
+  })
+
+  it('rethrows a transient failure before the last attempt and leaves the row processing', async () => {
+    const workspace = await seedWorkspace(`${prefix}po-transient@example.com`, prefix)
+    const [po] = await db
+      .insert(purchaseOrders)
+      .values({ workspaceId: workspace.id, name: 'po.csv', storageKey: `k/${randomUUID()}`, status: 'pending' })
+      .returning()
+    storage.getToTempFile.mockRejectedValue(new Error('socket hang up'))
+
+    await expect(processor.handleParse(job('job-t1', { kind: 'purchase_order', id: po.id }, 0, 3))).rejects.toThrow(
+      'socket hang up',
+    )
+
+    const [row] = await db.select().from(purchaseOrders).where(eq(purchaseOrders.id, po.id))
+    expect(row.status).toBe('processing')
+    expect(row.lastError).toBeNull()
+  })
+
+  it('marks the row failed with a client-safe reference on the last transient attempt, and still rethrows', async () => {
+    const workspace = await seedWorkspace(`${prefix}po-transient-last@example.com`, prefix)
+    const [po] = await db
+      .insert(purchaseOrders)
+      .values({ workspaceId: workspace.id, name: 'po.csv', storageKey: `k/${randomUUID()}`, status: 'pending' })
+      .returning()
+    storage.getToTempFile.mockRejectedValue(new Error('connect ECONNREFUSED 10.0.0.9:8333 SECRET-DETAIL'))
+
+    await expect(processor.handleParse(job('job-t3', { kind: 'purchase_order', id: po.id }, 2, 3))).rejects.toThrow()
+
+    const [row] = await db.select().from(purchaseOrders).where(eq(purchaseOrders.id, po.id))
+    expect(row.status).toBe('failed')
+    expect(row.lastError).toMatch(/^Parsing failed\. Reference: [0-9a-f]{8}$/)
+  })
+
+  it('fails a document problem immediately without asking Bull to retry', async () => {
+    const { ProcurementExtractionRefusalError } = jest.requireMock('@repo/ai') as {
+      ProcurementExtractionRefusalError: new (message?: string) => Error
+    }
+    const workspace = await seedWorkspace(`${prefix}po-permanent@example.com`, prefix)
+    const pdfPath = join(dir, `${randomUUID()}.pdf`)
+    writeFileSync(pdfPath, 'fake pdf bytes')
+    storage.getToTempFile.mockResolvedValue(pdfPath)
+    extraction.extract.mockRejectedValue(new ProcurementExtractionRefusalError())
+    const [po] = await db
+      .insert(purchaseOrders)
+      .values({ workspaceId: workspace.id, name: 'po.pdf', storageKey: `k/${randomUUID()}`, status: 'pending' })
+      .returning()
+
+    await expect(
+      processor.handleParse(job('job-p1', { kind: 'purchase_order', id: po.id }, 0, 3)),
+    ).resolves.toBeUndefined()
+
+    const [row] = await db.select().from(purchaseOrders).where(eq(purchaseOrders.id, po.id))
+    expect(row.status).toBe('failed')
+    expect(row.lastError).toBe('Model refused procurement extraction request')
+  })
+
+  it('stores an unparseable number as null, keeps the original in rawRow, and still finishes the document', async () => {
+    const workspace = await seedWorkspace(`${prefix}po-bad-number@example.com`, prefix)
+    const po = await seedPo(['sku,qty,unit price', 'A1,ten,5.00', 'B2,3,"1,200"'].join('\n'), workspace.id)
+
+    await processor.handleParse(job('job-n1', { kind: 'purchase_order', id: po.id }))
+
+    const [updated] = await db.select().from(purchaseOrders).where(eq(purchaseOrders.id, po.id))
+    expect(updated.status).toBe('done')
+    const items = await db
+      .select()
+      .from(poLineItems)
+      .where(eq(poLineItems.purchaseOrderId, po.id))
+      .orderBy(poLineItems.lineNumber)
+    expect(items).toHaveLength(2)
+    expect(items[0].quantity).toBeNull()
+    expect(items[0].rawRow).toMatchObject({ qty: 'ten' })
+    expect(items[1].unitPrice).toBeNull()
+    expect(items[1].rawRow).toMatchObject({ 'unit price': '1,200' })
+  })
+
+  it('stores an over-long SKU as null and keeps the original in rawRow', async () => {
+    const workspace = await seedWorkspace(`${prefix}po-long-sku@example.com`, prefix)
+    const longSku = 'S'.repeat(250)
+    const po = await seedPo(['sku,qty', `${longSku},1`].join('\n'), workspace.id)
+
+    await processor.handleParse(job('job-l1', { kind: 'purchase_order', id: po.id }))
+
+    const items = await db.select().from(poLineItems).where(eq(poLineItems.purchaseOrderId, po.id))
+    expect(items).toHaveLength(1)
+    expect(items[0].sku).toBeNull()
+    expect(items[0].rawRow).toMatchObject({ sku: longSku })
+  })
+
+  it('parses a 7,000-row CSV (inserts are chunked under the bind-parameter limit)', async () => {
+    const workspace = await seedWorkspace(`${prefix}po-big@example.com`, prefix)
+    const lines = ['sku,description,qty,unit price,total']
+    for (let i = 0; i < 7000; i++) lines.push(`BIG-${i},Item ${i},1,2.00,2.00`)
+    const po = await seedPo(lines.join('\n'), workspace.id)
+
+    await processor.handleParse(job('job-big', { kind: 'purchase_order', id: po.id }))
+
+    const [updated] = await db.select().from(purchaseOrders).where(eq(purchaseOrders.id, po.id))
+    expect(updated.status).toBe('done')
+    expect(updated.rowCount).toBe(7000)
+  })
+
+  it('skips rows whose mapped fields are all empty', async () => {
+    const workspace = await seedWorkspace(`${prefix}po-empty-row@example.com`, prefix)
+    const po = await seedPo(['sku,qty,unit price', 'A1,1,1.00', ',,', 'B2,2,2.00'].join('\n'), workspace.id)
+
+    await processor.handleParse(job('job-e1', { kind: 'purchase_order', id: po.id }))
+
+    const items = await db.select().from(poLineItems).where(eq(poLineItems.purchaseOrderId, po.id))
+    expect(items.map((item) => item.sku).sort()).toEqual(['A1', 'B2'])
+  })
+
+  it('fails a CSV with broken quoting as malformed instead of guessing at its rows', async () => {
+    const workspace = await seedWorkspace(`${prefix}po-malformed@example.com`, prefix)
+    const po = await seedPo(['sku,qty', '"A1,1', 'B2,2'].join('\n'), workspace.id)
+
+    await expect(processor.handleParse(job('job-m1', { kind: 'purchase_order', id: po.id }))).resolves.toBeUndefined()
+
+    const [updated] = await db.select().from(purchaseOrders).where(eq(purchaseOrders.id, po.id))
+    expect(updated.status).toBe('failed')
+    expect(updated.lastError).toContain('malformed')
+  })
+
+  it('does not extract a queued PDF once PDF extraction has been turned off', async () => {
+    process.env.PROCUREMENT_PDF_EXTRACTION_ENABLED = 'false'
+    const workspace = await seedWorkspace(`${prefix}po-pdf-off@example.com`, prefix)
+    const pdfPath = join(dir, `${randomUUID()}.pdf`)
+    writeFileSync(pdfPath, 'fake pdf bytes')
+    storage.getToTempFile.mockResolvedValue(pdfPath)
+    const [po] = await db
+      .insert(purchaseOrders)
+      .values({ workspaceId: workspace.id, name: 'po.pdf', storageKey: `k/${randomUUID()}`, status: 'pending' })
+      .returning()
+
+    await processor.handleParse(job('job-off', { kind: 'purchase_order', id: po.id }))
+
+    const [updated] = await db.select().from(purchaseOrders).where(eq(purchaseOrders.id, po.id))
+    expect(updated.status).toBe('failed')
+    expect(updated.lastError).toContain('not enabled')
+    expect(extraction.extract).not.toHaveBeenCalled()
+  })
+
+  it('runs queue reconciliation when the repeatable reconcile job fires', async () => {
+    await processor.handleReconcile()
+
+    expect(parseService.reconcile).toHaveBeenCalledTimes(1)
   })
 })

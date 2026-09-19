@@ -8,6 +8,7 @@ import { catalogItems, catalogs, db, pool, users, vendors, workspaceMembers, wor
 import { CatalogParseProcessor } from './catalog-parse.processor'
 import { CatalogExtractionService } from './catalog-extraction.service'
 import { CatalogImageService } from './catalog-image.service'
+import { CatalogParseService } from './catalog-parse.service'
 import { StorageService } from '../storage/storage.service'
 
 const mockRenderPdfToImages = jest.fn()
@@ -40,6 +41,7 @@ describe('CatalogParseProcessor', () => {
   let storage: { getToTempFile: jest.Mock; save: jest.Mock }
   let extraction: { extractFromImage: jest.Mock }
   let images: { fetchAndStore: jest.Mock }
+  let parseService: { reconcile: jest.Mock }
   let processor: CatalogParseProcessor
 
   beforeEach(() => {
@@ -48,10 +50,12 @@ describe('CatalogParseProcessor', () => {
     storage = { getToTempFile: jest.fn(), save: jest.fn().mockResolvedValue(undefined) }
     extraction = { extractFromImage: jest.fn() }
     images = { fetchAndStore: jest.fn() }
+    parseService = { reconcile: jest.fn().mockResolvedValue(undefined) }
     processor = new CatalogParseProcessor(
       storage as unknown as StorageService,
       extraction as unknown as CatalogExtractionService,
       images as unknown as CatalogImageService,
+      parseService as unknown as CatalogParseService,
     )
   })
 
@@ -144,7 +148,7 @@ describe('CatalogParseProcessor', () => {
     expect(extraction.extractFromImage).not.toHaveBeenCalled()
   })
 
-  it('converts an XLSX catalog to CSV, parses it, and overwrites storage with the converted CSV', async () => {
+  it('parses an XLSX catalog in memory and never overwrites the stored original', async () => {
     const { workspace, vendor } = await seedWorkspaceAndVendor(`${prefix}xlsx@example.com`, 'Catalog XLSX')
     const worksheet = XLSX.utils.json_to_sheet([{ sku: 'A1', description: 'Widget' }])
     const workbook = XLSX.utils.book_new()
@@ -163,7 +167,7 @@ describe('CatalogParseProcessor', () => {
 
     const [updated] = await db.select().from(catalogs).where(eq(catalogs.id, catalog.id))
     expect(updated.status).toBe('done')
-    expect(storage.save).toHaveBeenCalledWith(catalog.storageKey, expect.any(Buffer), 'text/csv')
+    expect(storage.save).not.toHaveBeenCalled()
 
     const items = await db.select().from(catalogItems).where(eq(catalogItems.catalogId, catalog.id))
     expect(items).toHaveLength(1)
@@ -197,5 +201,51 @@ describe('CatalogParseProcessor', () => {
 
     const items = await db.select().from(catalogItems).where(eq(catalogItems.catalogId, catalog.id))
     expect(items).toHaveLength(1)
+  })
+
+  it('rethrows a transient failure before the last attempt so Bull retries it', async () => {
+    const { workspace, vendor } = await seedWorkspaceAndVendor(`${prefix}transient@example.com`, 'Catalog Transient')
+    const catalog = await seedCatalog(workspace.id, vendor.id, 'catalog.csv', 'sku,description\nA1,Widget')
+    storage.getToTempFile.mockRejectedValue(new Error('socket hang up'))
+
+    await expect(
+      processor.handleParse({ id: 'job-t1', data: { id: catalog.id }, attemptsMade: 0, opts: { attempts: 3 } } as any),
+    ).rejects.toThrow('socket hang up')
+
+    const [row] = await db.select().from(catalogs).where(eq(catalogs.id, catalog.id))
+    expect(row.status).toBe('processing')
+  })
+
+  it('marks the catalog failed on the last transient attempt and still rethrows', async () => {
+    const { workspace, vendor } = await seedWorkspaceAndVendor(`${prefix}transient-last@example.com`, 'Catalog Last')
+    const catalog = await seedCatalog(workspace.id, vendor.id, 'catalog.csv', 'sku,description\nA1,Widget')
+    storage.getToTempFile.mockRejectedValue(new Error('socket hang up'))
+
+    await expect(
+      processor.handleParse({ id: 'job-t3', data: { id: catalog.id }, attemptsMade: 2, opts: { attempts: 3 } } as any),
+    ).rejects.toThrow('socket hang up')
+
+    const [row] = await db.select().from(catalogs).where(eq(catalogs.id, catalog.id))
+    expect(row.status).toBe('failed')
+  })
+
+  it('fails an unreadable PDF catalog immediately without asking Bull to retry', async () => {
+    const { workspace, vendor } = await seedWorkspaceAndVendor(`${prefix}bad-pdf@example.com`, 'Catalog Bad PDF')
+    const catalog = await seedCatalog(workspace.id, vendor.id, 'catalog.pdf', 'not really a pdf')
+    mockRenderPdfToImages.mockRejectedValue(new Error('Invalid PDF structure'))
+
+    await expect(
+      processor.handleParse({ id: 'job-p1', data: { id: catalog.id }, attemptsMade: 0, opts: { attempts: 3 } } as any),
+    ).resolves.toBeUndefined()
+
+    const [row] = await db.select().from(catalogs).where(eq(catalogs.id, catalog.id))
+    expect(row.status).toBe('failed')
+    expect(row.lastError).toContain('Could not read this PDF')
+  })
+
+  it('runs queue reconciliation when the repeatable reconcile job fires', async () => {
+    await processor.handleReconcile()
+
+    expect(parseService.reconcile).toHaveBeenCalledTimes(1)
   })
 })

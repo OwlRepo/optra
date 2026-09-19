@@ -77,7 +77,7 @@ describe('CatalogParseService', () => {
     expect(row.lastError).toContain('queue down')
   })
 
-  it('reconcile marks a stale pending catalog failed when its Bull job is gone', async () => {
+  it('reconcile re-enqueues a stale pending catalog under a fresh jobId when its Bull job is gone', async () => {
     const { workspace, vendor } = await seedWorkspaceAndVendor(`${prefix}stale@example.com`, 'Catalog Stale')
     const staleEnqueuedAt = new Date(Date.now() - 3 * 60_000)
     const [catalog] = await db
@@ -94,9 +94,68 @@ describe('CatalogParseService', () => {
 
     await service.reconcile()
 
+    const requeuedJobId = `catalog-parse:${catalog.id}:r1`
+    expect(queue.add).toHaveBeenCalledWith({ id: catalog.id }, expect.objectContaining({ jobId: requeuedJobId }))
+    const [row] = await db.select().from(catalogs).where(eq(catalogs.id, catalog.id))
+    expect(row.status).toBe('pending')
+    expect(row.queueJobId).toBe(requeuedJobId)
+  })
+
+  it('reconcile fails a stale catalog once it has already been re-enqueued twice', async () => {
+    const { workspace, vendor } = await seedWorkspaceAndVendor(`${prefix}stale-cap@example.com`, 'Catalog Stale Cap')
+    const [catalog] = await db
+      .insert(catalogs)
+      .values({
+        workspaceId: workspace.id,
+        vendorId: vendor.id,
+        name: 'catalog.pdf',
+        status: 'pending',
+        queueJobId: 'catalog-parse:earlier:r2',
+        enqueuedAt: new Date(Date.now() - 3 * 60_000),
+      })
+      .returning()
+
+    await service.reconcile()
+
     const [row] = await db.select().from(catalogs).where(eq(catalogs.id, catalog.id))
     expect(row.status).toBe('failed')
-    expect(row.lastError).toContain('reconciliation')
+    expect(row.lastError).toContain('did not finish')
+  })
+
+  it('reconcile fails a stale catalog whose Bull job already ended in the failed state', async () => {
+    const { workspace, vendor } = await seedWorkspaceAndVendor(`${prefix}stale-failed@example.com`, 'Catalog Failed Job')
+    const [catalog] = await db
+      .insert(catalogs)
+      .values({
+        workspaceId: workspace.id,
+        vendorId: vendor.id,
+        name: 'catalog.pdf',
+        status: 'processing',
+        queueJobId: 'catalog-parse:failed-job',
+        processingStartedAt: new Date(Date.now() - 31 * 60_000),
+      })
+      .returning()
+    queue.getJob.mockImplementation(async (jobId: string) =>
+      jobId === 'catalog-parse:failed-job' ? { getState: async () => 'failed' } : null,
+    )
+
+    await service.reconcile()
+
+    const [row] = await db.select().from(catalogs).where(eq(catalogs.id, catalog.id))
+    expect(row.status).toBe('failed')
+    expect(row.lastError).toContain('failed after retries')
+  })
+
+  it('registers a repeatable reconcile job on startup', async () => {
+    jest.spyOn(service, 'reconcile').mockResolvedValue(undefined)
+
+    await service.onModuleInit()
+
+    expect(queue.add).toHaveBeenCalledWith(
+      'reconcile',
+      {},
+      expect.objectContaining({ jobId: 'catalog-parse-reconcile', repeat: { every: 5 * 60_000 } }),
+    )
   })
 
   it('reconcile leaves a fresh pending row untouched', async () => {

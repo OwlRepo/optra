@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto'
 import { extname } from 'path'
 import { readFile, unlink } from 'fs/promises'
 import { Process, Processor } from '@nestjs/bull'
@@ -6,10 +7,16 @@ import { Job } from 'bull'
 import Papa from 'papaparse'
 import * as XLSX from 'xlsx'
 import { eq } from 'drizzle-orm'
+import {
+  ProcurementExtractionEmptyError,
+  ProcurementExtractionRefusalError,
+  ProcurementExtractionUnsupportedError,
+} from '@repo/ai'
 import { db, invoiceLineItems, invoices, poLineItems, purchaseOrders } from '@repo/db'
 import { StorageService } from '../storage/storage.service'
-import { mapRowToLineItem } from './column-mapping'
-import { ProcurementDocKind } from './procurement-parse.service'
+import { isEmptyLineItem, mapRowToLineItem, validateLineItem } from './column-mapping'
+import { pdfExtractionEnabled } from './procurement-feature-flags'
+import { ProcurementDocKind, ProcurementParseService, RECONCILE_JOB_NAME } from './procurement-parse.service'
 import { ProcurementExtractionService } from './procurement-extraction.service'
 
 interface MappedLineItemRow {
@@ -21,11 +28,41 @@ interface MappedLineItemRow {
   rawRow: Record<string, unknown>
 }
 
-// Mirrors DatasetProfilingProcessor's XLSX->CSV conversion exactly (first
-// sheet only) — DuckDbQueryService (used later, in comparison.service.ts)
-// only ever reads CSV.
+// 10 bound parameters per line row; 1,000 rows stays far below Postgres's
+// 65,535 bind-parameter limit for a single INSERT.
+const INSERT_CHUNK_ROWS = 1_000
+
+// A problem with the document itself. Retrying cannot fix it, so the worker
+// fails the document at once and tells the user exactly why (the message is
+// authored here, never derived from cell content).
+export class ProcurementParseInputError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'ProcurementParseInputError'
+  }
+}
+
+// Document problems fail immediately. Everything else (storage, database,
+// network, model timeout or malformed model output) is treated as transient
+// and handed back to Bull, which retries with backoff.
+function isPermanentParseError(error: unknown): boolean {
+  return (
+    error instanceof ProcurementParseInputError ||
+    error instanceof ProcurementExtractionUnsupportedError ||
+    error instanceof ProcurementExtractionEmptyError ||
+    error instanceof ProcurementExtractionRefusalError
+  )
+}
+
+// First sheet only (same as DatasetProfilingProcessor). Converted in memory:
+// the stored original stays byte-for-byte what the user uploaded.
 function convertXlsxToCsv(buffer: Buffer): string {
-  const workbook = XLSX.read(buffer, { type: 'buffer' })
+  let workbook: XLSX.WorkBook
+  try {
+    workbook = XLSX.read(buffer, { type: 'buffer' })
+  } catch {
+    throw new ProcurementParseInputError('Could not read this spreadsheet — it may be corrupt or password-protected')
+  }
   const firstSheetName = workbook.SheetNames[0]
   const sheet = workbook.Sheets[firstSheetName]
   const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '' })
@@ -39,7 +76,13 @@ export class ProcurementParseProcessor {
   constructor(
     private readonly storage: StorageService,
     private readonly extraction: ProcurementExtractionService,
+    private readonly parseService: ProcurementParseService,
   ) {}
+
+  @Process(RECONCILE_JOB_NAME)
+  async handleReconcile(): Promise<void> {
+    await this.parseService.reconcile()
+  }
 
   @Process()
   async handleParse(job: Job<{ kind: ProcurementDocKind; id: string }>): Promise<void> {
@@ -68,8 +111,16 @@ export class ProcurementParseProcessor {
     let tempPath: string | undefined
 
     try {
+      const extension = extname(doc.name).toLowerCase()
+      const isPdf = extension === '.pdf'
+
+      // The upload filter checks this flag too, but a PDF queued before the
+      // flag was turned off must not reach the model afterwards.
+      if (isPdf && !pdfExtractionEnabled()) {
+        throw new ProcurementParseInputError('PDF extraction is not enabled')
+      }
+
       tempPath = await this.storage.getToTempFile(doc.storageKey)
-      const isPdf = extname(doc.name).toLowerCase() === '.pdf'
 
       let rows: MappedLineItemRow[]
       let sourceKind: string
@@ -77,39 +128,28 @@ export class ProcurementParseProcessor {
       if (isPdf) {
         const result = await this.extraction.extract(tempPath)
         rows = result.items.map((item) => ({
-          sku: item.sku,
-          description: item.description,
-          quantity: item.quantity,
-          unitPrice: item.unitPrice,
-          lineTotal: item.lineTotal,
+          ...validateLineItem({
+            sku: item.sku,
+            description: item.description,
+            quantity: item.quantity,
+            unitPrice: item.unitPrice,
+            lineTotal: item.lineTotal,
+          }),
           rawRow: { ...item },
         }))
         sourceKind = 'pdf-extraction'
       } else {
-        const isXlsx = extname(doc.name).toLowerCase() === '.xlsx'
-        let csvContent: string
-        if (isXlsx) {
-          csvContent = convertXlsxToCsv(await readFile(tempPath))
-          // Overwrite with the converted CSV so every later read of this
-          // storageKey (comparison.service.ts export step) sees plain CSV.
-          await this.storage.save(doc.storageKey, Buffer.from(csvContent, 'utf-8'), 'text/csv')
-        } else {
-          csvContent = await readFile(tempPath, 'utf-8')
-        }
-
-        const parsed = Papa.parse<Record<string, string>>(csvContent, { header: true, skipEmptyLines: true })
-        rows = parsed.data.map((row) => ({ ...mapRowToLineItem(row), rawRow: row }))
-        sourceKind = 'csv'
+        const isXlsx = extension === '.xlsx'
+        const csvContent = isXlsx ? convertXlsxToCsv(await readFile(tempPath)) : await readFile(tempPath, 'utf-8')
+        rows = this.parseCsvRows(csvContent)
+        sourceKind = isXlsx ? 'xlsx' : 'csv'
       }
 
-      await this.replaceLineItems(kind, id, doc.workspaceId, rows, sourceKind)
-      await this.setDone(kind, id, rows.length)
+      await this.replaceLineItemsAndFinish(kind, id, doc.workspaceId, rows, sourceKind)
 
       this.logger.log(`Procurement parse completed kind=${kind} id=${id} jobId=${String(job.id)}`)
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
-      this.logger.error(`Procurement parse failed for ${kind} ${id}`, error instanceof Error ? error.stack : message)
-      await this.markFailed(kind, id, message)
+      await this.handleFailure(job, error)
     } finally {
       if (tempPath) {
         await unlink(tempPath).catch(() => undefined)
@@ -117,56 +157,97 @@ export class ProcurementParseProcessor {
     }
   }
 
-  // Delete-then-insert makes a retried job (Bull attempts:3, or a manual
-  // re-upload) idempotent — a partial insert from a prior failed attempt
-  // never doubles up against the fresh parse. Rows arrive pre-mapped (CSV
-  // rows via mapRowToLineItem, PDF rows via the extraction chain) so this
-  // method is agnostic to source format.
-  private async replaceLineItems(
+  // Document problems fail now and return (Bull records success, no retry).
+  // Transient problems are rethrown so Bull retries; only the final attempt
+  // writes `failed`, so an attempt that will be retried never shows as failed.
+  // lastError is always client-safe: an authored document message, or a
+  // reference id that matches the full detail in this log line.
+  private async handleFailure(job: Job<{ kind: ProcurementDocKind; id: string }>, error: unknown) {
+    const { kind, id } = job.data
+    const permanent = isPermanentParseError(error)
+    const attempt = (job.attemptsMade ?? 0) + 1
+    const attempts = job.opts?.attempts ?? 1
+    const finalAttempt = attempt >= attempts
+    const reference = randomUUID().slice(0, 8)
+
+    this.logger.error(
+      `Procurement parse failed kind=${kind} id=${id} jobId=${String(job.id)} ref=${reference} ` +
+        `attempt=${attempt}/${attempts} permanent=${permanent}`,
+      error instanceof Error ? error.stack : String(error),
+    )
+
+    if (permanent) {
+      await this.markFailed(kind, id, (error as Error).message)
+      return
+    }
+
+    if (finalAttempt) {
+      await this.markFailed(kind, id, `Parsing failed. Reference: ${reference}`)
+    }
+    throw error
+  }
+
+  private parseCsvRows(csvContent: string): MappedLineItemRow[] {
+    const parsed = Papa.parse<Record<string, string>>(csvContent, { header: true, skipEmptyLines: true })
+
+    // Broken quoting shifts every later cell into the wrong column, so the
+    // rows cannot be trusted. A row with too few/many fields is tolerated —
+    // vendor exports routinely carry trailing commas.
+    const quoteError = parsed.errors.find((error) => error.type === 'Quotes')
+    if (quoteError) {
+      throw new ProcurementParseInputError(
+        `The CSV file is malformed near row ${(quoteError.row ?? 0) + 2}: a quoted value is never closed`,
+      )
+    }
+
+    return parsed.data
+      .map((row) => ({ ...validateLineItem(mapRowToLineItem(row)), rawRow: row }))
+      .filter((row) => !isEmptyLineItem(row))
+  }
+
+  // One transaction for delete + chunked insert + `done`: a retried or
+  // concurrent attempt can never leave a document marked done with a partial
+  // or empty line set.
+  private async replaceLineItemsAndFinish(
     kind: ProcurementDocKind,
     id: string,
     workspaceId: string,
     rows: MappedLineItemRow[],
     sourceKind: string,
   ) {
-    if (kind === 'purchase_order') {
-      await db.delete(poLineItems).where(eq(poLineItems.purchaseOrderId, id))
-      if (rows.length > 0) {
-        await db.insert(poLineItems).values(
-          rows.map((row, index) => ({
-            workspaceId,
-            purchaseOrderId: id,
-            lineNumber: index + 1,
-            sku: row.sku,
-            description: row.description,
-            quantity: row.quantity,
-            unitPrice: row.unitPrice,
-            lineTotal: row.lineTotal,
-            rawRow: row.rawRow,
-            sourceKind,
-          })),
-        )
-      }
-      return
-    }
+    const lineValues = rows.map((row, index) => ({
+      workspaceId,
+      lineNumber: index + 1,
+      sku: row.sku,
+      description: row.description,
+      quantity: row.quantity,
+      unitPrice: row.unitPrice,
+      lineTotal: row.lineTotal,
+      rawRow: row.rawRow,
+      sourceKind,
+    }))
+    const done = { status: 'done' as const, rowCount: rows.length, lastError: null, updatedAt: new Date() }
 
-    await db.delete(invoiceLineItems).where(eq(invoiceLineItems.invoiceId, id))
-    if (rows.length > 0) {
-      await db.insert(invoiceLineItems).values(
-        rows.map((row, index) => ({
-          workspaceId,
-          invoiceId: id,
-          lineNumber: index + 1,
-          sku: row.sku,
-          description: row.description,
-          quantity: row.quantity,
-          unitPrice: row.unitPrice,
-          lineTotal: row.lineTotal,
-          rawRow: row.rawRow,
-          sourceKind,
-        })),
-      )
-    }
+    await db.transaction(async (tx) => {
+      if (kind === 'purchase_order') {
+        await tx.delete(poLineItems).where(eq(poLineItems.purchaseOrderId, id))
+        for (let start = 0; start < lineValues.length; start += INSERT_CHUNK_ROWS) {
+          await tx
+            .insert(poLineItems)
+            .values(lineValues.slice(start, start + INSERT_CHUNK_ROWS).map((value) => ({ ...value, purchaseOrderId: id })))
+        }
+        await tx.update(purchaseOrders).set(done).where(eq(purchaseOrders.id, id))
+        return
+      }
+
+      await tx.delete(invoiceLineItems).where(eq(invoiceLineItems.invoiceId, id))
+      for (let start = 0; start < lineValues.length; start += INSERT_CHUNK_ROWS) {
+        await tx
+          .insert(invoiceLineItems)
+          .values(lineValues.slice(start, start + INSERT_CHUNK_ROWS).map((value) => ({ ...value, invoiceId: id })))
+      }
+      await tx.update(invoices).set(done).where(eq(invoices.id, id))
+    })
   }
 
   private async loadDoc(kind: ProcurementDocKind, id: string) {
@@ -185,15 +266,6 @@ export class ProcurementParseProcessor {
       lastError: null,
       updatedAt: processingStartedAt,
     }
-    if (kind === 'purchase_order') {
-      await db.update(purchaseOrders).set(patch).where(eq(purchaseOrders.id, id))
-    } else {
-      await db.update(invoices).set(patch).where(eq(invoices.id, id))
-    }
-  }
-
-  private async setDone(kind: ProcurementDocKind, id: string, rowCount: number) {
-    const patch = { status: 'done' as const, rowCount, lastError: null, updatedAt: new Date() }
     if (kind === 'purchase_order') {
       await db.update(purchaseOrders).set(patch).where(eq(purchaseOrders.id, id))
     } else {

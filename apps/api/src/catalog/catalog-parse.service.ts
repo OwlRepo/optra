@@ -7,6 +7,11 @@ import { eq, or } from 'drizzle-orm'
 const PENDING_CATALOG_STALE_MS = 2 * 60_000
 const PROCESSING_CATALOG_STALE_MS = 30 * 60_000
 const PARSE_JOB_TIMEOUT_MS = 5 * 60_000
+const RECONCILE_EVERY_MS = 5 * 60_000
+// Same bound as ProcurementParseService: no infinite requeue of a catalog
+// whose job keeps vanishing.
+const MAX_RECONCILE_REQUEUES = 2
+export const CATALOG_RECONCILE_JOB_NAME = 'reconcile'
 
 interface StaleCatalogRow {
   id: string
@@ -34,10 +39,26 @@ export class CatalogParseService implements OnModuleInit {
         error instanceof Error ? error.stack : undefined,
       )
     })
+
+    // Periodic, not boot-only — same repeatable-job substrate as the insights
+    // ticks and ProcurementParseService.
+    await this.parseQueue
+      .add(
+        CATALOG_RECONCILE_JOB_NAME,
+        {},
+        { jobId: 'catalog-parse-reconcile', repeat: { every: RECONCILE_EVERY_MS }, removeOnComplete: true },
+      )
+      .catch((error: unknown) => {
+        this.logger.error(
+          `Failed to schedule catalog-parse reconciliation: ${error instanceof Error ? error.message : String(error)}`,
+        )
+      })
   }
 
-  async queueDoc(id: string) {
-    const jobId = this.getJobId(id)
+  // `requeue` > 0 gives the job a fresh id (Bull ignores a re-add under an id
+  // it still holds; removeOnFail keeps failed jobs).
+  async queueDoc(id: string, requeue = 0) {
+    const jobId = this.getJobId(id, requeue)
     const enqueuedAt = new Date()
     const patch = {
       status: 'pending' as const,
@@ -93,14 +114,33 @@ export class CatalogParseService implements OnModuleInit {
       }
 
       const job = row.queueJobId ? await this.parseQueue.getJob(row.queueJobId).catch(() => null) : null
-      if (job) {
+      const state = job ? await job.getState().catch(() => null) : null
+
+      // Waiting, delayed, or running: the queue still owns it.
+      if (job && state !== 'failed' && state !== 'completed') {
         continue
       }
 
-      const lastError = `Queue reconciliation marked catalog as failed: missing Bull job ${row.queueJobId ?? '(none)'} after ${row.status} grace period`
-      await this.markFailed(row.id, lastError, now)
+      if (state === 'failed') {
+        await this.markFailed(row.id, 'Parsing failed after retries', now)
+        this.logger.warn(
+          `Catalog parse reconciliation id=${row.id} jobId=${row.queueJobId} action=failed reason=job-failed`,
+        )
+        continue
+      }
 
-      this.logger.warn(`Catalog parse reconciliation id=${row.id} jobId=${row.queueJobId ?? '(none)'} action=failed`)
+      const requeues = this.requeueCount(row.queueJobId)
+      if (requeues >= MAX_RECONCILE_REQUEUES) {
+        await this.markFailed(row.id, `Parsing did not finish after ${requeues + 1} attempts to run it`, now)
+        this.logger.warn(
+          `Catalog parse reconciliation id=${row.id} jobId=${row.queueJobId ?? '(none)'} action=failed reason=requeue-cap`,
+        )
+        continue
+      }
+
+      // queueDoc already marks the row failed if the enqueue itself throws.
+      await this.queueDoc(row.id, requeues + 1).catch(() => undefined)
+      this.logger.warn(`Catalog parse reconciliation id=${row.id} jobId=${row.queueJobId ?? '(none)'} action=requeued`)
     }
   }
 
@@ -108,15 +148,25 @@ export class CatalogParseService implements OnModuleInit {
     await db.update(catalogs).set({ status: 'failed', lastError, updatedAt }).where(eq(catalogs.id, id))
   }
 
-  private getJobId(id: string) {
-    return `catalog-parse:${id}`
+  private getJobId(id: string, requeue = 0) {
+    const base = `catalog-parse:${id}`
+    return requeue > 0 ? `${base}:r${requeue}` : base
+  }
+
+  private requeueCount(queueJobId: string | null): number {
+    const match = queueJobId?.match(/:r(\d+)$/)
+    return match ? Number(match[1]) : 0
   }
 
   private registerQueueLogging() {
+    // The repeatable reconcile job shares this queue; its data has no id.
+    const isParseJob = (job: Job) => job.name !== CATALOG_RECONCILE_JOB_NAME
     this.parseQueue.on('active', (job: Job<{ id: string }>) => {
+      if (!isParseJob(job)) return
       this.logger.log(`Catalog parse active id=${job.data.id} jobId=${String(job.id)}`)
     })
     this.parseQueue.on('completed', (job: Job<{ id: string }>) => {
+      if (!isParseJob(job)) return
       this.logger.log(`Catalog parse completed id=${job.data.id} jobId=${String(job.id)}`)
     })
     this.parseQueue.on('failed', (job: Job<{ id: string }>, error: Error) => {

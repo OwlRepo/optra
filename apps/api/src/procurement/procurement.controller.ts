@@ -29,16 +29,17 @@ import { ComparisonService } from './comparison.service'
 import { CompareDocumentsDto } from './dto/compare-documents.dto'
 import { ListDiscrepanciesQueryDto } from './dto/list-discrepancies-query.dto'
 import { ProcurementDocumentsService } from './procurement-documents.service'
+import { pdfExtractionEnabled } from './procurement-feature-flags'
 
 const MAX_UPLOAD_MB = Number(process.env.MAX_UPLOAD_MB ?? 25)
 const MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024
 
 // Mirrors DatasetsController exactly (datasets.controller.ts): same
 // extension/mime allow-list, same size limit, same 413/400 exception
-// filter. XLSX is converted to CSV during parsing (ProcurementParseProcessor)
-// so nothing downstream ever reads XLSX directly. PDF is text-only (A2) —
-// scanned/image-only PDFs are accepted here (can't know until parse) but
-// fail clearly at parse time (procurement-extraction.ts), not silently.
+// filter. XLSX is converted to CSV in memory during parsing
+// (ProcurementParseProcessor); the stored original is never overwritten. PDFs
+// use the text layer when there is one and fall back to page-image extraction
+// for scanned PDFs (procurement-extraction.ts).
 const SUPPORTED_EXTENSIONS = new Set(['.csv', '.xlsx', '.pdf'])
 const SUPPORTED_MIME_TYPES = new Set([
   'text/csv',
@@ -47,10 +48,6 @@ const SUPPORTED_MIME_TYPES = new Set([
   'application/octet-stream',
   'application/pdf',
 ])
-
-function pdfExtractionEnabled(): boolean {
-  return process.env.PROCUREMENT_PDF_EXTRACTION_ENABLED === 'true'
-}
 
 function fileFilter(
   _req: unknown,

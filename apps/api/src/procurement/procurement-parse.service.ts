@@ -7,6 +7,11 @@ import { eq, or } from 'drizzle-orm'
 const PENDING_DOC_STALE_MS = 2 * 60_000
 const PROCESSING_DOC_STALE_MS = 30 * 60_000
 const PARSE_JOB_TIMEOUT_MS = 5 * 60_000
+const RECONCILE_EVERY_MS = 5 * 60_000
+// A document whose job keeps vanishing is re-enqueued at most this many times
+// before reconciliation gives up and marks it failed (no infinite requeue).
+const MAX_RECONCILE_REQUEUES = 2
+export const RECONCILE_JOB_NAME = 'reconcile'
 
 export type ProcurementDocKind = 'purchase_order' | 'invoice'
 
@@ -40,10 +45,28 @@ export class ProcurementParseService implements OnModuleInit {
         error instanceof Error ? error.stack : undefined,
       )
     })
+
+    // Boot-only reconciliation left a stuck document stuck until the next
+    // restart. Same repeatable-job substrate as the insights ticks: re-adding
+    // the same repeatable jobId on every boot is a Bull no-op.
+    await this.parseQueue
+      .add(
+        RECONCILE_JOB_NAME,
+        {},
+        { jobId: 'procurement-parse-reconcile', repeat: { every: RECONCILE_EVERY_MS }, removeOnComplete: true },
+      )
+      .catch((error: unknown) => {
+        this.logger.error(
+          `Failed to schedule procurement-parse reconciliation: ${error instanceof Error ? error.message : String(error)}`,
+        )
+      })
   }
 
-  async queueDoc(kind: ProcurementDocKind, id: string) {
-    const jobId = this.getJobId(kind, id)
+  // `requeue` > 0 gives the job a fresh id: Bull's addJob silently returns the
+  // existing job for an id it still holds (removeOnFail keeps failed jobs), so
+  // re-adding under the original id would never run.
+  async queueDoc(kind: ProcurementDocKind, id: string, requeue = 0) {
+    const jobId = this.getJobId(kind, id, requeue)
     const enqueuedAt = new Date()
     const patch = {
       status: 'pending' as const,
@@ -109,15 +132,36 @@ export class ProcurementParseService implements OnModuleInit {
       }
 
       const job = row.queueJobId ? await this.parseQueue.getJob(row.queueJobId).catch(() => null) : null
-      if (job) {
+      const state = job ? await job.getState().catch(() => null) : null
+
+      // Waiting, delayed, or running: the queue still owns it. A running job
+      // is never duplicated here — two parses of one document would race.
+      if (job && state !== 'failed' && state !== 'completed') {
         continue
       }
 
-      const lastError = `Queue reconciliation marked ${kind} as failed: missing Bull job ${row.queueJobId ?? '(none)'} after ${row.status} grace period`
-      await this.markFailed(kind, row.id, lastError, now)
+      if (state === 'failed') {
+        // Backstop for a final attempt that could not record its own failure.
+        await this.markFailed(kind, row.id, 'Parsing failed after retries', now)
+        this.logger.warn(
+          `Procurement parse reconciliation kind=${kind} id=${row.id} jobId=${row.queueJobId} action=failed reason=job-failed`,
+        )
+        continue
+      }
 
+      const requeues = this.requeueCount(row.queueJobId)
+      if (requeues >= MAX_RECONCILE_REQUEUES) {
+        await this.markFailed(kind, row.id, `Parsing did not finish after ${requeues + 1} attempts to run it`, now)
+        this.logger.warn(
+          `Procurement parse reconciliation kind=${kind} id=${row.id} jobId=${row.queueJobId ?? '(none)'} action=failed reason=requeue-cap`,
+        )
+        continue
+      }
+
+      // queueDoc already marks the row failed if the enqueue itself throws.
+      await this.queueDoc(kind, row.id, requeues + 1).catch(() => undefined)
       this.logger.warn(
-        `Procurement parse reconciliation kind=${kind} id=${row.id} jobId=${row.queueJobId ?? '(none)'} action=failed`,
+        `Procurement parse reconciliation kind=${kind} id=${row.id} jobId=${row.queueJobId ?? '(none)'} action=requeued`,
       )
     }
   }
@@ -133,24 +177,36 @@ export class ProcurementParseService implements OnModuleInit {
     }
   }
 
-  private getJobId(kind: ProcurementDocKind, id: string) {
-    return `procurement-parse:${kind}:${id}`
+  private getJobId(kind: ProcurementDocKind, id: string, requeue = 0) {
+    const base = `procurement-parse:${kind}:${id}`
+    return requeue > 0 ? `${base}:r${requeue}` : base
+  }
+
+  private requeueCount(queueJobId: string | null): number {
+    const match = queueJobId?.match(/:r(\d+)$/)
+    return match ? Number(match[1]) : 0
   }
 
   private registerQueueLogging() {
+    // The repeatable reconcile job shares this queue; its data has no kind/id.
+    const isParseJob = (job: Job) => job.name !== RECONCILE_JOB_NAME
     this.parseQueue.on('active', (job: Job<{ kind: ProcurementDocKind; id: string }>) => {
+      if (!isParseJob(job)) return
       this.logger.log(`Procurement parse active kind=${job.data.kind} id=${job.data.id} jobId=${String(job.id)}`)
     })
     this.parseQueue.on('completed', (job: Job<{ kind: ProcurementDocKind; id: string }>) => {
+      if (!isParseJob(job)) return
       this.logger.log(`Procurement parse completed kind=${job.data.kind} id=${job.data.id} jobId=${String(job.id)}`)
     })
     this.parseQueue.on('failed', (job: Job<{ kind: ProcurementDocKind; id: string }>, error: Error) => {
       this.logger.warn(
-        `Procurement parse failed kind=${job.data.kind} id=${job.data.id} jobId=${String(job.id)} error=${error.message}`,
+        `Procurement parse failed name=${job.name} kind=${job.data.kind} id=${job.data.id} jobId=${String(job.id)} error=${error.message}`,
       )
     })
     this.parseQueue.on('stalled', (job: Job<{ kind: ProcurementDocKind; id: string }>) => {
-      this.logger.warn(`Procurement parse stalled kind=${job.data.kind} id=${job.data.id} jobId=${String(job.id)}`)
+      this.logger.warn(
+        `Procurement parse stalled name=${job.name} kind=${job.data.kind} id=${job.data.id} jobId=${String(job.id)}`,
+      )
     })
   }
 }
