@@ -284,6 +284,26 @@ describe('Procurement flow (e2e)', () => {
       .set('Authorization', `Bearer ${outsider.accessToken}`)
       .send({ purchaseOrderId: poUpload.body.id, invoiceId: invoiceUpload.body.id })
       .expect(404)
+
+    // Same for dismiss: the outsider owns their own workspace (passes RolesGuard),
+    // but the flag belongs to the owner's workspace — 404, and the flag stays open.
+    const foreignFlagId = openOnlyRes.body[0].id as string
+    await request(app.getHttpServer())
+      .patch(`/workspaces/${outsiderWorkspaceId}/procurement/discrepancies/${foreignFlagId}/dismiss`)
+      .set('Authorization', `Bearer ${outsider.accessToken}`)
+      .expect(404)
+    const afterForeignDismiss = await request(app.getHttpServer())
+      .get(`/workspaces/${workspaceId}/procurement/discrepancies`)
+      .query({ status: 'open' })
+      .set('Authorization', `Bearer ${owner.accessToken}`)
+      .expect(200)
+    expect(afterForeignDismiss.body.map((flag: { id: string }) => flag.id)).toContain(foreignFlagId)
+
+    // A malformed flag id is a client error, not a uuid-cast failure inside Postgres.
+    await request(app.getHttpServer())
+      .patch(`/workspaces/${workspaceId}/procurement/discrepancies/not-a-uuid/dismiss`)
+      .set('Authorization', `Bearer ${owner.accessToken}`)
+      .expect(400)
   })
 
   it('uploads PO + invoice as PDF, parses via the extraction seam, and compares identically to CSV', async () => {

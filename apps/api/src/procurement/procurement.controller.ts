@@ -7,6 +7,7 @@ import {
   ExceptionFilter,
   Get,
   Param,
+  ParseUUIDPipe,
   Patch,
   Post,
   Query,
@@ -92,8 +93,10 @@ class UploadExceptionFilter implements ExceptionFilter {
   }
 }
 
+// UploadExceptionFilter is scoped to the two upload handlers only. At class
+// level it also caught every ValidationPipe/ParseUUIDPipe BadRequestException
+// on compare/list/dismiss and flattened the validation detail away.
 @Controller('workspaces/:workspaceId/procurement')
-@UseFilters(UploadExceptionFilter)
 export class ProcurementController {
   constructor(
     private readonly documents: ProcurementDocumentsService,
@@ -103,6 +106,7 @@ export class ProcurementController {
   @Post('purchase-orders')
   @UseGuards(JwtAuthGuard, WorkspaceMemberGuard, RolesGuard)
   @Roles('owner', 'admin')
+  @UseFilters(UploadExceptionFilter)
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: MAX_UPLOAD_BYTES }, fileFilter }))
   uploadPurchaseOrder(@Param('workspaceId') workspaceId: string, @UploadedFile() file?: Express.Multer.File) {
     if (!file) {
@@ -120,6 +124,7 @@ export class ProcurementController {
   @Post('invoices')
   @UseGuards(JwtAuthGuard, WorkspaceMemberGuard, RolesGuard)
   @Roles('owner', 'admin')
+  @UseFilters(UploadExceptionFilter)
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: MAX_UPLOAD_BYTES }, fileFilter }))
   uploadInvoice(@Param('workspaceId') workspaceId: string, @UploadedFile() file?: Express.Multer.File) {
     if (!file) {
@@ -152,7 +157,7 @@ export class ProcurementController {
   @Roles('owner', 'admin')
   dismiss(
     @Param('workspaceId') workspaceId: string,
-    @Param('flagId') flagId: string,
+    @Param('flagId', new ParseUUIDPipe()) flagId: string,
     @CurrentUser() user: CurrentUserContext,
   ) {
     return this.comparison.dismissFlag(workspaceId, flagId, user.userId)

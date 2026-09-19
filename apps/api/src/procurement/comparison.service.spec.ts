@@ -252,7 +252,9 @@ describe('ComparisonService', () => {
     expect(result.flags[0].sku).toBe('123456')
   })
 
-  it('surfaces a DuckDB engine failure as 503 with a real message, not a bare 500', async () => {
+  // The engine message can quote cell values from the compared documents, so it
+  // stays server-side. The client gets a stable text plus a reference id.
+  it('surfaces a DuckDB engine failure as 503 with a client-safe reference, never the raw engine text', async () => {
     const { workspace } = await seedWorkspace(`${prefix}engine-fail@example.com`, 'Engine Fail')
     const { po, invoice } = await seedReadyPoAndInvoice(
       workspace.id,
@@ -263,13 +265,230 @@ describe('ComparisonService', () => {
     const failing = new DuckDbQueryService()
     jest
       .spyOn(failing, 'runReadOnlyMultiTableQuery')
-      .mockRejectedValue(new SqlExecutionError('Out of Memory Error: failed to allocate'))
+      .mockRejectedValue(new SqlExecutionError('Conversion Error: Could not convert string "SECRET-CELL" to DOUBLE'))
     const failingService = new ComparisonService(failing)
 
-    await expect(failingService.compare(workspace.id, po.id, invoice.id)).rejects.toMatchObject({
-      status: 503,
-      message: expect.stringContaining('Out of Memory Error'),
+    const error = await failingService.compare(workspace.id, po.id, invoice.id).then(
+      () => null,
+      (caught: unknown) => caught as { status: number; message: string },
+    )
+
+    expect(error?.status).toBe(503)
+    expect(error?.message).toMatch(/^Comparison engine failed\. Reference: [0-9a-f]{8}$/)
+    expect(error?.message).not.toContain('SECRET-CELL')
+  })
+
+  it('ignores line items that carry another workspace id under this workspace’s document', async () => {
+    const { workspace: mine } = await seedWorkspace(`${prefix}child-scope-mine@example.com`, 'Child Scope Mine')
+    const { workspace: other } = await seedWorkspace(`${prefix}child-scope-other@example.com`, 'Child Scope Other')
+    const { po, invoice } = await seedReadyPoAndInvoice(
+      mine.id,
+      [{ sku: 'A1', quantity: '1', unitPrice: '1.00' }],
+      [{ sku: 'A1', quantity: '1', unitPrice: '1.00' }],
+    )
+    await db.insert(poLineItems).values({
+      workspaceId: other.id,
+      purchaseOrderId: po.id,
+      lineNumber: 2,
+      sku: 'FOREIGN-1',
+      quantity: '5',
+      unitPrice: '5.00',
     })
+
+    const result = await service.compare(mine.id, po.id, invoice.id)
+
+    expect(result.flags).toHaveLength(0)
+  })
+
+  it('keeps the prior flag set when inserting the new one fails', async () => {
+    const { workspace } = await seedWorkspace(`${prefix}atomic@example.com`, 'Atomic')
+    const { po, invoice } = await seedReadyPoAndInvoice(
+      workspace.id,
+      [{ sku: 'A1', quantity: '10', unitPrice: '5.00' }],
+      [{ sku: 'A1', quantity: '8', unitPrice: '5.00' }],
+    )
+    await service.compare(workspace.id, po.id, invoice.id)
+
+    const internals = service as unknown as {
+      toFlagValues: (...args: unknown[]) => Record<string, unknown>
+    }
+    const original = internals.toFlagValues.bind(service)
+    jest
+      .spyOn(internals, 'toFlagValues')
+      .mockImplementation((...args: unknown[]) => ({ ...original(...args), flagType: 'not_a_flag_type' }))
+
+    await expect(service.compare(workspace.id, po.id, invoice.id)).rejects.toThrow()
+
+    const flags = await db.select().from(discrepancyFlags).where(eq(discrepancyFlags.purchaseOrderId, po.id))
+    expect(flags).toHaveLength(1)
+    expect(flags[0].flagType).toBe('quantity_mismatch')
+  })
+
+  it('serializes concurrent compares of the same pair into exactly one flag set', async () => {
+    const { workspace } = await seedWorkspace(`${prefix}concurrent@example.com`, 'Concurrent')
+    const { po, invoice } = await seedReadyPoAndInvoice(
+      workspace.id,
+      [{ sku: 'A1', quantity: '10', unitPrice: '5.00' }],
+      [{ sku: 'A1', quantity: '8', unitPrice: '5.00' }],
+    )
+
+    await Promise.all([
+      service.compare(workspace.id, po.id, invoice.id),
+      service.compare(workspace.id, po.id, invoice.id),
+      service.compare(workspace.id, po.id, invoice.id),
+      service.compare(workspace.id, po.id, invoice.id),
+    ])
+
+    const flags = await db.select().from(discrepancyFlags).where(eq(discrepancyFlags.purchaseOrderId, po.id))
+    expect(flags).toHaveLength(1)
+  })
+
+  it('persists every discrepancy when a comparison produces more than 500 of them', async () => {
+    const { workspace } = await seedWorkspace(`${prefix}over-500@example.com`, 'Over 500')
+    const poItems: FixtureItem[] = []
+    const invItems: FixtureItem[] = []
+    for (let i = 0; i < 600; i++) {
+      poItems.push({ sku: `BULK-${i}`, quantity: '1', unitPrice: '1.00' })
+      invItems.push({ sku: `BULK-${i}`, quantity: '2', unitPrice: '1.00' })
+    }
+    const { po, invoice } = await seedReadyPoAndInvoice(workspace.id, poItems, invItems)
+
+    const result = await service.compare(workspace.id, po.id, invoice.id)
+
+    expect(result.counts.quantity_mismatch).toBe(600)
+    const flags = await db.select().from(discrepancyFlags).where(eq(discrepancyFlags.purchaseOrderId, po.id))
+    expect(flags).toHaveLength(600)
+  })
+
+  it('flags a line with neither SKU nor description as unmatchable, on its own document’s side', async () => {
+    const { workspace } = await seedWorkspace(`${prefix}unkeyed@example.com`, 'Unkeyed')
+    const { po, invoice } = await seedReadyPoAndInvoice(
+      workspace.id,
+      [
+        { sku: 'A1', quantity: '1', unitPrice: '1.00' },
+        { quantity: '3', unitPrice: '2.00' },
+      ],
+      [{ sku: 'A1', quantity: '1', unitPrice: '1.00' }],
+    )
+
+    const result = await service.compare(workspace.id, po.id, invoice.id)
+
+    expect(result.flags).toHaveLength(1)
+    expect(result.flags[0].flagType).toBe('missing_on_invoice')
+    expect(result.flags[0].poLineItemId).not.toBeNull()
+    expect(result.flags[0].reason).toContain('no SKU or description')
+  })
+
+  it('sums duplicate lines for the same item before comparing', async () => {
+    const { workspace } = await seedWorkspace(`${prefix}dupe-sum@example.com`, 'Dupe Sum')
+    const { po, invoice } = await seedReadyPoAndInvoice(
+      workspace.id,
+      [
+        { sku: 'D1', quantity: '5', unitPrice: '2.00' },
+        { sku: 'D1', quantity: '5', unitPrice: '2.00' },
+      ],
+      [{ sku: 'D1', quantity: '10', unitPrice: '2.00' }],
+    )
+
+    const result = await service.compare(workspace.id, po.id, invoice.id)
+
+    expect(result.flags).toHaveLength(0)
+  })
+
+  it('reports one quantity flag, not a fan-out, when summed duplicates still disagree', async () => {
+    const { workspace } = await seedWorkspace(`${prefix}dupe-diff@example.com`, 'Dupe Diff')
+    const { po, invoice } = await seedReadyPoAndInvoice(
+      workspace.id,
+      [
+        { sku: 'D1', quantity: '5', unitPrice: '2.00' },
+        { sku: 'D1', quantity: '5', unitPrice: '2.00' },
+      ],
+      [{ sku: 'D1', quantity: '8', unitPrice: '2.00' }],
+    )
+
+    const result = await service.compare(workspace.id, po.id, invoice.id)
+
+    expect(result.flags).toHaveLength(1)
+    expect(result.flags[0].flagType).toBe('quantity_mismatch')
+    expect(Number(result.flags[0].poValue)).toBe(10)
+    expect(Number(result.flags[0].invoiceValue)).toBe(8)
+    expect(result.flags[0].reason).toContain('2 purchase order lines')
+  })
+
+  it('flags an item whose own document lists more than one unit price', async () => {
+    const { workspace } = await seedWorkspace(`${prefix}mixed-price@example.com`, 'Mixed Price')
+    const { po, invoice } = await seedReadyPoAndInvoice(
+      workspace.id,
+      [
+        { sku: 'M1', quantity: '1', unitPrice: '2.00' },
+        { sku: 'M1', quantity: '1', unitPrice: '3.00' },
+      ],
+      [{ sku: 'M1', quantity: '2', unitPrice: '2.00' }],
+    )
+
+    const result = await service.compare(workspace.id, po.id, invoice.id)
+
+    expect(result.flags).toHaveLength(1)
+    expect(result.flags[0].flagType).toBe('price_mismatch')
+    expect(result.flags[0].reason).toContain('multiple unit prices')
+  })
+
+  it('keeps a leading-zero SKU exactly as stored', async () => {
+    const { workspace } = await seedWorkspace(`${prefix}leading-zero@example.com`, 'Leading Zero')
+    const { po, invoice } = await seedReadyPoAndInvoice(
+      workspace.id,
+      [{ sku: '00123', quantity: '5', unitPrice: '1.00' }],
+      [{ sku: '00123', quantity: '4', unitPrice: '1.00' }],
+    )
+
+    const result = await service.compare(workspace.id, po.id, invoice.id)
+
+    expect(result.flags).toHaveLength(1)
+    expect(result.flags[0].sku).toBe('00123')
+  })
+
+  it('refuses to dismiss a flag from another workspace and leaves it open', async () => {
+    const { workspace: owner } = await seedWorkspace(`${prefix}dismiss-owner@example.com`, 'Dismiss Owner')
+    const { user: intruder, workspace: intruderWs } = await seedWorkspace(
+      `${prefix}dismiss-intruder@example.com`,
+      'Dismiss Intruder',
+    )
+    const { po, invoice } = await seedReadyPoAndInvoice(
+      owner.id,
+      [{ sku: 'A1', quantity: '10', unitPrice: '5.00' }],
+      [{ sku: 'A1', quantity: '8', unitPrice: '5.00' }],
+    )
+    const { flags } = await service.compare(owner.id, po.id, invoice.id)
+
+    await expect(service.dismissFlag(intruderWs.id, flags[0].id, intruder.id)).rejects.toThrow(
+      'Discrepancy flag not found',
+    )
+
+    const [stored] = await db.select().from(discrepancyFlags).where(eq(discrepancyFlags.id, flags[0].id))
+    expect(stored.status).toBe('open')
+    expect(stored.dismissedBy).toBeNull()
+  })
+
+  it('keeps the original dismisser when a dismissed flag is dismissed again', async () => {
+    const { user: first, workspace } = await seedWorkspace(`${prefix}redismiss@example.com`, 'Redismiss')
+    const [second] = await db
+      .insert(users)
+      .values({ email: `${prefix}redismiss-second@example.com`, passwordHash: 'x', isVerified: true })
+      .returning()
+    await db.insert(workspaceMembers).values({ workspaceId: workspace.id, userId: second.id, role: 'admin' })
+    const { po, invoice } = await seedReadyPoAndInvoice(
+      workspace.id,
+      [{ sku: 'A1', quantity: '10', unitPrice: '5.00' }],
+      [{ sku: 'A1', quantity: '8', unitPrice: '5.00' }],
+    )
+    const { flags } = await service.compare(workspace.id, po.id, invoice.id)
+
+    const firstDismiss = await service.dismissFlag(workspace.id, flags[0].id, first.id)
+    const secondDismiss = await service.dismissFlag(workspace.id, flags[0].id, second.id)
+
+    expect(secondDismiss.status).toBe('dismissed')
+    expect(secondDismiss.dismissedBy).toBe(first.id)
+    expect(secondDismiss.dismissedAt?.getTime()).toBe(firstDismiss.dismissedAt?.getTime())
   })
 
   it('lists flags filtered by status and supports dismissing one', async () => {

@@ -110,6 +110,25 @@ describe('DuckDbQueryService', () => {
       expect(rows).toEqual([{ product: 'Widget', revenue: 1000, refund_amount: 100 }])
     })
 
+    it('honors an explicit maxRows above the default cap', async () => {
+      const bigDir = mkdtempSync(join(tmpdir(), 'duckdb-query-spec-maxrows-'))
+      const bigCsvPath = join(bigDir, 'big.csv')
+      const rows = ['n']
+      for (let i = 0; i < 600; i++) rows.push(String(i))
+      writeFileSync(bigCsvPath, rows.join('\n'))
+
+      try {
+        const result = await service.runReadOnlyMultiTableQuery(
+          [{ csvPath: bigCsvPath, tableName: 't1' }],
+          'SELECT n FROM t1',
+          { maxRows: 1000 },
+        )
+        expect(result.length).toBe(600)
+      } finally {
+        rmSync(bigDir, { recursive: true, force: true })
+      }
+    })
+
     it('rejects forbidden keywords against any of the loaded tables', async () => {
       await expect(
         service.runReadOnlyMultiTableQuery([{ csvPath, tableName: 't1' }], 'DROP TABLE t1'),

@@ -57,12 +57,19 @@ export class DuckDbQueryService {
    * cross-file comparison) — every table is loaded via TRUSTED code BEFORE
    * `enable_external_access=false`, so the untrusted SQL can JOIN across
    * them but never reach the filesystem/network.
+   *
+   * `maxRows` exists for trusted fixed-template callers whose result size is
+   * bounded by their own input (procurement comparison persists every row, so
+   * a silent 500-row cut would drop real discrepancies). LLM-generated callers
+   * keep the default cap.
    */
   async runReadOnlyMultiTableQuery(
     tables: { csvPath: string; tableName: string }[],
     sql: string,
+    options: { maxRows?: number } = {},
   ): Promise<Record<string, unknown>[]> {
     this.assertReadOnlySelect(sql)
+    const maxRows = options.maxRows ?? MAX_RESULT_ROWS
 
     const db = new duckdb.Database(':memory:')
     const conn = db.connect()
@@ -78,7 +85,7 @@ export class DuckDbQueryService {
       await this.exec(conn, 'SET enable_external_access=false')
 
       const rows = await this.withTimeout(this.all(conn, sql), QUERY_TIMEOUT_MS)
-      return rows.slice(0, MAX_RESULT_ROWS).map((row) => this.sanitizeRow(row))
+      return rows.slice(0, maxRows).map((row) => this.sanitizeRow(row))
     } catch (error) {
       if (error instanceof UnsafeSqlError) {
         throw error
