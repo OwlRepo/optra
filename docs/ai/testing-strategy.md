@@ -167,7 +167,7 @@ Ticket embedding note as of 2026-07-02:
 - `apps/web/app/workspaces/[id]/chat/page.spec.ts` covers ticket citation rendering without link plus legacy persisted sources with no `sourceType`.
 - `apps/api/test/tickets.e2e-spec.ts` covers PATCH review-save calling the mocked `syncTicketChunk` side effect through the real HTTP path.
 
-`packages/db`/`packages/ai` still have no test commands — only `type-check`/`build`/`lint`. Playwright e2e for `apps/web` is still a known gap — deferred until there's a real multi-page flow worth driving a browser through (Priority 2 web pages).
+*(Superseded 2026-09-20: `packages/db` and `packages/ai` now have test suites; see the per-package table above, 12 and 173 tests.)* ~~`packages/db`/`packages/ai` still have no test commands — only `type-check`/`build`/`lint`.~~ Playwright e2e for `apps/web` is still a known gap — deferred until there's a real multi-page flow worth driving a browser through (Priority 2 web pages).
 Confirmed from `packages/ai/package.json` as of 2026-06-30:
 
 - `bun run test` — Vitest, node environment, crawler coverage at `packages/ai/src/web/crawl.spec.ts`
