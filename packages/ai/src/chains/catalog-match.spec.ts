@@ -34,6 +34,22 @@ describe('extractCatalogItemsFromImage', () => {
     })
   })
 
+  it('records token usage from the successful attempt after a timeout retry', async () => {
+    const timeoutError = new Error('Request timed out')
+    timeoutError.name = 'TimeoutError'
+    invokeMock.mockRejectedValueOnce(timeoutError).mockResolvedValueOnce({
+      content: JSON.stringify({ items: [{ sku: 'A1', description: 'Widget', confidence: 0.9 }] }),
+      usage_metadata: { input_tokens: 30, output_tokens: 12, total_tokens: 42 },
+    })
+
+    const { extractCatalogItemsFromImage } = await import('./catalog-match')
+    const { TokenMeter } = await import('../tokens')
+    const meter = new TokenMeter()
+    await extractCatalogItemsFromImage(Buffer.from([0x89]), { retryDelayMs: 1, meter })
+
+    expect(meter.total).toBe(42)
+  })
+
   it('returns an empty items array for a page with no products, not an error', async () => {
     invokeMock.mockResolvedValue({ content: JSON.stringify({ items: [] }) })
 
@@ -96,6 +112,25 @@ describe('compareLineItemToCatalogImage', () => {
     const humanMessage = invokeMock.mock.calls[0][0][1]
     expect(humanMessage.content).toHaveLength(2)
     expect(humanMessage.content[1].type).toBe('image_url')
+  })
+
+  it('records the provider-reported token usage on the meter', async () => {
+    invokeMock.mockResolvedValue({
+      content: JSON.stringify({ isMatch: false, score: 0.1, reason: 'Different product.' }),
+      usage_metadata: { input_tokens: 30, output_tokens: 12, total_tokens: 42 },
+    })
+
+    const { compareLineItemToCatalogImage } = await import('./catalog-match')
+    const { TokenMeter } = await import('../tokens')
+    const meter = new TokenMeter()
+    await compareLineItemToCatalogImage({
+      queryText: 'SKU A1: Widget',
+      candidateText: 'SKU B2: Gadget',
+      candidateImageBase64: null,
+      meter,
+    })
+
+    expect(meter.total).toBe(42)
   })
 
   it('omits the image block and still judges text-only when the candidate has no image', async () => {

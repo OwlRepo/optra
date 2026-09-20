@@ -1,9 +1,11 @@
 import { randomUUID } from 'crypto'
+import { HttpException } from '@nestjs/common'
 import { Test } from '@nestjs/testing'
 import { eq, like } from 'drizzle-orm'
 import { db, pool, tickets, users, workspaceMembers, workspaces } from '@repo/db'
 import { TicketExtractionProcessor } from './ticket-extraction.processor'
 import { EventsService } from '../events/events.service'
+import { UsageService } from '../limits/usage.service'
 
 const mockExtractTicketFromTranscript = jest.fn()
 
@@ -56,6 +58,10 @@ async function seedTicket(emailPrefix: string) {
 describe('TicketExtractionProcessor', () => {
   let processor: TicketExtractionProcessor
   let events: { record: jest.Mock }
+  const meter = { record: jest.fn(), total: 0 }
+  const usage = {
+    metered: jest.fn((_workspaceId: string, run: (m: typeof meter) => Promise<unknown>) => run(meter)),
+  }
   const prefix = `ticket-processor-spec-${Date.now()}-`
 
   beforeAll(async () => {
@@ -64,6 +70,7 @@ describe('TicketExtractionProcessor', () => {
       providers: [
         TicketExtractionProcessor,
         { provide: EventsService, useValue: events },
+        { provide: UsageService, useValue: usage },
       ],
     }).compile()
 
@@ -204,5 +211,27 @@ describe('TicketExtractionProcessor', () => {
     const [updated] = await db.select().from(tickets).where(eq(tickets.id, ticket.id)).limit(1)
     expect(updated.status).toBe('done')
     expect(updated.title).toBe('OTP login loop')
+  })
+
+  it('charges extraction to the ticket workspace through the metered budget', async () => {
+    const { workspace, ticket } = await seedTicket(prefix)
+    mockExtractTicketFromTranscript.mockRejectedValue(new Error('stop after the call'))
+
+    await processor.handleExtraction({ data: { ticketId: ticket.id } } as any)
+
+    expect(usage.metered).toHaveBeenCalledWith(workspace.id, expect.any(Function))
+    expect(mockExtractTicketFromTranscript).toHaveBeenCalledWith(ticket.transcript, { meter })
+  })
+
+  it('fails the ticket with the budget message when the workspace token budget is exhausted', async () => {
+    const { ticket } = await seedTicket(prefix)
+    usage.metered.mockRejectedValueOnce(new HttpException('Workspace monthly token budget reached', 402))
+
+    await processor.handleExtraction({ data: { ticketId: ticket.id } } as any)
+
+    const [row] = await db.select().from(tickets).where(eq(tickets.id, ticket.id))
+    expect(row.status).toBe('failed')
+    expect(row.lastError).toBe('Workspace monthly token budget reached')
+    expect(mockExtractTicketFromTranscript).not.toHaveBeenCalled()
   })
 })

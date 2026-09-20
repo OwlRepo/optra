@@ -6,6 +6,7 @@ import { db } from '@repo/db'
 import type Redis from 'ioredis'
 import { BackgroundRunsService } from './background-runs.service'
 import { FaqClusterService } from './faq-cluster.service'
+import { isBudgetExceeded, UsageService } from '../limits/usage.service'
 import { LOW_SCORE_THRESHOLD, topicGapsRedisKey, type TopicGap } from './coverage-dashboard.service'
 
 // V2 F7a: resolves the "gap-cluster labeling cost cap" open point with two
@@ -26,6 +27,7 @@ export class TopicGapProcessor {
     @Inject('REDIS_CLIENT') private readonly redis: Redis,
     private readonly clusterer: FaqClusterService,
     private readonly runs: BackgroundRunsService,
+    private readonly usage: UsageService,
   ) {}
 
   @Process()
@@ -46,7 +48,7 @@ export class TopicGapProcessor {
       for (const cluster of ranked) {
         const questions = cluster.map((id) => byId.get(id)!).filter(Boolean)
         const { generateTopicLabel } = await import('@repo/ai')
-        const label = await generateTopicLabel(questions)
+        const label = await this.usage.metered(workspaceId, (meter) => generateTopicLabel(questions, { meter }))
         gaps.push({ label, questionCount: cluster.length, exampleQuestion: questions[0] })
       }
 
@@ -55,6 +57,12 @@ export class TopicGapProcessor {
       this.logger.log(`Topic gap workspaceId=${workspaceId} gapsLabeled=${gaps.length}`)
     } catch (error) {
       await this.runs.fail(runId, error)
+      // An exhausted budget is a final outcome for this run: a Bull retry
+      // would be refused the same way, so it is recorded and not rethrown.
+      if (isBudgetExceeded(error)) {
+        this.logger.warn(`Topic gap stopped workspaceId=${workspaceId}: token budget reached`)
+        return
+      }
       this.logger.error(
         `Topic gap failed workspaceId=${workspaceId}: ${error instanceof Error ? error.message : String(error)}`,
       )

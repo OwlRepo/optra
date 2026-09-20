@@ -5,6 +5,7 @@ import { ChatOpenAI } from '@langchain/openai'
 import { loadPDF } from '../loaders/pdf'
 import { renderPdfToImages } from '../loaders/pdf-render'
 import { resolveModel } from './models'
+import type { TokenMeter } from '../tokens'
 
 // Two paths: digital-text PDFs go through loadPDF -> a text prompt. Scanned/
 // image-only PDFs (no usable text layer) are rasterized (pdfjs-dist +
@@ -105,6 +106,8 @@ export class ProcurementExtractionTimeoutError extends Error {
 
 export interface ExtractLineItemsOptions {
   retryDelayMs?: number
+  // Receives every model response's provider-reported usage (retries included).
+  meter?: TokenMeter
 }
 
 export async function extractLineItemsFromPdf(
@@ -115,7 +118,7 @@ export async function extractLineItemsFromPdf(
   const retryDelayMs = options.retryDelayMs ?? 250
 
   if (content.trim().length >= MIN_TEXT_CHARS) {
-    return invokeAndParse(new HumanMessage(EXTRACTION_HUMAN_PROMPT(content)), retryDelayMs)
+    return invokeAndParse(new HumanMessage(EXTRACTION_HUMAN_PROMPT(content)), retryDelayMs, options.meter)
   }
 
   // Insufficient text -> scanned/image-only PDF. Rasterize and fall back to
@@ -140,15 +143,20 @@ export async function extractLineItemsFromPdf(
     })),
   ]
 
-  return invokeAndParse(new HumanMessage({ content: visionContent }), retryDelayMs)
+  return invokeAndParse(new HumanMessage({ content: visionContent }), retryDelayMs, options.meter)
 }
 
-async function invokeAndParse(humanMessage: HumanMessage, retryDelayMs: number): Promise<ProcurementExtractionResult> {
+async function invokeAndParse(
+  humanMessage: HumanMessage,
+  retryDelayMs: number,
+  meter?: TokenMeter,
+): Promise<ProcurementExtractionResult> {
   let lastTimeoutError: unknown
 
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
       const response = await llm.invoke([new SystemMessage(EXTRACTION_SYSTEM_PROMPT), humanMessage])
+      meter?.record(response)
 
       if (isRefusal(response)) {
         throw new ProcurementExtractionRefusalError()

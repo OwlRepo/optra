@@ -7,10 +7,16 @@ import { ProcurementParseProcessor } from './procurement-parse.processor'
 import { ProcurementExtractionService } from './procurement-extraction.service'
 import { ComparisonService } from './comparison.service'
 import { StorageModule } from '../storage/storage.module'
+import { LimitsModule } from '../limits/limits.module'
 import { StructuredQueryModule } from '../structured-query/structured-query.module'
 
 @Module({
-  imports: [StorageModule, StructuredQueryModule, BullModule.registerQueue({ name: 'procurement-parse-queue' })],
+  imports: [
+    StorageModule,
+    StructuredQueryModule,
+    LimitsModule,
+    BullModule.registerQueue({ name: 'procurement-parse-queue' }),
+  ],
   controllers: [ProcurementController],
   providers: [
     ProcurementDocumentsService,

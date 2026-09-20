@@ -11,10 +11,12 @@ import { CatalogImageService } from './catalog-image.service'
 import { CatalogExtractionService } from './catalog-extraction.service'
 import { CatalogMatchService } from './catalog-match.service'
 import { StorageModule } from '../storage/storage.module'
+import { LimitsModule } from '../limits/limits.module'
 
 @Module({
   imports: [
     StorageModule,
+    LimitsModule,
     BullModule.registerQueue({ name: 'catalog-parse-queue' }),
     BullModule.registerQueue({ name: 'catalog-scrape-queue' }),
   ],

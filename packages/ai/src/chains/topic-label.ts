@@ -1,6 +1,7 @@
 import { ChatOpenAI } from '@langchain/openai'
 import { SystemMessage, HumanMessage } from '@langchain/core/messages'
 import { resolveModel } from './models'
+import type { TokenMeter } from '../tokens'
 
 const SYSTEM_PROMPT = `You read a small cluster of chat questions that all failed to get a good answer and write a short label (3-6 words) describing the common topic or gap they share.
 
@@ -16,11 +17,15 @@ const llm = new ChatOpenAI({
   temperature: 0,
 })
 
-export async function generateTopicLabel(questions: string[]): Promise<string> {
+export async function generateTopicLabel(
+  questions: string[],
+  options: { meter?: TokenMeter } = {},
+): Promise<string> {
   const response = await llm.invoke([
     new SystemMessage(SYSTEM_PROMPT),
     new HumanMessage(questions.map((q, i) => `${i + 1}. ${q}`).join('\n')),
   ])
+  options.meter?.record(response)
 
   const raw = typeof response.content === 'string' ? response.content : String(response.content)
   return raw.trim().replace(/^["']|["']$/g, '')

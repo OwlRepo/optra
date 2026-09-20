@@ -4,6 +4,7 @@ import { StorageModule } from '../storage/storage.module'
 import { IngestModule } from '../ingest/ingest.module'
 import { CacheModule } from '../cache/cache.module'
 import { NotificationsModule } from '../notifications/notifications.module'
+import { LimitsModule } from '../limits/limits.module'
 import { InsightsController } from './insights.controller'
 import { InsightsService } from './insights.service'
 import { BackgroundRunsService } from './background-runs.service'
@@ -30,6 +31,7 @@ import { DigestProcessor } from './digest.processor'
     IngestModule,
     CacheModule,
     NotificationsModule,
+    LimitsModule,
     BullModule.registerQueue({ name: 'freshness-tick-queue' }),
     BullModule.registerQueue({ name: 'freshness-check-queue' }),
     BullModule.registerQueue({ name: 'faq-cluster-tick-queue' }),

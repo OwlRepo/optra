@@ -1,6 +1,15 @@
 import { HttpException, Inject, Injectable, Logger } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
+import { TokenMeter } from '@repo/ai'
 import type Redis from 'ioredis'
+
+const BUDGET_EXCEEDED_STATUS = 402
+
+// Background jobs use this to treat "budget reached" as a final outcome (no
+// Bull retry: the budget will not refill before the retry fires).
+export function isBudgetExceeded(error: unknown): boolean {
+  return error instanceof HttpException && error.getStatus() === BUDGET_EXCEEDED_STATUS
+}
 
 @Injectable()
 export class UsageService {
@@ -19,7 +28,7 @@ export class UsageService {
       await this.redis.expire(key, 60 * 60 * 24 * 40)
     } catch (error) {
       this.logger.warn(
-        `Failed chat usage increment for workspace ${workspaceId}: ${this.message(error)}`,
+        `Failed token usage increment for workspace ${workspaceId}: ${this.message(error)}`,
       )
     }
   }
@@ -36,7 +45,7 @@ export class UsageService {
       const used = raw ? Number.parseInt(raw, 10) : 0
 
       if (used >= budget) {
-        throw new HttpException('Workspace monthly token budget reached', 402)
+        throw new HttpException('Workspace monthly token budget reached', BUDGET_EXCEEDED_STATUS)
       }
     } catch (error) {
       if (error instanceof HttpException) {
@@ -44,8 +53,23 @@ export class UsageService {
       }
 
       this.logger.warn(
-        `Failed chat usage budget check for workspace ${workspaceId}: ${this.message(error)}`,
+        `Failed token usage budget check for workspace ${workspaceId}: ${this.message(error)}`,
       )
+    }
+  }
+
+  // The one way a model call is charged: check the budget first, give the call
+  // a meter, and charge whatever the provider reported — in `finally`, so
+  // tokens spent before a parse/validation error are still counted.
+  async metered<T>(workspaceId: string, run: (meter: TokenMeter) => Promise<T>): Promise<T> {
+    await this.assertWithinBudget(workspaceId)
+    const meter = new TokenMeter()
+    try {
+      return await run(meter)
+    } finally {
+      if (meter.total > 0) {
+        await this.addUsage(workspaceId, meter.total)
+      }
     }
   }
 

@@ -119,6 +119,7 @@ describe('CatalogMatchService', () => {
     expect(storage.getBuffer).toHaveBeenCalledWith('k/photo.png')
     expect(extraction.compare).toHaveBeenCalledWith(
       expect.objectContaining({ candidateImageBase64: Buffer.from([0x89, 0x50, 0x4e, 0x47]).toString('base64') }),
+      workspace.id,
     )
   })
 
@@ -130,7 +131,7 @@ describe('CatalogMatchService', () => {
     await service.search(workspace.id, { purchaseOrderLineItemId: poItem.id })
 
     expect(storage.getBuffer).not.toHaveBeenCalled()
-    expect(extraction.compare).toHaveBeenCalledWith(expect.objectContaining({ candidateImageBase64: null }))
+    expect(extraction.compare).toHaveBeenCalledWith(expect.objectContaining({ candidateImageBase64: null }), workspace.id)
   })
 
   it('scopes to one vendor (compliance) and excludes other vendors', async () => {
@@ -182,5 +183,27 @@ describe('CatalogMatchService', () => {
     const dismissed = await service.listMatches(workspace.id, { status: 'dismissed' })
     expect(open).toHaveLength(0)
     expect(dismissed).toHaveLength(1)
+  })
+
+  it('judges candidates at most three at a time', async () => {
+    const workspace = await seedWorkspace(`${prefix}concurrency@example.com`, 'Concurrency WS')
+    const poItem = await seedPoLineItem(workspace.id, 'A1', 'Widget')
+    for (let i = 0; i < 6; i++) {
+      await seedVendorWithCatalogItem(workspace.id, `Vendor ${i}`, { sku: 'A1', description: 'Widget' })
+    }
+    let inFlight = 0
+    let maxInFlight = 0
+    extraction.compare.mockImplementation(async () => {
+      inFlight += 1
+      maxInFlight = Math.max(maxInFlight, inFlight)
+      await new Promise((resolve) => setTimeout(resolve, 20))
+      inFlight -= 1
+      return { isMatch: true, score: 0.9, reason: 'Same widget.' }
+    })
+
+    await service.search(workspace.id, { purchaseOrderLineItemId: poItem.id })
+
+    expect(extraction.compare).toHaveBeenCalledTimes(6)
+    expect(maxInFlight).toBeLessThanOrEqual(3)
   })
 })

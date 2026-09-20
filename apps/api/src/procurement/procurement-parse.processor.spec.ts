@@ -1,4 +1,5 @@
 import { randomUUID } from 'crypto'
+import { HttpException } from '@nestjs/common'
 import { mkdtempSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
@@ -255,7 +256,7 @@ describe('ProcurementParseProcessor', () => {
     expect(updated.status).toBe('done')
     expect(updated.rowCount).toBe(2)
 
-    expect(extraction.extract).toHaveBeenCalledWith(pdfPath)
+    expect(extraction.extract).toHaveBeenCalledWith(pdfPath, workspace.id)
     // XLSX->CSV conversion is the only thing that ever calls storage.save — a
     // PDF taking that branch would be a real bug (Papa.parse on PDF bytes).
     expect(storage.save).not.toHaveBeenCalled()
@@ -446,5 +447,25 @@ describe('ProcurementParseProcessor', () => {
     await processor.handleReconcile()
 
     expect(parseService.reconcile).toHaveBeenCalledTimes(1)
+  })
+
+  it('fails with the budget message and no retry when the workspace token budget is exhausted', async () => {
+    const workspace = await seedWorkspace(`${prefix}po-budget@example.com`, prefix)
+    const pdfPath = join(dir, `${randomUUID()}.pdf`)
+    writeFileSync(pdfPath, 'fake pdf bytes')
+    storage.getToTempFile.mockResolvedValue(pdfPath)
+    extraction.extract.mockRejectedValue(new HttpException('Workspace monthly token budget reached', 402))
+    const [po] = await db
+      .insert(purchaseOrders)
+      .values({ workspaceId: workspace.id, name: 'po.pdf', storageKey: `k/${randomUUID()}`, status: 'pending' })
+      .returning()
+
+    await expect(
+      processor.handleParse(job('job-budget', { kind: 'purchase_order', id: po.id }, 0, 3)),
+    ).resolves.toBeUndefined()
+
+    const [row] = await db.select().from(purchaseOrders).where(eq(purchaseOrders.id, po.id))
+    expect(row.status).toBe('failed')
+    expect(row.lastError).toBe('Workspace monthly token budget reached')
   })
 })

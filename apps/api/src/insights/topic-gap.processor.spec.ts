@@ -1,9 +1,11 @@
+import { HttpException } from '@nestjs/common'
 import { eq } from 'drizzle-orm'
 import { backgroundRuns, chatMessages, chatQueryMetrics, chatSessions, db, pool, users, workspaceMembers, workspaces } from '@repo/db'
 import { TopicGapProcessor } from './topic-gap.processor'
 import { FaqClusterService } from './faq-cluster.service'
 import { BackgroundRunsService } from './background-runs.service'
 import { topicGapsRedisKey } from './coverage-dashboard.service'
+import { UsageService } from '../limits/usage.service'
 
 const { generateTopicLabel } = jest.requireMock('@repo/ai') as { generateTopicLabel: jest.Mock }
 
@@ -18,6 +20,8 @@ function fakeEmbedding(seed: number): number[] {
 describe('TopicGapProcessor', () => {
   let redis: { set: jest.Mock; get: jest.Mock }
   let clusterer: { cluster: jest.Mock }
+  let usage: { metered: jest.Mock }
+  const meter = { record: jest.fn(), total: 0 }
   let runs: BackgroundRunsService
   let processor: TopicGapProcessor
   const prefix = `topic-gap-processor-spec-${Date.now()}-`
@@ -49,10 +53,12 @@ describe('TopicGapProcessor', () => {
     redis = { set: jest.fn().mockResolvedValue('OK'), get: jest.fn() }
     clusterer = { cluster: jest.fn() }
     runs = new BackgroundRunsService()
+    usage = { metered: jest.fn((_workspaceId: string, run: (m: typeof meter) => Promise<unknown>) => run(meter)) }
     processor = new TopicGapProcessor(
       redis as unknown as never,
       clusterer as unknown as FaqClusterService,
       runs,
+      usage as unknown as UsageService,
     )
     await db.delete(backgroundRuns).where(eq(backgroundRuns.workspaceId, workspaceId))
     await db.delete(chatQueryMetrics).where(eq(chatQueryMetrics.workspaceId, workspaceId))
@@ -93,7 +99,9 @@ describe('TopicGapProcessor', () => {
 
     expect(generateTopicLabel).toHaveBeenCalledWith(
       expect.arrayContaining(['why cant i log in with SSO', 'SSO login is broken']),
+      { meter },
     )
+    expect(usage.metered).toHaveBeenCalledWith(workspaceId, expect.any(Function))
     expect(redis.set).toHaveBeenCalledWith(
       topicGapsRedisKey(workspaceId),
       JSON.stringify([{ label: 'SSO login troubleshooting', questionCount: 2, exampleQuestion: 'why cant i log in with SSO' }]),
@@ -124,5 +132,19 @@ describe('TopicGapProcessor', () => {
     const [run] = await db.select().from(backgroundRuns).where(eq(backgroundRuns.workspaceId, workspaceId))
     expect(run.status).toBe('failed')
     expect(run.lastError).toBe('redis down')
+  })
+
+  it('stops without asking Bull to retry when the workspace token budget is exhausted', async () => {
+    const id1 = await seedFallbackMetric('why cant i log in with SSO', 1)
+    const id2 = await seedFallbackMetric('SSO login is broken', 1)
+    clusterer.cluster.mockReturnValue([[id1, id2]])
+    usage.metered.mockRejectedValue(new HttpException('Workspace monthly token budget reached', 402))
+
+    await expect(processor.onGap({ data: { workspaceId } } as never)).resolves.toBeUndefined()
+
+    expect(generateTopicLabel).not.toHaveBeenCalled()
+    expect(redis.set).not.toHaveBeenCalled()
+    const [run] = await db.select().from(backgroundRuns).where(eq(backgroundRuns.workspaceId, workspaceId))
+    expect(run.status).toBe('failed')
   })
 })

@@ -5,6 +5,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard'
 import { WorkspaceMemberGuard } from '../auth/guards/workspace-member.guard'
 import { CacheModule } from '../cache/cache.module'
 import { EventsModule } from '../events/events.module'
+import { LimitsModule } from '../limits/limits.module'
 import { TicketExtractionProcessor } from './ticket-extraction.processor'
 import { TicketsController } from './tickets.controller'
 import { TicketsService } from './tickets.service'
@@ -14,6 +15,7 @@ import { TicketsService } from './tickets.service'
     AuthModule,
     EventsModule,
     CacheModule,
+    LimitsModule,
     BullModule.registerQueue({
       name: 'ticket-extraction-queue',
     }),

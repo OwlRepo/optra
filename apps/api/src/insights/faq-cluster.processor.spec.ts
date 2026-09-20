@@ -1,10 +1,12 @@
 import { randomUUID } from 'crypto'
+import { HttpException } from '@nestjs/common'
 import { eq } from 'drizzle-orm'
 import { db, faqDrafts, pool, tickets, users, workspaceMembers, workspaces } from '@repo/db'
 import { FaqClusterProcessor } from './faq-cluster.processor'
 import { TicketDocCoverageService } from './ticket-doc-coverage.service'
 import { FaqClusterService } from './faq-cluster.service'
 import { BackgroundRunsService } from './background-runs.service'
+import { UsageService } from '../limits/usage.service'
 
 const { generateFaqDraft } = jest.requireMock('@repo/ai') as { generateFaqDraft: jest.Mock }
 
@@ -17,6 +19,8 @@ describe('FaqClusterProcessor', () => {
   let clusterer: { cluster: jest.Mock }
   let runs: BackgroundRunsService
   let processor: FaqClusterProcessor
+  let usage: { metered: jest.Mock }
+  const meter = { record: jest.fn(), total: 0 }
   const prefix = `faq-cluster-processor-spec-${Date.now()}-`
   let workspaceId: string
   let ticketIds: string[]
@@ -50,10 +54,12 @@ describe('FaqClusterProcessor', () => {
     coverage = { findUncoveredTickets: jest.fn() }
     clusterer = { cluster: jest.fn() }
     runs = new BackgroundRunsService()
+    usage = { metered: jest.fn((_workspaceId: string, run: (m: typeof meter) => Promise<unknown>) => run(meter)) }
     processor = new FaqClusterProcessor(
       coverage as unknown as TicketDocCoverageService,
       clusterer as unknown as FaqClusterService,
       runs,
+      usage as unknown as UsageService,
     )
     await db.delete(faqDrafts).where(eq(faqDrafts.workspaceId, workspaceId))
   })
@@ -102,5 +108,20 @@ describe('FaqClusterProcessor', () => {
     coverage.findUncoveredTickets.mockRejectedValue(new Error('boom'))
 
     await expect(processor.onCluster({ data: { workspaceId } } as never)).rejects.toThrow('boom')
+  })
+
+  it('stops without asking Bull to retry when the workspace token budget is exhausted', async () => {
+    coverage.findUncoveredTickets.mockResolvedValue(
+      ticketIds.map((id) => ({ ticketId: id, embedding: [1, 0, 0], score: 0.2 })),
+    )
+    clusterer.cluster.mockReturnValue([ticketIds])
+    usage.metered.mockRejectedValue(new HttpException('Workspace monthly token budget reached', 402))
+
+    await expect(processor.onCluster({ data: { workspaceId } } as never)).resolves.toBeUndefined()
+
+    expect(usage.metered).toHaveBeenCalledWith(workspaceId, expect.any(Function))
+    expect(generateFaqDraft).not.toHaveBeenCalled()
+    const drafts = await db.select().from(faqDrafts).where(eq(faqDrafts.workspaceId, workspaceId))
+    expect(drafts).toHaveLength(0)
   })
 })

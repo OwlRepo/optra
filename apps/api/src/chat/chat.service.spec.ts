@@ -1,3 +1,4 @@
+import { HttpException } from '@nestjs/common'
 import { NotFoundException } from '@nestjs/common'
 import { Test } from '@nestjs/testing'
 import { and, asc, eq, like } from 'drizzle-orm'
@@ -96,7 +97,9 @@ describe('ChatService', () => {
   let usage: {
     assertWithinBudget: jest.Mock
     addUsage: jest.Mock
+    metered: jest.Mock
   }
+  const meter = { record: jest.fn(), total: 0 }
   let structuredQuery: {
     hasReadyDatasets: jest.Mock
     answer: jest.Mock
@@ -114,6 +117,7 @@ describe('ChatService', () => {
     usage = {
       assertWithinBudget: jest.fn(),
       addUsage: jest.fn(),
+      metered: jest.fn((_workspaceId: string, run: (m: typeof meter) => Promise<unknown>) => run(meter)),
     }
     structuredQuery = {
       hasReadyDatasets: jest.fn(() => Promise.resolve(false)),
@@ -626,6 +630,9 @@ describe('ChatService', () => {
     await second.onComplete('second answer')
 
     expect(condenseQuestion).toHaveBeenCalledTimes(1)
+    // Condense is a real model call: metered against the workspace budget.
+    expect(usage.metered).toHaveBeenCalledWith(workspace.id, expect.any(Function))
+    expect((condenseQuestion as jest.Mock).mock.calls[0][2]).toEqual({ meter })
     const [passedQuestion, passedHistory] = (condenseQuestion as jest.Mock).mock.calls[0]
     expect(passedQuestion).toBe('How do I request one?')
     expect(passedHistory).toEqual([
@@ -646,11 +653,12 @@ describe('ChatService', () => {
       passedHistory,
     )
 
-    // Usage accounting folds in the condensed-question length only because
-    // condensing actually changed the text this turn.
+    // Condense tokens are charged from the provider's own count through
+    // usage.metered (asserted above); the post-stream estimate covers only the
+    // message and the answer, so condensing is never charged twice.
     expect(usage.addUsage).toHaveBeenLastCalledWith(
       workspace.id,
-      'How do I request one?'.length + 'second answer'.length + condensed.length,
+      'How do I request one?'.length + 'second answer'.length,
     )
   })
 
@@ -882,7 +890,8 @@ describe('ChatService', () => {
     await result.onComplete(body.join(''))
 
     expect(structuredQuery.hasReadyDatasets).toHaveBeenCalledWith(workspace.id)
-    expect(structuredQuery.answer).toHaveBeenCalledWith(workspace.id, 'total revenue by product')
+    expect(structuredQuery.answer).toHaveBeenCalledWith(workspace.id, 'total revenue by product', { meter })
+    expect(usage.metered).toHaveBeenCalledWith(workspace.id, expect.any(Function))
     expect(cache.getExact).not.toHaveBeenCalled()
     expect(cache.getSemantic).not.toHaveBeenCalled()
     expect(embedQuery).not.toHaveBeenCalled()
@@ -1025,5 +1034,20 @@ describe('ChatService', () => {
     expect(structuredQuery.answer).not.toHaveBeenCalled()
     expect(answerQuestion).toHaveBeenCalled()
     expect(result.cacheStatus).toBe('miss')
+  })
+
+  it('refuses the structured path before any SQL generation once the workspace budget is exhausted', async () => {
+    const { user, workspace } = await seedWorkspaceFixture(
+      `${prefix}structured-budget@example.com`,
+      'Chat Spec Structured Budget',
+    )
+    ;(classifyStructuredIntent as jest.Mock).mockReturnValue(true)
+    structuredQuery.hasReadyDatasets.mockResolvedValue(true)
+    usage.metered.mockRejectedValueOnce(new HttpException('Workspace monthly token budget reached', 402))
+
+    await expect(service.answer(workspace.id, user.id, 'total revenue by product')).rejects.toMatchObject({
+      status: 402,
+    })
+    expect(structuredQuery.answer).not.toHaveBeenCalled()
   })
 })

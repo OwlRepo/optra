@@ -13,6 +13,7 @@ import {
   ProcurementExtractionUnsupportedError,
 } from '@repo/ai'
 import { db, invoiceLineItems, invoices, poLineItems, purchaseOrders } from '@repo/db'
+import { isBudgetExceeded } from '../limits/usage.service'
 import { StorageService } from '../storage/storage.service'
 import { isEmptyLineItem, mapRowToLineItem, validateLineItem } from './column-mapping'
 import { pdfExtractionEnabled } from './procurement-feature-flags'
@@ -48,6 +49,8 @@ export class ProcurementParseInputError extends Error {
 function isPermanentParseError(error: unknown): boolean {
   return (
     error instanceof ProcurementParseInputError ||
+    // The monthly budget will not refill before a Bull retry fires.
+    isBudgetExceeded(error) ||
     error instanceof ProcurementExtractionUnsupportedError ||
     error instanceof ProcurementExtractionEmptyError ||
     error instanceof ProcurementExtractionRefusalError
@@ -126,7 +129,7 @@ export class ProcurementParseProcessor {
       let sourceKind: string
 
       if (isPdf) {
-        const result = await this.extraction.extract(tempPath)
+        const result = await this.extraction.extract(tempPath, doc.workspaceId)
         rows = result.items.map((item) => ({
           ...validateLineItem({
             sku: item.sku,

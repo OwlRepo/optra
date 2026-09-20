@@ -1,8 +1,8 @@
-import { Logger } from '@nestjs/common'
+import { HttpException, Logger } from '@nestjs/common'
 import { Test } from '@nestjs/testing'
 import { ConfigService } from '@nestjs/config'
 import type Redis from 'ioredis'
-import { UsageService } from './usage.service'
+import { isBudgetExceeded, UsageService } from './usage.service'
 
 describe('UsageService', () => {
   let service: UsageService
@@ -81,5 +81,51 @@ describe('UsageService', () => {
     expect(loggerSpy).toHaveBeenCalled()
 
     loggerSpy.mockRestore()
+  })
+
+  it('metered checks the budget before running the call', async () => {
+    redis.get.mockResolvedValue('100')
+    const run = jest.fn()
+
+    await expect(service.metered('ws-1', run)).rejects.toThrow('Workspace monthly token budget reached')
+    expect(run).not.toHaveBeenCalled()
+  })
+
+  it('metered charges the provider-reported tokens once the call finishes', async () => {
+    redis.get.mockResolvedValue('0')
+
+    const result = await service.metered('ws-1', async (meter) => {
+      meter.record({ usage_metadata: { total_tokens: 42 } })
+      return 'ok'
+    })
+
+    expect(result).toBe('ok')
+    expect(redis.incrby).toHaveBeenCalledWith(expect.stringMatching(/^usage:tok:ws-1:/), 42)
+  })
+
+  it('metered still charges tokens spent before the call threw', async () => {
+    redis.get.mockResolvedValue('0')
+
+    await expect(
+      service.metered('ws-1', async (meter) => {
+        meter.record({ usage_metadata: { total_tokens: 17 } })
+        throw new Error('model returned malformed JSON')
+      }),
+    ).rejects.toThrow('model returned malformed JSON')
+    expect(redis.incrby).toHaveBeenCalledWith(expect.stringMatching(/^usage:tok:ws-1:/), 17)
+  })
+
+  it('metered records nothing when the call reported no tokens', async () => {
+    redis.get.mockResolvedValue('0')
+
+    await service.metered('ws-1', async () => 'no model call made')
+
+    expect(redis.incrby).not.toHaveBeenCalled()
+  })
+
+  it('isBudgetExceeded recognizes only the budget 402', () => {
+    expect(isBudgetExceeded(new HttpException('Workspace monthly token budget reached', 402))).toBe(true)
+    expect(isBudgetExceeded(new HttpException('Bad Request', 400))).toBe(false)
+    expect(isBudgetExceeded(new Error('boom'))).toBe(false)
   })
 })

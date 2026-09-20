@@ -1,4 +1,5 @@
 import { randomUUID } from 'crypto'
+import { HttpException } from '@nestjs/common'
 import { mkdtempSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
@@ -247,5 +248,22 @@ describe('CatalogParseProcessor', () => {
     await processor.handleReconcile()
 
     expect(parseService.reconcile).toHaveBeenCalledTimes(1)
+  })
+
+  it('fails the catalog with the budget message instead of skipping pages when the budget is exhausted', async () => {
+    const { workspace, vendor } = await seedWorkspaceAndVendor(`${prefix}budget@example.com`, 'Catalog Budget')
+    const catalog = await seedCatalog(workspace.id, vendor.id, 'catalog.pdf', 'fake pdf bytes')
+    mockRenderPdfToImages.mockResolvedValue({ pages: [Buffer.from([0x01]), Buffer.from([0x02])], total: 2, truncated: false })
+    extraction.extractFromImage.mockRejectedValue(new HttpException('Workspace monthly token budget reached', 402))
+
+    await expect(
+      processor.handleParse({ id: 'job-budget', data: { id: catalog.id }, attemptsMade: 0, opts: { attempts: 3 } } as any),
+    ).resolves.toBeUndefined()
+
+    const [row] = await db.select().from(catalogs).where(eq(catalogs.id, catalog.id))
+    expect(row.status).toBe('failed')
+    expect(row.lastError).toBe('Workspace monthly token budget reached')
+    expect(extraction.extractFromImage).toHaveBeenCalledTimes(1)
+    expect(extraction.extractFromImage).toHaveBeenCalledWith(expect.any(Buffer), workspace.id)
   })
 })

@@ -6,10 +6,17 @@ import { and, count, eq, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import Papa from 'papaparse'
 import { datasets, db, tickets, users, type DatasetColumn } from '@repo/db'
+import type { TokenMeter } from '@repo/ai'
 import { StorageService } from '../storage/storage.service'
 import { DuckDbQueryService, SqlExecutionError, UnsafeSqlError } from './duckdb-query.service'
 
 const TICKET_TABLE_NAME = 'tickets'
+
+// The caller (ChatService) owns budget accounting and hands a meter down to
+// every SQL-generation model call made while answering one question.
+export interface StructuredQueryOptions {
+  meter?: TokenMeter
+}
 const TICKET_COLUMNS: DatasetColumn[] = [
   { name: 'category', type: 'string' },
   { name: 'severity', type: 'string' },
@@ -81,11 +88,15 @@ export class StructuredQueryService {
     return Number(value) > 0
   }
 
-  async answer(workspaceId: string, question: string): Promise<StructuredQueryResult> {
+  async answer(
+    workspaceId: string,
+    question: string,
+    options: StructuredQueryOptions = {},
+  ): Promise<StructuredQueryResult> {
     const { classifyComparisonIntent, classifyTicketIntent, embedQuery } = await import('@repo/ai')
 
     if (classifyTicketIntent(question)) {
-      return this.answerFromTickets(workspaceId, question)
+      return this.answerFromTickets(workspaceId, question, options)
     }
 
     const embedding = await embedQuery(question)
@@ -103,7 +114,7 @@ export class StructuredQueryService {
         (candidate) => candidate.score >= COMPARISON_MIN_SCORE && candidate.storageKey && candidate.columnsSchema,
       )
       if (comparable.length >= 2) {
-        return this.answerAcrossDatasets(question, comparable.slice(0, MAX_COMPARE_DATASETS))
+        return this.answerAcrossDatasets(question, comparable.slice(0, MAX_COMPARE_DATASETS), options)
       }
       // Not enough comparable datasets found — fall through to the normal
       // single-dataset flow below rather than forcing a comparison.
@@ -132,11 +143,14 @@ export class StructuredQueryService {
     const tempPath = await this.storage.getToTempFile(top.storageKey)
 
     try {
-      return await this.runTextToSqlFlow(question, tempPath, TABLE_NAME, top.columnsSchema, {
-        label: top.name,
-        datasetId: top.id,
-        datasetName: top.name,
-      })
+      return await this.runTextToSqlFlow(
+        question,
+        tempPath,
+        TABLE_NAME,
+        top.columnsSchema,
+        { label: top.name, datasetId: top.id, datasetName: top.name },
+        options,
+      )
     } finally {
       await unlink(tempPath).catch(() => undefined)
     }
@@ -149,7 +163,11 @@ export class StructuredQueryService {
    * ephemeral-DuckDB executor a real dataset would use. LLM-generated SQL
    * never touches Postgres directly.
    */
-  private async answerFromTickets(workspaceId: string, question: string): Promise<StructuredQueryResult> {
+  private async answerFromTickets(
+    workspaceId: string,
+    question: string,
+    options: StructuredQueryOptions,
+  ): Promise<StructuredQueryResult> {
     const reviewedByUser = alias(users, 'reviewed_by_user')
     const assigneeUser = alias(users, 'assignee_user')
 
@@ -179,9 +197,14 @@ export class StructuredQueryService {
 
     try {
       await writeFile(csvPath, csvContent, 'utf-8')
-      return await this.runTextToSqlFlow(question, csvPath, TICKET_TABLE_NAME, TICKET_COLUMNS, {
-        label: 'your tickets',
-      })
+      return await this.runTextToSqlFlow(
+        question,
+        csvPath,
+        TICKET_TABLE_NAME,
+        TICKET_COLUMNS,
+        { label: 'your tickets' },
+        options,
+      )
     } finally {
       await rm(dir, { recursive: true, force: true })
     }
@@ -196,6 +219,7 @@ export class StructuredQueryService {
   private async answerAcrossDatasets(
     question: string,
     candidates: DatasetCandidateRow[],
+    options: StructuredQueryOptions,
   ): Promise<StructuredQueryResult> {
     const tables = await Promise.all(
       candidates.map(async (candidate, index) => ({
@@ -208,7 +232,7 @@ export class StructuredQueryService {
     )
 
     try {
-      return await this.runMultiTableTextToSqlFlow(question, tables)
+      return await this.runMultiTableTextToSqlFlow(question, tables, options)
     } finally {
       await Promise.all(tables.map((table) => unlink(table.csvPath).catch(() => undefined)))
     }
@@ -217,6 +241,7 @@ export class StructuredQueryService {
   private async runMultiTableTextToSqlFlow(
     question: string,
     tables: { id: string; name: string; tableName: string; csvPath: string; columns: DatasetColumn[] }[],
+    options: StructuredQueryOptions,
   ): Promise<StructuredQueryResult> {
     const { generateMultiTableSql, UnanswerableQuestionError } = await import('@repo/ai')
 
@@ -226,7 +251,7 @@ export class StructuredQueryService {
     const datasetRefs: StructuredQueryDatasetRef[] = tables.map(({ id, name }) => ({ id, name }))
 
     try {
-      let generatedSql = await generateMultiTableSql(question, schemaInput)
+      let generatedSql = await generateMultiTableSql(question, schemaInput, undefined, options)
 
       try {
         const rows = await this.duckDb.runReadOnlyMultiTableQuery(tableRefs, generatedSql)
@@ -236,7 +261,7 @@ export class StructuredQueryService {
           throw firstError
         }
         const message = firstError instanceof Error ? firstError.message : String(firstError)
-        generatedSql = await generateMultiTableSql(question, schemaInput, message)
+        generatedSql = await generateMultiTableSql(question, schemaInput, message, options)
         const rows = await this.duckDb.runReadOnlyMultiTableQuery(tableRefs, generatedSql)
         return { state: 'confident', answer: this.verbalize(rows), datasets: datasetRefs }
       }
@@ -261,11 +286,12 @@ export class StructuredQueryService {
     tableName: string,
     columns: DatasetColumn[],
     source: { label: string; datasetId?: string; datasetName?: string },
+    options: StructuredQueryOptions,
   ): Promise<StructuredQueryResult> {
     const { generateSql, UnanswerableQuestionError } = await import('@repo/ai')
 
     try {
-      let generatedSql = await generateSql(question, tableName, columns)
+      let generatedSql = await generateSql(question, tableName, columns, undefined, options)
 
       try {
         const rows = await this.duckDb.runReadOnlyQuery(csvPath, tableName, generatedSql)
@@ -281,7 +307,7 @@ export class StructuredQueryService {
         }
         // One repair retry: feed the execution error back to the model.
         const message = firstError instanceof Error ? firstError.message : String(firstError)
-        generatedSql = await generateSql(question, tableName, columns, message)
+        generatedSql = await generateSql(question, tableName, columns, message, options)
         const rows = await this.duckDb.runReadOnlyQuery(csvPath, tableName, generatedSql)
         return {
           state: 'confident',

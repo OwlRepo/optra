@@ -267,4 +267,24 @@ describe('StructuredQueryService', () => {
       expect(generateSql).not.toHaveBeenCalled()
     })
   })
+
+  it('passes the caller meter through to SQL generation', async () => {
+    // Earlier tests leave these returning true (clearAllMocks keeps return values).
+    classifyTicketIntent.mockReturnValue(false)
+    classifyComparisonIntent.mockReturnValue(false)
+    await seedDataset({ description: 'Sales by product', embeddingSeed: 1 })
+    embedQuery.mockResolvedValue(fakeEmbedding(1))
+    generateSql.mockResolvedValue('SELECT product, revenue FROM dataset ORDER BY revenue DESC')
+    const meter = { record: jest.fn(), total: 0 }
+
+    await service.answer(workspaceId, 'show revenue by product', { meter: meter as never })
+
+    expect(generateSql).toHaveBeenCalledWith(
+      'show revenue by product',
+      expect.any(String),
+      expect.any(Array),
+      undefined,
+      { meter },
+    )
+  })
 })

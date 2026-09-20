@@ -2,6 +2,7 @@ import { ChatOpenAI } from '@langchain/openai'
 import { SystemMessage, HumanMessage } from '@langchain/core/messages'
 import type { DatasetColumn } from '@repo/db'
 import { resolveModel } from './models'
+import type { TokenMeter } from '../tokens'
 
 const SYSTEM_PROMPT = `You write a single read-only DuckDB SQL SELECT statement that answers the user's question against one table.
 
@@ -61,6 +62,7 @@ export async function generateMultiTableSql(
   question: string,
   tables: MultiTableSchema[],
   priorError?: string,
+  options: { meter?: TokenMeter } = {},
 ): Promise<string> {
   const schema = buildMultiSchemaDescription(tables)
   const repairNote = priorError
@@ -71,6 +73,7 @@ export async function generateMultiTableSql(
     new SystemMessage(MULTI_TABLE_SYSTEM_PROMPT),
     new HumanMessage(`${schema}\n\nQuestion: ${question}${repairNote}`),
   ])
+  options.meter?.record(response)
 
   const raw = typeof response.content === 'string' ? response.content : String(response.content)
   const sql = extractSql(raw)
@@ -95,6 +98,7 @@ export async function generateSql(
   tableName: string,
   columns: DatasetColumn[],
   priorError?: string,
+  options: { meter?: TokenMeter } = {},
 ): Promise<string> {
   const schema = buildSchemaDescription(tableName, columns)
   const repairNote = priorError
@@ -105,6 +109,7 @@ export async function generateSql(
     new SystemMessage(SYSTEM_PROMPT),
     new HumanMessage(`${schema}\n\nQuestion: ${question}${repairNote}`),
   ])
+  options.meter?.record(response)
 
   const raw = typeof response.content === 'string' ? response.content : String(response.content)
   const sql = raw

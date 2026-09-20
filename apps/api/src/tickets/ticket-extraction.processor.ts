@@ -5,12 +5,16 @@ import { db, tickets } from '@repo/db'
 import { and, eq, inArray } from 'drizzle-orm'
 import { extractTicketFromTranscript } from '@repo/ai'
 import { EventsService } from '../events/events.service'
+import { UsageService } from '../limits/usage.service'
 
 @Processor('ticket-extraction-queue')
 export class TicketExtractionProcessor {
   private readonly logger = new Logger(TicketExtractionProcessor.name)
 
-  constructor(private readonly events: EventsService) {}
+  constructor(
+    private readonly events: EventsService,
+    private readonly usage: UsageService,
+  ) {}
 
   @Process()
   async handleExtraction(job: Job<{ ticketId: string }>) {
@@ -39,7 +43,11 @@ export class TicketExtractionProcessor {
     }
 
     try {
-      const extracted = await extractTicketFromTranscript(ticket.transcript)
+      // Charged to the ticket's workspace; an exhausted budget lands in the
+      // catch below like any other failure (the ticket shows the reason).
+      const extracted = await this.usage.metered(ticket.workspaceId, (meter) =>
+        extractTicketFromTranscript(ticket.transcript, { meter }),
+      )
       const rows = await db
         .update(tickets)
         .set({

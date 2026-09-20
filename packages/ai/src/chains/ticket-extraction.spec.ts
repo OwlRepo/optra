@@ -59,6 +59,38 @@ describe('extractTicketFromTranscript', () => {
     })
   })
 
+  it('records the provider-reported token usage on the meter', async () => {
+    invokeMock.mockResolvedValue({
+      content: JSON.stringify({
+        shouldCreateTicket: true,
+        title: 'Login loop after OTP verify',
+        issueSummary: 'User verifies OTP, then gets redirected back to login.',
+        reproSteps: '1. Register',
+        severity: 'high',
+        productArea: 'auth',
+        hypothesizedRootCause: null,
+        nextAction: 'Trace verify response cookie write.',
+        fieldConfidence: {
+          title: 0.9,
+          issueSummary: 0.9,
+          reproSteps: 0.9,
+          severity: 0.9,
+          productArea: 0.9,
+          hypothesizedRootCause: 0.5,
+          nextAction: 0.9,
+        },
+      }),
+      usage_metadata: { input_tokens: 30, output_tokens: 12, total_tokens: 42 },
+    })
+
+    const { extractTicketFromTranscript } = await import('./ticket-extraction')
+    const { TokenMeter } = await import('../tokens')
+    const meter = new TokenMeter()
+    await extractTicketFromTranscript('customer transcript', { meter })
+
+    expect(meter.total).toBe(42)
+  })
+
   it('throws ExtractionEmptyError for garbled or non-support transcript', async () => {
     invokeMock.mockResolvedValue({
       content: JSON.stringify({

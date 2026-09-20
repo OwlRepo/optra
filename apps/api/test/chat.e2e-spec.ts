@@ -36,6 +36,13 @@ jest.mock('@repo/ai', () => ({
   historyCondenseEnabled: jest.fn(() => true),
   historyInAnswerEnabled: jest.fn(() => true),
   historyMaxMessages: jest.fn(() => 12),
+  // UsageService.metered() constructs a real meter for condense/structured calls.
+  TokenMeter: class {
+    record(): void {}
+    get total(): number {
+      return 0
+    }
+  },
 }))
 
 async function cleanupUsers(prefix: string) {

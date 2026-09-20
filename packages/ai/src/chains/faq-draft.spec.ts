@@ -33,6 +33,17 @@ describe('generateFaqDraft', () => {
     })
   })
 
+  it('records the provider-reported token usage on the meter', async () => {
+    invokeMock.mockResolvedValue({ content: '{"question":"q","answer":"a"}', usage_metadata: { input_tokens: 30, output_tokens: 12, total_tokens: 42 } })
+
+    const { generateFaqDraft } = await import('./faq-draft')
+    const { TokenMeter } = await import('../tokens')
+    const meter = new TokenMeter()
+    await generateFaqDraft(TICKETS, { meter })
+
+    expect(meter.total).toBe(42)
+  })
+
   it('includes each ticket title/summary/resolution in the prompt, never raw transcript fields', async () => {
     invokeMock.mockResolvedValue({ content: '{"question":"q","answer":"a"}' })
 

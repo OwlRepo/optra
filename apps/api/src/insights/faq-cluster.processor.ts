@@ -6,6 +6,7 @@ import { db, faqDrafts, tickets } from '@repo/db'
 import { BackgroundRunsService } from './background-runs.service'
 import { TicketDocCoverageService } from './ticket-doc-coverage.service'
 import { FaqClusterService } from './faq-cluster.service'
+import { isBudgetExceeded, UsageService } from '../limits/usage.service'
 
 @Injectable()
 @Processor('faq-cluster-queue')
@@ -16,6 +17,7 @@ export class FaqClusterProcessor {
     private readonly coverage: TicketDocCoverageService,
     private readonly clusterer: FaqClusterService,
     private readonly runs: BackgroundRunsService,
+    private readonly usage: UsageService,
   ) {}
 
   @Process()
@@ -40,6 +42,12 @@ export class FaqClusterProcessor {
       this.logger.log(`FAQ cluster workspaceId=${workspaceId} draftsCreated=${draftsCreated}`)
     } catch (error) {
       await this.runs.fail(runId, error)
+      // An exhausted budget is a final outcome for this run: a Bull retry
+      // would be refused the same way, so it is recorded and not rethrown.
+      if (isBudgetExceeded(error)) {
+        this.logger.warn(`FAQ cluster stopped workspaceId=${workspaceId}: token budget reached`)
+        return
+      }
       this.logger.error(
         `FAQ cluster failed workspaceId=${workspaceId}: ${error instanceof Error ? error.message : String(error)}`,
       )
@@ -72,7 +80,7 @@ export class FaqClusterProcessor {
 
     if (rows.length === 0) return false
 
-    const draft = await generateFaqDraft(rows)
+    const draft = await this.usage.metered(workspaceId, (meter) => generateFaqDraft(rows, { meter }))
 
     await db.insert(faqDrafts).values({
       workspaceId,

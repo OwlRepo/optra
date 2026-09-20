@@ -22,6 +22,17 @@ describe('generateTopicLabel', () => {
     expect(result).toBe('SSO login troubleshooting')
   })
 
+  it('records the provider-reported token usage on the meter', async () => {
+    invokeMock.mockResolvedValue({ content: 'label', usage_metadata: { input_tokens: 30, output_tokens: 12, total_tokens: 42 } })
+
+    const { generateTopicLabel } = await import('./topic-label')
+    const { TokenMeter } = await import('../tokens')
+    const meter = new TokenMeter()
+    await generateTopicLabel(['question one'], { meter })
+
+    expect(meter.total).toBe(42)
+  })
+
   it('includes every question in the prompt', async () => {
     invokeMock.mockResolvedValue({ content: 'label' })
 

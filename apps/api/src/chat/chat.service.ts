@@ -11,7 +11,7 @@ import {
   resolveOffsetPage,
   type ChatMessageSource,
 } from '@repo/db'
-import type { HistoryTurn } from '@repo/ai'
+import type { HistoryTurn, TokenMeter } from '@repo/ai'
 import { CacheService } from '../cache/cache.service'
 import { UsageService } from '../limits/usage.service'
 import { ListQueryDto } from '../common/dto/list-query.dto'
@@ -74,8 +74,12 @@ export class ChatService {
     // like "find more like that" by its literal text would collide across
     // unrelated conversations. Skipped entirely (zero LLM cost) when there's
     // no history to resolve pronouns/references against.
+    // Condensing is a real model call when history is present, so it is
+    // budget-checked first and charged from the provider's own token count.
     const standaloneQuestion =
-      history.length > 0 ? await condenseQuestion(message, history) : message
+      history.length > 0
+        ? await this.usage.metered(workspaceId, (meter) => condenseQuestion(message, history, { meter }))
+        : message
 
     // Structured (dataset/DuckDB) intent is decided before either cache
     // lookup: computed answers over mutable datasets must never be served
@@ -86,7 +90,10 @@ export class ChatService {
       classifyStructuredIntent(standaloneQuestion) &&
       (await this.structuredQuery.hasReadyDatasets(workspaceId))
     ) {
-      return this.answerStructured(workspaceId, session.id, standaloneQuestion, startedAt)
+      // SQL generation is a model call: budget-checked before it runs, charged after.
+      return this.usage.metered(workspaceId, (meter) =>
+        this.answerStructured(workspaceId, session.id, standaloneQuestion, startedAt, meter),
+      )
     }
 
     const exact = await this.cache.getExact(workspaceId, standaloneQuestion)
@@ -167,12 +174,9 @@ export class ChatService {
       structuredState: undefined,
       structuredCandidates: undefined,
       onComplete: async (fullText: string) => {
-        const condensedTokens =
-          standaloneQuestion !== message ? countTokens(standaloneQuestion) : 0
-        await this.usage.addUsage(
-          workspaceId,
-          countTokens(message) + countTokens(fullText) + condensedTokens,
-        )
+        // Condense tokens were already charged from the provider's count
+        // (metered above); this remains a local estimate for the answer call.
+        await this.usage.addUsage(workspaceId, countTokens(message) + countTokens(fullText))
         const chatMessageId = await this.persistAssistant(session.id, fullText, sources)
         await this.recordQueryMetrics({
           workspaceId,
@@ -335,8 +339,9 @@ export class ChatService {
     sessionId: string,
     standaloneQuestion: string,
     startedAt: number,
+    meter: TokenMeter,
   ) {
-    const result = await this.structuredQuery.answer(workspaceId, standaloneQuestion)
+    const result = await this.structuredQuery.answer(workspaceId, standaloneQuestion, { meter })
     // Only a confident answer becomes a persisted citation — ambiguous/
     // correction/empty are momentary UX, not something worth citing forever.
     // V2 F5: a cross-file comparison cites every dataset it joined, not just one.

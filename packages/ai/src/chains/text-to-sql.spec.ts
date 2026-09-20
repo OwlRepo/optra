@@ -28,6 +28,17 @@ describe('generateSql', () => {
     expect(result).toBe('SELECT product FROM dataset')
   })
 
+  it('records the provider-reported token usage on the meter', async () => {
+    invokeMock.mockResolvedValue({ content: 'SELECT product FROM dataset', usage_metadata: { input_tokens: 30, output_tokens: 12, total_tokens: 42 } })
+
+    const { generateSql } = await import('./text-to-sql')
+    const { TokenMeter } = await import('../tokens')
+    const meter = new TokenMeter()
+    await generateSql('list products', 'dataset', COLUMNS, undefined, { meter })
+
+    expect(meter.total).toBe(42)
+  })
+
   it('passes the schema and prior error into the prompt on a repair attempt', async () => {
     invokeMock.mockResolvedValue({ content: 'SELECT product FROM dataset' })
 
@@ -60,6 +71,17 @@ describe('generateMultiTableSql (V2 F5)', () => {
     { tableName: 't1', name: 'sales.csv', columns: COLUMNS },
     { tableName: 't2', name: 'refunds.csv', columns: [{ name: 'product', type: 'string' as const }, { name: 'refund_amount', type: 'number' as const }] },
   ]
+
+  it('records the provider-reported token usage on the meter for a multi-table query', async () => {
+    invokeMock.mockResolvedValue({ content: 'SELECT t1.product FROM t1', usage_metadata: { input_tokens: 30, output_tokens: 12, total_tokens: 42 } })
+
+    const { generateMultiTableSql } = await import('./text-to-sql')
+    const { TokenMeter } = await import('../tokens')
+    const meter = new TokenMeter()
+    await generateMultiTableSql('compare sales and refunds', TABLES, undefined, { meter })
+
+    expect(meter.total).toBe(42)
+  })
 
   it('strips markdown fences and includes every table with its source name in the prompt', async () => {
     invokeMock.mockResolvedValue({ content: '```sql\nSELECT t1.product FROM t1 JOIN t2 ON t1.product = t2.product;\n```' })

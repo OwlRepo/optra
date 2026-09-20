@@ -2,6 +2,7 @@ import { HumanMessage, SystemMessage } from '@langchain/core/messages'
 import type { MessageContentComplex } from '@langchain/core/messages'
 import { ChatOpenAI } from '@langchain/openai'
 import { resolveModel } from './models'
+import type { TokenMeter } from '../tokens'
 
 // Two responsibilities live in this one file (per the A3 plan's file list):
 // extracting {sku, description} from a single already-rendered catalog page
@@ -75,6 +76,8 @@ const CATALOG_EXTRACTION_INSTRUCTION =
 
 export interface ExtractCatalogItemsOptions {
   retryDelayMs?: number
+  // Receives every model response's provider-reported usage (retries included).
+  meter?: TokenMeter
 }
 
 export async function extractCatalogItemsFromImage(
@@ -95,6 +98,7 @@ export async function extractCatalogItemsFromImage(
         new SystemMessage(CATALOG_EXTRACTION_SYSTEM_PROMPT),
         new HumanMessage({ content }),
       ])
+      options.meter?.record(response)
 
       if (isRefusal(response)) {
         throw new CatalogExtractionRefusalError()
@@ -172,6 +176,8 @@ export interface CompareLineItemToCatalogImageInput {
   candidateImageBase64: string | null
   candidateText: string
   retryDelayMs?: number
+  // Receives every model response's provider-reported usage (retries included).
+  meter?: TokenMeter
 }
 
 export interface CompareLineItemResult {
@@ -232,6 +238,7 @@ export async function compareLineItemToCatalogImage(
         new SystemMessage(CATALOG_COMPARE_SYSTEM_PROMPT),
         new HumanMessage({ content }),
       ])
+      input.meter?.record(response)
 
       if (isRefusal(response)) {
         throw new CatalogExtractionRefusalError('Model refused catalog match comparison request')

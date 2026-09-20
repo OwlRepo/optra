@@ -1,11 +1,18 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common'
 import { and, desc, eq, ilike, inArray, or } from 'drizzle-orm'
+import { createLimit } from '@repo/ai'
 import { catalogItems, catalogMatches, catalogs, db, invoiceLineItems, poLineItems } from '@repo/db'
 import { StorageService } from '../storage/storage.service'
 import { CatalogExtractionService } from './catalog-extraction.service'
 
 function maxCandidates(): number {
   return Number(process.env.CATALOG_MATCH_MAX_CANDIDATES ?? 8)
+}
+
+// Each candidate is a vision-model call; at most this many run at once per
+// search so one request cannot fan out the whole candidate cap in parallel.
+function matchConcurrency(): number {
+  return Number(process.env.CATALOG_MATCH_CONCURRENCY ?? 3)
 }
 
 type QueryLineItem = { id: string; workspaceId: string; sku: string | null; description: string | null }
@@ -32,16 +39,22 @@ export class CatalogMatchService {
     const queryText = this.lineItemText(query)
     const candidates = await this.findCandidates(workspaceId, query, input.vendorId)
 
+    const limit = createLimit(matchConcurrency())
     const judged = await Promise.all(
-      candidates.map(async (candidate) => {
-        const candidateText = this.lineItemText(candidate)
-        const candidateImageBase64 = candidate.photoStorageKey
-          ? await this.loadImageBase64(candidate.photoStorageKey)
-          : null
+      candidates.map((candidate) =>
+        limit(async () => {
+          const candidateText = this.lineItemText(candidate)
+          const candidateImageBase64 = candidate.photoStorageKey
+            ? await this.loadImageBase64(candidate.photoStorageKey)
+            : null
 
-        const verdict = await this.extraction.compare({ queryText, candidateText, candidateImageBase64 })
-        return { candidate, verdict }
-      }),
+          const verdict = await this.extraction.compare(
+            { queryText, candidateText, candidateImageBase64 },
+            workspaceId,
+          )
+          return { candidate, verdict }
+        }),
+      ),
     )
 
     const matchType = input.vendorId ? ('compliance' as const) : ('sourcing' as const)

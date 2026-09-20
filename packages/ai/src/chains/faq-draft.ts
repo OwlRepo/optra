@@ -1,6 +1,7 @@
 import { ChatOpenAI } from '@langchain/openai'
 import { SystemMessage, HumanMessage } from '@langchain/core/messages'
 import { resolveModel } from './models'
+import type { TokenMeter } from '../tokens'
 
 const SYSTEM_PROMPT = `You write one FAQ entry summarizing a cluster of related support tickets.
 
@@ -48,11 +49,15 @@ function buildTicketSummary(tickets: FaqSourceTicket[]): string {
 // same PII/prompt-injection mitigation this batch's plan flagged as an open
 // point: extracted fields are already structured and human-reviewed, a much
 // smaller surface than free-form transcripts.
-export async function generateFaqDraft(tickets: FaqSourceTicket[]): Promise<FaqDraft> {
+export async function generateFaqDraft(
+  tickets: FaqSourceTicket[],
+  options: { meter?: TokenMeter } = {},
+): Promise<FaqDraft> {
   const response = await llm.invoke([
     new SystemMessage(SYSTEM_PROMPT),
     new HumanMessage(buildTicketSummary(tickets)),
   ])
+  options.meter?.record(response)
 
   const raw = typeof response.content === 'string' ? response.content : String(response.content)
   const cleaned = raw

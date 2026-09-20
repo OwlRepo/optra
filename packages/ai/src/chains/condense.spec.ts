@@ -66,6 +66,21 @@ describe('condenseQuestion', () => {
     expect(result).toBe('How do I request a refund within the 30-day window?')
   })
 
+  it('records the provider-reported token usage on the meter', async () => {
+    const history: HistoryTurn[] = [
+      { role: 'user', content: 'What is our refund policy?' },
+      { role: 'assistant', content: 'Refunds are available within 30 days of purchase.' },
+    ]
+    invokeMock.mockResolvedValue({ content: 'How do I request a refund?', usage_metadata: { input_tokens: 30, output_tokens: 12, total_tokens: 42 } })
+
+    const { condenseQuestion } = await import('./condense')
+    const { TokenMeter } = await import('../tokens')
+    const meter = new TokenMeter()
+    await condenseQuestion('How do I request one?', history, { meter })
+
+    expect(meter.total).toBe(42)
+  })
+
   it('falls back to the original question when the model returns empty content', async () => {
     const history: HistoryTurn[] = [{ role: 'user', content: 'prior turn' }]
     invokeMock.mockResolvedValue({ content: '   ' })

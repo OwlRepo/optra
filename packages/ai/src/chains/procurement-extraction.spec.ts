@@ -54,6 +54,22 @@ describe('extractLineItemsFromPdf', () => {
     })
   })
 
+  it('records the provider-reported token usage on the meter', async () => {
+    invokeMock.mockResolvedValue({
+      content: JSON.stringify({
+        items: [{ sku: 'A1', description: 'Widget', quantity: '10', unitPrice: '5.00', lineTotal: '50.00', confidence: 0.92 }],
+      }),
+      usage_metadata: { input_tokens: 30, output_tokens: 12, total_tokens: 42 },
+    })
+
+    const { extractLineItemsFromPdf } = await import('./procurement-extraction')
+    const { TokenMeter } = await import('../tokens')
+    const meter = new TokenMeter()
+    await extractLineItemsFromPdf('/tmp/x.pdf', { meter })
+
+    expect(meter.total).toBe(42)
+  })
+
   it('falls back to vision when text is insufficient (scanned/image-only PDF)', async () => {
     loadPDFMock.mockResolvedValue({
       content: '   ',

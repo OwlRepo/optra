@@ -1,6 +1,7 @@
 import { HumanMessage, SystemMessage } from '@langchain/core/messages'
 import { ChatOpenAI } from '@langchain/openai'
 import { resolveModel } from './models'
+import type { TokenMeter } from '../tokens'
 import { boundHistory, historyCondenseEnabled, toMessages, type HistoryTurn } from './history'
 
 const CONDENSE_SYSTEM_PROMPT = `Given the conversation history and a follow-up question, rewrite the follow-up
@@ -18,7 +19,11 @@ const llm = new ChatOpenAI({
   temperature: 0,
 })
 
-export async function condenseQuestion(question: string, history: HistoryTurn[]): Promise<string> {
+export async function condenseQuestion(
+  question: string,
+  history: HistoryTurn[],
+  options: { meter?: TokenMeter } = {},
+): Promise<string> {
   if (history.length === 0 || !historyCondenseEnabled()) {
     return question
   }
@@ -28,6 +33,7 @@ export async function condenseQuestion(question: string, history: HistoryTurn[])
     ...toMessages(boundHistory(history)),
     new HumanMessage(`Follow-up question: ${question}\nStandalone question:`),
   ])
+  options.meter?.record(response)
 
   const text = extractText(response.content)
   return text.length > 0 ? text : question

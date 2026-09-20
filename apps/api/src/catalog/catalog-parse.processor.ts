@@ -9,6 +9,7 @@ import * as XLSX from 'xlsx'
 import { eq } from 'drizzle-orm'
 import { Catalog, catalogItems, catalogs, db } from '@repo/db'
 import { renderPdfToImages } from '@repo/ai'
+import { isBudgetExceeded } from '../limits/usage.service'
 import { StorageService } from '../storage/storage.service'
 import { CatalogExtractionService } from './catalog-extraction.service'
 import { CatalogImageService } from './catalog-image.service'
@@ -140,7 +141,7 @@ export class CatalogParseProcessor {
       const message = error instanceof Error ? error.message : String(error)
       const attempt = (job.attemptsMade ?? 0) + 1
       const attempts = job.opts?.attempts ?? 1
-      const permanent = error instanceof CatalogParseInputError
+      const permanent = error instanceof CatalogParseInputError || isBudgetExceeded(error)
       this.logger.error(
         `Catalog parse failed for ${id} attempt=${attempt}/${attempts} permanent=${permanent}`,
         error instanceof Error ? error.stack : message,
@@ -189,9 +190,14 @@ export class CatalogParseProcessor {
 
       let items: { sku: string | null; description: string | null }[] = []
       try {
-        const result = await this.extraction.extractFromImage(pageImage)
+        const result = await this.extraction.extractFromImage(pageImage, workspaceId)
         items = result.items
       } catch (error) {
+        // One unreadable page is skipped; an exhausted budget stops the whole
+        // catalog, or every remaining page would be refused one by one.
+        if (isBudgetExceeded(error)) {
+          throw error
+        }
         const message = error instanceof Error ? error.message : String(error)
         this.logger.warn(`Catalog page extraction failed catalogId=${catalogId} page=${pageNumber}: ${message}`)
         continue
