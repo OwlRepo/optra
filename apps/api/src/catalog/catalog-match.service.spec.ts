@@ -78,12 +78,16 @@ async function seedVendorWithCatalogItem(
 
 describe('CatalogMatchService', () => {
   let service: CatalogMatchService
-  let storage: { getBuffer: jest.Mock }
+  let storage: { getObject: jest.Mock }
   let extraction: { compare: jest.Mock }
   const prefix = `catalog-match-spec-${Date.now()}-`
 
   beforeEach(() => {
-    storage = { getBuffer: jest.fn().mockResolvedValue(Buffer.from([0x89, 0x50, 0x4e, 0x47])) }
+    storage = {
+      getObject: jest
+        .fn()
+        .mockResolvedValue({ buffer: Buffer.from([0x89, 0x50, 0x4e, 0x47]), contentType: 'image/png' }),
+    }
     extraction = { compare: jest.fn().mockResolvedValue({ isMatch: true, score: 0.9, reason: 'Same widget.' }) }
     service = new CatalogMatchService(storage as unknown as StorageService, extraction as unknown as CatalogExtractionService)
   })
@@ -116,9 +120,12 @@ describe('CatalogMatchService', () => {
       isMatch: true,
       reason: 'Same widget.',
     })
-    expect(storage.getBuffer).toHaveBeenCalledWith('k/photo.png')
+    expect(storage.getObject).toHaveBeenCalledWith('k/photo.png')
     expect(extraction.compare).toHaveBeenCalledWith(
-      expect.objectContaining({ candidateImageBase64: Buffer.from([0x89, 0x50, 0x4e, 0x47]).toString('base64') }),
+      expect.objectContaining({
+        candidateImageBase64: Buffer.from([0x89, 0x50, 0x4e, 0x47]).toString('base64'),
+        candidateImageContentType: 'image/png',
+      }),
       workspace.id,
     )
   })
@@ -130,7 +137,7 @@ describe('CatalogMatchService', () => {
 
     await service.search(workspace.id, { purchaseOrderLineItemId: poItem.id })
 
-    expect(storage.getBuffer).not.toHaveBeenCalled()
+    expect(storage.getObject).not.toHaveBeenCalled()
     expect(extraction.compare).toHaveBeenCalledWith(expect.objectContaining({ candidateImageBase64: null }), workspace.id)
   })
 
@@ -183,6 +190,116 @@ describe('CatalogMatchService', () => {
     const dismissed = await service.listMatches(workspace.id, { status: 'dismissed' })
     expect(open).toHaveLength(0)
     expect(dismissed).toHaveLength(1)
+  })
+
+  it('keeps a dismissed match when the same line is searched again', async () => {
+    const workspace = await seedWorkspace(`${prefix}keep-dismissed@example.com`, 'Keep Dismissed WS')
+    const poItem = await seedPoLineItem(workspace.id, 'A1', 'Widget')
+    await seedVendorWithCatalogItem(workspace.id, 'Acme', { sku: 'A1', description: 'Widget' })
+
+    await service.search(workspace.id, { purchaseOrderLineItemId: poItem.id })
+    const [match] = await service.listMatches(workspace.id, {})
+    await service.dismissMatch(workspace.id, match.id, workspace.ownerId)
+
+    await service.search(workspace.id, { purchaseOrderLineItemId: poItem.id })
+
+    const dismissed = await service.listMatches(workspace.id, { status: 'dismissed' })
+    expect(dismissed).toHaveLength(1)
+    expect(dismissed[0].id).toBe(match.id)
+  })
+
+  it("leaves another vendor's sourcing matches alone when verifying one vendor", async () => {
+    const workspace = await seedWorkspace(`${prefix}vendor-scope@example.com`, 'Vendor Scope WS')
+    const poItem = await seedPoLineItem(workspace.id, 'A1', 'Widget')
+    const { vendor: vendorA } = await seedVendorWithCatalogItem(workspace.id, 'Acme', { sku: 'A1', description: 'Widget' })
+    const { vendor: vendorB } = await seedVendorWithCatalogItem(workspace.id, 'Beta', { sku: 'A1', description: 'Widget' })
+
+    await service.search(workspace.id, { purchaseOrderLineItemId: poItem.id })
+    expect(await service.listMatches(workspace.id, {})).toHaveLength(2)
+
+    await service.search(workspace.id, { purchaseOrderLineItemId: poItem.id, vendorId: vendorA.id })
+
+    const rows = await service.listMatches(workspace.id, {})
+    // The point of the test: vendor B was never re-judged, so its sourcing
+    // verdict must survive. Before the fix the delete ignored vendor and
+    // matchType, so verifying A wiped B's row too.
+    expect(rows.filter((r) => r.vendorId === vendorB.id)).toEqual([
+      expect.objectContaining({ matchType: 'sourcing', status: 'open' }),
+    ])
+    // Vendor A keeps two rows on purpose, not by accident: `matchType` exists
+    // to separate "found somewhere in our catalogs" (sourcing) from "this
+    // vendor carries it" (compliance). A verify replaces only prior compliance
+    // rows for that vendor, so the earlier sourcing verdict is left standing.
+    expect(rows.filter((r) => r.vendorId === vendorA.id).map((r) => r.matchType).sort()).toEqual([
+      'compliance',
+      'sourcing',
+    ])
+  })
+
+  it('rejects a vendor from another workspace instead of silently finding nothing', async () => {
+    const mine = await seedWorkspace(`${prefix}vendor-iso-mine@example.com`, 'Vendor Iso Mine')
+    const other = await seedWorkspace(`${prefix}vendor-iso-other@example.com`, 'Vendor Iso Other')
+    const poItem = await seedPoLineItem(mine.id, 'A1', 'Widget')
+    const { vendor: foreignVendor } = await seedVendorWithCatalogItem(other.id, 'Foreign', {
+      sku: 'A1',
+      description: 'Widget',
+    })
+
+    await expect(
+      service.search(mine.id, { purchaseOrderLineItemId: poItem.id, vendorId: foreignVendor.id }),
+    ).rejects.toThrow('Vendor not found')
+    expect(extraction.compare).not.toHaveBeenCalled()
+  })
+
+  it('deletes nothing when a search finds no candidates', async () => {
+    const workspace = await seedWorkspace(`${prefix}no-candidates@example.com`, 'No Candidates WS')
+    const poItem = await seedPoLineItem(workspace.id, 'A1', 'Widget')
+    await seedVendorWithCatalogItem(workspace.id, 'Acme', { sku: 'A1', description: 'Widget' })
+    const [emptyVendor] = await db.insert(vendors).values({ workspaceId: workspace.id, name: 'Empty' }).returning()
+
+    await service.search(workspace.id, { purchaseOrderLineItemId: poItem.id })
+    expect(await service.listMatches(workspace.id, {})).toHaveLength(1)
+
+    const result = await service.search(workspace.id, {
+      purchaseOrderLineItemId: poItem.id,
+      vendorId: emptyVendor.id,
+    })
+
+    expect(result.matches).toHaveLength(0)
+    expect(await service.listMatches(workspace.id, {})).toHaveLength(1)
+  })
+
+  it('treats % in a SKU as a literal, not a wildcard', async () => {
+    const workspace = await seedWorkspace(`${prefix}wildcard@example.com`, 'Wildcard WS')
+    const poItem = await seedPoLineItem(workspace.id, 'A%1', 'Widget')
+    const { catalogItem: literal } = await seedVendorWithCatalogItem(workspace.id, 'Acme', {
+      sku: 'A%1',
+      description: 'Widget',
+    })
+    await seedVendorWithCatalogItem(workspace.id, 'Beta', { sku: 'AZZZ1', description: 'Unrelated part' })
+
+    const result = await service.search(workspace.id, { purchaseOrderLineItemId: poItem.id })
+
+    expect(result.matches).toHaveLength(1)
+    expect(result.matches[0].catalogItemId).toBe(literal.id)
+  })
+
+  it('judges nothing when the query line has no sku and no description', async () => {
+    const workspace = await seedWorkspace(`${prefix}blank-query@example.com`, 'Blank Query WS')
+    const [po] = await db
+      .insert(purchaseOrders)
+      .values({ workspaceId: workspace.id, name: 'po.csv', status: 'done' })
+      .returning()
+    const [poItem] = await db
+      .insert(poLineItems)
+      .values({ workspaceId: workspace.id, purchaseOrderId: po.id, sku: null, description: null })
+      .returning()
+    await seedVendorWithCatalogItem(workspace.id, 'Acme', { sku: 'A1', description: 'Widget' })
+
+    const result = await service.search(workspace.id, { purchaseOrderLineItemId: poItem.id })
+
+    expect(result.matches).toHaveLength(0)
+    expect(extraction.compare).not.toHaveBeenCalled()
   })
 
   it('judges candidates at most three at a time', async () => {

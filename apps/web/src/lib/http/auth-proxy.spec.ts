@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { proxyJson } from './auth-proxy'
+import { proxyJson, proxyRaw } from './auth-proxy'
 
 function makeRequest(url: string, init?: Omit<RequestInit, 'signal'>) {
   return new NextRequest(url, {
@@ -72,5 +72,46 @@ describe('proxyJson', () => {
         body: JSON.stringify({ name: 'Alpha' }),
       }),
     )
+  })
+})
+
+describe('proxyRaw', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('forwards Cache-Control from the backend so photo responses stay cacheable', async () => {
+    vi.spyOn(global, 'fetch').mockResolvedValue(
+      new Response(Buffer.from('bytes'), {
+        status: 200,
+        headers: {
+          'Content-Type': 'image/webp',
+          'Content-Length': '5',
+          'Cache-Control': 'private, max-age=86400',
+        },
+      }),
+    )
+
+    const response = await proxyRaw(
+      makeRequest('http://localhost:3000/api/workspaces/ws-1/catalog-items/item-1/photo'),
+      '/workspaces/ws-1/catalog-items/item-1/photo',
+      { method: 'GET' },
+    )
+
+    expect(response.headers.get('Cache-Control')).toBe('private, max-age=86400')
+    expect(response.headers.get('Content-Type')).toBe('image/webp')
+  })
+
+  it('returns 401 without calling the backend when the auth cookie is missing', async () => {
+    const fetchMock = vi.spyOn(global, 'fetch')
+
+    const response = await proxyRaw(
+      new NextRequest('http://localhost:3000/api/workspaces/ws-1/catalog-items/item-1/photo'),
+      '/workspaces/ws-1/catalog-items/item-1/photo',
+      { method: 'GET' },
+    )
+
+    expect(response.status).toBe(401)
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 })

@@ -1,9 +1,48 @@
 import { randomUUID } from 'crypto'
-import { Injectable, Logger, NotFoundException } from '@nestjs/common'
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common'
 import { and, desc, eq } from 'drizzle-orm'
 import { catalogItems, catalogs, db, vendors } from '@repo/db'
 import { StorageService } from '../storage/storage.service'
 import { CatalogParseService } from './catalog-parse.service'
+
+// Raster types only, and an allowlist rather than "serve whatever we stored".
+// CatalogImageService accepts any remote `image/*`, which includes
+// `image/svg+xml` — and an SVG can carry script, so echoing the stored type
+// back verbatim would turn a mislabelled file into stored XSS. These render in
+// an <img> and cannot execute.
+const SERVABLE_PHOTO_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'image/avif'])
+
+const EXTENSION_CONTENT_TYPES: Record<string, string> = {
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.webp': 'image/webp',
+  '.gif': 'image/gif',
+  '.avif': 'image/avif',
+}
+
+// Prefer what the object was actually stored with; fall back to the key's
+// extension only when the object carries no type (older keys predate `save()`
+// recording one).
+function resolvePhotoContentType(storageKey: string, storedContentType: string | null): string {
+  const stored = storedContentType?.split(';')[0].trim().toLowerCase()
+
+  if (stored) {
+    if (!SERVABLE_PHOTO_TYPES.has(stored)) {
+      throw new BadRequestException('Unsupported image type')
+    }
+    return stored
+  }
+
+  const dot = storageKey.lastIndexOf('.')
+  const fromExtension = dot === -1 ? undefined : EXTENSION_CONTENT_TYPES[storageKey.slice(dot).toLowerCase()]
+
+  if (!fromExtension) {
+    throw new BadRequestException('Unsupported image type')
+  }
+
+  return fromExtension
+}
 
 @Injectable()
 export class CatalogDocumentsService {
@@ -91,8 +130,8 @@ export class CatalogDocumentsService {
       throw new NotFoundException('Catalog item has no photo')
     }
 
-    const buffer = await this.storage.getBuffer(item.photoStorageKey)
-    return { buffer, contentType: item.photoStorageKey.endsWith('.png') ? 'image/png' : 'image/jpeg' }
+    const { buffer, contentType } = await this.storage.getObject(item.photoStorageKey)
+    return { buffer, contentType: resolvePhotoContentType(item.photoStorageKey, contentType) }
   }
 
   private async assertCatalogInWorkspaceAndVendor(workspaceId: string, vendorId: string, catalogId: string) {

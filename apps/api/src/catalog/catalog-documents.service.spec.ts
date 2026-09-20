@@ -32,12 +32,16 @@ async function seedWorkspaceAndVendor(email: string, name: string) {
 
 describe('CatalogDocumentsService', () => {
   let service: CatalogDocumentsService
-  let storage: { save: jest.Mock; delete: jest.Mock }
+  let storage: { save: jest.Mock; delete: jest.Mock; getObject: jest.Mock }
   let parse: { queueDoc: jest.Mock }
   const prefix = `catalog-documents-spec-${Date.now()}-`
 
   beforeEach(() => {
-    storage = { save: jest.fn().mockResolvedValue(undefined), delete: jest.fn().mockResolvedValue(undefined) }
+    storage = {
+      save: jest.fn().mockResolvedValue(undefined),
+      delete: jest.fn().mockResolvedValue(undefined),
+      getObject: jest.fn().mockResolvedValue({ buffer: Buffer.from('bytes'), contentType: 'image/png' }),
+    }
     parse = { queueDoc: jest.fn().mockResolvedValue({ queued: true }) }
     service = new CatalogDocumentsService(storage as unknown as StorageService, parse as unknown as CatalogParseService)
   })
@@ -135,5 +139,64 @@ describe('CatalogDocumentsService', () => {
       .returning()
 
     await expect(service.listItems(mine.workspace.id, mine.vendor.id, catalog.id)).rejects.toThrow('Catalog not found')
+  })
+
+  describe('getItemPhoto', () => {
+    async function seedItemWithPhoto(email: string, name: string, photoStorageKey: string) {
+      const { workspace, vendor } = await seedWorkspaceAndVendor(email, name)
+      const [catalog] = await db
+        .insert(catalogs)
+        .values({ workspaceId: workspace.id, vendorId: vendor.id, name: 'a.pdf', status: 'done' })
+        .returning()
+      const [item] = await db
+        .insert(catalogItems)
+        .values({ workspaceId: workspace.id, catalogId: catalog.id, sku: 'A1', photoStorageKey })
+        .returning()
+      return { workspace, item }
+    }
+
+    it('serves the content type the object was stored with, not one guessed from the key', async () => {
+      const { workspace, item } = await seedItemWithPhoto(
+        `${prefix}photo-webp@example.com`,
+        'Photo Webp',
+        'k/photo.webp',
+      )
+      storage.getObject.mockResolvedValue({ buffer: Buffer.from('bytes'), contentType: 'image/webp' })
+
+      const result = await service.getItemPhoto(workspace.id, item.id)
+
+      expect(storage.getObject).toHaveBeenCalledWith('k/photo.webp')
+      expect(result.contentType).toBe('image/webp')
+    })
+
+    it('refuses a stored type that is not a raster image', async () => {
+      const { workspace, item } = await seedItemWithPhoto(
+        `${prefix}photo-svg@example.com`,
+        'Photo Svg',
+        'k/photo.svg+xml',
+      )
+      storage.getObject.mockResolvedValue({
+        buffer: Buffer.from('<svg onload="alert(1)"/>'),
+        contentType: 'image/svg+xml',
+      })
+
+      await expect(service.getItemPhoto(workspace.id, item.id)).rejects.toThrow('Unsupported image type')
+    })
+
+    it('falls back to the key extension when the object carries no content type', async () => {
+      const { workspace, item } = await seedItemWithPhoto(`${prefix}photo-png@example.com`, 'Photo Png', 'k/photo.png')
+      storage.getObject.mockResolvedValue({ buffer: Buffer.from('bytes'), contentType: null })
+
+      const result = await service.getItemPhoto(workspace.id, item.id)
+
+      expect(result.contentType).toBe('image/png')
+    })
+
+    it('rejects a catalog item from another workspace', async () => {
+      const mine = await seedWorkspaceAndVendor(`${prefix}photo-iso-mine@example.com`, 'Photo Iso Mine')
+      const { item } = await seedItemWithPhoto(`${prefix}photo-iso-other@example.com`, 'Photo Iso Other', 'k/p.png')
+
+      await expect(service.getItemPhoto(mine.workspace.id, item.id)).rejects.toThrow('Catalog item not found')
+    })
   })
 })

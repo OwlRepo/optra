@@ -75,8 +75,12 @@ export async function proxyRaw(
     body: options.body ? JSON.stringify(options.body) : undefined,
   })
 
+  // Cache-Control is forwarded so the API stays in charge of cacheability.
+  // Without it the catalog photo route's `private, max-age=86400`
+  // (catalog.controller.ts) was dropped here, so every <img> refetched the
+  // bytes through this proxy on each render.
   const headers = new Headers()
-  for (const name of ['Content-Type', 'Content-Disposition', 'Content-Length']) {
+  for (const name of ['Content-Type', 'Content-Disposition', 'Content-Length', 'Cache-Control']) {
     const value = response.headers.get(name)
     if (value) {
       headers.set(name, value)

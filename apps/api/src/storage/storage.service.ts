@@ -67,6 +67,33 @@ export class StorageService implements OnModuleInit {
     return Buffer.concat(chunks)
   }
 
+  /**
+   * Like getBuffer, but also returns the Content-Type the object was stored
+   * with. `save()` already writes it and getBuffer throws it away — which is
+   * why callers serving bytes back to a browser had to guess the type from the
+   * key's extension. Additive on purpose: getBuffer keeps its signature, so
+   * its existing callers are untouched.
+   */
+  async getObject(key: string): Promise<{ buffer: Buffer; contentType: string | null }> {
+    const response = await this.getClient().send(
+      new GetObjectCommand({
+        Bucket: this.getBucket(),
+        Key: key,
+      }),
+    )
+
+    if (!response.Body) {
+      throw new Error(`No object body returned for ${key}`)
+    }
+
+    const chunks: Buffer[] = []
+    for await (const chunk of this.toReadable(response.Body)) {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as Uint8Array))
+    }
+
+    return { buffer: Buffer.concat(chunks), contentType: response.ContentType ?? null }
+  }
+
   async getToTempFile(key: string): Promise<string> {
     const response = await this.getClient().send(
       new GetObjectCommand({

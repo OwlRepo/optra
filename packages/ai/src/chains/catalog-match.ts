@@ -174,6 +174,10 @@ function normalizeItem(raw: RawExtractedCatalogItem): ExtractedCatalogItem | nul
 export interface CompareLineItemToCatalogImageInput {
   queryText: string
   candidateImageBase64: string | null
+  // The stored Content-Type of that image. Optional and defaulted so existing
+  // callers keep working; without it every candidate was labelled PNG, so a
+  // JPEG or WebP catalog photo went to the vision model under the wrong type.
+  candidateImageContentType?: string | null
   candidateText: string
   retryDelayMs?: number
   // Receives every model response's provider-reported usage (retries included).
@@ -224,9 +228,10 @@ export async function compareLineItemToCatalogImage(
   ]
 
   if (input.candidateImageBase64) {
+    const mime = input.candidateImageContentType?.split(';')[0].trim().toLowerCase() || 'image/png'
     content.push({
       type: 'image_url',
-      image_url: { url: `data:image/png;base64,${input.candidateImageBase64}` },
+      image_url: { url: `data:${mime};base64,${input.candidateImageBase64}` },
     })
   }
 

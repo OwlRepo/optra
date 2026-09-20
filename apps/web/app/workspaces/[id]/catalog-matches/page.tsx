@@ -60,6 +60,18 @@ export default function CatalogMatchesPage({ params }: { params: { id: string } 
       ? { invoiceLineItemId }
       : null
 
+  // Scope every list request to the line the user arrived for. Without this the
+  // page listed every match in the workspace, which is not what "Find catalog
+  // matches" on a single discrepancy row means. Empty when opened from the
+  // sidebar, which keeps the workspace-wide listing for that entry point.
+  const lineScope = React.useMemo(
+    () => ({
+      poLineItemId: poLineItemId ?? undefined,
+      invoiceLineItemId: invoiceLineItemId ?? undefined,
+    }),
+    [poLineItemId, invoiceLineItemId],
+  )
+
   const [workspace, setWorkspace] = React.useState<Workspace | null>(null)
   const [membership, setMembership] = React.useState<WorkspaceMembership | null>(null)
   const [vendors, setVendors] = React.useState<VendorDetail[]>([])
@@ -74,6 +86,13 @@ export default function CatalogMatchesPage({ params }: { params: { id: string } 
 
   const canManage = membership?.role === 'owner' || membership?.role === 'admin'
 
+  // Which vendor a verify runs against. The URL param is honoured first, but
+  // no in-app link sets it today: purchase_orders carries no vendor column, so
+  // the Discrepancies page has no vendor to pass (adding it is slice S3). The
+  // vendor dropdown already on this page therefore doubles as the selector, so
+  // the control is reachable instead of dead.
+  const verifyVendorId = vendorIdParam ?? (vendorFilter || null)
+
   const extractErrorMessage = (err: unknown, fallback: string) =>
     err && typeof err === 'object' && 'message' in err ? String((err as { message: unknown }).message) : fallback
 
@@ -84,6 +103,7 @@ export default function CatalogMatchesPage({ params }: { params: { id: string } 
         const data = await listCatalogMatches(workspaceId, {
           vendorId: nextVendorId || undefined,
           status: nextStatus || undefined,
+          ...lineScope,
         })
         setMatches(Array.isArray(data) ? data : [])
       } catch (err) {
@@ -100,7 +120,7 @@ export default function CatalogMatchesPage({ params }: { params: { id: string } 
         setIsLoading(false)
       }
     },
-    [router, workspaceId],
+    [lineScope, router, workspaceId],
   )
 
   const loadPage = React.useCallback(async () => {
@@ -110,7 +130,7 @@ export default function CatalogMatchesPage({ params }: { params: { id: string } 
         getWorkspace(workspaceId),
         listWorkspaces(),
         listVendors(workspaceId),
-        listCatalogMatches(workspaceId, {}),
+        listCatalogMatches(workspaceId, lineScope),
       ])
       setWorkspace(workspaceData)
       const membershipItems = Array.isArray(memberships?.items) ? memberships.items : []
@@ -130,7 +150,7 @@ export default function CatalogMatchesPage({ params }: { params: { id: string } 
     } finally {
       setIsLoading(false)
     }
-  }, [router, workspaceId])
+  }, [lineScope, router, workspaceId])
 
   React.useEffect(() => {
     void loadPage()
@@ -183,10 +203,10 @@ export default function CatalogMatchesPage({ params }: { params: { id: string } 
   }, [matchQuery, refetchMatches, router, statusFilter, toast, vendorFilter, workspaceId])
 
   const handleVerify = React.useCallback(async () => {
-    if (!matchQuery || !vendorIdParam) return
+    if (!matchQuery || !verifyVendorId) return
     try {
       setIsVerifying(true)
-      const result = await verifyCatalogMatches(workspaceId, vendorIdParam, matchQuery)
+      const result = await verifyCatalogMatches(workspaceId, verifyVendorId, matchQuery)
       const count = result.matches.length
       toast({
         variant: 'success',
@@ -208,7 +228,7 @@ export default function CatalogMatchesPage({ params }: { params: { id: string } 
     } finally {
       setIsVerifying(false)
     }
-  }, [matchQuery, refetchMatches, router, statusFilter, toast, vendorFilter, vendorIdParam, workspaceId])
+  }, [matchQuery, refetchMatches, router, statusFilter, toast, vendorFilter, verifyVendorId, workspaceId])
 
   const handleDismiss = React.useCallback(
     async (matchId: string) => {
@@ -254,7 +274,7 @@ export default function CatalogMatchesPage({ params }: { params: { id: string } 
             <Button size="sm" onClick={() => void handleSearch()} isLoading={isSearching} loadingText="Searching">
               {!isSearching ? 'Search all vendors' : null}
             </Button>
-            {vendorIdParam ? (
+            {verifyVendorId ? (
               <Button size="sm" variant="outline" onClick={() => void handleVerify()} isLoading={isVerifying} loadingText="Verifying">
                 {!isVerifying ? 'Verify against this vendor' : null}
               </Button>

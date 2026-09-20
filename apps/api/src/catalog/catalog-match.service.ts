@@ -1,18 +1,34 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common'
 import { and, desc, eq, ilike, inArray, or } from 'drizzle-orm'
 import { createLimit } from '@repo/ai'
-import { catalogItems, catalogMatches, catalogs, db, invoiceLineItems, poLineItems } from '@repo/db'
+import { catalogItems, catalogMatches, catalogs, db, invoiceLineItems, poLineItems, vendors } from '@repo/db'
 import { StorageService } from '../storage/storage.service'
 import { CatalogExtractionService } from './catalog-extraction.service'
 
+// Both caps bound paid vision calls, so a malformed env var must never widen
+// them: Number('') is 0 and Number('abc') is NaN, and NaN silently disables
+// .limit() and the concurrency limiter alike. Fall back to the default.
+function positiveIntEnv(name: string, fallback: number): number {
+  const parsed = Number(process.env[name])
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback
+}
+
 function maxCandidates(): number {
-  return Number(process.env.CATALOG_MATCH_MAX_CANDIDATES ?? 8)
+  return positiveIntEnv('CATALOG_MATCH_MAX_CANDIDATES', 8)
 }
 
 // Each candidate is a vision-model call; at most this many run at once per
 // search so one request cannot fan out the whole candidate cap in parallel.
 function matchConcurrency(): number {
-  return Number(process.env.CATALOG_MATCH_CONCURRENCY ?? 3)
+  return positiveIntEnv('CATALOG_MATCH_CONCURRENCY', 3)
+}
+
+// `%` and `_` are LIKE wildcards. A SKU such as `A%1` would otherwise match
+// `AZZZ1` and, at the extreme, a lone `%` would match the whole catalog and
+// send `CATALOG_MATCH_MAX_CANDIDATES` unrelated items to the vision model.
+// Postgres LIKE takes backslash as its default escape character.
+function escapeLikeLiteral(value: string): string {
+  return value.replace(/[\\%_]/g, (char) => `\\${char}`)
 }
 
 type QueryLineItem = { id: string; workspaceId: string; sku: string | null; description: string | null }
@@ -36,6 +52,9 @@ export class CatalogMatchService {
 
   async search(workspaceId: string, input: SearchInput) {
     const query = await this.loadQueryLineItem(workspaceId, input)
+    if (input.vendorId) {
+      await this.assertVendorInWorkspace(workspaceId, input.vendorId)
+    }
     const queryText = this.lineItemText(query)
     const candidates = await this.findCandidates(workspaceId, query, input.vendorId)
 
@@ -44,12 +63,15 @@ export class CatalogMatchService {
       candidates.map((candidate) =>
         limit(async () => {
           const candidateText = this.lineItemText(candidate)
-          const candidateImageBase64 = candidate.photoStorageKey
-            ? await this.loadImageBase64(candidate.photoStorageKey)
-            : null
+          const image = candidate.photoStorageKey ? await this.loadImage(candidate.photoStorageKey) : null
 
           const verdict = await this.extraction.compare(
-            { queryText, candidateText, candidateImageBase64 },
+            {
+              queryText,
+              candidateText,
+              candidateImageBase64: image?.base64 ?? null,
+              candidateImageContentType: image?.contentType ?? null,
+            },
             workspaceId,
           )
           return { candidate, verdict }
@@ -59,47 +81,78 @@ export class CatalogMatchService {
 
     const matchType = input.vendorId ? ('compliance' as const) : ('sourcing' as const)
 
-    await db
-      .delete(catalogMatches)
-      .where(
-        and(
-          eq(catalogMatches.workspaceId, workspaceId),
-          input.purchaseOrderLineItemId
-            ? eq(catalogMatches.queryPoLineItemId, input.purchaseOrderLineItemId)
-            : eq(catalogMatches.queryInvoiceLineItemId, input.invoiceLineItemId as string),
-        ),
-      )
+    // Nothing to replace with, so replace nothing. A zero-candidate search
+    // means the prefilter found no comparable items; wiping the line's prior
+    // verdicts on the strength of that would destroy real work (and used to).
+    if (judged.length === 0) {
+      return { matches: [] }
+    }
 
-    const inserted =
-      judged.length > 0
-        ? await db
-            .insert(catalogMatches)
-            .values(
-              judged.map(({ candidate, verdict }) => ({
-                workspaceId,
-                matchType,
-                queryPoLineItemId: input.purchaseOrderLineItemId ?? null,
-                queryInvoiceLineItemId: input.invoiceLineItemId ?? null,
-                catalogItemId: candidate.id,
-                vendorId: candidate.vendorId,
-                score: verdict.score !== null ? String(verdict.score) : null,
-                isMatch: verdict.isMatch,
-                reason: verdict.reason,
-              })),
-            )
-            .returning()
-        : []
+    // The delete is scoped exactly as narrowly as the insert that follows it:
+    //  - status 'open' only, so a dismissal a user made survives a re-search;
+    //  - same matchType, so verifying one vendor cannot wipe sourcing results;
+    //  - same vendor on a compliance run, so vendor A's verify leaves B alone.
+    // Both statements run in one transaction, so a failed insert can no longer
+    // leave the line with no matches at all (same fix as S0a's ComparisonService).
+    const queryPredicate = input.purchaseOrderLineItemId
+      ? eq(catalogMatches.queryPoLineItemId, input.purchaseOrderLineItemId)
+      : eq(catalogMatches.queryInvoiceLineItemId, input.invoiceLineItemId as string)
+
+    const scope = [
+      eq(catalogMatches.workspaceId, workspaceId),
+      queryPredicate,
+      eq(catalogMatches.status, 'open'),
+      eq(catalogMatches.matchType, matchType),
+    ]
+    if (input.vendorId) {
+      scope.push(eq(catalogMatches.vendorId, input.vendorId))
+    }
+
+    const inserted = await db.transaction(async (tx) => {
+      await tx.delete(catalogMatches).where(and(...scope))
+
+      return tx
+        .insert(catalogMatches)
+        .values(
+          judged.map(({ candidate, verdict }) => ({
+            workspaceId,
+            matchType,
+            queryPoLineItemId: input.purchaseOrderLineItemId ?? null,
+            queryInvoiceLineItemId: input.invoiceLineItemId ?? null,
+            catalogItemId: candidate.id,
+            vendorId: candidate.vendorId,
+            score: verdict.score !== null ? String(verdict.score) : null,
+            isMatch: verdict.isMatch,
+            reason: verdict.reason,
+          })),
+        )
+        .returning()
+    })
 
     return { matches: inserted }
   }
 
-  async listMatches(workspaceId: string, filters: { vendorId?: string; status?: 'open' | 'dismissed' }) {
+  async listMatches(
+    workspaceId: string,
+    filters: {
+      vendorId?: string
+      status?: 'open' | 'dismissed'
+      poLineItemId?: string
+      invoiceLineItemId?: string
+    },
+  ) {
     const conditions = [eq(catalogMatches.workspaceId, workspaceId)]
     if (filters.vendorId) {
       conditions.push(eq(catalogMatches.vendorId, filters.vendorId))
     }
     if (filters.status) {
       conditions.push(eq(catalogMatches.status, filters.status))
+    }
+    if (filters.poLineItemId) {
+      conditions.push(eq(catalogMatches.queryPoLineItemId, filters.poLineItemId))
+    }
+    if (filters.invoiceLineItemId) {
+      conditions.push(eq(catalogMatches.queryInvoiceLineItemId, filters.invoiceLineItemId))
     }
 
     const matches = await db
@@ -206,19 +259,43 @@ export class CatalogMatchService {
     throw new BadRequestException('purchaseOrderLineItemId or invoiceLineItemId is required')
   }
 
+  // The verify route takes vendorId from the URL, so an unowned or unknown id
+  // must 404 rather than quietly matching nothing: `findCandidates` joins on
+  // it, so a foreign vendor produced zero candidates and an empty success.
+  // Mirrors CatalogDocumentsService's assertVendorInWorkspace, which is
+  // private there — duplicated rather than injecting that whole service for
+  // one guard and changing this constructor.
+  private async assertVendorInWorkspace(workspaceId: string, vendorId: string) {
+    const [vendor] = await db
+      .select({ id: vendors.id })
+      .from(vendors)
+      .where(and(eq(vendors.id, vendorId), eq(vendors.workspaceId, workspaceId)))
+      .limit(1)
+
+    if (!vendor) {
+      throw new NotFoundException('Vendor not found')
+    }
+  }
+
   private async findCandidates(workspaceId: string, query: QueryLineItem, vendorId?: string) {
     const cap = maxCandidates()
     const term = (query.sku ?? query.description ?? '').trim()
 
+    // A line with no SKU and no description has nothing to match on. Falling
+    // through without a text filter used to hand an arbitrary `cap` slice of
+    // the whole workspace catalog to the vision model — pure spend, no signal.
+    if (!term) {
+      return []
+    }
+
+    const escaped = escapeLikeLiteral(term)
     const conditions = [eq(catalogItems.workspaceId, workspaceId)]
     if (vendorId) {
       conditions.push(eq(catalogs.vendorId, vendorId))
     }
-    if (term) {
-      const textFilter = or(ilike(catalogItems.sku, `%${term}%`), ilike(catalogItems.description, `%${term}%`))
-      if (textFilter) {
-        conditions.push(textFilter)
-      }
+    const textFilter = or(ilike(catalogItems.sku, `%${escaped}%`), ilike(catalogItems.description, `%${escaped}%`))
+    if (textFilter) {
+      conditions.push(textFilter)
     }
 
     const rows = await db
@@ -232,6 +309,9 @@ export class CatalogMatchService {
       .from(catalogItems)
       .innerJoin(catalogs, eq(catalogItems.catalogId, catalogs.id))
       .where(and(...conditions))
+      // Without an ORDER BY the cap keeps an arbitrary subset, so two
+      // identical searches could judge different candidates and disagree.
+      .orderBy(catalogItems.createdAt, catalogItems.id)
       .limit(cap + 1)
 
     if (rows.length > cap) {
@@ -241,10 +321,12 @@ export class CatalogMatchService {
     return rows.slice(0, cap)
   }
 
-  private async loadImageBase64(storageKey: string): Promise<string | null> {
+  // Returns the stored Content-Type alongside the bytes so the vision call can
+  // label the data URL truthfully instead of calling every image a PNG.
+  private async loadImage(storageKey: string): Promise<{ base64: string; contentType: string | null } | null> {
     try {
-      const buffer = await this.storage.getBuffer(storageKey)
-      return buffer.toString('base64')
+      const { buffer, contentType } = await this.storage.getObject(storageKey)
+      return { base64: buffer.toString('base64'), contentType }
     } catch (error) {
       this.logger.warn(
         `Catalog match failed to load candidate image key=${storageKey}: ${error instanceof Error ? error.message : String(error)}`,

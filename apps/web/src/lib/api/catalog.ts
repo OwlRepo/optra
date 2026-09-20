@@ -118,11 +118,18 @@ export function verifyCatalogMatches(
 
 export function listCatalogMatches(
   workspaceId: string,
-  opts?: { vendorId?: string; status?: CatalogMatchStatus },
+  opts?: {
+    vendorId?: string
+    status?: CatalogMatchStatus
+    poLineItemId?: string
+    invoiceLineItemId?: string
+  },
 ): Promise<CatalogMatch[]> {
   const params = new URLSearchParams()
   if (opts?.vendorId) params.set('vendorId', opts.vendorId)
   if (opts?.status) params.set('status', opts.status)
+  if (opts?.poLineItemId) params.set('poLineItemId', opts.poLineItemId)
+  if (opts?.invoiceLineItemId) params.set('invoiceLineItemId', opts.invoiceLineItemId)
   const query = params.toString()
 
   return apiFetch(`/api/workspaces/${workspaceId}/catalog-matches${query ? `?${query}` : ''}`)

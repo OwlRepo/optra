@@ -7,6 +7,7 @@ import {
   ExceptionFilter,
   Get,
   Param,
+  ParseUUIDPipe,
   Patch,
   Post,
   Query,
@@ -169,7 +170,7 @@ export class CatalogController {
   @UseGuards(JwtAuthGuard, WorkspaceMemberGuard)
   async catalogItemPhoto(
     @Param('workspaceId') workspaceId: string,
-    @Param('itemId') itemId: string,
+    @Param('itemId', new ParseUUIDPipe()) itemId: string,
     @Res() res: Response,
   ) {
     const { buffer, contentType } = await this.documents.getItemPhoto(workspaceId, itemId)
@@ -193,7 +194,9 @@ export class CatalogController {
   @Roles('owner', 'admin')
   verifyMatches(
     @Param('workspaceId') workspaceId: string,
-    @Param('vendorId') vendorId: string,
+    // Unlike the DTO fields, a path param gets no class-validator pass, so an
+    // unparseable id reached the query layer and surfaced as a 500.
+    @Param('vendorId', new ParseUUIDPipe()) vendorId: string,
     @Body() body: CatalogMatchDto,
   ) {
     return this.matches.search(workspaceId, { ...body, vendorId })
@@ -210,7 +213,7 @@ export class CatalogController {
   @Roles('owner', 'admin')
   dismissMatch(
     @Param('workspaceId') workspaceId: string,
-    @Param('matchId') matchId: string,
+    @Param('matchId', new ParseUUIDPipe()) matchId: string,
     @CurrentUser() user: CurrentUserContext,
   ) {
     return this.matches.dismissMatch(workspaceId, matchId, user.userId)
