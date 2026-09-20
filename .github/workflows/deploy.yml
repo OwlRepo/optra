@@ -74,6 +74,15 @@ jobs:
         run: bun run db:migrate
         working-directory: packages/db
 
+      # @repo/db and @repo/ai resolve through `dist` (their package.json main
+      # and types point there; @repo/types and @repo/ui point at src). A clean
+      # checkout has no dist, so `tsc --noEmit` cannot find them — it only
+      # passes on a developer machine because an earlier build left dist
+      # behind. turbo's type-check task depends on ^type-check, not ^build, so
+      # it does not produce them either.
+      - name: Build typed workspace packages
+        run: bunx turbo run build --filter=@repo/db --filter=@repo/ai
+
       - name: Type-check
         run: bun run type-check
 
