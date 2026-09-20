@@ -31,12 +31,16 @@ async function seedWorkspace(email: string, name: string) {
 
 describe('ProcurementDocumentsService', () => {
   let service: ProcurementDocumentsService
-  let storage: { save: jest.Mock; delete: jest.Mock }
+  let storage: { save: jest.Mock; delete: jest.Mock; getBuffer: jest.Mock }
   let parse: { queueDoc: jest.Mock }
   const prefix = `procurement-documents-spec-${Date.now()}-`
 
   beforeEach(() => {
-    storage = { save: jest.fn().mockResolvedValue(undefined), delete: jest.fn().mockResolvedValue(undefined) }
+    storage = {
+      save: jest.fn().mockResolvedValue(undefined),
+      delete: jest.fn().mockResolvedValue(undefined),
+      getBuffer: jest.fn().mockResolvedValue(Buffer.from('sku,qty\nA1,2\n')),
+    }
     parse = { queueDoc: jest.fn().mockResolvedValue({ queued: true }) }
     service = new ProcurementDocumentsService(
       storage as unknown as StorageService,
@@ -190,6 +194,82 @@ describe('ProcurementDocumentsService', () => {
 
   // POLICY v1 #9. remove() has no route and no production caller; this pins the
   // guard so exposing it later cannot cascade away a run and its flags.
+  describe('getDownloadable (S4)', () => {
+    it('returns the original name and bytes for a purchase order', async () => {
+      const workspace = await seedWorkspace(`${prefix}dl-po@example.com`, 'Download PO')
+      const [po] = await db
+        .insert(purchaseOrders)
+        .values({ workspaceId: workspace.id, name: 'march-po.csv', status: 'done', storageKey: 'k/march-po.csv' })
+        .returning()
+
+      const result = await service.getDownloadable(workspace.id, 'purchase_order', po.id)
+
+      expect(storage.getBuffer).toHaveBeenCalledWith('k/march-po.csv')
+      expect(result.name).toBe('march-po.csv')
+      expect(result.buffer.toString()).toBe('sku,qty\nA1,2\n')
+    })
+
+    it('returns the original name and bytes for an invoice', async () => {
+      const workspace = await seedWorkspace(`${prefix}dl-inv@example.com`, 'Download Invoice')
+      const [invoice] = await db
+        .insert(invoices)
+        .values({ workspaceId: workspace.id, name: 'march-inv.xlsx', status: 'done', storageKey: 'k/march-inv.xlsx' })
+        .returning()
+
+      const result = await service.getDownloadable(workspace.id, 'invoice', invoice.id)
+
+      expect(storage.getBuffer).toHaveBeenCalledWith('k/march-inv.xlsx')
+      expect(result.name).toBe('march-inv.xlsx')
+    })
+
+    // A 404 rather than a 403, so it does not confirm the row exists elsewhere.
+    it('refuses a document from another workspace without reading storage', async () => {
+      const mine = await seedWorkspace(`${prefix}dl-mine@example.com`, 'Download Mine')
+      const other = await seedWorkspace(`${prefix}dl-other@example.com`, 'Download Other')
+      const [po] = await db
+        .insert(purchaseOrders)
+        .values({ workspaceId: other.id, name: 'theirs.csv', status: 'done', storageKey: 'k/theirs.csv' })
+        .returning()
+
+      await expect(service.getDownloadable(mine.id, 'purchase_order', po.id)).rejects.toThrow(
+        'Purchase order not found',
+      )
+      expect(storage.getBuffer).not.toHaveBeenCalled()
+    })
+
+    // storageKey is nullable in the schema and e2e fixtures insert rows without
+    // one, so "no bytes" is a distinct outcome from "no such document".
+    it('reports a document that has no stored file separately from a missing one', async () => {
+      const workspace = await seedWorkspace(`${prefix}dl-nokey@example.com`, 'Download No Key')
+      const [po] = await db
+        .insert(purchaseOrders)
+        .values({ workspaceId: workspace.id, name: 'no-bytes.csv', status: 'done' })
+        .returning()
+
+      await expect(service.getDownloadable(workspace.id, 'purchase_order', po.id)).rejects.toThrow(
+        'Purchase order has no stored file',
+      )
+      expect(storage.getBuffer).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('list hasSourceFile (S4)', () => {
+    it('reports whether a row has bytes without exposing the storage key', async () => {
+      const workspace = await seedWorkspace(`${prefix}list-haskey@example.com`, 'List Has Key')
+      await db
+        .insert(purchaseOrders)
+        .values({ workspaceId: workspace.id, name: 'with.csv', status: 'done', storageKey: 'k/with.csv' })
+      await db.insert(purchaseOrders).values({ workspaceId: workspace.id, name: 'without.csv', status: 'done' })
+
+      const rows = await service.list(workspace.id, 'purchase_order')
+      const byName = new Map(rows.map((row) => [row.name, row]))
+
+      expect(byName.get('with.csv')?.hasSourceFile).toBe(true)
+      expect(byName.get('without.csv')?.hasSourceFile).toBe(false)
+      expect(rows.every((row) => !('storageKey' in row))).toBe(true)
+    })
+  })
+
   it('refuses to delete a purchase order referenced by a comparison run', async () => {
     const workspace = await seedWorkspace(`${prefix}po-referenced@example.com`, 'PO Referenced')
     const [po] = await db

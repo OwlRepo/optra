@@ -29,11 +29,8 @@ import { WorkspaceMemberGuard } from '../auth/guards/workspace-member.guard'
 import { DeleteManyDto } from './dto/delete-many.dto'
 import { DownloadManyDto } from './dto/download-many.dto'
 import { ListDocumentsQueryDto } from './dto/list-documents-query.dto'
+import { attachmentDisposition } from '../common/http/content-disposition'
 import { DocumentsService } from './documents.service'
-
-function safeFilename(name: string): string {
-  return name.replace(/["\r\n]/g, '_')
-}
 
 const MAX_UPLOAD_MB = Number(process.env.MAX_UPLOAD_MB ?? 25)
 const MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024
@@ -211,7 +208,7 @@ export class DocumentsController {
 
     res.set({
       'Content-Type': 'application/octet-stream',
-      'Content-Disposition': `attachment; filename="${safeFilename(title)}"`,
+      'Content-Disposition': attachmentDisposition(title),
       'Content-Length': String(buffer.length),
     })
     res.send(buffer)

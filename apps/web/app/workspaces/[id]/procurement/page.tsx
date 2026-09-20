@@ -19,15 +19,17 @@ import {
   Tabs,
   useToast,
 } from '@repo/ui'
-import { ClipboardList, FileText, Upload } from 'lucide-react'
+import { ClipboardList, Download, FileText, Upload } from 'lucide-react'
 import { logout } from '@/lib/api/auth'
 import {
   compareDocuments,
+  downloadProcurementDocument,
   listInvoices,
   listPurchaseOrders,
   uploadInvoice,
   uploadPurchaseOrder,
   type ProcurementDoc,
+  type ProcurementDocKind,
   type ProcurementDocStatus,
 } from '@/lib/api/procurement'
 import { isUnauthorized } from '@/lib/api/handle-unauthorized'
@@ -250,7 +252,29 @@ export default function ProcurementPage({ params }: { params: { id: string } }) 
     }
   }, [router, selectedInvoiceId, selectedPurchaseOrderId, workspaceId])
 
-  const renderDocsTable = (docs: ProcurementDoc[]) => (
+  // Not role-gated: the list itself is member-readable, and so is the file
+  // behind it. `fetchDownload` triggers the browser save; there is nothing to
+  // render, so failures surface as a toast.
+  const handleDownload = React.useCallback(
+    async (kind: ProcurementDocKind, doc: ProcurementDoc) => {
+      try {
+        await downloadProcurementDocument(workspaceId, kind, doc.id)
+      } catch (err) {
+        if (isUnauthorized(err)) {
+          router.push('/login')
+          return
+        }
+        toastRef.current({
+          variant: 'error',
+          title: 'Failed to download document',
+          description: extractErrorMessage(err, 'Try again in a moment.'),
+        })
+      }
+    },
+    [router, workspaceId],
+  )
+
+  const renderDocsTable = (docs: ProcurementDoc[], kind: ProcurementDocKind) => (
     <Table>
       <TableHeader>
         <TableRow>
@@ -258,6 +282,7 @@ export default function ProcurementPage({ params }: { params: { id: string } }) 
           <TableHead>Status</TableHead>
           <TableHead>Rows</TableHead>
           <TableHead>Created</TableHead>
+          <TableHead className="text-right">Source</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -274,6 +299,18 @@ export default function ProcurementPage({ params }: { params: { id: string } }) 
             </TableCell>
             <TableCell>{doc.rowCount ?? '—'}</TableCell>
             <TableCell>{new Date(doc.createdAt).toLocaleDateString()}</TableCell>
+            <TableCell className="text-right">
+              {doc.hasSourceFile ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  aria-label={`Download ${doc.name}`}
+                  onClick={() => void handleDownload(kind, doc)}
+                >
+                  <Download className="size-4" />
+                </Button>
+              ) : null}
+            </TableCell>
           </TableRow>
         ))}
       </TableBody>
@@ -354,7 +391,7 @@ export default function ProcurementPage({ params }: { params: { id: string } }) 
                       }
                     />
                   ) : (
-                    renderDocsTable(purchaseOrders)
+                    renderDocsTable(purchaseOrders, 'purchase-orders')
                   )}
                 </div>
               </Card>
@@ -403,7 +440,7 @@ export default function ProcurementPage({ params }: { params: { id: string } }) 
                       }
                     />
                   ) : (
-                    renderDocsTable(invoices)
+                    renderDocsTable(invoices, 'invoices')
                   )}
                 </div>
               </Card>

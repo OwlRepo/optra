@@ -11,6 +11,7 @@ import {
   Patch,
   Post,
   Query,
+  Res,
   UploadedFile,
   UseFilters,
   UseGuards,
@@ -27,8 +28,10 @@ import { RolesGuard } from '../auth/guards/roles.guard'
 import { WorkspaceMemberGuard } from '../auth/guards/workspace-member.guard'
 import { ComparisonService } from './comparison.service'
 import { CompareDocumentsDto } from './dto/compare-documents.dto'
+import { attachmentDisposition } from '../common/http/content-disposition'
 import { ListDiscrepanciesQueryDto } from './dto/list-discrepancies-query.dto'
 import { RecordDecisionDto } from './dto/record-decision.dto'
+import type { ProcurementDocKind } from './procurement-parse.service'
 import { ProcurementDocumentsService } from './procurement-documents.service'
 import { pdfExtractionEnabled } from './procurement-feature-flags'
 
@@ -135,6 +138,53 @@ export class ProcurementController {
   @UseGuards(JwtAuthGuard, WorkspaceMemberGuard)
   listInvoices(@Param('workspaceId') workspaceId: string) {
     return this.documents.list(workspaceId, 'invoice')
+  }
+
+  // The original uploaded file, so a reviewer can check a discrepancy against
+  // its source (D4). Member-readable, matching the document download in the
+  // knowledge-base domain and the list routes above.
+  //
+  // Always an attachment, and always octet-stream: the stored content type is
+  // deliberately not echoed. These bytes are user-uploaded and are served from
+  // the web app's own origin through the BFF proxy, so anything the browser
+  // would render inline could execute there. `nosniff` is belt-and-braces —
+  // the only other place it is set is docker/Caddyfile, which is absent in
+  // local dev and in any non-Caddy topology.
+  @Get('purchase-orders/:docId/download')
+  @UseGuards(JwtAuthGuard, WorkspaceMemberGuard)
+  async downloadPurchaseOrder(
+    @Param('workspaceId') workspaceId: string,
+    @Param('docId', new ParseUUIDPipe()) docId: string,
+    @Res() res: Response,
+  ) {
+    await this.sendSourceDocument(res, workspaceId, 'purchase_order', docId)
+  }
+
+  @Get('invoices/:docId/download')
+  @UseGuards(JwtAuthGuard, WorkspaceMemberGuard)
+  async downloadInvoice(
+    @Param('workspaceId') workspaceId: string,
+    @Param('docId', new ParseUUIDPipe()) docId: string,
+    @Res() res: Response,
+  ) {
+    await this.sendSourceDocument(res, workspaceId, 'invoice', docId)
+  }
+
+  private async sendSourceDocument(
+    res: Response,
+    workspaceId: string,
+    kind: ProcurementDocKind,
+    docId: string,
+  ): Promise<void> {
+    const { name, buffer } = await this.documents.getDownloadable(workspaceId, kind, docId)
+
+    res.set({
+      'Content-Type': 'application/octet-stream',
+      'Content-Disposition': attachmentDisposition(name),
+      'Content-Length': String(buffer.length),
+      'X-Content-Type-Options': 'nosniff',
+    })
+    res.send(buffer)
   }
 
   @Post('discrepancies/compare')

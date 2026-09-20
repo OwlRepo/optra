@@ -10,6 +10,13 @@ function docLabel(kind: ProcurementDocKind): string {
   return kind === 'purchase_order' ? 'Purchase order' : 'Invoice'
 }
 
+// The UI needs to know whether a row has bytes to download, but the storage key
+// is an internal S3 path and never leaves the API.
+function toListItem<T extends { storageKey: string | null }>(row: T): Omit<T, 'storageKey'> & { hasSourceFile: boolean } {
+  const { storageKey, ...rest } = row
+  return { ...rest, hasSourceFile: storageKey !== null }
+}
+
 @Injectable()
 export class ProcurementDocumentsService {
   private readonly logger = new Logger(ProcurementDocumentsService.name)
@@ -59,7 +66,7 @@ export class ProcurementDocumentsService {
 
   async list(workspaceId: string, kind: ProcurementDocKind) {
     if (kind === 'purchase_order') {
-      return db
+      const rows = await db
         .select({
           id: purchaseOrders.id,
           name: purchaseOrders.name,
@@ -67,13 +74,16 @@ export class ProcurementDocumentsService {
           rowCount: purchaseOrders.rowCount,
           lastError: purchaseOrders.lastError,
           createdAt: purchaseOrders.createdAt,
+          storageKey: purchaseOrders.storageKey,
         })
         .from(purchaseOrders)
         .where(eq(purchaseOrders.workspaceId, workspaceId))
         .orderBy(desc(purchaseOrders.createdAt))
+
+      return rows.map(toListItem)
     }
 
-    return db
+    const rows = await db
       .select({
         id: invoices.id,
         name: invoices.name,
@@ -81,10 +91,39 @@ export class ProcurementDocumentsService {
         rowCount: invoices.rowCount,
         lastError: invoices.lastError,
         createdAt: invoices.createdAt,
+        storageKey: invoices.storageKey,
       })
       .from(invoices)
       .where(eq(invoices.workspaceId, workspaceId))
       .orderBy(desc(invoices.createdAt))
+
+    return rows.map(toListItem)
+  }
+
+  /**
+   * The original uploaded bytes, for a reviewer who wants to see the source
+   * behind a discrepancy (D4). Scoped the way the knowledge-base download is:
+   * the caller supplies an id, never a storage key, and the row's workspace is
+   * asserted before `storageKey` is touched. A mismatch is a 404 rather than a
+   * 403 so it cannot be used to probe for documents in other workspaces.
+   */
+  async getDownloadable(workspaceId: string, kind: ProcurementDocKind, id: string) {
+    const doc =
+      kind === 'purchase_order'
+        ? (await db.select().from(purchaseOrders).where(eq(purchaseOrders.id, id)).limit(1))[0]
+        : (await db.select().from(invoices).where(eq(invoices.id, id)).limit(1))[0]
+
+    if (!doc || doc.workspaceId !== workspaceId) {
+      throw new NotFoundException(`${docLabel(kind)} not found`)
+    }
+    // Distinct from "not found": the column is nullable, and a header can exist
+    // with no object behind it.
+    if (!doc.storageKey) {
+      throw new NotFoundException(`${docLabel(kind)} has no stored file`)
+    }
+
+    const buffer = await this.storage.getBuffer(doc.storageKey)
+    return { name: doc.name, buffer }
   }
 
   async remove(workspaceId: string, kind: ProcurementDocKind, id: string): Promise<{ message: string }> {

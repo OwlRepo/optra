@@ -1,4 +1,5 @@
 import { apiFetch, uploadFile } from './client'
+import { fetchDownload } from '../http/download'
 
 export type ProcurementDocStatus = 'pending' | 'processing' | 'done' | 'failed'
 export type ProcurementDocSummary = { id: string; name: string; status: ProcurementDocStatus }
@@ -9,7 +10,12 @@ export type ProcurementDoc = {
   rowCount: number | null
   lastError: string | null
   createdAt: string
+  // False when the header row has no stored object behind it — the column is
+  // nullable, so a document can exist with nothing to download.
+  hasSourceFile: boolean
 }
+
+export type ProcurementDocKind = 'purchase-orders' | 'invoices'
 export type DiscrepancyFlagType = 'quantity_mismatch' | 'price_mismatch' | 'missing_on_invoice' | 'missing_on_po'
 export type DiscrepancyFlagStatus = 'open' | 'dismissed'
 export type DiscrepancyFlag = {
@@ -58,6 +64,18 @@ export function uploadInvoice(workspaceId: string, file: File): Promise<Procurem
 
 export function listInvoices(workspaceId: string): Promise<ProcurementDoc[]> {
   return apiFetch(`/api/workspaces/${workspaceId}/procurement/invoices`)
+}
+
+/**
+ * Downloads the original uploaded file. Always an attachment, and the browser
+ * names it from the API's Content-Disposition via `fetchDownload`.
+ */
+export function downloadProcurementDocument(workspaceId: string, kind: ProcurementDocKind, docId: string) {
+  return fetchDownload(
+    `/api/workspaces/${workspaceId}/procurement/${kind}/${docId}/download`,
+    { method: 'GET' },
+    kind === 'purchase-orders' ? 'purchase-order' : 'invoice',
+  )
 }
 
 export function compareDocuments(

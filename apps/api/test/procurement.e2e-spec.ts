@@ -376,6 +376,35 @@ describe('Procurement flow (e2e)', () => {
       .get(`/workspaces/${workspaceId}/procurement/discrepancies/${currentFlagId}/decisions`)
       .set('Authorization', `Bearer ${outsider.accessToken}`)
       .expect(403)
+
+    // S4: the original bytes come back unchanged, named after the upload, and
+    // always as an attachment so the browser cannot render them inline.
+    const download = await request(app.getHttpServer())
+      .get(`/workspaces/${workspaceId}/procurement/purchase-orders/${poUpload.body.id}/download`)
+      .set('Authorization', `Bearer ${owner.accessToken}`)
+      .expect(200)
+
+    expect(download.headers['content-type']).toContain('application/octet-stream')
+    expect(download.headers['content-disposition']).toBe('attachment; filename="po.csv"')
+    expect(download.headers['x-content-type-options']).toBe('nosniff')
+    expect(download.body.toString()).toBe(poCsv)
+
+    await request(app.getHttpServer())
+      .get(`/workspaces/${workspaceId}/procurement/invoices/${invoiceUpload.body.id}/download`)
+      .set('Authorization', `Bearer ${owner.accessToken}`)
+      .expect(200)
+
+    // An outsider is not a member of this workspace at all.
+    await request(app.getHttpServer())
+      .get(`/workspaces/${workspaceId}/procurement/purchase-orders/${poUpload.body.id}/download`)
+      .set('Authorization', `Bearer ${outsider.accessToken}`)
+      .expect(403)
+
+    // A malformed id is a client error, not a uuid-cast failure in Postgres.
+    await request(app.getHttpServer())
+      .get(`/workspaces/${workspaceId}/procurement/purchase-orders/not-a-uuid/download`)
+      .set('Authorization', `Bearer ${owner.accessToken}`)
+      .expect(400)
   })
 
   it('uploads PO + invoice as PDF, parses via the extraction seam, and compares identically to CSV', async () => {

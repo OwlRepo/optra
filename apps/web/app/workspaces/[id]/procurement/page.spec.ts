@@ -15,6 +15,7 @@ const listInvoicesMock = vi.fn()
 const uploadPurchaseOrderMock = vi.fn()
 const uploadInvoiceMock = vi.fn()
 const compareDocumentsMock = vi.fn()
+const downloadProcurementDocumentMock = vi.fn()
 const logoutMock = vi.fn()
 
 vi.mock('next/navigation', () => ({
@@ -33,6 +34,7 @@ vi.mock('@/lib/api/procurement', () => ({
   uploadPurchaseOrder: (...args: unknown[]) => uploadPurchaseOrderMock(...args),
   uploadInvoice: (...args: unknown[]) => uploadInvoiceMock(...args),
   compareDocuments: (...args: unknown[]) => compareDocumentsMock(...args),
+  downloadProcurementDocument: (...args: unknown[]) => downloadProcurementDocumentMock(...args),
 }))
 
 vi.mock('@/lib/api/auth', () => ({
@@ -46,6 +48,7 @@ const donePurchaseOrder = {
   rowCount: 12,
   lastError: null,
   createdAt: '2026-07-01T00:00:00.000Z',
+  hasSourceFile: true,
 }
 
 const doneInvoice = {
@@ -55,6 +58,7 @@ const doneInvoice = {
   rowCount: 10,
   lastError: null,
   createdAt: '2026-07-02T00:00:00.000Z',
+  hasSourceFile: true,
 }
 
 function renderPage() {
@@ -79,6 +83,7 @@ describe('ProcurementPage', () => {
     uploadPurchaseOrderMock.mockReset()
     uploadInvoiceMock.mockReset()
     compareDocumentsMock.mockReset()
+    downloadProcurementDocumentMock.mockReset()
     logoutMock.mockReset()
   })
 
@@ -235,6 +240,50 @@ describe('ProcurementPage', () => {
 
     expect(await screen.findByText('Invoice has not finished parsing yet')).toBeDefined()
     expect(pushMock).not.toHaveBeenCalledWith(expect.stringContaining('/discrepancies'))
+  })
+
+  it('offers a source download only for rows that have stored bytes', async () => {
+    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme' })
+    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }] })
+    listPurchaseOrdersMock.mockResolvedValue([
+      donePurchaseOrder,
+      { ...donePurchaseOrder, id: 'po-2', name: 'no-bytes.csv', hasSourceFile: false },
+    ])
+    listInvoicesMock.mockResolvedValue([])
+
+    renderPage()
+
+    await waitFor(() => expect(screen.getByLabelText('Download po-march.csv')).toBeTruthy())
+    expect(screen.queryByLabelText('Download no-bytes.csv')).toBeNull()
+  })
+
+  it('downloads a purchase order with its kind and id', async () => {
+    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme' })
+    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }] })
+    listPurchaseOrdersMock.mockResolvedValue([donePurchaseOrder])
+    listInvoicesMock.mockResolvedValue([])
+    downloadProcurementDocumentMock.mockResolvedValue(undefined)
+
+    renderPage()
+    await waitFor(() => expect(screen.getByLabelText('Download po-march.csv')).toBeTruthy())
+    fireEvent.click(screen.getByLabelText('Download po-march.csv'))
+
+    await waitFor(() =>
+      expect(downloadProcurementDocumentMock).toHaveBeenCalledWith('ws-1', 'purchase-orders', 'po-1'),
+    )
+  })
+
+  // The list is member-readable and so is the file behind it, unlike upload
+  // and compare which are owner/admin.
+  it('shows the download control to a member', async () => {
+    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme' })
+    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'member' }] })
+    listPurchaseOrdersMock.mockResolvedValue([donePurchaseOrder])
+    listInvoicesMock.mockResolvedValue([])
+
+    renderPage()
+
+    await waitFor(() => expect(screen.getByLabelText('Download po-march.csv')).toBeTruthy())
   })
 
   it('redirects to login on a 401 during initial load', async () => {

@@ -6,6 +6,7 @@ import { WorkspaceMemberGuard } from '../auth/guards/workspace-member.guard'
 import { CreateTicketDto } from './dto/create-ticket.dto'
 import { ListTicketsQueryDto } from './dto/list-tickets-query.dto'
 import { UpdateTicketDto } from './dto/update-ticket.dto'
+import { attachmentDisposition } from '../common/http/content-disposition'
 import { TicketsService } from './tickets.service'
 
 @Controller('workspaces/:workspaceId/tickets')
@@ -41,7 +42,7 @@ export class TicketsController {
 
     res.set({
       'Content-Type': 'application/pdf',
-      'Content-Disposition': `attachment; filename="${title.replace(/["\r\n]/g, '_')}"`,
+      'Content-Disposition': attachmentDisposition(title),
       'Content-Length': String(buffer.length),
     })
     res.send(buffer)
