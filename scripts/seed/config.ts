@@ -21,10 +21,11 @@ export const DEMO_PASSWORD = 'DemoPass123!'
 
 export const DEMO_WORKSPACE_NAME = 'Helio Labs — Support'
 
-// docker-compose.yml maps postgres 54322:5432 and redis 6380:6379. DOCKER.md
-// still documents the older 54321/6379 pair and .env sets REDIS_PORT=6379
-// (correct inside the container, wrong from the host) — hence the explicit
-// host-side defaults here rather than reading REDIS_PORT.
+// docker-compose.yml maps postgres 54322:5432 and redis 6380:6379. The env
+// template and DOCKER.md both agree with that as of S0e (2026-09-20), but the
+// explicit host-side defaults stay on purpose: a stray REDIS_PORT=6379 in a
+// developer's environment would silently point the seeder at the wrong Redis,
+// and this script deletes rows.
 export const DEFAULT_DATABASE_URL = 'postgresql://postgres:postgres@localhost:54322/optra'
 export const DEFAULT_REDIS_HOST = 'localhost'
 export const DEFAULT_REDIS_PORT = 6380

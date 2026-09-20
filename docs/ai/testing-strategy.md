@@ -51,6 +51,21 @@ Procurement (PO ↔ Invoice discrepancy) note as of 2026-07-09:
 - `apps/api/test/procurement.e2e-spec.ts` boots the real `AppModule` (mirrors `documents.e2e-spec.ts`'s pattern) and deliberately does NOT mock `ProcurementParseService` — it exercises the real Bull queue + real processor in-process, polling for `status='done'` before comparing, since the queue lifecycle itself is the Deep-risk surface worth proving end-to-end.
 - `procurement-parse.processor.spec.ts` explicitly asserts `embedQuery` (mocked `@repo/ai`) is never called — proves the parse path makes zero OpenAI calls, matching the plan's "no new external integration" requirement.
 
+Host-side setup, as of S0e (2026-09-20) — `cp .env.example .env` is now enough, with no hand edits:
+
+1. `nvm use 22` (`.nvmrc`; Node 25 cannot load duckdb's native binding).
+2. `docker compose up -d --wait postgres redis seaweedfs`.
+3. `cp .env.example .env` — the template now matches what compose publishes to the host:
+   Redis **6380** (6379 is the in-container port) and the real local `optra` S3 identity from
+   `docker/seaweedfs/s3.json`. Before S0e it said `6379` and `optra-local`, neither of which works
+   from the host, so a fresh clone could not run the DB- or S3-backed suites at all.
+4. `bun install`, then `bunx turbo run build --filter=@repo/db --filter=@repo/ai` (e2e resolves
+   `@repo/*` to `dist`; so does `tsc --noEmit`).
+
+**Tests run on Node 22; production runs Bun.** `apps/api/Dockerfile:99` says `exec node dist/main`, but
+`oven/bun:1.2.22` symlinks `node` to `bun`, so no suite here exercises the runtime that serves users.
+Verified clean on both as of 2026-09-20 (see `docs/ai/risk-register.md`, Test/Production Runtime Mismatch).
+
 Every suite in the repo, and how to run them (there is no `turbo test` task and no root `test` script — each package runs its own):
 
 | Command | Runner | Count |

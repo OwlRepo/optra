@@ -130,8 +130,8 @@ bun run deploy:remote user@YOUR_SERVER_IP
 ┌──────────────┐
 │   Docker     │
 ├──────────────┤
-│ PostgreSQL   │ :54321
-│ Redis        │ :6379
+│ PostgreSQL   │ :54322
+│ Redis        │ :6380
 └──────────────┘
 ```
 
@@ -299,8 +299,8 @@ bun run deploy:remote       # Deploy from local to VPS
 ### Ports
 - **3000** → Next.js web app
 - **3001** → NestJS API
-- **54321** → PostgreSQL (local dev)
-- **6379** → Redis
+- **54322** → PostgreSQL (local dev)
+- **6380** → Redis
 - **80/443** → Caddy (production only)
 
 ---

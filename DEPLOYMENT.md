@@ -18,11 +18,11 @@ Everything — Postgres, Redis, SeaweedFS, the API, and the web app — runs in 
 
 **Apps running:**
 
-- 🌐 Web: http://localhost:3100
-- 🔌 API: http://localhost:3101
-- 🐘 Postgres: localhost:54321 (mapped to avoid conflicts)
-- 🔴 Redis: localhost:6379
-- 📦 SeaweedFS: localhost:8333 (S3), localhost:8888 (filer), localhost:9333 (master)
+- 🌐 Web: http://localhost:3300
+- 🔌 API: http://localhost:3301
+- 🐘 Postgres: localhost:54322 (mapped to avoid conflicts)
+- 🔴 Redis: localhost:6380
+- 📦 SeaweedFS: localhost:8433 (S3), localhost:8988 (filer), localhost:9433 (master)
 
 **Hot reload:** Edit any file in `apps/` or `packages/` → changes reflect within a few seconds (bind-mounted source, polling-based file watch, no image rebuild needed)
 
@@ -413,9 +413,9 @@ ufw status
 ┌──────────────────────────┐
 │         Docker            │
 ├──────────────────────────┤
-│ apps/web    :3000  (3100 on host; hot reload, bind-mounted) │
-│ apps/api    :3001  (3101 on host; hot reload, bind-mounted) │
-│ PostgreSQL  :5432  (54321 on host)            │
+│ apps/web    :3000  (3300 on host; hot reload, bind-mounted) │
+│ apps/api    :3001  (3301 on host; hot reload, bind-mounted) │
+│ PostgreSQL  :5432  (54322 on host)            │
 │ Redis       :6379                             │
 │ SeaweedFS   :8333/:8888/:9333                 │
 └──────────────────────────┘

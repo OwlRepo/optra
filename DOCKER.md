@@ -22,13 +22,13 @@ docker compose up -d
 ```
 
 **Services:**
-- 🌐 **Web**: http://localhost:3100 (Next.js with hot reload; override with `OPTRA_WEB_PORT`)
-- 🔌 **API**: http://localhost:3101 (NestJS with hot reload; override with `OPTRA_API_PORT`)
-- 🐘 **Postgres**: localhost:54321
-- 🔴 **Redis**: localhost:6379
-- 🪣 **SeaweedFS S3**: http://localhost:8333
-- 🗂️ **SeaweedFS Filer UI**: http://localhost:8888
-- 🌱 **SeaweedFS Master UI**: http://localhost:9333
+- 🌐 **Web**: http://localhost:3300 (Next.js with hot reload; override with `OPTRA_WEB_PORT`)
+- 🔌 **API**: http://localhost:3301 (NestJS with hot reload; override with `OPTRA_API_PORT`)
+- 🐘 **Postgres**: localhost:54322
+- 🔴 **Redis**: localhost:6380
+- 🪣 **SeaweedFS S3**: http://localhost:8433
+- 🗂️ **SeaweedFS Filer UI**: http://localhost:8988
+- 🌱 **SeaweedFS Master UI**: http://localhost:9433
 - 📦 **Default bucket**: `optra-documents`
 
 ### Stop Everything
@@ -208,7 +208,7 @@ docker build -f apps/api/Dockerfile --target prod -t optra-api:prod .
 
 ### Local Development
 ```
-Host machine (:3100, :3101, :54321, :6379, :8333/:8888/:9333)
+Host machine (:3300, :3301, :54322, :6380, :8433/:8988/:9433)
     ↓ published ports
 Docker default network (api, web, postgres, redis, seaweedfs — reachable by service name inside the network)
 ```
@@ -237,7 +237,7 @@ Database, Redis, and SeaweedFS **not exposed** to internet.
 ### Storage Config
 
 Local development:
-- `S3_ENDPOINT=http://localhost:8333` (host) / `http://seaweedfs:8333` (inside `api`/`web` containers)
+- `S3_ENDPOINT=http://localhost:8433` (host) / `http://seaweedfs:8333` (inside `api`/`web` containers)
 - `S3_BUCKET=optra-documents`
 - credentials come from `docker/seaweedfs/s3.json`
 
@@ -302,7 +302,7 @@ docker compose -f docker-compose.prod.yml build api web
 docker compose logs api
 
 # Check if port is in use
-sudo lsof -i :3101
+sudo lsof -i :3301
 
 # Restart specific service
 docker compose restart api

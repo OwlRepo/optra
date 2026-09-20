@@ -100,7 +100,35 @@
 
 **Depends on / blocked by:** Nothing.
 
-## apps/api must run via `bun run dev`, not the compiled build
+## ~~apps/api must run via `bun run dev`, not the compiled build~~ — RESOLVED 2026-09-20 (S0e)
+
+**Outcome: does not reproduce. Retired.** Two things were wrong with the original framing.
+
+**1. Production has never run Node.** `apps/api/Dockerfile:99` ends in `exec node dist/main`, but the image base is `oven/bun:1.2.22` (`:10`), where `node` is a symlink:
+
+```
+/usr/local/bun-node-fallback-bin/node -> /usr/local/bin/bun
+```
+
+Run through it, `process.version` reports `v24.3.0` while `typeof Bun !== 'undefined'` is `true` — Bun spoofing a Node version for compatibility. So the Node v25 suspect below was never present in production, and "the compiled build" in production means *Bun executing `dist/main`*, not Node executing it.
+
+**2. The compiled build is clean on both runtimes we actually use.** Repro harness: `nest build` output booted with `BULL_PREFIX=bull-b11` (isolated from `bull:*`) and `PORT=3999`, then one `scrape-queue` job and one `ticket-extraction-queue` job enqueued — the two queues named below.
+
+| Runtime | scrape-queue | ticket-extraction-queue | `Socket` error |
+|---|---|---|---|
+| Node v22.15.0 | `completed`, no `failedReason`, 0 stacktrace entries | `completed`, same | none |
+| Bun 1.2.22 (what production runs) | `completed`, same | `completed`, same | none |
+
+Both runs reached real Postgres connections — the ticket processor performed its first `db.update`, and the scrape processor got far enough for `assertPublicUrl` to reject the unroutable test URL and for a genuine FK violation to surface from `workspace_events`. That is well past the ~20–30 ms crash point described below. The 32 `bull-b11*` keys were deleted afterwards; `bull:*` was untouched.
+
+**Conclusion:** the failure was specific to Node v25.0.0, which this repo no longer uses anywhere — `.nvmrc` pins `22`, the CI gate runs Node 22 (`.github/workflows/deploy.yml`), and production runs Bun. No code change was needed. **One thing to keep watching:** tests and CI run on Node 22 while production runs Bun, so no suite exercises the runtime that actually serves users. Recorded in `docs/ai/risk-register.md`.
+
+---
+
+<details>
+<summary>Original report (2026-07-02), kept for context</summary>
+
+### apps/api must run via `bun run dev`, not the compiled build
 
 **What:** Running the API as `node dist/main` (the compiled production build, `nest build` output) causes scrape-queue and ticket-extraction-queue jobs to crash instantly with `Cannot read properties of undefined (reading 'Socket')` — Bull records the job as failed (empty stack trace, ~20-30ms runtime), but the crash happens before the processor's own first DB write, so the source row is left stuck in a non-terminal state (`pending`/`queued`) forever, with no `last_error` to explain why. The ingest-queue is unaffected. Running the exact same code via `nest start --watch` (what `bun run dev` runs) works correctly — verified live: a scrape and a ticket extraction both completed their full pipeline (including a legitimate model-validation failure reaching `status='failed'` with a real error message) with zero errors.
 
@@ -115,6 +143,8 @@
 **Context:** Found during `/qa` on 2026-07-02 while investigating a stuck-pending ticket the user reported (`.gstack/qa-reports/qa-report-localhost-2026-07-02.md`). Confirmed reproducible on 2 separate runs against 2 separate queues (scrape, ticket-extraction) under the compiled build, and confirmed NOT reproducing under `bun run dev` on the same code.
 
 **Depends on / blocked by:** Nothing — can be picked up anytime. Start by getting a real stack trace via `node --enable-source-maps --stack-trace-limit=100 dist/main`, since Bull's own stored `failedReason` has an empty `stacktrace` array.
+
+</details>
 
 ## Generalize extraction chain for non-transcript inputs
 
