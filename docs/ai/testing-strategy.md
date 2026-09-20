@@ -244,6 +244,15 @@ For everything else infra-shaped, the pragmatic verification checklist is:
    remaining half (does the gate *block*?) needs one throwaway branch push with a deliberately
    failing test: `ci` must fail and `deploy` must show as skipped. `deploy` is fenced by
    `if: github.ref == 'refs/heads/main'`, so a branch push cannot reach production.
+   **Done 2026-09-20** on the now-deleted branch `ci/s0d-verify`, three runs: `35489182169` failed at
+   `Type-check`, `35489278525` failed at `Unit tests — seed data` (the deliberate probe), and
+   `35489426121` passed every step. `deploy` reported **skipped** in all three.
+   **The local dry run did not predict the first failure, and that is the lesson.** `@repo/db` and
+   `@repo/ai` point `main`/`types` at `dist`; a clean checkout has none, and turbo's `type-check`
+   task depends on `^type-check`, not `^build`, so nothing creates them. It passed locally purely
+   because an earlier e2e build had left `dist` behind. The job now runs
+   `bunx turbo run build --filter=@repo/db --filter=@repo/ai` before `type-check`. Treat "it passes
+   on my machine" for anything resolving through `dist` as unproven until a clean checkout says so.
 
 This is the Deep-task testing strategy for infra changes: no unit tests are force-fitted onto YAML/
 Dockerfiles, but the operational checklist above is mandatory before considering infra/Docker/CI
