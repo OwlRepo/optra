@@ -1,4 +1,5 @@
 import { index, numeric, pgEnum, pgTable, text, timestamp, uuid, varchar } from 'drizzle-orm/pg-core'
+import { comparisonRuns } from './comparisonRuns'
 import { invoiceLineItems } from './invoiceLineItems'
 import { invoices } from './invoices'
 import { poLineItems } from './poLineItems'
@@ -31,6 +32,13 @@ export const discrepancyFlags = pgTable(
     invoiceId: uuid('invoice_id')
       .references(() => invoices.id, { onDelete: 'cascade' })
       .notNull(),
+    // Which comparison run produced this flag. Nullable because every flag
+    // written before S1 predates the runs table; those count as current for
+    // their pair until that pair is compared again, so nothing disappears from
+    // the UI when this ships. `set null` rather than cascade: runs are
+    // append-only and never deleted, and a flag losing its run should degrade
+    // to legacy, not vanish.
+    comparisonRunId: uuid('comparison_run_id').references(() => comparisonRuns.id, { onDelete: 'set null' }),
     poLineItemId: uuid('po_line_item_id').references(() => poLineItems.id, { onDelete: 'set null' }),
     invoiceLineItemId: uuid('invoice_line_item_id').references(() => invoiceLineItems.id, {
       onDelete: 'set null',
@@ -53,6 +61,7 @@ export const discrepancyFlags = pgTable(
       table.createdAt,
     ),
     poInvoiceIdx: index('discrepancy_flags_po_invoice_idx').on(table.purchaseOrderId, table.invoiceId),
+    runIdx: index('discrepancy_flags_run_idx').on(table.comparisonRunId),
   }),
 )
 

@@ -9,9 +9,10 @@ import {
   NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common'
-import { and, eq } from 'drizzle-orm'
+import { and, desc, eq, inArray, isNull, or } from 'drizzle-orm'
 import Papa from 'papaparse'
 import {
+  comparisonRuns,
   db,
   discrepancyFlags,
   invoiceLineItems,
@@ -23,6 +24,10 @@ import {
   type PoLineItem,
 } from '@repo/db'
 import { DuckDbQueryService, SqlExecutionError } from '../structured-query/duckdb-query.service'
+
+function pairKey(purchaseOrderId: string, invoiceId: string): string {
+  return `${purchaseOrderId}:${invoiceId}`
+}
 
 const PO_TABLE = 'po_items'
 const INV_TABLE = 'inv_items'
@@ -146,7 +151,7 @@ export class ComparisonService {
 
   constructor(private readonly duckDb: DuckDbQueryService) {}
 
-  async compare(workspaceId: string, purchaseOrderId: string, invoiceId: string) {
+  async compare(workspaceId: string, purchaseOrderId: string, invoiceId: string, initiatedBy?: string) {
     const po = await this.loadReadyPo(workspaceId, purchaseOrderId)
     const invoice = await this.loadReadyInvoice(workspaceId, invoiceId)
 
@@ -165,6 +170,21 @@ export class ComparisonService {
     if (poItems.length === 0 || invItems.length === 0) {
       throw new BadRequestException('Both documents must have parsed line items to compare')
     }
+
+    // The run row is written before the engine call so a failed attempt still
+    // leaves evidence that someone tried, and when. A request that never gets
+    // this far (unknown document, nothing parsed) records no run at all.
+    const [run] = await db
+      .insert(comparisonRuns)
+      .values({
+        workspaceId,
+        purchaseOrderId: po.id,
+        invoiceId: invoice.id,
+        initiatedBy: initiatedBy ?? null,
+        poLineCount: poItems.length,
+        invoiceLineCount: invItems.length,
+      })
+      .returning()
 
     const dir = await mkdtemp(join(tmpdir(), 'optra-cmp-'))
     const poCsvPath = join(dir, 'po.csv')
@@ -196,35 +216,41 @@ export class ComparisonService {
       }
 
       const inserted = await db.transaction(async (tx) => {
-        // Row lock on the PO: concurrent compares touching this PO queue here,
-        // so each delete+insert pair runs alone and a pair never ends up with
-        // two flag sets. The transaction also means a failed insert leaves the
-        // previous flag set in place instead of an empty one.
+        // Row lock on the PO: concurrent compares touching this PO queue here.
+        // Nothing is deleted any more, so this no longer protects a delete —
+        // it orders the runs, which is what makes "the latest succeeded run"
+        // unambiguous instead of a race on created_at.
         await tx
           .select({ id: purchaseOrders.id })
           .from(purchaseOrders)
           .where(and(eq(purchaseOrders.id, po.id), eq(purchaseOrders.workspaceId, workspaceId)))
           .for('update')
 
-        await tx
-          .delete(discrepancyFlags)
-          .where(
-            and(
-              eq(discrepancyFlags.workspaceId, workspaceId),
-              eq(discrepancyFlags.purchaseOrderId, po.id),
-              eq(discrepancyFlags.invoiceId, invoice.id),
-            ),
-          )
+        // No delete. A re-compare appends a new run; the previous run's flags
+        // stay, and with them every dismissal a human recorded against them.
+        const flags =
+          rows.length > 0
+            ? await tx
+                .insert(discrepancyFlags)
+                .values(
+                  rows.map((row) => ({
+                    ...this.toFlagValues(workspaceId, po.id, invoice.id, row, lines),
+                    comparisonRunId: run.id,
+                  })),
+                )
+                .returning()
+            : []
 
-        return rows.length > 0
-          ? tx
-              .insert(discrepancyFlags)
-              .values(rows.map((row) => this.toFlagValues(workspaceId, po.id, invoice.id, row, lines)))
-              .returning()
-          : []
+        await tx
+          .update(comparisonRuns)
+          .set({ status: 'succeeded', flagCount: flags.length, finishedAt: new Date() })
+          .where(eq(comparisonRuns.id, run.id))
+
+        return flags
       })
 
       return {
+        runId: run.id,
         comparedAt: new Date().toISOString(),
         counts: this.countByType(inserted),
         flags: inserted,
@@ -240,31 +266,100 @@ export class ComparisonService {
 
       if (error instanceof SqlExecutionError) {
         const reference = randomUUID().slice(0, 8)
+        // The run keeps the same client-safe reference the caller was given,
+        // so a failed attempt can be traced to this log line without the
+        // engine's text — which can quote cell values — ever being stored.
+        await this.failRun(run.id, `Comparison engine failed. Reference: ${reference}`)
         this.logger.error(`Comparison engine failed ref=${reference} ${context}`)
         throw new ServiceUnavailableException(`Comparison engine failed. Reference: ${reference}`)
       }
 
-      this.logger.error(`Comparison failed ${context}: ${error instanceof Error ? error.name : 'unknown error'}`)
+      const reference = randomUUID().slice(0, 8)
+      await this.failRun(run.id, `Comparison failed. Reference: ${reference}`)
+      this.logger.error(
+        `Comparison failed ref=${reference} ${context}: ${error instanceof Error ? error.name : 'unknown error'}`,
+      )
       throw error
     } finally {
       await rm(dir, { recursive: true, force: true })
     }
   }
 
+  /**
+   * Defaults to the *current* flags: those written by the latest succeeded run
+   * for each PO/invoice pair. Without that, every re-compare would add another
+   * copy of the same mismatch to the list. Flags with no run predate S1; they
+   * count as current for their pair until that pair is compared again, so
+   * nothing vanished from the UI when runs shipped.
+   *
+   * Pass `runId` to read one specific run, which is how history is reached.
+   */
   async listFlags(
     workspaceId: string,
-    filters: { purchaseOrderId?: string; invoiceId?: string; status?: 'open' | 'dismissed' },
+    filters: { purchaseOrderId?: string; invoiceId?: string; status?: 'open' | 'dismissed'; runId?: string },
   ) {
     const conditions = [eq(discrepancyFlags.workspaceId, workspaceId)]
     if (filters.purchaseOrderId) conditions.push(eq(discrepancyFlags.purchaseOrderId, filters.purchaseOrderId))
     if (filters.invoiceId) conditions.push(eq(discrepancyFlags.invoiceId, filters.invoiceId))
     if (filters.status) conditions.push(eq(discrepancyFlags.status, filters.status))
 
-    return db
+    if (filters.runId) {
+      conditions.push(eq(discrepancyFlags.comparisonRunId, filters.runId))
+      return db
+        .select()
+        .from(discrepancyFlags)
+        .where(and(...conditions))
+        .orderBy(discrepancyFlags.createdAt)
+    }
+
+    const currentRunByPair = await this.currentRunIdByPair(workspaceId)
+    const currentRunIds = [...currentRunByPair.values()]
+
+    // Narrow in SQL to current-run and legacy rows, so history does not have to
+    // be read to be discarded; the remaining decision — whether a legacy row's
+    // pair has since been compared — is settled from the same small map.
+    const runScope = currentRunIds.length
+      ? or(inArray(discrepancyFlags.comparisonRunId, currentRunIds), isNull(discrepancyFlags.comparisonRunId))
+      : isNull(discrepancyFlags.comparisonRunId)
+    if (runScope) conditions.push(runScope)
+
+    const rows = await db
       .select()
       .from(discrepancyFlags)
       .where(and(...conditions))
       .orderBy(discrepancyFlags.createdAt)
+
+    return rows.filter(
+      (row) => row.comparisonRunId !== null || !currentRunByPair.has(pairKey(row.purchaseOrderId, row.invoiceId)),
+    )
+  }
+
+  // Latest succeeded run per PO/invoice pair. Ordered newest-first, so the
+  // first id seen for a pair is the one that wins.
+  private async currentRunIdByPair(workspaceId: string): Promise<Map<string, string>> {
+    const runs = await db
+      .select({
+        id: comparisonRuns.id,
+        purchaseOrderId: comparisonRuns.purchaseOrderId,
+        invoiceId: comparisonRuns.invoiceId,
+      })
+      .from(comparisonRuns)
+      .where(and(eq(comparisonRuns.workspaceId, workspaceId), eq(comparisonRuns.status, 'succeeded')))
+      .orderBy(desc(comparisonRuns.createdAt))
+
+    const latest = new Map<string, string>()
+    for (const run of runs) {
+      const key = pairKey(run.purchaseOrderId, run.invoiceId)
+      if (!latest.has(key)) latest.set(key, run.id)
+    }
+    return latest
+  }
+
+  private async failRun(runId: string, lastError: string) {
+    await db
+      .update(comparisonRuns)
+      .set({ status: 'failed', lastError, finishedAt: new Date() })
+      .where(eq(comparisonRuns.id, runId))
   }
 
   // Only an open flag in this workspace is updated. A repeat dismiss returns the
@@ -339,6 +434,8 @@ export class ComparisonService {
     const invoiceLine = row.invoice_line_item_id ? lines.invoice.get(row.invoice_line_item_id) : undefined
     const isQuantity = row.flag_type === 'quantity_mismatch'
     const isPrice = row.flag_type === 'price_mismatch'
+    const isMissingOnInvoice = row.flag_type === 'missing_on_invoice'
+    const isMissingOnPo = row.flag_type === 'missing_on_po'
     const poPrice = this.singlePrice(row.po_price_min, row.po_price_max)
     const invoicePrice = this.singlePrice(row.inv_price_min, row.inv_price_max)
 
@@ -351,13 +448,34 @@ export class ComparisonService {
       // The exact stored string, never DuckDB's re-typed copy of it.
       sku: poLine?.sku ?? invoiceLine?.sku ?? null,
       flagType: row.flag_type,
-      poValue: isQuantity ? this.numToStr(row.po_qty) : isPrice ? this.numToStr(poPrice) : null,
-      invoiceValue: isQuantity ? this.numToStr(row.inv_qty) : isPrice ? this.numToStr(invoicePrice) : null,
-      delta: isQuantity
-        ? this.numToStr(this.diff(row.po_qty, row.inv_qty))
+      // delta is invoice minus PO, so a positive number always means the
+      // invoice asks for more than was ordered — what a reviewer scans for.
+      // On a missing-side flag the absent side counts as zero and the present
+      // side's value is kept, so the row renders as evidence instead of three
+      // blank columns.
+      poValue: isQuantity
+        ? this.numToStr(row.po_qty)
         : isPrice
-          ? this.numToStr(this.diff(poPrice, invoicePrice))
-          : null,
+          ? this.numToStr(poPrice)
+          : isMissingOnInvoice
+            ? this.numToStr(row.po_qty)
+            : null,
+      invoiceValue: isQuantity
+        ? this.numToStr(row.inv_qty)
+        : isPrice
+          ? this.numToStr(invoicePrice)
+          : isMissingOnPo
+            ? this.numToStr(row.inv_qty)
+            : null,
+      delta: isQuantity
+        ? this.numToStr(this.diff(row.inv_qty, row.po_qty))
+        : isPrice
+          ? this.numToStr(this.diff(invoicePrice, poPrice))
+          : isMissingOnInvoice
+            ? this.numToStr(this.diff(0, row.po_qty))
+            : isMissingOnPo
+              ? this.numToStr(this.diff(row.inv_qty, 0))
+              : null,
       reason: this.buildReason(row, poLine, invoiceLine),
     }
   }

@@ -304,6 +304,42 @@ describe('Procurement flow (e2e)', () => {
       .patch(`/workspaces/${workspaceId}/procurement/discrepancies/not-a-uuid/dismiss`)
       .set('Authorization', `Bearer ${owner.accessToken}`)
       .expect(400)
+
+    // S1: a second comparison appends a new run. The list must not grow, the
+    // new flags must belong to the new run, and the dismissal recorded against
+    // run 1 must still be readable through that run rather than deleted.
+    const secondCompare = await request(app.getHttpServer())
+      .post(`/workspaces/${workspaceId}/procurement/discrepancies/compare`)
+      .set('Authorization', `Bearer ${owner.accessToken}`)
+      .send({ purchaseOrderId: poUpload.body.id, invoiceId: invoiceUpload.body.id })
+      .expect(201)
+
+    expect(secondCompare.body.runId).toEqual(expect.any(String))
+    expect(secondCompare.body.runId).not.toBe(compareRes.body.runId)
+
+    const afterRerun = await request(app.getHttpServer())
+      .get(`/workspaces/${workspaceId}/procurement/discrepancies`)
+      .query({ purchaseOrderId: poUpload.body.id, invoiceId: invoiceUpload.body.id })
+      .set('Authorization', `Bearer ${owner.accessToken}`)
+      .expect(200)
+    expect(afterRerun.body).toHaveLength(4)
+    expect(
+      afterRerun.body.every((flag: { comparisonRunId: string }) => flag.comparisonRunId === secondCompare.body.runId),
+    ).toBe(true)
+
+    const history = await request(app.getHttpServer())
+      .get(`/workspaces/${workspaceId}/procurement/discrepancies`)
+      .query({ runId: compareRes.body.runId })
+      .set('Authorization', `Bearer ${owner.accessToken}`)
+      .expect(200)
+    expect(history.body).toHaveLength(4)
+    expect(history.body.filter((flag: { status: string }) => flag.status === 'dismissed')).toHaveLength(1)
+
+    await request(app.getHttpServer())
+      .get(`/workspaces/${workspaceId}/procurement/discrepancies`)
+      .query({ runId: 'not-a-uuid' })
+      .set('Authorization', `Bearer ${owner.accessToken}`)
+      .expect(400)
   })
 
   it('uploads PO + invoice as PDF, parses via the extraction seam, and compares identically to CSV', async () => {

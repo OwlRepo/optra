@@ -1,8 +1,8 @@
 import { randomUUID } from 'crypto'
 import { extname } from 'path'
-import { Injectable, Logger, NotFoundException } from '@nestjs/common'
-import { desc, eq } from 'drizzle-orm'
-import { db, invoices, purchaseOrders } from '@repo/db'
+import { ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common'
+import { and, desc, eq } from 'drizzle-orm'
+import { comparisonRuns, db, invoices, purchaseOrders } from '@repo/db'
 import { StorageService } from '../storage/storage.service'
 import { ProcurementDocKind, ProcurementParseService } from './procurement-parse.service'
 
@@ -95,6 +95,25 @@ export class ProcurementDocumentsService {
 
     if (!doc || doc.workspaceId !== workspaceId) {
       throw new NotFoundException(`${docLabel(kind)} not found`)
+    }
+
+    // POLICY v1 #9: a document referenced by a comparison run is evidence, and
+    // deleting it would cascade away that run and its flags. This method has no
+    // route and no production caller; the guard is here so exposing it later
+    // cannot silently destroy an audit trail.
+    const [referencingRun] = await db
+      .select({ id: comparisonRuns.id })
+      .from(comparisonRuns)
+      .where(
+        and(
+          eq(comparisonRuns.workspaceId, workspaceId),
+          kind === 'purchase_order' ? eq(comparisonRuns.purchaseOrderId, id) : eq(comparisonRuns.invoiceId, id),
+        ),
+      )
+      .limit(1)
+
+    if (referencingRun) {
+      throw new ConflictException(`${docLabel(kind)} is referenced by a comparison run and cannot be deleted`)
     }
 
     if (doc.storageKey) {

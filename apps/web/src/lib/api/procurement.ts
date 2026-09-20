@@ -17,6 +17,8 @@ export type DiscrepancyFlag = {
   workspaceId: string
   purchaseOrderId: string
   invoiceId: string
+  // Null on flags written before comparison runs existed (S1).
+  comparisonRunId: string | null
   poLineItemId: string | null
   invoiceLineItemId: string | null
   sku: string | null
@@ -31,6 +33,7 @@ export type DiscrepancyFlag = {
   createdAt: string
 }
 export type CompareResult = {
+  runId: string
   comparedAt: string
   counts: {
     quantity_mismatch: number
@@ -69,12 +72,15 @@ export function compareDocuments(
 
 export function listDiscrepancies(
   workspaceId: string,
-  opts?: { purchaseOrderId?: string; invoiceId?: string; status?: DiscrepancyFlagStatus },
+  // Omitting runId returns the current flags: the latest succeeded run for
+  // each PO/invoice pair, plus pre-S1 flags for pairs never re-compared.
+  opts?: { purchaseOrderId?: string; invoiceId?: string; status?: DiscrepancyFlagStatus; runId?: string },
 ): Promise<DiscrepancyFlag[]> {
   const params = new URLSearchParams()
   if (opts?.purchaseOrderId) params.set('purchaseOrderId', opts.purchaseOrderId)
   if (opts?.invoiceId) params.set('invoiceId', opts.invoiceId)
   if (opts?.status) params.set('status', opts.status)
+  if (opts?.runId) params.set('runId', opts.runId)
   const query = params.toString()
 
   return apiFetch(`/api/workspaces/${workspaceId}/procurement/discrepancies${query ? `?${query}` : ''}`)

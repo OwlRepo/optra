@@ -1,5 +1,5 @@
 import { eq, like } from 'drizzle-orm'
-import { db, invoices, pool, purchaseOrders, users, workspaceMembers, workspaces } from '@repo/db'
+import { comparisonRuns, db, invoices, pool, purchaseOrders, users, workspaceMembers, workspaces } from '@repo/db'
 import { ProcurementDocumentsService } from './procurement-documents.service'
 import { StorageService } from '../storage/storage.service'
 import { ProcurementParseService } from './procurement-parse.service'
@@ -12,6 +12,7 @@ async function cleanupFixtures(prefix: string) {
       .from(workspaceMembers)
       .where(eq(workspaceMembers.userId, user.id))
     for (const membership of memberships) {
+      await db.delete(comparisonRuns).where(eq(comparisonRuns.workspaceId, membership.workspaceId))
       await db.delete(purchaseOrders).where(eq(purchaseOrders.workspaceId, membership.workspaceId))
       await db.delete(invoices).where(eq(invoices.workspaceId, membership.workspaceId))
       await db.delete(workspaceMembers).where(eq(workspaceMembers.workspaceId, membership.workspaceId))
@@ -185,5 +186,49 @@ describe('ProcurementDocumentsService', () => {
       .returning()
 
     await expect(service.remove(mine.id, 'purchase_order', po.id)).rejects.toThrow('Purchase order not found')
+  })
+
+  // POLICY v1 #9. remove() has no route and no production caller; this pins the
+  // guard so exposing it later cannot cascade away a run and its flags.
+  it('refuses to delete a purchase order referenced by a comparison run', async () => {
+    const workspace = await seedWorkspace(`${prefix}po-referenced@example.com`, 'PO Referenced')
+    const [po] = await db
+      .insert(purchaseOrders)
+      .values({ workspaceId: workspace.id, name: 'a.csv', status: 'done', storageKey: 'k/a.csv' })
+      .returning()
+    const [invoice] = await db
+      .insert(invoices)
+      .values({ workspaceId: workspace.id, name: 'b.csv', status: 'done' })
+      .returning()
+    await db
+      .insert(comparisonRuns)
+      .values({ workspaceId: workspace.id, purchaseOrderId: po.id, invoiceId: invoice.id, status: 'succeeded' })
+
+    await expect(service.remove(workspace.id, 'purchase_order', po.id)).rejects.toThrow(
+      'referenced by a comparison run',
+    )
+
+    expect(storage.delete).not.toHaveBeenCalled()
+    const remaining = await db.select().from(purchaseOrders).where(eq(purchaseOrders.id, po.id))
+    expect(remaining).toHaveLength(1)
+  })
+
+  it('refuses to delete an invoice referenced by a comparison run', async () => {
+    const workspace = await seedWorkspace(`${prefix}inv-referenced@example.com`, 'Invoice Referenced')
+    const [po] = await db
+      .insert(purchaseOrders)
+      .values({ workspaceId: workspace.id, name: 'a.csv', status: 'done' })
+      .returning()
+    const [invoice] = await db
+      .insert(invoices)
+      .values({ workspaceId: workspace.id, name: 'b.csv', status: 'done' })
+      .returning()
+    await db
+      .insert(comparisonRuns)
+      .values({ workspaceId: workspace.id, purchaseOrderId: po.id, invoiceId: invoice.id, status: 'succeeded' })
+
+    await expect(service.remove(workspace.id, 'invoice', invoice.id)).rejects.toThrow(
+      'referenced by a comparison run',
+    )
   })
 })

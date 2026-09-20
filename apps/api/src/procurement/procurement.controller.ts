@@ -139,8 +139,12 @@ export class ProcurementController {
   @Post('discrepancies/compare')
   @UseGuards(JwtAuthGuard, WorkspaceMemberGuard, RolesGuard)
   @Roles('owner', 'admin')
-  compare(@Param('workspaceId') workspaceId: string, @Body() body: CompareDocumentsDto) {
-    return this.comparison.compare(workspaceId, body.purchaseOrderId, body.invoiceId)
+  compare(
+    @Param('workspaceId') workspaceId: string,
+    @Body() body: CompareDocumentsDto,
+    @CurrentUser() user: CurrentUserContext,
+  ) {
+    return this.comparison.compare(workspaceId, body.purchaseOrderId, body.invoiceId, user.userId)
   }
 
   @Get('discrepancies')

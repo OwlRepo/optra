@@ -15,6 +15,7 @@ import {
 } from '../data/insights'
 import { buildQueryMetricRows } from '../data/metrics'
 import {
+  buildComparisonRunRows,
   buildDiscrepancyFlagRows,
   buildInvoiceLineItemRows,
   buildInvoiceRows,
@@ -302,6 +303,31 @@ describe('procurement', () => {
     })
     buildInvoiceRows().forEach(inv => {
       expect(inv.rowCount).toBe(invoiceLines.filter(l => l.invoiceId === inv.id).length)
+    })
+  })
+
+  it('gives every flag a seeded comparison run whose counts match what it produced', () => {
+    const runs = buildComparisonRunRows()
+    const flags = buildDiscrepancyFlagRows()
+    const runIds = new Set(runs.map(r => r.id))
+
+    flags.forEach(f => expect(runIds.has(f.comparisonRunId as string)).toBe(true))
+    runs.forEach(run => {
+      const own = flags.filter(f => f.comparisonRunId === run.id)
+      expect(run.flagCount).toBe(own.length)
+      expect(run.status).toBe('succeeded')
+    })
+  })
+
+  // The engine defines delta as invoice minus PO, so a positive number means
+  // the invoice asks for more than was ordered. The seed used the same
+  // convention while the engine used the inverse until S1; this pins it.
+  it('states delta as invoice minus purchase order on every flag', () => {
+    buildDiscrepancyFlagRows().forEach(flag => {
+      if (flag.delta === null) return
+      const po = flag.poValue === null ? 0 : Number(flag.poValue)
+      const invoice = flag.invoiceValue === null ? 0 : Number(flag.invoiceValue)
+      expect(Number(flag.delta)).toBeCloseTo(invoice - po, 6)
     })
   })
 

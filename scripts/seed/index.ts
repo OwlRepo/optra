@@ -101,6 +101,7 @@ async function main(): Promise<void> {
     buildSavedRefinedMessageRows,
   } = await import('./data/insights')
   const {
+    buildComparisonRunRows,
     buildDiscrepancyFlagRows,
     buildInvoiceLineItemRows,
     buildInvoiceRows,
@@ -230,6 +231,7 @@ async function main(): Promise<void> {
     await tx.delete(schema.catalogs).where(eq(schema.catalogs.workspaceId, DEMO_WORKSPACE_ID))
     await tx.delete(schema.vendors).where(eq(schema.vendors.workspaceId, DEMO_WORKSPACE_ID))
     await tx.delete(schema.discrepancyFlags).where(eq(schema.discrepancyFlags.workspaceId, DEMO_WORKSPACE_ID))
+    await tx.delete(schema.comparisonRuns).where(eq(schema.comparisonRuns.workspaceId, DEMO_WORKSPACE_ID))
     await tx.delete(schema.invoiceLineItems).where(eq(schema.invoiceLineItems.workspaceId, DEMO_WORKSPACE_ID))
     await tx.delete(schema.poLineItems).where(eq(schema.poLineItems.workspaceId, DEMO_WORKSPACE_ID))
     await tx.delete(schema.invoices).where(eq(schema.invoices.workspaceId, DEMO_WORKSPACE_ID))
@@ -304,6 +306,7 @@ async function main(): Promise<void> {
     await insert('invoices', schema.invoices as never, buildInvoiceRows())
     await insert('po_line_items', schema.poLineItems as never, buildPoLineItemRows())
     await insert('invoice_line_items', schema.invoiceLineItems as never, buildInvoiceLineItemRows())
+    await insert('comparison_runs', schema.comparisonRuns as never, buildComparisonRunRows())
     await insert('discrepancy_flags', schema.discrepancyFlags as never, buildDiscrepancyFlagRows())
     await insert('vendors', schema.vendors as never, buildVendorRows())
     await insert('catalogs', schema.catalogs as never, buildCatalogRows())

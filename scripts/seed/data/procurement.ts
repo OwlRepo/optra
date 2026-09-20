@@ -24,6 +24,11 @@ export const INVOICE_IDS = Array.from(
   (_, i) => `11000000-0000-4000-8000-${String(i + 1).padStart(12, '0')}`,
 )
 
+export const COMPARISON_RUN_IDS = Array.from(
+  { length: PAIRS },
+  (_, i) => `14000000-0000-4000-8000-${String(i + 1).padStart(12, '0')}`,
+)
+
 /** Which line-item template a pair uses, and which quarter it belongs to. */
 const templateOf = (pair: number) => pair % TEMPLATES
 const periodOf = (pair: number) => Math.floor(pair / TEMPLATES)
@@ -226,6 +231,34 @@ function findLine(lines: LineSpec[], sku: string): { line: LineSpec; index: numb
   return index === -1 ? null : { line: lines[index]!, index }
 }
 
+// One succeeded run per pair, so the demo shows the same provenance a real
+// comparison writes: every flag belongs to a run, and the run records what it
+// read. Without these the seeded flags would be treated as pre-S1 legacy rows.
+export function buildComparisonRunRows() {
+  return COMPARISON_RUN_IDS.map((id, i) => ({
+    id,
+    workspaceId: DEMO_WORKSPACE_ID,
+    purchaseOrderId: PO_IDS[i]!,
+    invoiceId: INVOICE_IDS[i]!,
+    mode: 'two_way',
+    strategyVersion: 1,
+    status: 'succeeded' as const,
+    initiatedBy: null,
+    poLineCount: poLinesFor(i).length,
+    invoiceLineCount: invoiceLinesFor(i).length,
+    flagCount: flagCountFor(i),
+    startedAt: daysAgo(poAge(i) - 6),
+    finishedAt: daysAgo(poAge(i) - 6),
+    lastError: null,
+    createdAt: daysAgo(poAge(i) - 6),
+  }))
+}
+
+/** How many flags `buildDiscrepancyFlagRows` emits for a pair. */
+function flagCountFor(poIndex: number): number {
+  return buildDiscrepancyFlagRows().filter(row => row.purchaseOrderId === PO_IDS[poIndex]).length
+}
+
 export function buildDiscrepancyFlagRows() {
   const rows: Record<string, unknown>[] = []
 
@@ -244,6 +277,7 @@ export function buildDiscrepancyFlagRows() {
       workspaceId: DEMO_WORKSPACE_ID,
       purchaseOrderId: PO_IDS[poIndex]!,
       invoiceId: INVOICE_IDS[poIndex]!,
+      comparisonRunId: COMPARISON_RUN_IDS[poIndex]!,
       poLineItemId: po ? poLineId(poIndex, po.index + 1) : null,
       invoiceLineItemId: inv ? invoiceLineId(poIndex, inv.index + 1) : null,
       sku,
