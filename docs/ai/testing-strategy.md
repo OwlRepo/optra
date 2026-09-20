@@ -63,7 +63,7 @@ Every suite in the repo, and how to run them (there is no `turbo test` task and 
 | `cd packages/ui && bun run test` | Vitest 4.1.9 | 91 |
 | `bun run db:seed:test` (root) | Vitest, `scripts/seed` | 47 |
 
-**1273 tests, zero skipped**, all green on Node 22 as of 2026-08-18. 2026-09-20 (S0a): `apps/api` unit 59/59 suites, 411 tests; e2e 14/14 suites, 40 tests (procurement e2e gained cross-workspace-dismiss and non-UUID assertions) — both green on Node 22 with only `postgres`/`redis`/`seaweedfs` containers up. 2026-09-20 (S0b): unit 59/59 suites, 438 tests; e2e 14/14, 40. 2026-09-20 (S0c): api unit 452, e2e 14/14 (40), packages/ai 25 files / 184. `packages/types` has no tests; `scripts/eval` holds two standalone Python scripts outside the bun surface.
+**1273 tests, zero skipped**, all green on Node 22 as of 2026-08-18. 2026-09-20 (S0a): `apps/api` unit 59/59 suites, 411 tests; e2e 14/14 suites, 40 tests (procurement e2e gained cross-workspace-dismiss and non-UUID assertions) — both green on Node 22 with only `postgres`/`redis`/`seaweedfs` containers up. 2026-09-20 (S0b): unit 59/59 suites, 438 tests; e2e 14/14, 40. 2026-09-20 (S0c): api unit 452, e2e 14/14 (40), packages/ai 25 files / 184. 2026-09-20 (S0d): all six unit suites re-run together in the order the new CI job runs them — api 59/452, web 124/511, ai 25/184, db 1/12, ui 11/91, seed 2/47 = **222 files, 1297 tests, zero skipped**, green on Node 22. `packages/types` has no tests; `scripts/eval` holds two standalone Python scripts outside the bun surface.
 
 - **No suite is env-skipped any more.** `apps/api/src/storage/storage.service.spec.ts` gates on `S3_ENDPOINT` (it is a real S3 round-trip against SeaweedFS) and had therefore **never executed locally** — the var lives in the root `.env`, but the unit Jest config has no `setupFiles`, so nothing loaded dotenv before collection. The spec now loads the root `.env` itself. Doing it there rather than in the shared Jest config is deliberate: a global load would hand all 58 other unit suites live credentials, notably `EMAIL_OTP_ENABLED`, which the e2e setup deliberately forces off to avoid live Resend calls. The gate is kept so the suite still skips cleanly where no object store exists.
 - **`packages/ai` concurrency no longer depends on the Node version.** `crawl.ts` used `new Function('specifier','return import(specifier)')` to load ESM-only `p-limit@7` from a CommonJS package. Plain Node runs that fine, but Vitest's module runner supplies no host dynamic-import callback, so 10 `crawlSite` tests failed on Node 22/24 and passed only on Node 25. `p-limit` was removed and replaced by `createLimit` (`packages/ai/src/web/limit.ts`); the suite now passes 173/173 on Node **22, 24 and 25**. The packaging guard in `crawl.spec.ts` was inverted to assert the hack cannot return.
@@ -235,7 +235,15 @@ For everything else infra-shaped, the pragmatic verification checklist is:
    design — Claude does not hold VPS SSH credentials). What CAN be verified without secrets: YAML
    syntax validity, `shellcheck` on the embedded script block, and that every command/path/service
    name the script references matches the real `docker-compose.prod.yml` (service names, `/health`
-   endpoint, `/opt/mnemra` path).
+   endpoint, `/home/deploy/apps/optra` path — the deploy script's own `cd` target).
+11. The `ci` job in that same workflow (added 2026-09-20, S0d) **is** verifiable without secrets, in
+   two halves. Locally: run its steps in order against the dev compose stack with the same job env —
+   `DATABASE_URL` on port 54322, `REDIS_PORT=6380`, and `S3_ACCESS_KEY`/`S3_SECRET_KEY` read out of
+   `docker/seaweedfs/s3.json` — which is what makes `storage.service.spec.ts` actually round-trip
+   bytes instead of skipping. Nothing else about a runner is reproducible on a laptop, so the
+   remaining half (does the gate *block*?) needs one throwaway branch push with a deliberately
+   failing test: `ci` must fail and `deploy` must show as skipped. `deploy` is fenced by
+   `if: github.ref == 'refs/heads/main'`, so a branch push cannot reach production.
 
 This is the Deep-task testing strategy for infra changes: no unit tests are force-fitted onto YAML/
 Dockerfiles, but the operational checklist above is mandatory before considering infra/Docker/CI

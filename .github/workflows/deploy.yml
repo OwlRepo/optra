@@ -1,19 +1,131 @@
-name: Deploy to VPS
+name: CI and Deploy
 
+# One workflow on purpose. Splitting the gate into a separate ci.yml chained by
+# `workflow_run` would race: the deploy would run the ci.yml that the DEFAULT
+# branch has, not the one on the pushed commit, and the two runs report
+# independently. Keeping both jobs here makes `needs: ci` the whole contract —
+# main cannot deploy unless the quality gate passed on that exact commit.
 on:
   push:
-    branches: [main]
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+  pull_request:
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
   workflow_dispatch:
 
-concurrency:
-  group: deploy-production
-  cancel-in-progress: true
-
 jobs:
+  ci:
+    name: Quality gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # A superseded push should stop burning a runner; nothing outside the runner
+    # has changed when CI is cancelled.
+    concurrency:
+      group: ci-${{ github.ref }}
+      cancel-in-progress: true
+    env:
+      # Host-side addresses for the dev compose stack started below. These are
+      # real process env, and dotenv never overrides an already-set variable, so
+      # they win over the .env written in the "Create .env" step — which is why
+      # the stale REDIS_PORT/S3 credentials in .env.example cannot leak in.
+      DATABASE_URL: postgresql://postgres:postgres@localhost:54322/optra
+      REDIS_HOST: localhost
+      REDIS_PORT: '6380'
+      S3_ENDPOINT: http://localhost:8433
+      S3_REGION: us-east-1
+      S3_BUCKET: optra-documents
+      S3_FORCE_PATH_STYLE: 'true'
+    steps:
+      - uses: actions/checkout@v4
+
+      # .nvmrc pins 22: Node 25 cannot load duckdb's native binding.
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.2.22
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      # Compose interpolates ${OPTRA_*_PORT} and the api/web services declare
+      # `env_file: .env`, so the file has to exist even though only the three
+      # backing services are started here.
+      - name: Create .env for compose
+        run: cp .env.example .env
+
+      - name: Start backing services
+        run: docker compose up -d --wait --wait-timeout 180 postgres redis seaweedfs
+
+      # Read out of docker/seaweedfs/s3.json rather than repeated here, so that
+      # file stays the single place these local-dev credentials are written
+      # down. Without them storage.service.spec.ts silently skips instead of
+      # round-tripping bytes through SeaweedFS.
+      - name: Load local SeaweedFS credentials
+        run: |
+          node -e "const c = require('./docker/seaweedfs/s3.json').identities[0].credentials[0]; console.log('S3_ACCESS_KEY=' + c.accessKey); console.log('S3_SECRET_KEY=' + c.secretKey)" >> "$GITHUB_ENV"
+
+      - name: Apply database migrations
+        run: bun run db:migrate
+        working-directory: packages/db
+
+      - name: Type-check
+        run: bun run type-check
+
+      - name: Lint
+        run: bun run lint
+
+      # Unit suites run per workspace rather than through one turbo task: turbo
+      # has no `test` task (turbo.json), and a per-workspace step names the
+      # failing package in the run summary.
+      - name: Unit tests — apps/api
+        run: bun run test
+        working-directory: apps/api
+
+      - name: Unit tests — apps/web
+        run: bun run test
+        working-directory: apps/web
+
+      - name: Unit tests — packages/ai
+        run: bun run test
+        working-directory: packages/ai
+
+      - name: Unit tests — packages/db
+        run: bun run test
+        working-directory: packages/db
+
+      - name: Unit tests — packages/ui
+        run: bun run test
+        working-directory: packages/ui
+
+      - name: Unit tests — seed data
+        run: bun run db:seed:test
+
+      # apps/api e2e is deliberately NOT in the gate yet: it resolves @repo/* to
+      # packages/*/dist, so it needs a build step first, and it shares one
+      # database with the unit suites. Adding it is its own slice.
+
+      - name: Service logs on failure
+        if: failure()
+        run: docker compose logs --tail=100 postgres redis seaweedfs
+
   deploy:
+    needs: ci
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment: VPS_PROD
     timeout-minutes: 30
+    # Unlike CI, a deploy must never be cancelled mid-flight: `up -d
+    # --force-recreate` can leave the production stack half-replaced. A second
+    # push queues behind the first instead of killing it.
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
     steps:
       - name: Deploy over SSH
         uses: appleboy/ssh-action@v1.0.3
