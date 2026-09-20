@@ -203,6 +203,41 @@ History-aware chat note as of 2026-07-05:
 
 Note: a plain `vitest.config.ts` failed to load in this repo with `ERR_REQUIRE_ESM` (a transitive dep, `std-env`, is ESM-only and the config got loaded as CJS). Fixed by naming it `vitest.config.mts` instead — forces Vite to treat it as ESM regardless of the package's default module type. If `apps/web` ever adds `"type": "module"` to its `package.json`, re-check whether this workaround is still needed.
 
+## Parallel suites and globally-scanning jobs (investigated 2026-09-20 — no change made)
+
+`apps/api` unit specs run in parallel Jest workers against **one** Postgres database, so a
+service whose query has no `workspaceId` filter will, in a test, also see rows another
+worker's suite created. `CatalogScrapeService.reconcile()`
+(`apps/api/src/catalog/catalog-scrape.service.ts:85-91`) is such a job — correctly so, it is
+system-level — and `catalog-scrape.service.spec.ts` and `catalog-scrape.processor.spec.ts`
+both create `sourceKind: 'scrape'` catalogs.
+
+**That coupling cannot actually fire, and this note exists so nobody re-chases it.**
+`reconcile()` only acts on rows past a grace period: `QUEUED_CATALOG_SCRAPE_STALE_MS` is
+2 minutes and `isStale` measures from `enqueuedAt ?? createdAt` (`:9`, `:149`); the running
+thresholds are 5 minutes idle and 30 minutes stale (`:10-11`, `:154-161`).
+`catalog-scrape.processor.spec.ts:46-56` inserts its fixtures with **no `enqueuedAt`**, so
+`createdAt` is ~now and the row is never old enough to be swept inside a run. Only the
+service spec deliberately backdates (6 min and 3 min), and it asserts on its own row. So
+parallel fixtures are invisible to the sweep.
+
+Prompted by a **single** unreproduced failure on 2026-09-20 of
+`CatalogScrapeService › reconcile marks a stale pending scrape catalog failed when its Bull
+job is gone`. Follow-up: 18 consecutive green runs of `cd apps/api && bun run test --
+src/catalog/` (10 default, 5 at `--maxWorkers=100%`, 3 earlier), 62/62 every time, and
+`catalogs` was empty in the dev database, ruling out orphan rows left by an interrupted run.
+The original error **text** was never captured — only the test title — so an assertion
+mismatch could not be told apart from a timeout. **If it recurs, capture the full failure
+output first**; that single fact decides the diagnosis.
+
+One related observation, deliberately left alone: the unit Jest config has no `testTimeout`,
+so these DB-backed specs run at Jest's 5s default, while `test/jest-e2e.json` sets 30000ms
+for reasons documented above. Raising the unit timeout would be justified *if* the failure
+was a timeout, which is unproven — so it was not changed, rather than masking an unknown.
+
+When adding a spec for any job that scans without a tenant filter, still prefer fixtures that
+sit inside the job's grace period, or assert only on rows the spec owns.
+
 ## Infrastructure / Docker / Deployment Verification
 
 Infra/config/script changes (Dockerfiles, compose files, CI workflows, deploy shell scripts) are not
