@@ -2,6 +2,7 @@ import { eq, like } from 'drizzle-orm'
 import {
   comparisonRuns,
   db,
+  discrepancyDecisions,
   discrepancyFlags,
   invoiceLineItems,
   invoices,
@@ -23,6 +24,7 @@ async function cleanupFixtures(prefix: string) {
       .from(workspaceMembers)
       .where(eq(workspaceMembers.userId, user.id))
     for (const membership of memberships) {
+      await db.delete(discrepancyDecisions).where(eq(discrepancyDecisions.workspaceId, membership.workspaceId))
       await db.delete(discrepancyFlags).where(eq(discrepancyFlags.workspaceId, membership.workspaceId))
       await db.delete(comparisonRuns).where(eq(comparisonRuns.workspaceId, membership.workspaceId))
       await db.delete(poLineItems).where(eq(poLineItems.workspaceId, membership.workspaceId))
@@ -506,6 +508,108 @@ describe('ComparisonService', () => {
 
       const [stillThere] = await db.select().from(discrepancyFlags).where(eq(discrepancyFlags.id, legacy.id))
       expect(stillThere).toBeDefined()
+    })
+  })
+
+  describe('decisions and audit (S2)', () => {
+    async function seedFlag(email: string, name: string) {
+      const { workspace, user } = await seedWorkspace(email, name)
+      const { po, invoice } = await seedReadyPoAndInvoice(
+        workspace.id,
+        [{ sku: 'A1', quantity: '10', unitPrice: '5.00' }],
+        [{ sku: 'A1', quantity: '8', unitPrice: '5.00' }],
+      )
+      const result = await service.compare(workspace.id, po.id, invoice.id, user.id)
+      return { workspace, user, po, invoice, flag: result.flags[0], runId: result.runId }
+    }
+
+    it('records a decision, closes the flag, and captures the actor role at decision time', async () => {
+      const { workspace, user, flag, runId } = await seedFlag(`${prefix}decision-record@example.com`, 'Decision Record')
+
+      const decision = await service.recordDecision(workspace.id, flag.id, user.id, {
+        outcome: 'approved_exception',
+        note: 'Agreed with the vendor over the phone.',
+      })
+
+      expect(decision.outcome).toBe('approved_exception')
+      expect(decision.note).toBe('Agreed with the vendor over the phone.')
+      expect(decision.actorUserId).toBe(user.id)
+      expect(decision.actorRole).toBe('owner')
+      expect(decision.comparisonRunId).toBe(runId)
+
+      const [stored] = await db.select().from(discrepancyFlags).where(eq(discrepancyFlags.id, flag.id))
+      expect(stored.status).toBe('dismissed')
+    })
+
+    it('returns the history oldest-first and never rewrites an earlier entry', async () => {
+      const { workspace, user, flag } = await seedFlag(`${prefix}decision-history@example.com`, 'Decision History')
+
+      await service.recordDecision(workspace.id, flag.id, user.id, { outcome: 'vendor_dispute', note: 'Raised with vendor.' })
+      await service.recordDecision(workspace.id, flag.id, user.id, { outcome: 'resolved', note: 'Credit note received.' })
+
+      const history = await service.listDecisions(workspace.id, flag.id)
+      expect(history.map((entry) => entry.outcome)).toEqual(['vendor_dispute', 'resolved'])
+      expect(history.map((entry) => entry.note)).toEqual(['Raised with vendor.', 'Credit note received.'])
+    })
+
+    it('rejects an empty note, so a decision always carries a reason', async () => {
+      const { workspace, user, flag } = await seedFlag(`${prefix}decision-note@example.com`, 'Decision Note')
+
+      await expect(
+        service.recordDecision(workspace.id, flag.id, user.id, { outcome: 'resolved', note: '   ' }),
+      ).rejects.toThrow('note is required')
+
+      expect(await service.listDecisions(workspace.id, flag.id)).toHaveLength(0)
+    })
+
+    it('refuses a flag from another workspace and records nothing', async () => {
+      const { flag } = await seedFlag(`${prefix}decision-foreign@example.com`, 'Decision Foreign')
+      const { workspace: other, user: otherUser } = await seedWorkspace(
+        `${prefix}decision-outsider@example.com`,
+        'Decision Outsider',
+      )
+
+      await expect(
+        service.recordDecision(other.id, flag.id, otherUser.id, { outcome: 'resolved', note: 'Not mine.' }),
+      ).rejects.toThrow('Discrepancy flag not found')
+
+      const rows = await db.select().from(discrepancyDecisions).where(eq(discrepancyDecisions.discrepancyFlagId, flag.id))
+      expect(rows).toHaveLength(0)
+    })
+
+    it('writes exactly one false_positive decision when the legacy dismiss route is used', async () => {
+      const { workspace, user, flag } = await seedFlag(`${prefix}decision-dismiss@example.com`, 'Decision Dismiss')
+
+      await service.dismissFlag(workspace.id, flag.id, user.id)
+
+      const history = await service.listDecisions(workspace.id, flag.id)
+      expect(history).toHaveLength(1)
+      expect(history[0].outcome).toBe('false_positive')
+      expect(history[0].actorUserId).toBe(user.id)
+      expect(history[0].note).toContain('Dismissed')
+    })
+
+    it('adds no second decision when an already-dismissed flag is dismissed again', async () => {
+      const { workspace, user, flag } = await seedFlag(`${prefix}decision-redismiss@example.com`, 'Decision Redismiss')
+
+      await service.dismissFlag(workspace.id, flag.id, user.id)
+      await service.dismissFlag(workspace.id, flag.id, user.id)
+
+      expect(await service.listDecisions(workspace.id, flag.id)).toHaveLength(1)
+    })
+
+    it('keeps decisions when the pair is compared again', async () => {
+      const { workspace, user, po, invoice, flag } = await seedFlag(
+        `${prefix}decision-rerun@example.com`,
+        'Decision Rerun',
+      )
+      await service.recordDecision(workspace.id, flag.id, user.id, { outcome: 'resolved', note: 'Handled.' })
+
+      await service.compare(workspace.id, po.id, invoice.id, user.id)
+
+      const history = await service.listDecisions(workspace.id, flag.id)
+      expect(history).toHaveLength(1)
+      expect(history[0].outcome).toBe('resolved')
     })
   })
 

@@ -14,7 +14,9 @@ import Papa from 'papaparse'
 import {
   comparisonRuns,
   db,
+  discrepancyDecisions,
   discrepancyFlags,
+  workspaceMembers,
   invoiceLineItems,
   invoices,
   poLineItems,
@@ -24,6 +26,12 @@ import {
   type PoLineItem,
 } from '@repo/db'
 import { DuckDbQueryService, SqlExecutionError } from '../structured-query/duckdb-query.service'
+
+type DecisionOutcome = (typeof discrepancyDecisions.$inferInsert)['outcome']
+
+const DISMISS_SYSTEM_NOTE = 'Dismissed from the discrepancies list without a note.'
+
+type DbTx = Parameters<Parameters<typeof db.transaction>[0]>[0]
 
 function pairKey(purchaseOrderId: string, invoiceId: string): string {
   return `${purchaseOrderId}:${invoiceId}`
@@ -363,19 +371,40 @@ export class ComparisonService {
   }
 
   // Only an open flag in this workspace is updated. A repeat dismiss returns the
-  // stored row untouched, so the first dismisser and time stay the audit record.
+  // stored row untouched, so the first dismisser and time stay the audit record
+  // — and, since S2, so that a second dismiss does not append a second decision.
+  //
+  // The route takes no body and the web client calls it that way, so POLICY v1
+  // #7's required note is supplied by the system here; an explicit decision
+  // through `recordDecision` demands a real one.
   async dismissFlag(workspaceId: string, flagId: string, userId: string) {
-    const [updated] = await db
-      .update(discrepancyFlags)
-      .set({ status: 'dismissed', dismissedAt: new Date(), dismissedBy: userId })
-      .where(
-        and(
-          eq(discrepancyFlags.id, flagId),
-          eq(discrepancyFlags.workspaceId, workspaceId),
-          eq(discrepancyFlags.status, 'open'),
-        ),
-      )
-      .returning()
+    const updated = await db.transaction(async (tx) => {
+      const [flag] = await tx
+        .update(discrepancyFlags)
+        .set({ status: 'dismissed', dismissedAt: new Date(), dismissedBy: userId })
+        .where(
+          and(
+            eq(discrepancyFlags.id, flagId),
+            eq(discrepancyFlags.workspaceId, workspaceId),
+            eq(discrepancyFlags.status, 'open'),
+          ),
+        )
+        .returning()
+
+      if (!flag) return null
+
+      await tx.insert(discrepancyDecisions).values({
+        workspaceId,
+        discrepancyFlagId: flag.id,
+        comparisonRunId: flag.comparisonRunId,
+        actorUserId: userId,
+        actorRole: await this.actorRole(tx, workspaceId, userId),
+        outcome: 'false_positive',
+        note: DISMISS_SYSTEM_NOTE,
+      })
+
+      return flag
+    })
 
     if (updated) {
       return updated
@@ -391,6 +420,78 @@ export class ComparisonService {
       throw new NotFoundException('Discrepancy flag not found')
     }
     return existing
+  }
+
+  /**
+   * Append-only. A decision is never updated or deleted — a wrong call is
+   * corrected by recording another one, so the trail stays readable. Every
+   * outcome closes the flag: a human has adjudicated it, and which way they
+   * went is `outcome`, not `status`.
+   */
+  async recordDecision(
+    workspaceId: string,
+    flagId: string,
+    userId: string,
+    input: { outcome: DecisionOutcome; note: string },
+  ) {
+    const note = input.note?.trim() ?? ''
+    if (!note) {
+      throw new BadRequestException('A decision note is required')
+    }
+
+    const [flag] = await db
+      .select()
+      .from(discrepancyFlags)
+      .where(and(eq(discrepancyFlags.id, flagId), eq(discrepancyFlags.workspaceId, workspaceId)))
+      .limit(1)
+
+    if (!flag) {
+      throw new NotFoundException('Discrepancy flag not found')
+    }
+
+    return db.transaction(async (tx) => {
+      const [decision] = await tx
+        .insert(discrepancyDecisions)
+        .values({
+          workspaceId,
+          discrepancyFlagId: flag.id,
+          comparisonRunId: flag.comparisonRunId,
+          actorUserId: userId,
+          actorRole: await this.actorRole(tx, workspaceId, userId),
+          outcome: input.outcome,
+          note,
+        })
+        .returning()
+
+      await tx
+        .update(discrepancyFlags)
+        .set({ status: 'dismissed', dismissedAt: new Date(), dismissedBy: userId })
+        .where(and(eq(discrepancyFlags.id, flag.id), eq(discrepancyFlags.status, 'open')))
+
+      return decision
+    })
+  }
+
+  async listDecisions(workspaceId: string, flagId: string) {
+    return db
+      .select()
+      .from(discrepancyDecisions)
+      .where(
+        and(eq(discrepancyDecisions.workspaceId, workspaceId), eq(discrepancyDecisions.discrepancyFlagId, flagId)),
+      )
+      .orderBy(discrepancyDecisions.createdAt)
+  }
+
+  // The reviewer's role at the moment they decided, captured rather than
+  // looked up later: memberships change, and the record should not.
+  private async actorRole(tx: DbTx, workspaceId: string, userId: string): Promise<string> {
+    const [membership] = await tx
+      .select({ role: workspaceMembers.role })
+      .from(workspaceMembers)
+      .where(and(eq(workspaceMembers.workspaceId, workspaceId), eq(workspaceMembers.userId, userId)))
+      .limit(1)
+
+    return membership?.role ?? 'unknown'
   }
 
   private async loadReadyPo(workspaceId: string, id: string) {

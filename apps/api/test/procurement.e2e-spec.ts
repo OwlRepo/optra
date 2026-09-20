@@ -340,6 +340,42 @@ describe('Procurement flow (e2e)', () => {
       .query({ runId: 'not-a-uuid' })
       .set('Authorization', `Bearer ${owner.accessToken}`)
       .expect(400)
+
+    // S2: decisions are append-only, role-gated on write, readable by members.
+    const currentFlagId = afterRerun.body[0].id as string
+
+    await request(app.getHttpServer())
+      .post(`/workspaces/${workspaceId}/procurement/discrepancies/${currentFlagId}/decisions`)
+      .set('Authorization', `Bearer ${owner.accessToken}`)
+      .send({ outcome: 'approved_exception', note: 'Agreed with the vendor.' })
+      .expect(201)
+
+    // A note is not optional on the explicit endpoint.
+    await request(app.getHttpServer())
+      .post(`/workspaces/${workspaceId}/procurement/discrepancies/${currentFlagId}/decisions`)
+      .set('Authorization', `Bearer ${owner.accessToken}`)
+      .send({ outcome: 'resolved', note: '' })
+      .expect(400)
+
+    const decisions = await request(app.getHttpServer())
+      .get(`/workspaces/${workspaceId}/procurement/discrepancies/${currentFlagId}/decisions`)
+      .set('Authorization', `Bearer ${owner.accessToken}`)
+      .expect(200)
+    expect(decisions.body).toHaveLength(1)
+    expect(decisions.body[0].outcome).toBe('approved_exception')
+    expect(decisions.body[0].actorRole).toBe('owner')
+
+    // An outsider can neither write nor read another workspace's history.
+    await request(app.getHttpServer())
+      .post(`/workspaces/${workspaceId}/procurement/discrepancies/${currentFlagId}/decisions`)
+      .set('Authorization', `Bearer ${outsider.accessToken}`)
+      .send({ outcome: 'resolved', note: 'Not mine.' })
+      .expect(403)
+
+    await request(app.getHttpServer())
+      .get(`/workspaces/${workspaceId}/procurement/discrepancies/${currentFlagId}/decisions`)
+      .set('Authorization', `Bearer ${outsider.accessToken}`)
+      .expect(403)
   })
 
   it('uploads PO + invoice as PDF, parses via the extraction seam, and compares identically to CSV', async () => {

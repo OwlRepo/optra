@@ -28,6 +28,7 @@ import { WorkspaceMemberGuard } from '../auth/guards/workspace-member.guard'
 import { ComparisonService } from './comparison.service'
 import { CompareDocumentsDto } from './dto/compare-documents.dto'
 import { ListDiscrepanciesQueryDto } from './dto/list-discrepancies-query.dto'
+import { RecordDecisionDto } from './dto/record-decision.dto'
 import { ProcurementDocumentsService } from './procurement-documents.service'
 import { pdfExtractionEnabled } from './procurement-feature-flags'
 
@@ -162,5 +163,29 @@ export class ProcurementController {
     @CurrentUser() user: CurrentUserContext,
   ) {
     return this.comparison.dismissFlag(workspaceId, flagId, user.userId)
+  }
+
+  // Append-only audit trail (POLICY v1 #7). Writing requires a real note and
+  // the same owner/admin role as dismiss; reading is open to members, so a
+  // reviewer can see why a flag was closed without being able to close one.
+  @Post('discrepancies/:flagId/decisions')
+  @UseGuards(JwtAuthGuard, WorkspaceMemberGuard, RolesGuard)
+  @Roles('owner', 'admin')
+  recordDecision(
+    @Param('workspaceId') workspaceId: string,
+    @Param('flagId', new ParseUUIDPipe()) flagId: string,
+    @Body() body: RecordDecisionDto,
+    @CurrentUser() user: CurrentUserContext,
+  ) {
+    return this.comparison.recordDecision(workspaceId, flagId, user.userId, body)
+  }
+
+  @Get('discrepancies/:flagId/decisions')
+  @UseGuards(JwtAuthGuard, WorkspaceMemberGuard)
+  listDecisions(
+    @Param('workspaceId') workspaceId: string,
+    @Param('flagId', new ParseUUIDPipe()) flagId: string,
+  ) {
+    return this.comparison.listDecisions(workspaceId, flagId)
   }
 }

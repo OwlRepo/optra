@@ -86,6 +86,36 @@ export function listDiscrepancies(
   return apiFetch(`/api/workspaces/${workspaceId}/procurement/discrepancies${query ? `?${query}` : ''}`)
 }
 
+export type DiscrepancyDecisionOutcome = 'false_positive' | 'approved_exception' | 'vendor_dispute' | 'resolved'
+
+export type DiscrepancyDecision = {
+  id: string
+  discrepancyFlagId: string
+  comparisonRunId: string | null
+  actorUserId: string | null
+  actorRole: string
+  outcome: DiscrepancyDecisionOutcome
+  note: string
+  createdAt: string
+}
+
+/** Append-only history, oldest first. Readable by any workspace member. */
+export function listDiscrepancyDecisions(workspaceId: string, flagId: string): Promise<DiscrepancyDecision[]> {
+  return apiFetch(`/api/workspaces/${workspaceId}/procurement/discrepancies/${flagId}/decisions`)
+}
+
+/** Owner/admin only. The note is required — see POLICY v1 #7. */
+export function recordDiscrepancyDecision(
+  workspaceId: string,
+  flagId: string,
+  payload: { outcome: DiscrepancyDecisionOutcome; note: string },
+): Promise<DiscrepancyDecision> {
+  return apiFetch(`/api/workspaces/${workspaceId}/procurement/discrepancies/${flagId}/decisions`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
 export function dismissDiscrepancy(workspaceId: string, flagId: string): Promise<DiscrepancyFlag> {
   return apiFetch(`/api/workspaces/${workspaceId}/procurement/discrepancies/${flagId}/dismiss`, {
     method: 'PATCH',
