@@ -43,6 +43,11 @@ const llm = new ChatOpenAI({
   timeout: Number.parseInt(process.env.OPENAI_TIMEOUT_MS ?? '30000', 10),
 })
 
+// Stamped onto every line this chain extracts, so a row parsed under an older
+// prompt is distinguishable from one parsed under a newer one. Bump it whenever
+// the prompt or the normalization rules change in a way that could move output.
+export const EXTRACTOR_VERSION = 'procurement-extraction@1'
+
 export interface ExtractedLineItem {
   sku: string | null
   description: string | null

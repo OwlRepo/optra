@@ -331,6 +331,27 @@ describe('procurement', () => {
     })
   })
 
+  it('gives line items provenance that matches their source kind', () => {
+    const lines = [...buildPoLineItemRows(), ...buildInvoiceLineItemRows()]
+    expect(lines.length).toBeGreaterThan(0)
+
+    lines.forEach(line => {
+      if (line.sourceKind === 'pdf-extraction') {
+        // A PDF has no spreadsheet coordinates, but does carry model confidence.
+        expect(line.sourceRow).toBeNull()
+        expect(line.uom).toBeNull()
+        expect(Number(line.extractionConfidence)).toBeGreaterThanOrEqual(0)
+        expect(Number(line.extractionConfidence)).toBeLessThanOrEqual(1)
+        expect(line.extractorVersion).toBeTruthy()
+      } else {
+        expect(typeof line.sourceRow).toBe('number')
+        expect(String(line.uom).length).toBeLessThanOrEqual(20)
+        expect(line.extractionConfidence).toBeNull()
+        expect(line.extractorVersion).toBeNull()
+      }
+    })
+  })
+
   it('covers all four discrepancy types with real line-item references', () => {
     const flags = buildDiscrepancyFlagRows()
     expect(new Set(flags.map(f => f.flagType))).toEqual(

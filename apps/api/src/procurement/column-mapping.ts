@@ -4,6 +4,9 @@ export interface MappedLineItem {
   quantity: string | null
   unitPrice: string | null
   lineTotal: string | null
+  // Captured, never converted (POLICY v1 #4). A mismatch between two compared
+  // lines becomes `needs_review` in S6; nothing normalizes or converts it here.
+  uom: string | null
 }
 
 const SKU_ALIASES = ['sku', 'item', 'item code', 'itemcode', 'product code', 'productcode']
@@ -11,6 +14,11 @@ const DESCRIPTION_ALIASES = ['description', 'desc', 'item name', 'itemname', 'na
 const QUANTITY_ALIASES = ['qty', 'quantity', 'units']
 const UNIT_PRICE_ALIASES = ['unit price', 'unitprice', 'price', 'unit cost', 'unitcost', 'rate']
 const LINE_TOTAL_ALIASES = ['total', 'line total', 'linetotal', 'amount']
+// Deliberately excludes 'unit' and 'units': 'units' is already a QUANTITY
+// alias, and a vendor's "Units" column means how many, not what kind. Stealing
+// it for UOM would silently corrupt every quantity on that document, so only
+// unambiguous headers are listed here.
+const UOM_ALIASES = ['uom', 'u/m', 'u.o.m.', 'unit of measure', 'units of measure', 'measure']
 
 function normalizeHeader(header: string): string {
   return header.trim().toLowerCase()
@@ -39,6 +47,8 @@ function findValue(row: Record<string, string>, aliases: string[]): string | nul
 
 // po_line_items.sku / invoice_line_items.sku are varchar(200).
 export const MAX_SKU_LENGTH = 200
+// po_line_items.uom / invoice_line_items.uom are varchar(20).
+const MAX_UOM_LENGTH = 20
 
 // Plain decimal, optional sign/exponent — the forms Postgres `numeric` reads
 // as the number a person means. Thousands separators, currency symbols, words
@@ -59,6 +69,9 @@ export function validateLineItem(item: MappedLineItem): MappedLineItem {
     quantity: numericOrNull(item.quantity),
     unitPrice: numericOrNull(item.unitPrice),
     lineTotal: numericOrNull(item.lineTotal),
+    // Nullish rather than !== null: callers (and older fixtures) may omit the
+    // field entirely, and an absent uom means the same as an empty one.
+    uom: item.uom && item.uom.length <= MAX_UOM_LENGTH ? item.uom : null,
   }
 }
 
@@ -79,5 +92,6 @@ export function mapRowToLineItem(row: Record<string, string>): MappedLineItem {
     quantity: findValue(row, QUANTITY_ALIASES),
     unitPrice: findValue(row, UNIT_PRICE_ALIASES),
     lineTotal: findValue(row, LINE_TOTAL_ALIASES),
+    uom: findValue(row, UOM_ALIASES),
   }
 }

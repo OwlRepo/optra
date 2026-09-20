@@ -187,6 +187,28 @@ export function invoiceLineId(invoiceIndex: number, n: number): string {
   return `13000000-0000-4000-8000-${String(invoiceIndex * 100 + n).padStart(12, '0')}`
 }
 
+// Provenance mirrors what the parse worker would have written: a spreadsheet
+// knows the row it came from, a PDF knows how sure the model was, and neither
+// knows the other. Template 1 is the PDF-sourced one.
+const isPdfTemplate = (index: number) => templateOf(index) === 1
+const UOMS = ['each', 'box', 'set']
+const provenanceFor = (index: number, n: number) =>
+  isPdfTemplate(index)
+    ? {
+        uom: null,
+        sourceRow: null,
+        sourceSheet: null,
+        extractionConfidence: (0.82 + ((n * 3) % 15) / 100).toFixed(2),
+        extractorVersion: 'procurement-extraction@1',
+      }
+    : {
+        uom: UOMS[n % UOMS.length]!,
+        sourceRow: n + 2,
+        sourceSheet: null,
+        extractionConfidence: null,
+        extractorVersion: null,
+      }
+
 export function buildPoLineItemRows() {
   return PO_IDS.flatMap((_, poIndex) =>
     poLinesFor(poIndex).map((line, n) => ({
@@ -201,6 +223,7 @@ export function buildPoLineItemRows() {
       lineTotal: lineTotal(line.qty, line.price),
       rawRow: { sku: line.sku, description: line.description, qty: line.qty, unit_price: line.price },
       sourceKind: templateOf(poIndex) === 1 ? 'pdf-extraction' : 'csv',
+      ...provenanceFor(poIndex, n),
       createdAt: daysAgo(poAge(poIndex)),
     })),
   )
@@ -220,6 +243,7 @@ export function buildInvoiceLineItemRows() {
       lineTotal: lineTotal(line.qty, line.price),
       rawRow: { sku: line.sku, description: line.description, qty: line.qty, unit_price: line.price },
       sourceKind: templateOf(i) === 1 ? 'pdf-extraction' : 'csv',
+      ...provenanceFor(i, n),
       createdAt: daysAgo(poAge(i) - 4),
     })),
   )

@@ -169,6 +169,13 @@
       "when": 1789895773473,
       "tag": "0023_zippy_micromacro",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "5",
+      "when": 1789915442445,
+      "tag": "0024_misty_exiles",
+      "breakpoints": true
     }
   ]
 }

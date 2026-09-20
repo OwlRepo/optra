@@ -8,6 +8,7 @@ import Papa from 'papaparse'
 import * as XLSX from 'xlsx'
 import { eq } from 'drizzle-orm'
 import {
+  EXTRACTOR_VERSION,
   ProcurementExtractionEmptyError,
   ProcurementExtractionRefusalError,
   ProcurementExtractionUnsupportedError,
@@ -26,11 +27,18 @@ interface MappedLineItemRow {
   quantity: string | null
   unitPrice: string | null
   lineTotal: string | null
+  uom: string | null
   rawRow: Record<string, unknown>
+  // Provenance (S3a). Which of these is knowable depends on the source: a
+  // spreadsheet knows where the row sat, a PDF knows how sure the model was.
+  sourceRow: number | null
+  sourceSheet: string | null
+  extractionConfidence: string | null
+  extractorVersion: string | null
 }
 
-// 10 bound parameters per line row; 1,000 rows stays far below Postgres's
-// 65,535 bind-parameter limit for a single INSERT.
+// 15 bound parameters per line row since S3a added provenance; 1,000 rows is
+// 15,000 parameters, still far below Postgres's 65,535 limit for one INSERT.
 const INSERT_CHUNK_ROWS = 1_000
 
 // A problem with the document itself. Retrying cannot fix it, so the worker
@@ -59,7 +67,7 @@ function isPermanentParseError(error: unknown): boolean {
 
 // First sheet only (same as DatasetProfilingProcessor). Converted in memory:
 // the stored original stays byte-for-byte what the user uploaded.
-function convertXlsxToCsv(buffer: Buffer): string {
+function convertXlsxToCsv(buffer: Buffer): { csv: string; sheetName: string | null } {
   let workbook: XLSX.WorkBook
   try {
     workbook = XLSX.read(buffer, { type: 'buffer' })
@@ -69,7 +77,7 @@ function convertXlsxToCsv(buffer: Buffer): string {
   const firstSheetName = workbook.SheetNames[0]
   const sheet = workbook.Sheets[firstSheetName]
   const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '' })
-  return Papa.unparse(rows)
+  return { csv: Papa.unparse(rows), sheetName: firstSheetName ?? null }
 }
 
 @Processor('procurement-parse-queue')
@@ -137,14 +145,23 @@ export class ProcurementParseProcessor {
             quantity: item.quantity,
             unitPrice: item.unitPrice,
             lineTotal: item.lineTotal,
+            // The model is not asked for a unit of measure.
+            uom: null,
           }),
           rawRow: { ...item },
+          // A PDF has no spreadsheet coordinates; what it does have is the
+          // model's own confidence, which until now only survived inside rawRow.
+          sourceRow: null,
+          sourceSheet: null,
+          extractionConfidence: item.confidence === null ? null : String(item.confidence),
+          extractorVersion: EXTRACTOR_VERSION,
         }))
         sourceKind = 'pdf-extraction'
       } else {
         const isXlsx = extension === '.xlsx'
-        const csvContent = isXlsx ? convertXlsxToCsv(await readFile(tempPath)) : await readFile(tempPath, 'utf-8')
-        rows = this.parseCsvRows(csvContent)
+        const converted = isXlsx ? convertXlsxToCsv(await readFile(tempPath)) : null
+        const csvContent = converted ? converted.csv : await readFile(tempPath, 'utf-8')
+        rows = this.parseCsvRows(csvContent, converted?.sheetName ?? null)
         sourceKind = isXlsx ? 'xlsx' : 'csv'
       }
 
@@ -190,8 +207,12 @@ export class ProcurementParseProcessor {
     throw error
   }
 
-  private parseCsvRows(csvContent: string): MappedLineItemRow[] {
-    const parsed = Papa.parse<Record<string, string>>(csvContent, { header: true, skipEmptyLines: true })
+  private parseCsvRows(csvContent: string, sourceSheet: string | null): MappedLineItemRow[] {
+    // skipEmptyLines is off on purpose: with it on, Papa collapses the array and
+    // a row's index no longer corresponds to its line in the file, which is the
+    // whole point of sourceRow. Blank rows are dropped below by isEmptyLineItem
+    // instead, so the resulting line set is unchanged.
+    const parsed = Papa.parse<Record<string, string>>(csvContent, { header: true, skipEmptyLines: false })
 
     // Broken quoting shifts every later cell into the wrong column, so the
     // rows cannot be trusted. A row with too few/many fields is tolerated —
@@ -203,8 +224,18 @@ export class ProcurementParseProcessor {
       )
     }
 
+    // The index is captured here, before the empty-row filter: afterwards the
+    // position in the file is unrecoverable. Papa consumes the header, so the
+    // file's 1-based row is index + 2.
     return parsed.data
-      .map((row) => ({ ...validateLineItem(mapRowToLineItem(row)), rawRow: row }))
+      .map((row, index) => ({
+        ...validateLineItem(mapRowToLineItem(row)),
+        rawRow: row,
+        sourceRow: index + 2,
+        sourceSheet,
+        extractionConfidence: null,
+        extractorVersion: null,
+      }))
       .filter((row) => !isEmptyLineItem(row))
   }
 
@@ -226,8 +257,13 @@ export class ProcurementParseProcessor {
       quantity: row.quantity,
       unitPrice: row.unitPrice,
       lineTotal: row.lineTotal,
+      uom: row.uom,
       rawRow: row.rawRow,
       sourceKind,
+      sourceRow: row.sourceRow,
+      sourceSheet: row.sourceSheet,
+      extractionConfidence: row.extractionConfidence,
+      extractorVersion: row.extractorVersion,
     }))
     const done = { status: 'done' as const, rowCount: rows.length, lastError: null, updatedAt: new Date() }
 

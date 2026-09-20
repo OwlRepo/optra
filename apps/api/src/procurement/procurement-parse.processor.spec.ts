@@ -16,6 +16,7 @@ import {
   workspaceMembers,
   workspaces,
 } from '@repo/db'
+import { EXTRACTOR_VERSION } from '@repo/ai'
 import { ProcurementParseProcessor } from './procurement-parse.processor'
 import { ProcurementExtractionService } from './procurement-extraction.service'
 import { ProcurementParseService } from './procurement-parse.service'
@@ -30,6 +31,7 @@ function job(id: string, data: { kind: 'purchase_order' | 'invoice'; id: string 
 const mockEmbedQuery = jest.fn()
 
 jest.mock('@repo/ai', () => ({
+  EXTRACTOR_VERSION: 'procurement-extraction@1',
   embedQuery: (...args: unknown[]) => mockEmbedQuery(...args),
   ProcurementExtractionUnsupportedError: class ProcurementExtractionUnsupportedError extends Error {
     constructor(message = 'PDF has no extractable text — scanned or image-only PDFs are not supported yet') {
@@ -124,6 +126,20 @@ describe('ProcurementParseProcessor', () => {
     return po
   }
 
+  // Same as seedPo but for bytes that are not CSV text (xlsx, pdf).
+  async function seedPoBuffer(buffer: Buffer, workspaceId: string, name: string) {
+    const filePath = join(dir, `${randomUUID()}-${name}`)
+    writeFileSync(filePath, buffer)
+    storage.getToTempFile.mockResolvedValue(filePath)
+
+    const [po] = await db
+      .insert(purchaseOrders)
+      .values({ workspaceId, name, storageKey: `k/${randomUUID()}`, status: 'pending' })
+      .returning()
+
+    return po
+  }
+
   it('parses PO line items, infers mapped fields, and marks done', async () => {
     const workspace = await seedWorkspace(`${prefix}po@example.com`, prefix)
     const po = await seedPo(
@@ -155,6 +171,86 @@ describe('ProcurementParseProcessor', () => {
 
     expect(mockEmbedQuery).not.toHaveBeenCalled()
     expect(extraction.extract).not.toHaveBeenCalled()
+  })
+
+  describe('provenance (S3a)', () => {
+    it('records the true source row even when blank rows precede a line', async () => {
+      const workspace = await seedWorkspace(`${prefix}prov-row@example.com`, prefix)
+      // Row 1 is the header, row 2 blank, so A1 is row 3 and B2 is row 5.
+      const po = await seedPo(
+        ['sku,description,qty,unit price', '', 'A1,Widget,10,5.00', '', 'B2,Gadget,3,9.99'].join('\n'),
+        workspace.id,
+      )
+
+      await processor.handleParse({ id: 'job-prov-row', data: { kind: 'purchase_order', id: po.id } } as any)
+
+      const items = await db
+        .select()
+        .from(poLineItems)
+        .where(eq(poLineItems.purchaseOrderId, po.id))
+        .orderBy(poLineItems.lineNumber)
+
+      expect(items).toHaveLength(2)
+      // lineNumber counts kept lines; sourceRow points into the actual file.
+      expect(items[0]).toMatchObject({ sku: 'A1', lineNumber: 1, sourceRow: 3 })
+      expect(items[1]).toMatchObject({ sku: 'B2', lineNumber: 2, sourceRow: 5 })
+      expect(items[0].sourceSheet).toBeNull()
+      expect(items[0].extractionConfidence).toBeNull()
+      expect(items[0].extractorVersion).toBeNull()
+    })
+
+    it('captures a unit of measure from the source file', async () => {
+      const workspace = await seedWorkspace(`${prefix}prov-uom@example.com`, prefix)
+      const po = await seedPo(
+        ['sku,description,qty,uom,unit price', 'A1,Widget,10,box,5.00'].join('\n'),
+        workspace.id,
+      )
+
+      await processor.handleParse({ id: 'job-prov-uom', data: { kind: 'purchase_order', id: po.id } } as any)
+
+      const [item] = await db.select().from(poLineItems).where(eq(poLineItems.purchaseOrderId, po.id))
+      expect(item.uom).toBe('box')
+    })
+
+    it('records the sheet name an XLSX row came from', async () => {
+      const workspace = await seedWorkspace(`${prefix}prov-sheet@example.com`, prefix)
+      const sheet = XLSX.utils.json_to_sheet([{ sku: 'A1', description: 'Widget', qty: '10', 'unit price': '5.00' }])
+      const book = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(book, sheet, 'Order Lines')
+      const po = await seedPoBuffer(XLSX.write(book, { type: 'buffer', bookType: 'xlsx' }) as Buffer, workspace.id, 'po.xlsx')
+
+      await processor.handleParse({ id: 'job-prov-sheet', data: { kind: 'purchase_order', id: po.id } } as any)
+
+      const [item] = await db.select().from(poLineItems).where(eq(poLineItems.purchaseOrderId, po.id))
+      expect(item.sourceSheet).toBe('Order Lines')
+      expect(item.sourceRow).toBe(2)
+    })
+
+    it('promotes the model confidence and stamps the extractor version on a PDF', async () => {
+      const workspace = await seedWorkspace(`${prefix}prov-pdf@example.com`, prefix)
+      const po = await seedPoBuffer(Buffer.from('%PDF-1.4 marker'), workspace.id, 'po.pdf')
+      extraction.extract.mockResolvedValue({
+        items: [
+          { sku: 'A1', description: 'Widget', quantity: '10', unitPrice: '5.00', lineTotal: '50.00', confidence: 0.92 },
+          { sku: 'B2', description: 'Gadget', quantity: '1', unitPrice: '2.00', lineTotal: '2.00', confidence: null },
+        ],
+      })
+
+      await processor.handleParse({ id: 'job-prov-pdf', data: { kind: 'purchase_order', id: po.id } } as any)
+
+      const items = await db
+        .select()
+        .from(poLineItems)
+        .where(eq(poLineItems.purchaseOrderId, po.id))
+        .orderBy(poLineItems.lineNumber)
+
+      expect(items[0].extractionConfidence).toBe('0.92')
+      expect(items[0].extractorVersion).toBe(EXTRACTOR_VERSION)
+      expect(items[1].extractionConfidence).toBeNull()
+      // A PDF has no spreadsheet coordinates.
+      expect(items[0].sourceRow).toBeNull()
+      expect(items[0].sourceSheet).toBeNull()
+    })
   })
 
   it('parses invoice line items into invoice_line_items', async () => {
