@@ -229,6 +229,9 @@ async function main(): Promise<void> {
     await tx.delete(schema.catalogMatches).where(eq(schema.catalogMatches.workspaceId, DEMO_WORKSPACE_ID))
     await tx.delete(schema.catalogItems).where(eq(schema.catalogItems.workspaceId, DEMO_WORKSPACE_ID))
     await tx.delete(schema.catalogs).where(eq(schema.catalogs.workspaceId, DEMO_WORKSPACE_ID))
+    // Still safe ahead of purchase_orders: purchase_orders.vendor_id is
+    // ON DELETE set null, so removing a vendor blanks the reference instead of
+    // violating it. The rows themselves are deleted a few lines down.
     await tx.delete(schema.vendors).where(eq(schema.vendors.workspaceId, DEMO_WORKSPACE_ID))
     await tx.delete(schema.discrepancyFlags).where(eq(schema.discrepancyFlags.workspaceId, DEMO_WORKSPACE_ID))
     await tx.delete(schema.comparisonRuns).where(eq(schema.comparisonRuns.workspaceId, DEMO_WORKSPACE_ID))
@@ -302,14 +305,17 @@ async function main(): Promise<void> {
     await insert('workspace_digest_settings', schema.workspaceDigestSettings as never, [buildDigestSettingsRow()])
     await insert('background_runs', schema.backgroundRuns as never, buildBackgroundRunRows())
     await insert('saved_refined_messages', schema.savedRefinedMessages as never, buildSavedRefinedMessageRows())
+    // vendors BEFORE purchase_orders since S3b: purchase_orders.vendor_id is a
+    // real foreign key now, so a PO inserted first would reference a vendor row
+    // that does not exist yet. catalogs moves with it to stay next to its owner.
+    await insert('vendors', schema.vendors as never, buildVendorRows())
+    await insert('catalogs', schema.catalogs as never, buildCatalogRows())
     await insert('purchase_orders', schema.purchaseOrders as never, buildPurchaseOrderRows())
     await insert('invoices', schema.invoices as never, buildInvoiceRows())
     await insert('po_line_items', schema.poLineItems as never, buildPoLineItemRows())
     await insert('invoice_line_items', schema.invoiceLineItems as never, buildInvoiceLineItemRows())
     await insert('comparison_runs', schema.comparisonRuns as never, buildComparisonRunRows())
     await insert('discrepancy_flags', schema.discrepancyFlags as never, buildDiscrepancyFlagRows())
-    await insert('vendors', schema.vendors as never, buildVendorRows())
-    await insert('catalogs', schema.catalogs as never, buildCatalogRows())
     await insert('catalog_items', schema.catalogItems as never, buildCatalogItemRows(uploadedImages))
     await insert('catalog_matches', schema.catalogMatches as never, buildCatalogMatchRows())
   })

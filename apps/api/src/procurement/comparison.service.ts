@@ -163,6 +163,17 @@ export class ComparisonService {
     const po = await this.loadReadyPo(workspaceId, purchaseOrderId)
     const invoice = await this.loadReadyInvoice(workspaceId, invoiceId)
 
+    // S3b / POLICY v1 #2. The invoice records which PO it answers, chosen
+    // explicitly at upload. Comparing it against a different PO would produce
+    // evidence that silently contradicts that link, so refuse.
+    //
+    // A NULL link is the legacy path — every invoice uploaded before migration
+    // 0025 has one, and those keep comparing freely. That is what lets this
+    // ship additively, with no backfill.
+    if (invoice.purchaseOrderId !== null && invoice.purchaseOrderId !== po.id) {
+      throw new BadRequestException('Invoice is linked to a different purchase order')
+    }
+
     // The parents are already workspace-checked; the children repeat the
     // predicate so a line row can never enter a comparison through a parent id
     // alone (defense in depth — the line tables carry their own workspace_id).

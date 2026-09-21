@@ -1,10 +1,19 @@
+import type { ArgumentsHost } from '@nestjs/common'
+import { BadRequestException } from '@nestjs/common'
 import type { Response } from 'express'
-import { ProcurementController } from './procurement.controller'
+import { MulterError } from 'multer'
+import { ProcurementController, UploadExceptionFilter } from './procurement.controller'
 import { ComparisonService } from './comparison.service'
 import { ProcurementDocumentsService } from './procurement-documents.service'
 
 function fakeRes() {
   return { set: jest.fn(), send: jest.fn() } as unknown as Response & { set: jest.Mock; send: jest.Mock }
+}
+
+function fakeHost() {
+  const res = { status: jest.fn().mockReturnThis(), json: jest.fn() }
+  const host = { switchToHttp: () => ({ getResponse: () => res }) } as unknown as ArgumentsHost
+  return { host, res }
 }
 
 // The procurement controller had no spec before S4. These pin the download
@@ -72,5 +81,59 @@ describe('ProcurementController source downloads', () => {
 
     expect(res.set).not.toHaveBeenCalled()
     expect(res.send).not.toHaveBeenCalled()
+  })
+})
+
+// The filter is scoped to the two upload handlers, so it sees every
+// BadRequestException they raise. Before S3b those were only fileFilter's
+// plain-string rejections, and flattening them to a single message was right.
+// Now the same routes also raise class-validator errors carrying a message
+// ARRAY, and flattening those would throw away the per-field detail the upload
+// form needs. The first two tests pin the behaviour that must NOT change.
+describe('UploadExceptionFilter', () => {
+  let filter: UploadExceptionFilter
+
+  beforeEach(() => {
+    filter = new UploadExceptionFilter()
+  })
+
+  it('still answers 413 for a file over the size limit', () => {
+    const { host, res } = fakeHost()
+
+    filter.catch(new MulterError('LIMIT_FILE_SIZE'), host)
+
+    expect(res.status).toHaveBeenCalledWith(413)
+    expect(res.json).toHaveBeenCalledWith({ statusCode: 413, message: expect.stringContaining('upload limit') })
+  })
+
+  it('still flattens a plain-string rejection from fileFilter', () => {
+    const { host, res } = fakeHost()
+
+    filter.catch(new BadRequestException('Only CSV, XLSX, or PDF files are supported'), host)
+
+    expect(res.status).toHaveBeenCalledWith(400)
+    expect(res.json).toHaveBeenCalledWith({
+      statusCode: 400,
+      message: 'Only CSV, XLSX, or PDF files are supported',
+    })
+  })
+
+  it('preserves the per-field message array from a validation failure', () => {
+    const { host, res } = fakeHost()
+    // The shape ValidationPipe actually throws.
+    const validationError = new BadRequestException({
+      statusCode: 400,
+      message: ['vendorId must be a UUID', 'currency must be a 3-letter ISO 4217 code'],
+      error: 'Bad Request',
+    })
+
+    filter.catch(validationError, host)
+
+    expect(res.status).toHaveBeenCalledWith(400)
+    expect(res.json).toHaveBeenCalledWith({
+      statusCode: 400,
+      message: ['vendorId must be a UUID', 'currency must be a 3-letter ISO 4217 code'],
+      error: 'Bad Request',
+    })
   })
 })

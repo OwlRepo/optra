@@ -8,6 +8,8 @@ import {
   Button,
   Card,
   EmptyState,
+  Input,
+  Modal,
   Select,
   Skeleton,
   Table,
@@ -32,6 +34,7 @@ import {
   type ProcurementDocKind,
   type ProcurementDocStatus,
 } from '@/lib/api/procurement'
+import { listVendors, type VendorDetail } from '@/lib/api/catalog'
 import { isUnauthorized } from '@/lib/api/handle-unauthorized'
 import { getWorkspace, listWorkspaces } from '@/lib/api/workspaces'
 import { WorkspaceNav, workspacePrimaryTabItems } from '@/components/workspace-nav'
@@ -81,6 +84,19 @@ export default function ProcurementPage({ params }: { params: { id: string } }) 
   const [selectedInvoiceId, setSelectedInvoiceId] = React.useState('')
   const [isComparing, setIsComparing] = React.useState(false)
 
+  // S3b. Picking a file no longer uploads it: the header POLICY v1 #2/#3
+  // require cannot be read out of the document, so the file is held here while
+  // the user fills it in, and the upload fires on submit.
+  const [vendors, setVendors] = React.useState<VendorDetail[]>([])
+  const [pendingPoFile, setPendingPoFile] = React.useState<File | null>(null)
+  const [pendingInvoiceFile, setPendingInvoiceFile] = React.useState<File | null>(null)
+  const [poVendorId, setPoVendorId] = React.useState('')
+  const [poNumber, setPoNumber] = React.useState('')
+  const [poCurrency, setPoCurrency] = React.useState('USD')
+  const [invoicePoId, setInvoicePoId] = React.useState('')
+  const [invoiceNumber, setInvoiceNumber] = React.useState('')
+  const [invoiceCurrency, setInvoiceCurrency] = React.useState('USD')
+
   const canManage = membership?.role === 'owner' || membership?.role === 'admin'
 
   React.useEffect(() => {
@@ -121,6 +137,11 @@ export default function ProcurementPage({ params }: { params: { id: string } }) 
         listWorkspaces(),
       ])
       setWorkspace(workspaceData)
+      // Failure here must not blank the page: without vendors the PO modal
+      // shows its empty state, which is a better outcome than no page at all.
+      void listVendors(workspaceId)
+        .then((items) => setVendors(Array.isArray(items) ? items : []))
+        .catch(() => setVendors([]))
       setPurchaseOrders(Array.isArray(pos) ? pos : [])
       setInvoices(Array.isArray(invs) ? invs : [])
       const membershipItems = Array.isArray(memberships?.items) ? memberships.items : []
@@ -164,14 +185,30 @@ export default function ProcurementPage({ params }: { params: { id: string } }) 
     }
   }, [router])
 
-  const handlePurchaseOrderFileSelected = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePurchaseOrderFileSelected = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     event.target.value = ''
     if (!file) return
+    setPoNumber('')
+    setPoVendorId('')
+    setPoCurrency('USD')
+    setPendingPoFile(file)
+  }
+
+  const submitPurchaseOrderUpload = async () => {
+    const file = pendingPoFile
+    if (!file || !poVendorId || !poNumber.trim()) return
 
     setIsUploadingPO(true)
     try {
-      await uploadPurchaseOrder(workspaceId, file)
+      await uploadPurchaseOrder(workspaceId, file, {
+        vendorId: poVendorId,
+        poNumber: poNumber.trim(),
+        // Uppercased here too, not only on the server: the field accepts free
+        // typing and the user should see the value that will actually be stored.
+        currency: poCurrency.trim().toUpperCase(),
+      })
+      setPendingPoFile(null)
       toastRef.current({
         variant: 'success',
         title: 'Purchase order uploaded',
@@ -193,14 +230,28 @@ export default function ProcurementPage({ params }: { params: { id: string } }) 
     }
   }
 
-  const handleInvoiceFileSelected = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleInvoiceFileSelected = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     event.target.value = ''
     if (!file) return
+    setInvoiceNumber('')
+    setInvoicePoId('')
+    setInvoiceCurrency('USD')
+    setPendingInvoiceFile(file)
+  }
+
+  const submitInvoiceUpload = async () => {
+    const file = pendingInvoiceFile
+    if (!file || !invoicePoId || !invoiceNumber.trim()) return
 
     setIsUploadingInvoice(true)
     try {
-      await uploadInvoice(workspaceId, file)
+      await uploadInvoice(workspaceId, file, {
+        purchaseOrderId: invoicePoId,
+        invoiceNumber: invoiceNumber.trim(),
+        currency: invoiceCurrency.trim().toUpperCase(),
+      })
+      setPendingInvoiceFile(null)
       toastRef.current({
         variant: 'success',
         title: 'Invoice uploaded',
@@ -279,6 +330,9 @@ export default function ProcurementPage({ params }: { params: { id: string } }) 
       <TableHeader>
         <TableRow>
           <TableHead>Name</TableHead>
+          <TableHead>{kind === 'purchase-orders' ? 'PO number' : 'Invoice number'}</TableHead>
+          {kind === 'purchase-orders' ? <TableHead>Vendor</TableHead> : null}
+          <TableHead>Currency</TableHead>
           <TableHead>Status</TableHead>
           <TableHead>Rows</TableHead>
           <TableHead>Created</TableHead>
@@ -294,6 +348,11 @@ export default function ProcurementPage({ params }: { params: { id: string } }) 
                 <p className="mt-1 line-clamp-2 text-xs text-destructive">{doc.lastError}</p>
               ) : null}
             </TableCell>
+            {/* Em dash, not a hidden row: documents uploaded before S3b have no
+                header, and they still need to be listed and downloadable. */}
+            <TableCell>{(kind === 'purchase-orders' ? doc.poNumber : doc.invoiceNumber) ?? '—'}</TableCell>
+            {kind === 'purchase-orders' ? <TableCell>{doc.vendorName ?? '—'}</TableCell> : null}
+            <TableCell>{doc.currency ?? '—'}</TableCell>
             <TableCell>
               <Badge variant={statusVariant[doc.status]}>{statusLabel[doc.status]}</Badge>
             </TableCell>
@@ -494,6 +553,159 @@ export default function ProcurementPage({ params }: { params: { id: string } }) 
           </>
         )}
       </div>
+
+      {/* POLICY v1 #3: the vendor is picked from this workspace's own vendors.
+          With none created yet the form cannot be completed, so say so and link
+          out rather than letting the user submit into a guaranteed 404. */}
+      <Modal
+        open={pendingPoFile !== null}
+        onClose={() => setPendingPoFile(null)}
+        title="Purchase order details"
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={() => setPendingPoFile(null)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => void submitPurchaseOrderUpload()}
+              isLoading={isUploadingPO}
+              loadingText="Uploading"
+              disabled={vendors.length === 0 || !poVendorId || !poNumber.trim() || !poCurrency.trim()}
+            >
+              {!isUploadingPO ? 'Upload' : null}
+            </Button>
+          </div>
+        }
+      >
+        {vendors.length === 0 ? (
+          <EmptyState
+            icon={<ClipboardList className="size-5" />}
+            title="No vendors yet"
+            description="A purchase order has to name the vendor it was raised with. Create one first, then upload again."
+            actions={
+              <Button size="sm" onClick={() => router.push(`/workspaces/${workspaceId}/vendors`)}>
+                Go to vendors
+              </Button>
+            }
+          />
+        ) : (
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">{pendingPoFile?.name}</p>
+            <div className="space-y-2">
+              <label className="text-sm font-medium" htmlFor="po-vendor">
+                Vendor
+              </label>
+              <Select id="po-vendor" value={poVendorId} onChange={(event) => setPoVendorId(event.target.value)}>
+                <option value="">Select a vendor</option>
+                {vendors.map((vendor) => (
+                  <option key={vendor.id} value={vendor.id}>
+                    {vendor.name}
+                  </option>
+                ))}
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium" htmlFor="po-number">
+                PO number
+              </label>
+              <Input
+                id="po-number"
+                value={poNumber}
+                maxLength={200}
+                placeholder="PO-2026-1180"
+                onChange={(event) => setPoNumber(event.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium" htmlFor="po-currency">
+                Currency
+              </label>
+              <Input
+                id="po-currency"
+                value={poCurrency}
+                maxLength={3}
+                placeholder="USD"
+                onChange={(event) => setPoCurrency(event.target.value.toUpperCase())}
+              />
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* POLICY v1 #2: the user selects the PO explicitly. Only parsed ('done')
+          POs are offered — comparing against one still being parsed would fail
+          later anyway, so it is not worth offering. */}
+      <Modal
+        open={pendingInvoiceFile !== null}
+        onClose={() => setPendingInvoiceFile(null)}
+        title="Invoice details"
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={() => setPendingInvoiceFile(null)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => void submitInvoiceUpload()}
+              isLoading={isUploadingInvoice}
+              loadingText="Uploading"
+              disabled={
+                purchaseOrders.length === 0 || !invoicePoId || !invoiceNumber.trim() || !invoiceCurrency.trim()
+              }
+            >
+              {!isUploadingInvoice ? 'Upload' : null}
+            </Button>
+          </div>
+        }
+      >
+        {purchaseOrders.length === 0 ? (
+          <EmptyState
+            icon={<FileText className="size-5" />}
+            title="No purchase orders yet"
+            description="An invoice is always matched against the purchase order it answers, so upload that first."
+          />
+        ) : (
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">{pendingInvoiceFile?.name}</p>
+            <div className="space-y-2">
+              <label className="text-sm font-medium" htmlFor="invoice-po">
+                Purchase order
+              </label>
+              <Select id="invoice-po" value={invoicePoId} onChange={(event) => setInvoicePoId(event.target.value)}>
+                <option value="">Select a purchase order</option>
+                {purchaseOrders.map((doc) => (
+                  <option key={doc.id} value={doc.id}>
+                    {doc.poNumber ? `${doc.poNumber} — ${doc.name}` : doc.name}
+                  </option>
+                ))}
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium" htmlFor="invoice-number">
+                Invoice number
+              </label>
+              <Input
+                id="invoice-number"
+                value={invoiceNumber}
+                maxLength={200}
+                placeholder="INV-44120"
+                onChange={(event) => setInvoiceNumber(event.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium" htmlFor="invoice-currency">
+                Currency
+              </label>
+              <Input
+                id="invoice-currency"
+                value={invoiceCurrency}
+                maxLength={3}
+                placeholder="USD"
+                onChange={(event) => setInvoiceCurrency(event.target.value.toUpperCase())}
+              />
+            </div>
+          </div>
+        )}
+      </Modal>
     </AppShell>
   )
 }

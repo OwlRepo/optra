@@ -17,6 +17,7 @@ const uploadInvoiceMock = vi.fn()
 const compareDocumentsMock = vi.fn()
 const downloadProcurementDocumentMock = vi.fn()
 const logoutMock = vi.fn()
+const listVendorsMock = vi.fn()
 
 vi.mock('next/navigation', () => ({
   useRouter: () => routerMock,
@@ -35,6 +36,10 @@ vi.mock('@/lib/api/procurement', () => ({
   uploadInvoice: (...args: unknown[]) => uploadInvoiceMock(...args),
   compareDocuments: (...args: unknown[]) => compareDocumentsMock(...args),
   downloadProcurementDocument: (...args: unknown[]) => downloadProcurementDocumentMock(...args),
+}))
+
+vi.mock('@/lib/api/catalog', () => ({
+  listVendors: (...args: unknown[]) => listVendorsMock(...args),
 }))
 
 vi.mock('@/lib/api/auth', () => ({
@@ -82,6 +87,12 @@ describe('ProcurementPage', () => {
     listInvoicesMock.mockReset()
     uploadPurchaseOrderMock.mockReset()
     uploadInvoiceMock.mockReset()
+    listVendorsMock.mockReset()
+    // Default for every test: one vendor exists, so the PO modal shows its form
+    // rather than the "no vendors yet" empty state. Tests that care override it.
+    listVendorsMock.mockResolvedValue([
+      { id: 'vendor-1', name: 'Nordwerk Interiors', contactInfo: null, createdAt: '2026-01-01T00:00:00.000Z' },
+    ])
     compareDocumentsMock.mockReset()
     downloadProcurementDocumentMock.mockReset()
     logoutMock.mockReset()
@@ -168,8 +179,19 @@ describe('ProcurementPage', () => {
     const input = document.querySelector('input[type="file"]') as HTMLInputElement
     fireEvent.change(input, { target: { files: [file] } })
 
+    // S3b: picking a file opens the header form instead of uploading, because
+    // POLICY v1 #3's vendor cannot be read out of the document.
+    const vendorSelect = await screen.findByLabelText('Vendor')
+    fireEvent.change(vendorSelect, { target: { value: 'vendor-1' } })
+    fireEvent.change(screen.getByLabelText('PO number'), { target: { value: 'PO-2026-1180' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Upload' }))
+
     await waitFor(() => {
-      expect(uploadPurchaseOrderMock).toHaveBeenCalledWith('ws-1', file)
+      expect(uploadPurchaseOrderMock).toHaveBeenCalledWith('ws-1', file, {
+        vendorId: 'vendor-1',
+        poNumber: 'PO-2026-1180',
+        currency: 'USD',
+      })
       expect(screen.getAllByText('po-march.csv').length).toBeGreaterThan(0)
     })
     expect(await screen.findByText('Purchase order uploaded')).toBeDefined()
@@ -190,8 +212,33 @@ describe('ProcurementPage', () => {
     const input = document.querySelector('input[type="file"]') as HTMLInputElement
     fireEvent.change(input, { target: { files: [file] } })
 
+    fireEvent.change(await screen.findByLabelText('Vendor'), { target: { value: 'vendor-1' } })
+    fireEvent.change(screen.getByLabelText('PO number'), { target: { value: 'PO-2026-1180' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Upload' }))
+
     expect(await screen.findByText('Upload failed')).toBeDefined()
     expect(await screen.findByText('File type not supported')).toBeDefined()
+  })
+
+  // POLICY v1 #3 makes the vendor mandatory, so a workspace with none cannot
+  // complete this form. Saying so beats letting the user submit into a 404.
+  it('explains the dead end instead of uploading when the workspace has no vendors', async () => {
+    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme' })
+    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+    listPurchaseOrdersMock.mockResolvedValue([])
+    listInvoicesMock.mockResolvedValue([])
+    listVendorsMock.mockResolvedValue([])
+
+    renderPage()
+
+    await screen.findByText('No purchase orders yet')
+
+    const file = new File(['content'], 'po-march.csv', { type: 'text/csv' })
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement
+    fireEvent.change(input, { target: { files: [file] } })
+
+    expect(await screen.findByText('No vendors yet')).toBeDefined()
+    expect(uploadPurchaseOrderMock).not.toHaveBeenCalled()
   })
 
   it('runs a comparison and navigates to the discrepancies page with query params', async () => {

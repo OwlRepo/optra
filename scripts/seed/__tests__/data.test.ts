@@ -306,6 +306,30 @@ describe('procurement', () => {
     })
   })
 
+  // S3b. The PO/vendor and invoice/PO correspondences used to exist only as
+  // matching strings in the row names; these assert they are now real keys the
+  // database will enforce.
+  it('points every purchase order at a seeded vendor', () => {
+    const vendorIds = new Set(buildVendorRows().map(v => v.id))
+    const pos = buildPurchaseOrderRows()
+
+    expect(pos.length).toBeGreaterThan(0)
+    pos.forEach(po => {
+      expect(po.vendorId).toBeTruthy()
+      expect(vendorIds.has(po.vendorId)).toBe(true)
+    })
+  })
+
+  it('links every invoice to a seeded purchase order', () => {
+    const poIds = new Set(buildPurchaseOrderRows().map(po => po.id))
+    const invs = buildInvoiceRows()
+
+    expect(invs.length).toBeGreaterThan(0)
+    invs.forEach(inv => {
+      expect(poIds.has(inv.purchaseOrderId)).toBe(true)
+    })
+  })
+
   it('gives every flag a seeded comparison run whose counts match what it produced', () => {
     const runs = buildComparisonRunRows()
     const flags = buildDiscrepancyFlagRows()

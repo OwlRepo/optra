@@ -46,8 +46,22 @@ export async function apiFetch(path: string, init?: RequestInit) {
   throw data
 }
 
-export async function uploadFile(path: string, file: File) {
+/**
+ * `fields` are extra multipart TEXT parts sent alongside the file — used by the
+ * procurement uploads (S3b) to carry the header the user filled in.
+ *
+ * They are appended BEFORE the file on purpose: multer only populates `req.body`
+ * from parts it reads before the file part, so a field appended afterwards
+ * silently never reaches the server's DTO.
+ *
+ * Optional, so the dataset, document and catalog uploads keep their two-argument
+ * calls unchanged.
+ */
+export async function uploadFile(path: string, file: File, fields?: Record<string, string>) {
   const formData = new FormData()
+  for (const [key, value] of Object.entries(fields ?? {})) {
+    formData.append(key, value)
+  }
   formData.append('file', file)
 
   const res = await fetch(path, { method: 'POST', body: formData })

@@ -13,6 +13,31 @@ export type ProcurementDoc = {
   // False when the header row has no stored object behind it — the column is
   // nullable, so a document can exist with nothing to download.
   hasSourceFile: boolean
+  // S3b header fields. All nullable: documents uploaded before migration 0025
+  // have none of them, and the table renders a dash rather than hiding the row.
+  currency: string | null
+  // Purchase orders only.
+  poNumber?: string | null
+  vendorId?: string | null
+  vendorName?: string | null
+  // Invoices only.
+  invoiceNumber?: string | null
+  purchaseOrderId?: string | null
+}
+
+// POLICY v1 #3: the vendor is chosen from the workspace's existing vendors.
+export type PurchaseOrderHeader = {
+  vendorId: string
+  poNumber: string
+  currency: string
+}
+
+// POLICY v1 #2: the user selects the PO; a number read off the document is
+// advisory and never auto-links.
+export type InvoiceHeader = {
+  purchaseOrderId: string
+  invoiceNumber: string
+  currency: string
 }
 
 export type ProcurementDocKind = 'purchase-orders' | 'invoices'
@@ -50,16 +75,24 @@ export type CompareResult = {
   flags: DiscrepancyFlag[]
 }
 
-export function uploadPurchaseOrder(workspaceId: string, file: File): Promise<ProcurementDocSummary> {
-  return uploadFile(`/api/workspaces/${workspaceId}/procurement/purchase-orders`, file)
+export function uploadPurchaseOrder(
+  workspaceId: string,
+  file: File,
+  header: PurchaseOrderHeader,
+): Promise<ProcurementDocSummary> {
+  return uploadFile(`/api/workspaces/${workspaceId}/procurement/purchase-orders`, file, { ...header })
 }
 
 export function listPurchaseOrders(workspaceId: string): Promise<ProcurementDoc[]> {
   return apiFetch(`/api/workspaces/${workspaceId}/procurement/purchase-orders`)
 }
 
-export function uploadInvoice(workspaceId: string, file: File): Promise<ProcurementDocSummary> {
-  return uploadFile(`/api/workspaces/${workspaceId}/procurement/invoices`, file)
+export function uploadInvoice(
+  workspaceId: string,
+  file: File,
+  header: InvoiceHeader,
+): Promise<ProcurementDocSummary> {
+  return uploadFile(`/api/workspaces/${workspaceId}/procurement/invoices`, file, { ...header })
 }
 
 export function listInvoices(workspaceId: string): Promise<ProcurementDoc[]> {

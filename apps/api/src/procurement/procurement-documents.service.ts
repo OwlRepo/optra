@@ -2,13 +2,31 @@ import { randomUUID } from 'crypto'
 import { extname } from 'path'
 import { ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common'
 import { and, desc, eq } from 'drizzle-orm'
-import { comparisonRuns, db, invoices, purchaseOrders } from '@repo/db'
+import { comparisonRuns, db, invoices, purchaseOrders, vendors } from '@repo/db'
 import { StorageService } from '../storage/storage.service'
 import { ProcurementDocKind, ProcurementParseService } from './procurement-parse.service'
 
 function docLabel(kind: ProcurementDocKind): string {
   return kind === 'purchase_order' ? 'Purchase order' : 'Invoice'
 }
+
+// Header metadata supplied by the user at upload time (S3b). Nothing in the
+// repo extracts document-level fields, and POLICY v1 #2/#3 want the vendor and
+// the PO link chosen explicitly rather than inferred, so these arrive from the
+// upload form rather than from the parser.
+export type ProcurementPoHeader = {
+  vendorId: string
+  poNumber: string
+  currency: string
+}
+
+export type ProcurementInvoiceHeader = {
+  purchaseOrderId: string
+  invoiceNumber: string
+  currency: string
+}
+
+export type ProcurementHeader = ProcurementPoHeader | ProcurementInvoiceHeader
 
 // The UI needs to know whether a row has bytes to download, but the storage key
 // is an internal S3 path and never leaves the API.
@@ -26,13 +44,40 @@ export class ProcurementDocumentsService {
     private readonly parse: ProcurementParseService,
   ) {}
 
-  async upload(workspaceId: string, kind: ProcurementDocKind, file: Express.Multer.File) {
+  async upload(
+    workspaceId: string,
+    kind: ProcurementDocKind,
+    file: Express.Multer.File,
+    header: ProcurementHeader,
+  ) {
+    // Resolved BEFORE the object is written. A foreign key only proves the row
+    // exists, not that it belongs to this workspace, so the scope is asserted
+    // here the way catalog-documents.service.ts does it — and a miss is a 404
+    // rather than a 403 so it cannot be used to probe another workspace for
+    // valid ids. Doing it first also means a rejected header never leaves an
+    // orphan object in storage.
+    await this.assertHeaderInWorkspace(workspaceId, kind, header)
+
     const storageKey = `${workspaceId}/procurement/${kind}/${randomUUID()}-${file.originalname}`
     await this.storage.save(storageKey, file.buffer, file.mimetype)
 
     const extension = extname(file.originalname).toLowerCase()
     const sourceKind = extension === '.pdf' ? 'pdf' : extension === '.xlsx' ? 'xlsx' : 'csv'
-    const values = { workspaceId, name: file.originalname, storageKey, status: 'pending' as const, sourceKind }
+    const common = {
+      workspaceId,
+      name: file.originalname,
+      storageKey,
+      status: 'pending' as const,
+      sourceKind,
+      // Normalized here, not in the DTO: validator's isISO4217 is
+      // case-INSENSITIVE, so "usd" and "USD" both pass validation and would
+      // both reach the column. POLICY v1 #6 compares currencies between a PO
+      // and its invoice in S6; two spellings of the same currency would read as
+      // a mismatch and manufacture exactly the false discrepancy this product
+      // exists to remove. The global ValidationPipe runs without `transform`,
+      // so a class-transformer @Transform would never fire — it has to be here.
+      currency: header.currency.toUpperCase(),
+    }
 
     // The object is written first; if the row cannot be created the object
     // would be unreachable forever, so remove it before surfacing the error.
@@ -40,8 +85,22 @@ export class ProcurementDocumentsService {
     try {
       inserted =
         kind === 'purchase_order'
-          ? await db.insert(purchaseOrders).values(values).returning()
-          : await db.insert(invoices).values(values).returning()
+          ? await db
+              .insert(purchaseOrders)
+              .values({
+                ...common,
+                vendorId: (header as ProcurementPoHeader).vendorId,
+                poNumber: (header as ProcurementPoHeader).poNumber,
+              })
+              .returning()
+          : await db
+              .insert(invoices)
+              .values({
+                ...common,
+                purchaseOrderId: (header as ProcurementInvoiceHeader).purchaseOrderId,
+                invoiceNumber: (header as ProcurementInvoiceHeader).invoiceNumber,
+              })
+              .returning()
     } catch (error) {
       await this.storage.delete(storageKey).catch((cleanupError: unknown) => {
         this.logger.warn(
@@ -64,25 +123,40 @@ export class ProcurementDocumentsService {
     return { id: doc.id, name: doc.name, status: doc.status }
   }
 
-  async list(workspaceId: string, kind: ProcurementDocKind) {
-    if (kind === 'purchase_order') {
-      const rows = await db
-        .select({
-          id: purchaseOrders.id,
-          name: purchaseOrders.name,
-          status: purchaseOrders.status,
-          rowCount: purchaseOrders.rowCount,
-          lastError: purchaseOrders.lastError,
-          createdAt: purchaseOrders.createdAt,
-          storageKey: purchaseOrders.storageKey,
-        })
-        .from(purchaseOrders)
-        .where(eq(purchaseOrders.workspaceId, workspaceId))
-        .orderBy(desc(purchaseOrders.createdAt))
+  /**
+   * Split from a single `list(workspaceId, kind)` in S3b. Once the two
+   * projections stopped being the same shape, one method returned a union that
+   * no caller could narrow by its `kind` argument — reading `invoiceNumber` off
+   * it was a type error even when the kind was a literal. Two methods give each
+   * caller the exact shape it asked for.
+   */
+  async listPurchaseOrders(workspaceId: string) {
+    // leftJoin, not innerJoin: rows written before migration 0025 have no
+    // vendor, and they must still appear in the list with a null name rather
+    // than vanishing from the table.
+    const rows = await db
+      .select({
+        id: purchaseOrders.id,
+        name: purchaseOrders.name,
+        status: purchaseOrders.status,
+        rowCount: purchaseOrders.rowCount,
+        lastError: purchaseOrders.lastError,
+        createdAt: purchaseOrders.createdAt,
+        storageKey: purchaseOrders.storageKey,
+        poNumber: purchaseOrders.poNumber,
+        currency: purchaseOrders.currency,
+        vendorId: purchaseOrders.vendorId,
+        vendorName: vendors.name,
+      })
+      .from(purchaseOrders)
+      .leftJoin(vendors, eq(purchaseOrders.vendorId, vendors.id))
+      .where(eq(purchaseOrders.workspaceId, workspaceId))
+      .orderBy(desc(purchaseOrders.createdAt))
 
-      return rows.map(toListItem)
-    }
+    return rows.map(toListItem)
+  }
 
+  async listInvoices(workspaceId: string) {
     const rows = await db
       .select({
         id: invoices.id,
@@ -92,6 +166,9 @@ export class ProcurementDocumentsService {
         lastError: invoices.lastError,
         createdAt: invoices.createdAt,
         storageKey: invoices.storageKey,
+        invoiceNumber: invoices.invoiceNumber,
+        currency: invoices.currency,
+        purchaseOrderId: invoices.purchaseOrderId,
       })
       .from(invoices)
       .where(eq(invoices.workspaceId, workspaceId))
@@ -170,6 +247,42 @@ export class ProcurementDocumentsService {
     }
 
     return { message: `${docLabel(kind)} deleted` }
+  }
+
+  /**
+   * S3b. Asserts that the id the uploader chose belongs to the uploader's own
+   * workspace. POLICY v1 #3 says the PO's vendor comes from the workspace's
+   * existing `vendors`; POLICY v1 #2 says the invoice's PO is picked explicitly.
+   * Neither is enforceable by the foreign key alone, which only checks that the
+   * row exists somewhere in the table.
+   */
+  private async assertHeaderInWorkspace(
+    workspaceId: string,
+    kind: ProcurementDocKind,
+    header: ProcurementHeader,
+  ): Promise<void> {
+    if (kind === 'purchase_order') {
+      const vendorId = (header as ProcurementPoHeader).vendorId
+      const [vendor] = await db
+        .select({ id: vendors.id })
+        .from(vendors)
+        .where(and(eq(vendors.id, vendorId), eq(vendors.workspaceId, workspaceId)))
+        .limit(1)
+      if (!vendor) {
+        throw new NotFoundException('Vendor not found')
+      }
+      return
+    }
+
+    const purchaseOrderId = (header as ProcurementInvoiceHeader).purchaseOrderId
+    const [po] = await db
+      .select({ id: purchaseOrders.id })
+      .from(purchaseOrders)
+      .where(and(eq(purchaseOrders.id, purchaseOrderId), eq(purchaseOrders.workspaceId, workspaceId)))
+      .limit(1)
+    if (!po) {
+      throw new NotFoundException('Purchase order not found')
+    }
   }
 
   private async markFailed(kind: ProcurementDocKind, id: string, lastError: string) {

@@ -3,14 +3,10 @@
 // catalog_matches.score is `numeric` → passed as a string. Matches point at
 // real seeded PO and invoice line items so the "what did we compare this
 // against" links resolve.
-import { DEMO_WORKSPACE_ID, daysAgo } from '../config'
+import { DEMO_WORKSPACE_ID, VENDOR_IDS, daysAgo } from '../config'
 import { invoiceLineId, poLineId } from './procurement'
 
-export const VENDOR_IDS = [
-  '20000000-0000-4000-8000-000000000001',
-  '20000000-0000-4000-8000-000000000002',
-  '20000000-0000-4000-8000-000000000003',
-]
+export { VENDOR_IDS } from '../config'
 
 // Four current catalogs plus last year's edition of each — vendors republish
 // annually, and having two editions is what makes the sourcing comparison

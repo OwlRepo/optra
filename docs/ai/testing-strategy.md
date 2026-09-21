@@ -51,6 +51,11 @@ Procurement (PO ↔ Invoice discrepancy) note as of 2026-07-09:
 - `apps/api/test/procurement.e2e-spec.ts` boots the real `AppModule` (mirrors `documents.e2e-spec.ts`'s pattern) and deliberately does NOT mock `ProcurementParseService` — it exercises the real Bull queue + real processor in-process, polling for `status='done'` before comparing, since the queue lifecycle itself is the Deep-risk surface worth proving end-to-end.
 - `procurement-parse.processor.spec.ts` explicitly asserts `embedQuery` (mocked `@repo/ai`) is never called — proves the parse path makes zero OpenAI calls, matching the plan's "no new external integration" requirement.
 
+**2026-09-21 (S3b) — two patterns worth reusing.**
+- **Pin the behaviour you are about to loosen, before you loosen it.** `UploadExceptionFilter` had to start passing validation errors through, and the tests written first (413 for `LIMIT_FILE_SIZE`, flat `{statusCode, message}` for `fileFilter`'s string rejection) caught that the obvious condition — `typeof body === 'object'` — also matched a plain-string `BadRequestException`, because Nest wraps those into an object too. The shipped condition is `Array.isArray(body.message)`.
+- **Do not spend a production rate limit on fixtures that are not testing it.** `/auth/register` is capped at 5 per 10 minutes (`auth.controller.ts:32`) and `procurement.e2e-spec.ts` already used that whole budget, so four new tests turned the suite red with 429s. Raising the cap would have weakened a real control to make tests pass. Instead the new fixtures use `seedOwnerWithWorkspace`, which inserts the user/workspace/membership directly and mints the token the way `AuthService` does; registration stays covered by `auth.e2e-spec.ts` and `auth-rate-limit.e2e-spec.ts`. Any future spec in this file should do the same.
+- Multipart + `@Body()` DTO is exercised end-to-end, including an upload with **no** header fields at all — the only real proof that the global `ValidationPipe` runs on a multipart body, which no route in this repo had relied on before.
+
 Host-side setup, as of S0e (2026-09-20) — `cp .env.example .env` is now enough, with no hand edits:
 
 1. `nvm use 22` (`.nvmrc`; Node 25 cannot load duckdb's native binding).

@@ -30,6 +30,8 @@ import { ComparisonService } from './comparison.service'
 import { CompareDocumentsDto } from './dto/compare-documents.dto'
 import { attachmentDisposition } from '../common/http/content-disposition'
 import { ListDiscrepanciesQueryDto } from './dto/list-discrepancies-query.dto'
+import { UploadInvoiceDto } from './dto/upload-invoice.dto'
+import { UploadPurchaseOrderDto } from './dto/upload-purchase-order.dto'
 import { RecordDecisionDto } from './dto/record-decision.dto'
 import type { ProcurementDocKind } from './procurement-parse.service'
 import { ProcurementDocumentsService } from './procurement-documents.service'
@@ -76,7 +78,7 @@ function fileFilter(
 }
 
 @Catch(MulterError, BadRequestException)
-class UploadExceptionFilter implements ExceptionFilter {
+export class UploadExceptionFilter implements ExceptionFilter {
   catch(exception: MulterError | BadRequestException, host: ArgumentsHost) {
     const response = host.switchToHttp().getResponse<Response>()
 
@@ -86,6 +88,18 @@ class UploadExceptionFilter implements ExceptionFilter {
     }
 
     if (exception instanceof BadRequestException) {
+      // ValidationPipe throws a body whose `message` is an ARRAY of per-field
+      // errors; flattening that loses every field-level message the upload form
+      // needs. Testing for an array specifically, not just for an object: Nest
+      // also wraps a plain-string BadRequestException (what fileFilter raises)
+      // into an object, and passing that through would silently add an `error`
+      // key to a response shape clients already depend on.
+      const body = exception.getResponse()
+      if (typeof body === 'object' && body !== null && Array.isArray((body as { message?: unknown }).message)) {
+        response.status(400).json(body)
+        return
+      }
+
       response.status(400).json({ statusCode: 400, message: exception.message })
       return
     }
@@ -109,17 +123,21 @@ export class ProcurementController {
   @Roles('owner', 'admin')
   @UseFilters(UploadExceptionFilter)
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: MAX_UPLOAD_BYTES }, fileFilter }))
-  uploadPurchaseOrder(@Param('workspaceId') workspaceId: string, @UploadedFile() file?: Express.Multer.File) {
+  uploadPurchaseOrder(
+    @Param('workspaceId') workspaceId: string,
+    @Body() header: UploadPurchaseOrderDto,
+    @UploadedFile() file?: Express.Multer.File,
+  ) {
     if (!file) {
       throw new BadRequestException('file is required')
     }
-    return this.documents.upload(workspaceId, 'purchase_order', file)
+    return this.documents.upload(workspaceId, 'purchase_order', file, header)
   }
 
   @Get('purchase-orders')
   @UseGuards(JwtAuthGuard, WorkspaceMemberGuard)
   listPurchaseOrders(@Param('workspaceId') workspaceId: string) {
-    return this.documents.list(workspaceId, 'purchase_order')
+    return this.documents.listPurchaseOrders(workspaceId)
   }
 
   @Post('invoices')
@@ -127,17 +145,21 @@ export class ProcurementController {
   @Roles('owner', 'admin')
   @UseFilters(UploadExceptionFilter)
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: MAX_UPLOAD_BYTES }, fileFilter }))
-  uploadInvoice(@Param('workspaceId') workspaceId: string, @UploadedFile() file?: Express.Multer.File) {
+  uploadInvoice(
+    @Param('workspaceId') workspaceId: string,
+    @Body() header: UploadInvoiceDto,
+    @UploadedFile() file?: Express.Multer.File,
+  ) {
     if (!file) {
       throw new BadRequestException('file is required')
     }
-    return this.documents.upload(workspaceId, 'invoice', file)
+    return this.documents.upload(workspaceId, 'invoice', file, header)
   }
 
   @Get('invoices')
   @UseGuards(JwtAuthGuard, WorkspaceMemberGuard)
   listInvoices(@Param('workspaceId') workspaceId: string) {
-    return this.documents.list(workspaceId, 'invoice')
+    return this.documents.listInvoices(workspaceId)
   }
 
   // The original uploaded file, so a reviewer can check a discrepancy against

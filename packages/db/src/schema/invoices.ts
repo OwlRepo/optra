@@ -1,5 +1,5 @@
 import { index, integer, pgTable, text, timestamp, uuid, varchar } from 'drizzle-orm/pg-core'
-import { procurementDocStatusEnum } from './purchaseOrders'
+import { procurementDocStatusEnum, purchaseOrders } from './purchaseOrders'
 import { workspaces } from './workspaces'
 
 // Same shape as purchaseOrders (invoiceNumber instead of poNumber). Kept as
@@ -16,6 +16,12 @@ export const invoices = pgTable(
     name: varchar('name', { length: 500 }).notNull(),
     invoiceNumber: varchar('invoice_number', { length: 200 }),
     currency: varchar('currency', { length: 10 }),
+    // POLICY v1 #2: the user picks the PO at upload time. A PO number read out
+    // of the document is advisory and never auto-links, so this is only ever
+    // written from an explicit choice. Nullable for the same deploy reason as
+    // `purchase_orders.vendor_id`; a null means "uploaded before S3b", which
+    // `compare()` treats as the legacy path rather than a mismatch.
+    purchaseOrderId: uuid('purchase_order_id').references(() => purchaseOrders.id, { onDelete: 'set null' }),
     storageKey: text('storage_key'),
     sourceKind: varchar('source_kind', { length: 20 }).notNull().default('csv'),
     status: procurementDocStatusEnum('status').notNull().default('pending'),
@@ -29,6 +35,7 @@ export const invoices = pgTable(
   },
   (table) => ({
     workspaceCreatedIdx: index('invoices_workspace_created_idx').on(table.workspaceId, table.createdAt),
+    workspacePoIdx: index('invoices_workspace_po_idx').on(table.workspaceId, table.purchaseOrderId),
   }),
 )
 

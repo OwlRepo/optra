@@ -52,3 +52,14 @@ export function hoursAgo(hours: number): Date {
 export function minutesAfter(base: Date, minutes: number): Date {
   return new Date(base.getTime() + minutes * 60 * 1000)
 }
+
+/**
+ * Lives here rather than in data/catalog.ts because data/procurement.ts needs
+ * it too (S3b gives every seeded PO a real vendor_id), and catalog.ts already
+ * imports from procurement.ts — keeping it there would close an import cycle.
+ */
+export const VENDOR_IDS = [
+  '20000000-0000-4000-8000-000000000001',
+  '20000000-0000-4000-8000-000000000002',
+  '20000000-0000-4000-8000-000000000003',
+]

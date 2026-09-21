@@ -1,4 +1,5 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common'
+import { JwtService } from '@nestjs/jwt'
 import { Test } from '@nestjs/testing'
 import cookieParser from 'cookie-parser'
 import { mkdtemp, readFile, writeFile } from 'fs/promises'
@@ -91,6 +92,42 @@ async function waitForInvoiceDone(id: string, timeoutMs = 15_000): Promise<void>
     await new Promise((resolve) => setTimeout(resolve, 200))
   }
   throw new Error(`Invoice ${id} did not reach 'done' within ${timeoutMs}ms`)
+}
+
+/**
+ * Builds a verified user + owned workspace directly, and mints the access token
+ * the way AuthService does (`{ sub, email }`, auth.service.ts:211).
+ *
+ * Deliberately NOT registerAndVerify: `/auth/register` is capped at 5 per 10
+ * minutes (auth.controller.ts:32) and this file already spends that budget on
+ * the tests that genuinely exercise the login flow. Raising the cap to fit more
+ * fixtures would weaken a real production control to make tests pass, so the
+ * fixtures that are about *upload* skip the auth path instead. Registration
+ * itself stays covered by auth.e2e-spec.ts and auth-rate-limit.e2e-spec.ts.
+ */
+async function seedOwnerWithWorkspace(app: INestApplication, email: string, workspaceName: string) {
+  const [user] = await db.insert(users).values({ email, passwordHash: 'x', isVerified: true }).returning()
+  const [workspace] = await db.insert(workspaces).values({ name: workspaceName, ownerId: user.id }).returning()
+  await db.insert(workspaceMembers).values({ workspaceId: workspace.id, userId: user.id, role: 'owner' })
+
+  const accessToken = app.get(JwtService).sign({ sub: user.id, email })
+  return { user, workspaceId: workspace.id, accessToken }
+}
+
+// S3b: POLICY v1 #3 requires the PO's vendor to be one of the workspace's own
+// `vendors` rows, so every PO upload in this file now needs a real vendor first.
+async function createVendor(
+  app: INestApplication,
+  workspaceId: string,
+  token: string,
+  name = 'Nordwerk Interiors',
+): Promise<string> {
+  const res = await request(app.getHttpServer())
+    .post(`/workspaces/${workspaceId}/vendors`)
+    .set('Authorization', `Bearer ${token}`)
+    .send({ name })
+    .expect(201)
+  return res.body.id as string
 }
 
 describe('Procurement flow (e2e)', () => {
@@ -217,15 +254,26 @@ describe('Procurement flow (e2e)', () => {
       'D4,Only On Invoice,1,1.00',
     ].join('\n')
 
+    const vendorId = await createVendor(app, workspaceId, owner.accessToken)
+
+    // .field() BEFORE .attach(): multer only populates req.body from parts it
+    // sees before the file, so a header sent after the file never reaches the
+    // DTO and the upload fails validation for a reason that looks unrelated.
     const poUpload = await request(app.getHttpServer())
       .post(`/workspaces/${workspaceId}/procurement/purchase-orders`)
       .set('Authorization', `Bearer ${owner.accessToken}`)
+      .field('vendorId', vendorId)
+      .field('poNumber', 'PO-2026-1180')
+      .field('currency', 'USD')
       .attach('file', Buffer.from(poCsv), 'po.csv')
       .expect(201)
 
     const invoiceUpload = await request(app.getHttpServer())
       .post(`/workspaces/${workspaceId}/procurement/invoices`)
       .set('Authorization', `Bearer ${owner.accessToken}`)
+      .field('purchaseOrderId', poUpload.body.id)
+      .field('invoiceNumber', 'INV-44120')
+      .field('currency', 'USD')
       .attach('file', Buffer.from(invoiceCsv), 'invoice.csv')
       .expect(201)
 
@@ -415,15 +463,23 @@ describe('Procurement flow (e2e)', () => {
       .expect(200)
     const workspaceId = ownerMine.body.items[0].id as string
 
+    const vendorId = await createVendor(app, workspaceId, owner.accessToken)
+
     const poUpload = await request(app.getHttpServer())
       .post(`/workspaces/${workspaceId}/procurement/purchase-orders`)
       .set('Authorization', `Bearer ${owner.accessToken}`)
+      .field('vendorId', vendorId)
+      .field('poNumber', 'PO-2026-1181')
+      .field('currency', 'USD')
       .attach('file', Buffer.from('%PDF-1.4 PDF-PO-MARKER'), 'po.pdf')
       .expect(201)
 
     const invoiceUpload = await request(app.getHttpServer())
       .post(`/workspaces/${workspaceId}/procurement/invoices`)
       .set('Authorization', `Bearer ${owner.accessToken}`)
+      .field('purchaseOrderId', poUpload.body.id)
+      .field('invoiceNumber', 'INV-44121')
+      .field('currency', 'USD')
       .attach('file', Buffer.from('%PDF-1.4 PDF-INVOICE-MARKER'), 'invoice.pdf')
       .expect(201)
 
@@ -460,15 +516,23 @@ describe('Procurement flow (e2e)', () => {
       .expect(200)
     const workspaceId = ownerMine.body.items[0].id as string
 
+    const vendorId = await createVendor(app, workspaceId, owner.accessToken)
+
     const poUpload = await request(app.getHttpServer())
       .post(`/workspaces/${workspaceId}/procurement/purchase-orders`)
       .set('Authorization', `Bearer ${owner.accessToken}`)
+      .field('vendorId', vendorId)
+      .field('poNumber', 'PO-2026-1182')
+      .field('currency', 'USD')
       .attach('file', Buffer.from('%PDF-1.4 PDF-NUMERIC-PO-MARKER'), 'cin7-po.pdf')
       .expect(201)
 
     const invoiceUpload = await request(app.getHttpServer())
       .post(`/workspaces/${workspaceId}/procurement/invoices`)
       .set('Authorization', `Bearer ${owner.accessToken}`)
+      .field('purchaseOrderId', poUpload.body.id)
+      .field('invoiceNumber', 'INV-44122')
+      .field('currency', 'USD')
       .attach('file', Buffer.from('%PDF-1.4 PDF-NOSKU-INVOICE-MARKER'), 'vendor-invoice.pdf')
       .expect(201)
 
@@ -497,10 +561,150 @@ describe('Procurement flow (e2e)', () => {
       .expect(200)
     const workspaceId = ownerMine.body.items[0].id as string
 
-    await request(app.getHttpServer())
+    const vendorId = await createVendor(app, workspaceId, owner.accessToken)
+
+    // Headers are valid on purpose: without them this would still return 400,
+    // but for a DTO reason, and would stop proving anything about fileFilter.
+    const rejected = await request(app.getHttpServer())
       .post(`/workspaces/${workspaceId}/procurement/purchase-orders`)
       .set('Authorization', `Bearer ${owner.accessToken}`)
+      .field('vendorId', vendorId)
+      .field('poNumber', 'PO-2026-1183')
+      .field('currency', 'USD')
       .attach('file', Buffer.from('not a spreadsheet'), 'malware.exe')
       .expect(400)
+
+    expect(rejected.body.message).toBe('Only CSV, XLSX, or PDF files are supported')
+  })
+
+  // S3b. The foreign key only proves a row exists; these prove the API refuses
+  // an id belonging to somebody else's workspace, which the FK cannot catch.
+  describe('header enrichment and linkage (S3b)', () => {
+    const csv = 'sku,description,qty,unit price\nA1,Widget,1,1.00'
+
+    it('persists the header the uploader supplied and returns it when listing', async () => {
+      const owner = await seedOwnerWithWorkspace(app, `${prefix}s3b-header@example.com`, 'S3b Header')
+      const workspaceId = owner.workspaceId
+      const vendorId = await createVendor(app, workspaceId, owner.accessToken, 'Brightline Systems')
+
+      const poUpload = await request(app.getHttpServer())
+        .post(`/workspaces/${workspaceId}/procurement/purchase-orders`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .field('vendorId', vendorId)
+        .field('poNumber', 'PO-2026-1184')
+        .field('currency', 'USD')
+        .attach('file', Buffer.from(csv), 'po.csv')
+        .expect(201)
+
+      const listed = await request(app.getHttpServer())
+        .get(`/workspaces/${workspaceId}/procurement/purchase-orders`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .expect(200)
+
+      const row = listed.body.find((item: { id: string }) => item.id === poUpload.body.id)
+      expect(row.poNumber).toBe('PO-2026-1184')
+      expect(row.currency).toBe('USD')
+      expect(row.vendorId).toBe(vendorId)
+      expect(row.vendorName).toBe('Brightline Systems')
+    })
+
+    it('refuses a vendor belonging to another workspace', async () => {
+      const owner = await seedOwnerWithWorkspace(app, `${prefix}s3b-vendor-mine@example.com`, 'S3b Vendor Mine')
+      const stranger = await seedOwnerWithWorkspace(app, `${prefix}s3b-vendor-other@example.com`, 'S3b Vendor Other')
+      const workspaceId = owner.workspaceId
+      const foreignVendorId = await createVendor(app, stranger.workspaceId, stranger.accessToken, 'Cedar Supply Co')
+
+      // 404, not 403: a 403 would confirm the id is real and turn this endpoint
+      // into an oracle for enumerating another workspace's vendors.
+      await request(app.getHttpServer())
+        .post(`/workspaces/${workspaceId}/procurement/purchase-orders`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .field('vendorId', foreignVendorId)
+        .field('poNumber', 'PO-2026-1185')
+        .field('currency', 'USD')
+        .attach('file', Buffer.from(csv), 'po.csv')
+        .expect(404)
+    })
+
+    it('refuses a purchase order belonging to another workspace', async () => {
+      const owner = await seedOwnerWithWorkspace(app, `${prefix}s3b-po-mine@example.com`, 'S3b PO Mine')
+      const stranger = await seedOwnerWithWorkspace(app, `${prefix}s3b-po-other@example.com`, 'S3b PO Other')
+      const workspaceId = owner.workspaceId
+      const theirWorkspaceId = stranger.workspaceId
+      const theirVendorId = await createVendor(app, theirWorkspaceId, stranger.accessToken)
+
+      const theirPo = await request(app.getHttpServer())
+        .post(`/workspaces/${theirWorkspaceId}/procurement/purchase-orders`)
+        .set('Authorization', `Bearer ${stranger.accessToken}`)
+        .field('vendorId', theirVendorId)
+        .field('poNumber', 'PO-THEIRS')
+        .field('currency', 'USD')
+        .attach('file', Buffer.from(csv), 'po.csv')
+        .expect(201)
+
+      await request(app.getHttpServer())
+        .post(`/workspaces/${workspaceId}/procurement/invoices`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .field('purchaseOrderId', theirPo.body.id)
+        .field('invoiceNumber', 'INV-1')
+        .field('currency', 'USD')
+        .attach('file', Buffer.from(csv), 'invoice.csv')
+        .expect(404)
+    })
+
+    // Pins the UploadExceptionFilter change: without it this body would be a
+    // single flattened string and the form could not mark the bad field.
+    it('returns per-field validation messages for a bad header', async () => {
+      const owner = await seedOwnerWithWorkspace(app, `${prefix}s3b-validation@example.com`, 'S3b Validation')
+      const workspaceId = owner.workspaceId
+      const vendorId = await createVendor(app, workspaceId, owner.accessToken)
+
+      // ZZZ is not a real currency. This is also the proof that ValidationPipe
+      // runs at all on a multipart body — no route in this repo had a @Body()
+      // DTO alongside a file before S3b, so it could not be assumed.
+      const res = await request(app.getHttpServer())
+        .post(`/workspaces/${workspaceId}/procurement/purchase-orders`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .field('vendorId', vendorId)
+        .field('poNumber', 'PO-2026-1186')
+        .field('currency', 'ZZZ')
+        .attach('file', Buffer.from(csv), 'po.csv')
+        .expect(400)
+
+      expect(Array.isArray(res.body.message)).toBe(true)
+      expect(res.body.message.join(' ')).toContain('currency')
+    })
+
+    it('rejects an upload with no header fields at all', async () => {
+      const owner = await seedOwnerWithWorkspace(app, `${prefix}s3b-no-header@example.com`, 'S3b No Header')
+
+      const res = await request(app.getHttpServer())
+        .post(`/workspaces/${owner.workspaceId}/procurement/purchase-orders`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .attach('file', Buffer.from(csv), 'po.csv')
+        .expect(400)
+
+      expect(res.body.message.join(' ')).toContain('vendorId')
+    })
+
+    // isISO4217 is case-insensitive, so 'usd' is accepted — but it must not be
+    // STORED that way, or S6's currency comparison sees usd != USD and invents
+    // a discrepancy.
+    it('normalizes a lowercase currency to upper case before storing it', async () => {
+      const owner = await seedOwnerWithWorkspace(app, `${prefix}s3b-currency@example.com`, 'S3b Currency')
+      const vendorId = await createVendor(app, owner.workspaceId, owner.accessToken)
+
+      const upload = await request(app.getHttpServer())
+        .post(`/workspaces/${owner.workspaceId}/procurement/purchase-orders`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .field('vendorId', vendorId)
+        .field('poNumber', 'PO-2026-1187')
+        .field('currency', 'usd')
+        .attach('file', Buffer.from(csv), 'po.csv')
+        .expect(201)
+
+      const [row] = await db.select().from(purchaseOrders).where(eq(purchaseOrders.id, upload.body.id))
+      expect(row.currency).toBe('USD')
+    })
   })
 })

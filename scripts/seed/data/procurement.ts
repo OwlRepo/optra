@@ -4,7 +4,7 @@
 // Every numeric column (quantity, unitPrice, lineTotal, delta) is passed as a
 // STRING — drizzle's `numeric` maps to a JS string, and handing it a number
 // silently loses precision on the way in.
-import { DEMO_WORKSPACE_ID, daysAgo } from '../config'
+import { DEMO_WORKSPACE_ID, daysAgo, VENDOR_IDS } from '../config'
 
 // Three purchasing templates (furniture, IT hardware, consumables) ordered
 // once per quarter — nine PO/invoice pairs in total. Repeat orders of the same
@@ -144,6 +144,10 @@ export function buildPurchaseOrderRows() {
     name: `PO — ${TEMPLATE_NAMES[templateOf(i)]} ${QUARTERS[periodOf(i)]}`,
     poNumber: `PO-2026-${String(1180 + i)}`,
     currency: 'USD',
+    // S3b. Before this the PO/vendor correspondence existed only as a matching
+    // string in the invoice's `name`; now it is a real foreign key, and the
+    // template index is what ties a PO to the vendor that supplies it.
+    vendorId: VENDOR_IDS[templateOf(i)]!,
     storageKey: null,
     sourceKind: templateOf(i) === 1 ? 'pdf-extraction' : 'csv',
     status: 'done' as const,
@@ -166,6 +170,9 @@ export function buildInvoiceRows() {
     name: `INV — ${VENDOR_NAMES[templateOf(i)]} ${44120 + i * 137}`,
     invoiceNumber: `INV-${String(44120 + i * 137)}`,
     currency: 'USD',
+    // POLICY v1 #2: every invoice answers exactly one PO, chosen explicitly.
+    // The seed pairs them by index, which is what the comparison runs assume.
+    purchaseOrderId: PO_IDS[i]!,
     storageKey: null,
     sourceKind: templateOf(i) === 1 ? 'pdf-extraction' : 'csv',
     status: 'done' as const,

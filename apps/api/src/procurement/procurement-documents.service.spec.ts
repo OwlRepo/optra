@@ -1,6 +1,20 @@
 import { eq, like } from 'drizzle-orm'
-import { comparisonRuns, db, invoices, pool, purchaseOrders, users, workspaceMembers, workspaces } from '@repo/db'
-import { ProcurementDocumentsService } from './procurement-documents.service'
+import {
+  comparisonRuns,
+  db,
+  invoices,
+  pool,
+  purchaseOrders,
+  users,
+  vendors,
+  workspaceMembers,
+  workspaces,
+} from '@repo/db'
+import {
+  ProcurementDocumentsService,
+  type ProcurementInvoiceHeader,
+  type ProcurementPoHeader,
+} from './procurement-documents.service'
 import { StorageService } from '../storage/storage.service'
 import { ProcurementParseService } from './procurement-parse.service'
 
@@ -13,8 +27,12 @@ async function cleanupFixtures(prefix: string) {
       .where(eq(workspaceMembers.userId, user.id))
     for (const membership of memberships) {
       await db.delete(comparisonRuns).where(eq(comparisonRuns.workspaceId, membership.workspaceId))
-      await db.delete(purchaseOrders).where(eq(purchaseOrders.workspaceId, membership.workspaceId))
+      // invoices before purchase_orders: the S3b link is ON DELETE set null, so
+      // either order is legal, but deleting the child first keeps the intent
+      // obvious rather than relying on the constraint to tidy up.
       await db.delete(invoices).where(eq(invoices.workspaceId, membership.workspaceId))
+      await db.delete(purchaseOrders).where(eq(purchaseOrders.workspaceId, membership.workspaceId))
+      await db.delete(vendors).where(eq(vendors.workspaceId, membership.workspaceId))
       await db.delete(workspaceMembers).where(eq(workspaceMembers.workspaceId, membership.workspaceId))
       await db.delete(workspaces).where(eq(workspaces.id, membership.workspaceId))
     }
@@ -27,6 +45,28 @@ async function seedWorkspace(email: string, name: string) {
   const [workspace] = await db.insert(workspaces).values({ name, ownerId: user.id }).returning()
   await db.insert(workspaceMembers).values({ workspaceId: workspace.id, userId: user.id, role: 'owner' })
   return workspace
+}
+
+async function seedVendor(workspaceId: string, name = 'Nordwerk Interiors') {
+  const [vendor] = await db.insert(vendors).values({ workspaceId, name }).returning()
+  return vendor
+}
+
+// S3b makes every header field required at upload (POLICY v1 #2, #3), so each
+// upload call now needs a real vendor / purchase order to point at. These build
+// the minimum valid header so the existing tests stay about what they were
+// testing — sourceKind, storage cleanup, queue failure — and not about linkage.
+async function poHeader(workspaceId: string, overrides: Partial<ProcurementPoHeader> = {}) {
+  const vendor = await seedVendor(workspaceId)
+  return { vendorId: vendor.id, poNumber: 'PO-2026-1180', currency: 'USD', ...overrides }
+}
+
+async function invoiceHeader(workspaceId: string, overrides: Partial<ProcurementInvoiceHeader> = {}) {
+  const [po] = await db
+    .insert(purchaseOrders)
+    .values({ workspaceId, name: 'linked-po.csv', status: 'done' })
+    .returning()
+  return { purchaseOrderId: po.id, invoiceNumber: 'INV-44120', currency: 'USD', ...overrides }
 }
 
 describe('ProcurementDocumentsService', () => {
@@ -65,7 +105,8 @@ describe('ProcurementDocumentsService', () => {
       buffer: Buffer.from('sku,qty\nA,1'),
     } as Express.Multer.File
 
-    const result = await service.upload(workspace.id, 'purchase_order', file)
+    const header = await poHeader(workspace.id)
+    const result = await service.upload(workspace.id, 'purchase_order', file, header)
 
     expect(result.name).toBe('po.csv')
     expect(result.status).toBe('pending')
@@ -89,7 +130,7 @@ describe('ProcurementDocumentsService', () => {
       buffer: Buffer.from('xlsx bytes'),
     } as Express.Multer.File
 
-    const result = await service.upload(workspace.id, 'purchase_order', file)
+    const result = await service.upload(workspace.id, 'purchase_order', file, await poHeader(workspace.id))
 
     const [row] = await db.select().from(purchaseOrders).where(eq(purchaseOrders.id, result.id))
     expect(row.sourceKind).toBe('xlsx')
@@ -105,7 +146,7 @@ describe('ProcurementDocumentsService', () => {
       buffer: Buffer.from('sku,qty\nA,1'),
     } as Express.Multer.File
 
-    await expect(service.upload(workspace.id, 'purchase_order', file)).rejects.toThrow()
+    await expect(service.upload(workspace.id, 'purchase_order', file, await poHeader(workspace.id))).rejects.toThrow()
 
     const savedKey = storage.save.mock.calls[0][0] as string
     expect(storage.delete).toHaveBeenCalledWith(savedKey)
@@ -120,7 +161,7 @@ describe('ProcurementDocumentsService', () => {
       buffer: Buffer.from('%PDF-1.4 fake'),
     } as Express.Multer.File
 
-    const result = await service.upload(workspace.id, 'purchase_order', file)
+    const result = await service.upload(workspace.id, 'purchase_order', file, await poHeader(workspace.id))
 
     const [row] = await db.select().from(purchaseOrders).where(eq(purchaseOrders.id, result.id))
     expect(row.sourceKind).toBe('pdf')
@@ -134,7 +175,7 @@ describe('ProcurementDocumentsService', () => {
       buffer: Buffer.from('sku,qty\nA,1'),
     } as Express.Multer.File
 
-    const result = await service.upload(workspace.id, 'invoice', file)
+    const result = await service.upload(workspace.id, 'invoice', file, await invoiceHeader(workspace.id))
 
     expect(parse.queueDoc).toHaveBeenCalledWith('invoice', result.id)
     const [row] = await db.select().from(invoices).where(eq(invoices.id, result.id))
@@ -150,7 +191,9 @@ describe('ProcurementDocumentsService', () => {
       buffer: Buffer.from('sku,qty\nA,1'),
     } as Express.Multer.File
 
-    await expect(service.upload(workspace.id, 'purchase_order', file)).rejects.toThrow('queue down')
+    await expect(
+      service.upload(workspace.id, 'purchase_order', file, await poHeader(workspace.id)),
+    ).rejects.toThrow('queue down')
 
     const [row] = await db.select().from(purchaseOrders).where(eq(purchaseOrders.workspaceId, workspace.id))
     expect(row.status).toBe('failed')
@@ -162,7 +205,7 @@ describe('ProcurementDocumentsService', () => {
     await db.insert(purchaseOrders).values({ workspaceId: workspace.id, name: 'a.csv', status: 'done' })
     await db.insert(purchaseOrders).values({ workspaceId: workspace.id, name: 'b.csv', status: 'pending' })
 
-    const items = await service.list(workspace.id, 'purchase_order')
+    const items = await service.listPurchaseOrders(workspace.id)
 
     expect(items.map((item) => item.name)).toEqual(['b.csv', 'a.csv'])
   })
@@ -261,7 +304,7 @@ describe('ProcurementDocumentsService', () => {
         .values({ workspaceId: workspace.id, name: 'with.csv', status: 'done', storageKey: 'k/with.csv' })
       await db.insert(purchaseOrders).values({ workspaceId: workspace.id, name: 'without.csv', status: 'done' })
 
-      const rows = await service.list(workspace.id, 'purchase_order')
+      const rows = await service.listPurchaseOrders(workspace.id)
       const byName = new Map(rows.map((row) => [row.name, row]))
 
       expect(byName.get('with.csv')?.hasSourceFile).toBe(true)
@@ -310,5 +353,143 @@ describe('ProcurementDocumentsService', () => {
     await expect(service.remove(workspace.id, 'invoice', invoice.id)).rejects.toThrow(
       'referenced by a comparison run',
     )
+  })
+
+  // S3b. The foreign key proves the row exists; it does not prove it belongs to
+  // the caller's workspace. Without the explicit scope check these tests pin,
+  // an owner of workspace A could attach workspace B's vendor and the database
+  // would accept it — the worst class of bug in a multi-tenant product.
+  describe('header enrichment and linkage (S3b)', () => {
+    const csv = () =>
+      ({ originalname: 'po.csv', mimetype: 'text/csv', buffer: Buffer.from('sku,qty\nA,1') }) as Express.Multer.File
+
+    it('persists vendorId, poNumber and currency on a purchase order upload', async () => {
+      const workspace = await seedWorkspace(`${prefix}po-header@example.com`, 'PO Header')
+      const vendor = await seedVendor(workspace.id, 'Brightline Systems')
+
+      const result = await service.upload(workspace.id, 'purchase_order', csv(), {
+        vendorId: vendor.id,
+        poNumber: 'PO-2026-1184',
+        currency: 'USD',
+      })
+
+      const [row] = await db.select().from(purchaseOrders).where(eq(purchaseOrders.id, result.id))
+      expect(row.vendorId).toBe(vendor.id)
+      expect(row.poNumber).toBe('PO-2026-1184')
+      expect(row.currency).toBe('USD')
+    })
+
+    it('refuses a vendor from another workspace and never writes the object', async () => {
+      const mine = await seedWorkspace(`${prefix}po-vendor-mine@example.com`, 'PO Vendor Mine')
+      const other = await seedWorkspace(`${prefix}po-vendor-other@example.com`, 'PO Vendor Other')
+      const foreignVendor = await seedVendor(other.id, 'Cedar Supply Co')
+
+      await expect(
+        service.upload(mine.id, 'purchase_order', csv(), {
+          vendorId: foreignVendor.id,
+          poNumber: 'PO-1',
+          currency: 'USD',
+        }),
+      ).rejects.toThrow('Vendor not found')
+
+      // Validated before storage.save, so a rejected header leaves no orphan object.
+      expect(storage.save).not.toHaveBeenCalled()
+      const rows = await db.select().from(purchaseOrders).where(eq(purchaseOrders.workspaceId, mine.id))
+      expect(rows).toHaveLength(0)
+    })
+
+    it('persists purchaseOrderId, invoiceNumber and currency on an invoice upload', async () => {
+      const workspace = await seedWorkspace(`${prefix}inv-header@example.com`, 'Invoice Header')
+      const [po] = await db
+        .insert(purchaseOrders)
+        .values({ workspaceId: workspace.id, name: 'linked.csv', status: 'done' })
+        .returning()
+
+      const result = await service.upload(workspace.id, 'invoice', csv(), {
+        purchaseOrderId: po.id,
+        invoiceNumber: 'INV-44257',
+        currency: 'EUR',
+      })
+
+      const [row] = await db.select().from(invoices).where(eq(invoices.id, result.id))
+      expect(row.purchaseOrderId).toBe(po.id)
+      expect(row.invoiceNumber).toBe('INV-44257')
+      expect(row.currency).toBe('EUR')
+    })
+
+    it('refuses a purchase order from another workspace and never writes the object', async () => {
+      const mine = await seedWorkspace(`${prefix}inv-po-mine@example.com`, 'Invoice PO Mine')
+      const other = await seedWorkspace(`${prefix}inv-po-other@example.com`, 'Invoice PO Other')
+      const [foreignPo] = await db
+        .insert(purchaseOrders)
+        .values({ workspaceId: other.id, name: 'theirs.csv', status: 'done' })
+        .returning()
+
+      await expect(
+        service.upload(mine.id, 'invoice', csv(), {
+          purchaseOrderId: foreignPo.id,
+          invoiceNumber: 'INV-1',
+          currency: 'USD',
+        }),
+      ).rejects.toThrow('Purchase order not found')
+
+      expect(storage.save).not.toHaveBeenCalled()
+    })
+
+    it('returns the header fields and the joined vendor name when listing purchase orders', async () => {
+      const workspace = await seedWorkspace(`${prefix}po-list-header@example.com`, 'PO List Header')
+      const vendor = await seedVendor(workspace.id, 'Nordwerk Interiors')
+      await db.insert(purchaseOrders).values({
+        workspaceId: workspace.id,
+        name: 'a.csv',
+        status: 'done',
+        vendorId: vendor.id,
+        poNumber: 'PO-2026-1180',
+        currency: 'USD',
+      })
+
+      const [item] = await service.listPurchaseOrders(workspace.id)
+
+      expect(item.vendorId).toBe(vendor.id)
+      expect(item.vendorName).toBe('Nordwerk Interiors')
+      expect(item.poNumber).toBe('PO-2026-1180')
+      expect(item.currency).toBe('USD')
+    })
+
+    // A row written before migration 0025 has no vendor. The join must not drop
+    // it from the list, and the response must carry nulls rather than omitting
+    // the keys — the UI renders a dash, not a crash.
+    it('still lists a legacy purchase order that has no vendor', async () => {
+      const workspace = await seedWorkspace(`${prefix}po-legacy@example.com`, 'PO Legacy')
+      await db.insert(purchaseOrders).values({ workspaceId: workspace.id, name: 'legacy.csv', status: 'done' })
+
+      const [item] = await service.listPurchaseOrders(workspace.id)
+
+      expect(item.name).toBe('legacy.csv')
+      expect(item.vendorId).toBeNull()
+      expect(item.vendorName).toBeNull()
+    })
+
+    it('returns the header fields when listing invoices', async () => {
+      const workspace = await seedWorkspace(`${prefix}inv-list-header@example.com`, 'Invoice List Header')
+      const [po] = await db
+        .insert(purchaseOrders)
+        .values({ workspaceId: workspace.id, name: 'linked.csv', status: 'done' })
+        .returning()
+      await db.insert(invoices).values({
+        workspaceId: workspace.id,
+        name: 'b.csv',
+        status: 'done',
+        purchaseOrderId: po.id,
+        invoiceNumber: 'INV-44120',
+        currency: 'USD',
+      })
+
+      const [item] = await service.listInvoices(workspace.id)
+
+      expect(item.purchaseOrderId).toBe(po.id)
+      expect(item.invoiceNumber).toBe('INV-44120')
+      expect(item.currency).toBe('USD')
+    })
   })
 })

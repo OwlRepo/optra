@@ -65,14 +65,28 @@ describe('ComparisonService', () => {
     await pool.end()
   })
 
-  async function seedReadyPoAndInvoice(workspaceId: string, poItems: FixtureItem[], invItems: FixtureItem[]) {
+  async function seedReadyPoAndInvoice(
+    workspaceId: string,
+    poItems: FixtureItem[],
+    invItems: FixtureItem[],
+    // S3b: when omitted the invoice carries no PO link, which is exactly the
+    // legacy shape every pre-migration-0025 row has. compare() must keep
+    // accepting it, so leaving this unset is the default on purpose.
+    linkInvoiceToPo = false,
+  ) {
     const [po] = await db
       .insert(purchaseOrders)
       .values({ workspaceId, name: 'po.csv', status: 'done', rowCount: poItems.length })
       .returning()
     const [invoice] = await db
       .insert(invoices)
-      .values({ workspaceId, name: 'invoice.csv', status: 'done', rowCount: invItems.length })
+      .values({
+        workspaceId,
+        name: 'invoice.csv',
+        status: 'done',
+        rowCount: invItems.length,
+        purchaseOrderId: linkInvoiceToPo ? po.id : null,
+      })
       .returning()
 
     if (poItems.length > 0) {
@@ -830,5 +844,59 @@ describe('ComparisonService', () => {
 
     const stillOpen = await service.listFlags(workspace.id, { status: 'open' })
     expect(stillOpen).toHaveLength(0)
+  })
+
+  // S3b / POLICY v1 #2. Once an invoice records which PO it answers, comparing
+  // it against a different PO is a mistake worth refusing — otherwise the link
+  // is decoration that can silently contradict what was actually compared.
+  describe('purchase order link enforcement (S3b)', () => {
+    const oneLine = [{ sku: 'A1', quantity: '10', unitPrice: '5.00' }]
+
+    it('refuses to compare an invoice against a purchase order it is not linked to', async () => {
+      const { workspace } = await seedWorkspace(`${prefix}link-mismatch@example.com`, 'Link Mismatch')
+      const { invoice } = await seedReadyPoAndInvoice(workspace.id, oneLine, oneLine, true)
+      // A second, unrelated PO in the same workspace — passes the workspace
+      // check, so only the link guard can catch it.
+      const { po: otherPo } = await seedReadyPoAndInvoice(workspace.id, oneLine, oneLine)
+
+      await expect(service.compare(workspace.id, otherPo.id, invoice.id)).rejects.toThrow(
+        'Invoice is linked to a different purchase order',
+      )
+
+      // Refused before any run row is written: a rejected request is a mistake,
+      // not evidence of an attempted comparison.
+      const runs = await db.select().from(comparisonRuns).where(eq(comparisonRuns.invoiceId, invoice.id))
+      expect(runs).toHaveLength(0)
+    })
+
+    it('compares an invoice against the purchase order it is linked to', async () => {
+      const { workspace } = await seedWorkspace(`${prefix}link-match@example.com`, 'Link Match')
+      const { po, invoice } = await seedReadyPoAndInvoice(
+        workspace.id,
+        [{ sku: 'A1', quantity: '10', unitPrice: '5.00' }],
+        [{ sku: 'A1', quantity: '8', unitPrice: '5.00' }],
+        true,
+      )
+
+      const result = await service.compare(workspace.id, po.id, invoice.id)
+
+      expect(result.counts.quantity_mismatch).toBe(1)
+    })
+
+    // The legacy path. Every invoice uploaded before migration 0025 has a null
+    // link, and those must keep comparing exactly as they did — this is what
+    // makes the guard safe to ship without a backfill.
+    it('compares an invoice that carries no link at all', async () => {
+      const { workspace } = await seedWorkspace(`${prefix}link-null@example.com`, 'Link Null')
+      const { po, invoice } = await seedReadyPoAndInvoice(
+        workspace.id,
+        [{ sku: 'A1', quantity: '10', unitPrice: '5.00' }],
+        [{ sku: 'A1', quantity: '8', unitPrice: '5.00' }],
+      )
+
+      const result = await service.compare(workspace.id, po.id, invoice.id)
+
+      expect(result.counts.quantity_mismatch).toBe(1)
+    })
   })
 })

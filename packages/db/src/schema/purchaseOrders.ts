@@ -1,4 +1,5 @@
 import { index, integer, pgEnum, pgTable, text, timestamp, uuid, varchar } from 'drizzle-orm/pg-core'
+import { vendors } from './vendors'
 import { workspaces } from './workspaces'
 
 export const procurementDocStatusEnum = pgEnum('procurement_doc_status', [
@@ -23,6 +24,13 @@ export const purchaseOrders = pgTable(
     name: varchar('name', { length: 500 }).notNull(),
     poNumber: varchar('po_number', { length: 200 }),
     currency: varchar('currency', { length: 10 }),
+    // POLICY v1 #3: the vendor is chosen explicitly from the workspace's own
+    // `vendors` rows at upload time — never inferred from the document. The
+    // upload DTO requires it, but the column stays nullable: migrations run on
+    // API start against a database the previous image is still serving, so a
+    // NOT NULL column with no default would fail on existing rows mid-deploy.
+    // A null here means "uploaded before S3b", and every read must allow it.
+    vendorId: uuid('vendor_id').references(() => vendors.id, { onDelete: 'set null' }),
     storageKey: text('storage_key'),
     sourceKind: varchar('source_kind', { length: 20 }).notNull().default('csv'),
     status: procurementDocStatusEnum('status').notNull().default('pending'),
@@ -39,6 +47,7 @@ export const purchaseOrders = pgTable(
       table.workspaceId,
       table.createdAt,
     ),
+    workspaceVendorIdx: index('purchase_orders_workspace_vendor_idx').on(table.workspaceId, table.vendorId),
   }),
 )
 
