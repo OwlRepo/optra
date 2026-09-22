@@ -200,6 +200,8 @@ describe('ComparisonService', () => {
       invoice_exceeds_received: 0,
       uom_mismatch: 0,
       currency_mismatch: 0,
+      contract_price_variance: 0,
+      contract_price_unavailable: 0,
     })
     const skus = result.flags.map((f) => f.sku).sort()
     expect(skus).toEqual(['INV-ONLY', 'PO-ONLY', 'PRICE-1', 'QTY-1'])
@@ -238,6 +240,8 @@ describe('ComparisonService', () => {
       invoice_exceeds_received: 0,
       uom_mismatch: 0,
       currency_mismatch: 0,
+      contract_price_variance: 0,
+      contract_price_unavailable: 0,
     })
   })
 
@@ -1274,6 +1278,8 @@ describe('ComparisonService', () => {
         invoice_exceeds_received: 0,
         uom_mismatch: 0,
         currency_mismatch: 1,
+        contract_price_variance: 0,
+        contract_price_unavailable: 0,
       })
       const [run] = await db.select().from(comparisonRuns).where(eq(comparisonRuns.id, result.runId))
       expect(run.flagCount).toBe(2)
@@ -1563,6 +1569,8 @@ describe('ComparisonService', () => {
         invoice_exceeds_received: 1,
         uom_mismatch: 1,
         currency_mismatch: 0,
+        contract_price_variance: 0,
+        contract_price_unavailable: 0,
       })
     })
   })
@@ -1636,7 +1644,7 @@ describe('ComparisonService', () => {
     // The stat cards used to be computed in the browser from the array it held.
     // Paginated, that reports "1 price mismatch" on a page showing one of
     // forty. The counts have to describe the filtered set, not the page.
-    it('counts the whole filtered set, not the page, and always carries all eight types', async () => {
+    it('counts the whole filtered set, not the page, and always carries all ten types', async () => {
       const { workspace } = await seedFourFlags(`${prefix}s7-counts@example.com`, 'S7 Counts')
 
       const page = await service.listFlags(workspace.id, { page: '1', pageSize: '1' })
@@ -1651,6 +1659,8 @@ describe('ComparisonService', () => {
         invoice_exceeds_received: 0,
         uom_mismatch: 0,
         currency_mismatch: 0,
+        contract_price_variance: 0,
+        contract_price_unavailable: 0,
       })
       expect(Object.values(page.counts).reduce((a, b) => a + b, 0)).toBe(page.total)
     })

@@ -64,6 +64,8 @@ export type DiscrepancyFlagType =
   | 'invoice_exceeds_received'
   | 'uom_mismatch'
   | 'currency_mismatch'
+  | 'contract_price_variance'
+  | 'contract_price_unavailable'
 export type DiscrepancyFlagStatus = 'open' | 'dismissed'
 export type DiscrepancyFlag = {
   id: string

@@ -52,6 +52,8 @@ const EMPTY_FLAG_COUNTS: Record<DiscrepancyFlag['flagType'], number> = {
   invoice_exceeds_received: 0,
   uom_mismatch: 0,
   currency_mismatch: 0,
+  contract_price_variance: 0,
+  contract_price_unavailable: 0,
 }
 
 type DbTx = Parameters<Parameters<typeof db.transaction>[0]>[0]

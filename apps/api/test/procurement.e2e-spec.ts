@@ -345,6 +345,8 @@ describe('Procurement flow (e2e)', () => {
       invoice_exceeds_received: 0,
       uom_mismatch: 0,
       currency_mismatch: 0,
+      contract_price_variance: 0,
+      contract_price_unavailable: 0,
     })
 
     // S9. Every flag with a line behind it states that line's unit price,
@@ -373,6 +375,8 @@ describe('Procurement flow (e2e)', () => {
       invoice_exceeds_received: 0,
       uom_mismatch: 0,
       currency_mismatch: 0,
+      contract_price_variance: 0,
+      contract_price_unavailable: 0,
     })
     const flagId = listRes.body.items[0].id as string
 
@@ -592,6 +596,8 @@ describe('Procurement flow (e2e)', () => {
       invoice_exceeds_received: 0,
       uom_mismatch: 0,
       currency_mismatch: 0,
+      contract_price_variance: 0,
+      contract_price_unavailable: 0,
     })
   })
 
@@ -644,6 +650,8 @@ describe('Procurement flow (e2e)', () => {
       invoice_exceeds_received: 0,
       uom_mismatch: 0,
       currency_mismatch: 0,
+      contract_price_variance: 0,
+      contract_price_unavailable: 0,
     })
   })
 

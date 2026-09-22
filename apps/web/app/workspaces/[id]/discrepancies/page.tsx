@@ -58,6 +58,10 @@ const flagTypeVariant: Record<DiscrepancyFlagType, 'warning' | 'destructive' | '
   // comparable yet, which is a question for a human, not a dispute.
   uom_mismatch: 'secondary',
   currency_mismatch: 'secondary',
+  // Ordering off contract is a finding about us, not about the vendor, so it
+  // never renders as `destructive` however large the gap.
+  contract_price_variance: 'warning',
+  contract_price_unavailable: 'secondary',
 }
 
 const flagTypeLabel: Record<DiscrepancyFlagType, string> = {
@@ -69,11 +73,19 @@ const flagTypeLabel: Record<DiscrepancyFlagType, string> = {
   invoice_exceeds_received: 'Billed above received',
   uom_mismatch: 'Unit mismatch',
   currency_mismatch: 'Currency mismatch',
+  contract_price_variance: 'Off contract price',
+  contract_price_unavailable: 'Contract price unclear',
 }
 
 const RECEIVING_TYPES: DiscrepancyFlagType[] = ['short_receipt', 'invoice_exceeds_received']
 // The two types POLICY v1 #4 and #6 send to review rather than dispute.
-const NEEDS_REVIEW_TYPES: DiscrepancyFlagType[] = ['uom_mismatch', 'currency_mismatch']
+const NEEDS_REVIEW_TYPES: DiscrepancyFlagType[] = [
+  'uom_mismatch',
+  'currency_mismatch',
+  // Same family: the documents cannot be compared as they stand, so a human
+  // decides rather than the engine asserting.
+  'contract_price_unavailable',
+]
 
 // What the cards read before the first response lands.
 const EMPTY_COUNTS: DiscrepancyFlagCounts = {
@@ -85,6 +97,8 @@ const EMPTY_COUNTS: DiscrepancyFlagCounts = {
   invoice_exceeds_received: 0,
   uom_mismatch: 0,
   currency_mismatch: 0,
+  contract_price_variance: 0,
+  contract_price_unavailable: 0,
 }
 
 const sumOf = (counts: DiscrepancyFlagCounts, types: DiscrepancyFlagType[]) =>

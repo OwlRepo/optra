@@ -28,6 +28,18 @@ export const discrepancyFlagTypeEnum = pgEnum('discrepancy_flag_type', [
   'invoice_exceeds_received',
   'uom_mismatch',
   'currency_mismatch',
+  // S9. Both are about the AGREED price, never about the invoice — POLICY v1
+  // #5 keeps the approved PO unit price authoritative for PO-vs-invoice, and
+  // `price_mismatch` above keeps exactly the meaning it has always had.
+  //
+  // `contract_price_variance`: the order was placed at a price other than the
+  // one on contract. Our own purchasing control, not an accusation.
+  // `contract_price_unavailable`: a contract exists for this item but the
+  // system will not say whether it was honoured — expired, ambiguous, or
+  // stated in another unit or currency. §7.4 requires that this be an
+  // exception rather than a silent match.
+  'contract_price_variance',
+  'contract_price_unavailable',
 ])
 
 export const discrepancyFlagStatusEnum = pgEnum('discrepancy_flag_status', ['open', 'dismissed'])
