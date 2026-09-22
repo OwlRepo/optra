@@ -27,6 +27,8 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard'
 import { RolesGuard } from '../auth/guards/roles.guard'
 import { WorkspaceMemberGuard } from '../auth/guards/workspace-member.guard'
 import { CatalogDocumentsService } from './catalog-documents.service'
+import { VendorPriceTermsService } from './vendor-price-terms.service'
+import { CreatePriceTermDto } from './dto/create-price-term.dto'
 import { CatalogMatchService } from './catalog-match.service'
 import { CatalogScrapeService } from './catalog-scrape.service'
 import { CatalogMatchDto } from './dto/catalog-match.dto'
@@ -103,6 +105,7 @@ export class CatalogController {
     private readonly documents: CatalogDocumentsService,
     private readonly scrape: CatalogScrapeService,
     private readonly matches: CatalogMatchService,
+    private readonly priceTerms: VendorPriceTermsService,
   ) {}
 
   @Post('vendors')
@@ -116,6 +119,27 @@ export class CatalogController {
   @UseGuards(JwtAuthGuard, WorkspaceMemberGuard)
   listVendors(@Param('workspaceId') workspaceId: string) {
     return this.vendors.list(workspaceId)
+  }
+
+  // S9. POLICY v1 #5 keeps the approved PO price authoritative for the
+  // PO-vs-invoice comparison; these rows answer a different question, so
+  // recording one is a write (owner/admin) and reading them is not.
+  @Post('vendors/:vendorId/price-terms')
+  @UseGuards(JwtAuthGuard, WorkspaceMemberGuard, RolesGuard)
+  @Roles('owner', 'admin')
+  createPriceTerm(
+    @Param('workspaceId') workspaceId: string,
+    @Param('vendorId') vendorId: string,
+    @Body() body: CreatePriceTermDto,
+    @CurrentUser() user: CurrentUserContext,
+  ) {
+    return this.priceTerms.create(workspaceId, vendorId, body, user.userId)
+  }
+
+  @Get('vendors/:vendorId/price-terms')
+  @UseGuards(JwtAuthGuard, WorkspaceMemberGuard)
+  listPriceTerms(@Param('workspaceId') workspaceId: string, @Param('vendorId') vendorId: string) {
+    return this.priceTerms.list(workspaceId, vendorId)
   }
 
   @Post('vendors/:vendorId/catalogs')

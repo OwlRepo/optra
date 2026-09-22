@@ -8,6 +8,7 @@ import { DEMO_USER_ID, DEMO_WORKSPACE_ID } from '../config'
 import { buildChatMessageRows, buildChatSessionRows } from '../data/chat'
 import { buildDocumentRows, seedDocuments } from '../data/documents'
 import { buildEventRows, buildScrapeRunRows } from '../data/events'
+import { buildVendorPriceTermRows } from '../data/price-terms'
 import {
   buildBackgroundRunRows,
   buildFaqDraftRows,
@@ -222,6 +223,58 @@ describe('chat query metrics', () => {
   it('keeps all rows inside the 30-day summary window', () => {
     const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000
     rows.forEach(r => expect(r.createdAt.getTime()).toBeGreaterThan(cutoff))
+  })
+})
+
+describe('vendor price terms (S9)', () => {
+  const terms = buildVendorPriceTermRows()
+
+  // The whole point of the seeded terms: the demo opens on a workspace buying
+  // ON contract. A term that disagreed with its own purchase order would
+  // manufacture an exception out of nothing, which is the defect S6 found in
+  // the seeded discrepancy flags.
+  it('agrees with what the seeded purchase orders actually cost', () => {
+    const poPriceOf = new Map(
+      buildPoLineItemRows().map(line => [`${line.sku}`.toLowerCase(), line.unitPrice as string]),
+    )
+
+    terms
+      .filter(term => term.effectiveTo === null)
+      .forEach(term => {
+        expect(poPriceOf.get(term.skuKey)).toBe(term.unitPrice)
+      })
+  })
+
+  it('leaves exactly one open window per vendor, item, unit and currency', () => {
+    const openKeys = terms
+      .filter(term => term.effectiveTo === null)
+      .map(term => `${term.vendorId}:${term.skuKey}:${term.uom ?? ''}:${term.currency}`)
+
+    expect(new Set(openKeys).size).toBe(openKeys.length)
+  })
+
+  it('closes a superseded window exactly where its replacement begins', () => {
+    const byId = new Map(terms.map(term => [term.id, term]))
+    const replacements = terms.filter(term => term.supersedesId !== null)
+
+    expect(replacements.length).toBeGreaterThan(0)
+    replacements.forEach(term => {
+      const older = byId.get(term.supersedesId!)
+      expect(older).toBeDefined()
+      // Half-open [from, to): no instant covered twice, none left uncovered.
+      expect(older!.effectiveTo?.getTime()).toBe(term.effectiveFrom.getTime())
+      expect(older!.skuKey).toBe(term.skuKey)
+      expect(older!.vendorId).toBe(term.vendorId)
+    })
+  })
+
+  it('starts every window before the oldest seeded purchase order', () => {
+    const oldestPo = Math.min(...buildPurchaseOrderRows().map(po => po.createdAt.getTime()))
+    terms.forEach(term => expect(term.effectiveFrom.getTime()).toBeLessThan(oldestPo))
+  })
+
+  it('states a currency on every term, because a price without one means nothing', () => {
+    terms.forEach(term => expect(term.currency).toMatch(/^[A-Z]{3}$/))
   })
 })
 

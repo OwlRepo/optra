@@ -59,7 +59,10 @@ interface LineSpec {
 }
 
 // Office / facilities purchasing for the demo agency.
-const PO_LINES: LineSpec[][] = [
+// Exported for the S9 price terms, which must agree with what these orders
+// actually cost — a seeded contract price that disagreed with the seeded
+// purchase order would manufacture an exception out of nothing.
+export const PO_LINE_SPECS: LineSpec[][] = [
   [
     { sku: 'DSK-1042', description: 'Sit-stand desk, 160x80, oak', qty: '12', price: '489.00' },
     { sku: 'CHR-2201', description: 'Ergonomic task chair, mesh back', qty: '12', price: '312.50' },
@@ -143,7 +146,7 @@ function lineTotal(qty: string, price: string): string {
 function poLinesFor(pair: number): LineSpec[] {
   const period = periodOf(pair)
   const scale = [1, 0.6, 1.4][period] ?? 1
-  return PO_LINES[templateOf(pair)]!.map(line => ({
+  return PO_LINE_SPECS[templateOf(pair)]!.map(line => ({
     ...line,
     qty: String(Math.max(1, Math.round(Number(line.qty) * scale))),
   }))

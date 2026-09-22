@@ -211,6 +211,13 @@
       "when": 1790100342636,
       "tag": "0029_awesome_green_goblin",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "5",
+      "when": 1790100870530,
+      "tag": "0030_chilly_mastermind",
+      "breakpoints": true
     }
   ]
 }

@@ -100,6 +100,7 @@ async function main(): Promise<void> {
     buildReviewFlagRows,
     buildSavedRefinedMessageRows,
   } = await import('./data/insights')
+  const { buildVendorPriceTermRows } = await import('./data/price-terms')
   const {
     buildComparisonRunGoodsReceiptRows,
     buildComparisonRunRows,
@@ -235,6 +236,10 @@ async function main(): Promise<void> {
     // Still safe ahead of purchase_orders: purchase_orders.vendor_id is
     // ON DELETE set null, so removing a vendor blanks the reference instead of
     // violating it. The rows themselves are deleted a few lines down.
+    // Ahead of vendors on purpose: vendor_price_terms.vendor_id is ON DELETE
+    // cascade, so deleting vendors first would remove these rows silently and
+    // the explicit delete below would look like it had nothing to do.
+    await tx.delete(schema.vendorPriceTerms).where(eq(schema.vendorPriceTerms.workspaceId, DEMO_WORKSPACE_ID))
     await tx.delete(schema.vendors).where(eq(schema.vendors.workspaceId, DEMO_WORKSPACE_ID))
     await tx.delete(schema.discrepancyFlags).where(eq(schema.discrepancyFlags.workspaceId, DEMO_WORKSPACE_ID))
     await tx.delete(schema.comparisonRuns).where(eq(schema.comparisonRuns.workspaceId, DEMO_WORKSPACE_ID))
@@ -317,6 +322,8 @@ async function main(): Promise<void> {
     // that does not exist yet. catalogs moves with it to stay next to its owner.
     await insert('vendors', schema.vendors as never, buildVendorRows())
     await insert('catalogs', schema.catalogs as never, buildCatalogRows())
+    // After vendors, for the same foreign key reason.
+    await insert('vendor_price_terms', schema.vendorPriceTerms as never, buildVendorPriceTermRows())
     await insert('purchase_orders', schema.purchaseOrders as never, buildPurchaseOrderRows())
     await insert('invoices', schema.invoices as never, buildInvoiceRows())
     await insert('po_line_items', schema.poLineItems as never, buildPoLineItemRows())

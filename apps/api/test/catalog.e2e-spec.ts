@@ -269,4 +269,80 @@ describe('Catalog flow (e2e)', () => {
 
     process.env.CATALOG_ENABLED = originalCatalogEnabled
   })
+
+  // S9. Recording an agreed price is a write; reading one is not — the same
+  // split every other procurement and catalog route already makes.
+  it('records a vendor price term as owner, reads it as a member, and refuses both across workspaces', async () => {
+    const owner = await registerAndVerify(app, `${prefix}terms-owner@example.com`, password)
+    const outsider = await registerAndVerify(app, `${prefix}terms-outsider@example.com`, password)
+
+    const ownerMine = await request(app.getHttpServer())
+      .get('/workspaces/me')
+      .set('Authorization', `Bearer ${owner.accessToken}`)
+      .expect(200)
+    const workspaceId = ownerMine.body.items[0].id as string
+
+    const vendorRes = await request(app.getHttpServer())
+      .post(`/workspaces/${workspaceId}/vendors`)
+      .set('Authorization', `Bearer ${owner.accessToken}`)
+      .send({ name: 'Cedar Supply Co' })
+      .expect(201)
+    const vendorId = vendorRes.body.id as string
+
+    const created = await request(app.getHttpServer())
+      .post(`/workspaces/${workspaceId}/vendors/${vendorId}/price-terms`)
+      .set('Authorization', `Bearer ${owner.accessToken}`)
+      .send({
+        sku: 'LAP-9001',
+        uom: 'each',
+        unitPrice: '1250.00',
+        currency: 'usd',
+        effectiveFrom: '2026-01-01T00:00:00.000Z',
+        sourceReference: 'MSA-2026-04 section 3',
+      })
+      .expect(201)
+    expect(created.body.currency).toBe('USD')
+    expect(created.body.skuKey).toBe('lap-9001')
+    expect(created.body.effectiveTo).toBeNull()
+
+    // A second price closes the first rather than sitting beside it.
+    await request(app.getHttpServer())
+      .post(`/workspaces/${workspaceId}/vendors/${vendorId}/price-terms`)
+      .set('Authorization', `Bearer ${owner.accessToken}`)
+      .send({
+        sku: 'LAP-9001',
+        uom: 'each',
+        unitPrice: '1310.00',
+        currency: 'USD',
+        effectiveFrom: '2026-07-01T00:00:00.000Z',
+      })
+      .expect(201)
+
+    const listed = await request(app.getHttpServer())
+      .get(`/workspaces/${workspaceId}/vendors/${vendorId}/price-terms`)
+      .set('Authorization', `Bearer ${owner.accessToken}`)
+      .expect(200)
+    expect(listed.body).toHaveLength(2)
+    expect(listed.body[0].effectiveTo).toBeNull()
+    expect(listed.body[1].effectiveTo).not.toBeNull()
+    expect(listed.body[0].supersedesId).toBe(listed.body[1].id)
+
+    // A malformed price is refused by validation, not by the database.
+    await request(app.getHttpServer())
+      .post(`/workspaces/${workspaceId}/vendors/${vendorId}/price-terms`)
+      .set('Authorization', `Bearer ${owner.accessToken}`)
+      .send({ sku: 'LAP-9001', unitPrice: 'free', currency: 'USD', effectiveFrom: '2026-08-01T00:00:00.000Z' })
+      .expect(400)
+
+    // An outsider is refused by WorkspaceMemberGuard on both verbs.
+    await request(app.getHttpServer())
+      .get(`/workspaces/${workspaceId}/vendors/${vendorId}/price-terms`)
+      .set('Authorization', `Bearer ${outsider.accessToken}`)
+      .expect(403)
+    await request(app.getHttpServer())
+      .post(`/workspaces/${workspaceId}/vendors/${vendorId}/price-terms`)
+      .set('Authorization', `Bearer ${outsider.accessToken}`)
+      .send({ sku: 'X', unitPrice: '1.00', currency: 'USD', effectiveFrom: '2026-01-01T00:00:00.000Z' })
+      .expect(403)
+  })
 })
