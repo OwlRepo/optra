@@ -31,6 +31,17 @@ export const purchaseOrders = pgTable(
     // NOT NULL column with no default would fail on existing rows mid-deploy.
     // A null here means "uploaded before S3b", and every read must allow it.
     vendorId: uuid('vendor_id').references(() => vendors.id, { onDelete: 'set null' }),
+    // S9. When the order was PLACED, as stated by whoever uploaded it —
+    // distinct from `createdAt`, which is when the file reached Optra.
+    // Contract applicability asks which agreed price was live at the moment of
+    // ordering, and without this the only answer available is the upload date,
+    // so a January order uploaded in June would be judged against June's
+    // contract and flagged as a variance that never happened.
+    //
+    // Nullable, and optional at upload: every row written before this migration
+    // has none, and a genuine "I don't know" must stay uploadable. Readers fall
+    // back to `createdAt` and say so.
+    orderedAt: timestamp('ordered_at'),
     storageKey: text('storage_key'),
     sourceKind: varchar('source_kind', { length: 20 }).notNull().default('csv'),
     status: procurementDocStatusEnum('status').notNull().default('pending'),

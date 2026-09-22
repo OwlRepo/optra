@@ -128,6 +128,9 @@ describe('ProcurementDocumentsService', () => {
       'text/csv',
     )
     expect(parse.queueDoc).toHaveBeenCalledWith('purchase_order', result.id)
+    // S9. Not supplied, so the order date is unknown — null, never a stand-in.
+    const [storedWithoutDate] = await db.select().from(purchaseOrders).where(eq(purchaseOrders.id, result.id))
+    expect(storedWithoutDate.orderedAt).toBeNull()
 
     const [row] = await db.select().from(purchaseOrders).where(eq(purchaseOrders.id, result.id))
     expect(row.workspaceId).toBe(workspace.id)
@@ -655,5 +658,27 @@ describe('ProcurementDocumentsService', () => {
       expect(item.invoiceNumber).toBe('INV-44120')
       expect(item.currency).toBe('USD')
     })
+  })
+
+  // S9. Contract applicability asks whether an agreed price was live when the
+  // order was PLACED. Without this the only date available is when the file was
+  // uploaded, so a January order uploaded in June is judged against June's
+  // contract — a variance flag that is simply wrong.
+  it('stores the order date the uploader supplied, distinct from when the file arrived', async () => {
+    const workspace = await seedWorkspace(`${prefix}ordered-at@example.com`, 'Ordered At')
+    const file = {
+      originalname: 'po.csv',
+      mimetype: 'text/csv',
+      buffer: Buffer.from('sku,qty\nA,1'),
+    } as Express.Multer.File
+
+    const header = await poHeader(workspace.id, { orderedAt: '2026-01-14T00:00:00.000Z' } as never)
+    const result = await service.upload(workspace.id, 'purchase_order', file, header)
+
+    const [stored] = await db.select().from(purchaseOrders).where(eq(purchaseOrders.id, result.id))
+    expect(stored.orderedAt?.toISOString()).toBe('2026-01-14T00:00:00.000Z')
+    // The upload timestamp is still recorded separately — one is when we were
+    // told, the other is when it happened.
+    expect(stored.createdAt).not.toBeNull()
   })
 })

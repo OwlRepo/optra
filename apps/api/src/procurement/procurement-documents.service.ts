@@ -23,6 +23,9 @@ export type ProcurementPoHeader = {
   vendorId: string
   poNumber: string
   currency: string
+  // S9. Optional: absent means the uploader did not say, and readers fall back
+  // to when the file arrived rather than inventing a date.
+  orderedAt?: string
 }
 
 export type ProcurementInvoiceHeader = {
@@ -136,6 +139,7 @@ export class ProcurementDocumentsService {
               currency: normalizedCurrency(poHeader.currency),
               vendorId: poHeader.vendorId,
               poNumber: poHeader.poNumber,
+              orderedAt: poHeader.orderedAt ? new Date(poHeader.orderedAt) : null,
             })
             .returning()
           break
@@ -212,6 +216,10 @@ export class ProcurementDocumentsService {
         storageKey: purchaseOrders.storageKey,
         poNumber: purchaseOrders.poNumber,
         currency: purchaseOrders.currency,
+        // S9. Null when the uploader did not state one; the UI shows the upload
+        // date in that case and labels it as such, rather than passing one off
+        // as the other.
+        orderedAt: purchaseOrders.orderedAt,
         vendorId: purchaseOrders.vendorId,
         vendorName: vendors.name,
       })

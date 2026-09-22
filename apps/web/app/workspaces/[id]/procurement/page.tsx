@@ -117,6 +117,7 @@ export default function ProcurementPage({ params }: { params: { id: string } }) 
   const [pendingInvoiceFile, setPendingInvoiceFile] = React.useState<File | null>(null)
   const [poVendorId, setPoVendorId] = React.useState('')
   const [poNumber, setPoNumber] = React.useState('')
+  const [poOrderedAt, setPoOrderedAt] = React.useState('')
   const [poCurrency, setPoCurrency] = React.useState('USD')
   const [invoicePoId, setInvoicePoId] = React.useState('')
   const [invoiceNumber, setInvoiceNumber] = React.useState('')
@@ -244,8 +245,13 @@ export default function ProcurementPage({ params }: { params: { id: string } }) 
         // Uppercased here too, not only on the server: the field accepts free
         // typing and the user should see the value that will actually be stored.
         currency: poCurrency.trim().toUpperCase(),
+        // A date input gives YYYY-MM-DD; the API wants ISO 8601. Sent only when
+        // the user filled it, because absent must stay distinguishable from a
+        // guess.
+        ...(poOrderedAt ? { orderedAt: new Date(`${poOrderedAt}T00:00:00.000Z`).toISOString() } : {}),
       })
       setPendingPoFile(null)
+      setPoOrderedAt('')
       toastRef.current({
         variant: 'success',
         title: 'Purchase order uploaded',
@@ -756,6 +762,25 @@ export default function ProcurementPage({ params }: { params: { id: string } }) 
                 placeholder="USD"
                 onChange={(event) => setPoCurrency(event.target.value.toUpperCase())}
               />
+            </div>
+            {/* S9. Optional, and the only optional field on this form. A
+                contract price has an effective window, so checking the order
+                against it needs the date the order was PLACED — leaving this
+                blank falls back to today, which is right for an order being
+                raised now and wrong for one being backfilled. */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium" htmlFor="po-ordered-at">
+                Order date <span className="text-muted-foreground">(optional)</span>
+              </label>
+              <Input
+                id="po-ordered-at"
+                type="date"
+                value={poOrderedAt}
+                onChange={(event) => setPoOrderedAt(event.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                When the order was placed. Leave blank if you are uploading it the same day.
+              </p>
             </div>
           </div>
         )}

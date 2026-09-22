@@ -18,6 +18,9 @@ export type ProcurementDoc = {
   currency: string | null
   // Purchase orders only.
   poNumber?: string | null
+  // S9. When the order was placed, if the uploader said. Null means they did
+  // not, and the table shows the upload date instead, labelled as such.
+  orderedAt?: string | null
   vendorId?: string | null
   vendorName?: string | null
   // Invoices only.
@@ -34,6 +37,9 @@ export type PurchaseOrderHeader = {
   vendorId: string
   poNumber: string
   currency: string
+  // S9. Optional. Contract applicability asks which agreed price was live when
+  // the order was PLACED, which is not the same as when the file was uploaded.
+  orderedAt?: string
 }
 
 // POLICY v1 #2: the user selects the PO; a number read off the document is

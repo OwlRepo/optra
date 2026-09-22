@@ -1103,6 +1103,54 @@ describe('Procurement flow (e2e)', () => {
       const [row] = await db.select().from(purchaseOrders).where(eq(purchaseOrders.id, upload.body.id))
       expect(row.currency).toBe('USD')
     })
+
+    // S9. The order date is the uploader's, and it is optional — a contract
+    // price has an effective window, and judging a backfilled order against
+    // today's contract would flag a variance that never happened.
+    it('keeps the order date the uploader gave, separately from when the file arrived', async () => {
+      const owner = await seedOwnerWithWorkspace(app, `${prefix}s9-ordered@example.com`, 'S9 Ordered')
+      const vendorId = await createVendor(app, owner.workspaceId, owner.accessToken)
+
+      const dated = await request(app.getHttpServer())
+        .post(`/workspaces/${owner.workspaceId}/procurement/purchase-orders`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .field('vendorId', vendorId)
+        .field('poNumber', 'PO-S9-DATED')
+        .field('currency', 'USD')
+        .field('orderedAt', '2026-01-14T00:00:00.000Z')
+        .attach('file', Buffer.from(csv), 'po.csv')
+        .expect(201)
+
+      const listed = await request(app.getHttpServer())
+        .get(`/workspaces/${owner.workspaceId}/procurement/purchase-orders`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .expect(200)
+      const mine = listed.body.find((doc: { id: string }) => doc.id === dated.body.id)
+      expect(new Date(mine.orderedAt).toISOString()).toBe('2026-01-14T00:00:00.000Z')
+
+      // Omitted is null, never a stand-in for the upload date.
+      const undated = await request(app.getHttpServer())
+        .post(`/workspaces/${owner.workspaceId}/procurement/purchase-orders`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .field('vendorId', vendorId)
+        .field('poNumber', 'PO-S9-UNDATED')
+        .field('currency', 'USD')
+        .attach('file', Buffer.from(csv), 'po.csv')
+        .expect(201)
+      const [undatedRow] = await db.select().from(purchaseOrders).where(eq(purchaseOrders.id, undated.body.id))
+      expect(undatedRow.orderedAt).toBeNull()
+
+      // A date that is not a date is refused by validation.
+      await request(app.getHttpServer())
+        .post(`/workspaces/${owner.workspaceId}/procurement/purchase-orders`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .field('vendorId', vendorId)
+        .field('poNumber', 'PO-S9-BAD')
+        .field('currency', 'USD')
+        .field('orderedAt', 'last tuesday')
+        .attach('file', Buffer.from(csv), 'po.csv')
+        .expect(400)
+    })
   })
 
   // Every other test in this file runs with auto-compare OFF, which is why none
