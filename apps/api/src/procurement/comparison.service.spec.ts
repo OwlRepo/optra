@@ -1464,6 +1464,137 @@ describe('ComparisonService', () => {
     })
   })
 
+  // S7. Runs were written from S1 onward and never readable: `?runId=` could
+  // read one run's flags, but nothing in the API told you a run id existed.
+  describe('listRuns (S7)', () => {
+    it('lists a workspace’s runs newest first, in a page', async () => {
+      const { workspace, user } = await seedWorkspace(`${prefix}s7-runs@example.com`, 'S7 Runs')
+      const { po, invoice } = await seedReadyPoAndInvoice(
+        workspace.id,
+        [{ sku: 'A1', quantity: '10', unitPrice: '5.00' }],
+        [{ sku: 'A1', quantity: '8', unitPrice: '5.00' }],
+      )
+      const first = await service.compare(workspace.id, po.id, invoice.id, user.id)
+      const second = await service.compare(workspace.id, po.id, invoice.id, user.id)
+
+      const runs = await service.listRuns(workspace.id, {})
+
+      expect(runs.total).toBe(2)
+      expect(runs.items.map((run) => run.id)).toEqual([second.runId, first.runId])
+      expect(runs.items[0].status).toBe('succeeded')
+      expect(runs.items[0].flagCount).toBe(1)
+    })
+
+    // The reviewer asks "what did the last comparison of THIS pair say?", so
+    // the pair filter is the point of the endpoint, not a convenience.
+    it('filters to one purchase order and invoice pair', async () => {
+      const { workspace, user } = await seedWorkspace(`${prefix}s7-runs-pair@example.com`, 'S7 Runs Pair')
+      const pairA = await seedReadyPoAndInvoice(
+        workspace.id,
+        [{ sku: 'A1', quantity: '10', unitPrice: '5.00' }],
+        [{ sku: 'A1', quantity: '8', unitPrice: '5.00' }],
+      )
+      const pairB = await seedReadyPoAndInvoice(
+        workspace.id,
+        [{ sku: 'B1', quantity: '4', unitPrice: '2.00' }],
+        [{ sku: 'B1', quantity: '4', unitPrice: '3.00' }],
+      )
+      await service.compare(workspace.id, pairA.po.id, pairA.invoice.id, user.id)
+      const onB = await service.compare(workspace.id, pairB.po.id, pairB.invoice.id, user.id)
+
+      const runs = await service.listRuns(workspace.id, {
+        purchaseOrderId: pairB.po.id,
+        invoiceId: pairB.invoice.id,
+      })
+
+      expect(runs.items.map((run) => run.id)).toEqual([onB.runId])
+    })
+
+    // A failed run is the one a reviewer most needs to see. `lastError` is
+    // already client-safe — S0a made sure the engine's own text, which can
+    // quote cell values, is never stored.
+    it('returns a failed run with its client-safe reference', async () => {
+      const { workspace, user } = await seedWorkspace(`${prefix}s7-runs-failed@example.com`, 'S7 Runs Failed')
+      const { po, invoice } = await seedReadyPoAndInvoice(
+        workspace.id,
+        [{ sku: 'A1', quantity: '10', unitPrice: '5.00' }],
+        [{ sku: 'A1', quantity: '8', unitPrice: '5.00' }],
+      )
+      jest
+        .spyOn(DuckDbQueryService.prototype, 'runReadOnlyMultiTableQuery')
+        .mockRejectedValueOnce(new SqlExecutionError('Binder Error: quoting a cell value'))
+      await expect(service.compare(workspace.id, po.id, invoice.id, user.id)).rejects.toThrow()
+
+      const runs = await service.listRuns(workspace.id, { status: 'failed' })
+
+      expect(runs.items).toHaveLength(1)
+      expect(runs.items[0].lastError).toMatch(/^Comparison engine failed\. Reference: [0-9a-f]{8}$/)
+      expect(runs.items[0].lastError).not.toContain('Binder Error')
+    })
+
+    it('names who ran it, and tolerates a run nobody is attached to', async () => {
+      const { workspace, user } = await seedWorkspace(`${prefix}s7-runs-actor@example.com`, 'S7 Runs Actor')
+      const { po, invoice } = await seedReadyPoAndInvoice(
+        workspace.id,
+        [{ sku: 'A1', quantity: '10', unitPrice: '5.00' }],
+        [{ sku: 'A1', quantity: '8', unitPrice: '5.00' }],
+      )
+      await service.compare(workspace.id, po.id, invoice.id, user.id)
+      // `initiatedBy` is nullable and ON DELETE set null, so the join must be
+      // a LEFT join or an orphaned run would vanish from its own history.
+      await service.compare(workspace.id, po.id, invoice.id)
+
+      const runs = await service.listRuns(workspace.id, {})
+
+      expect(runs.items).toHaveLength(2)
+      expect(runs.items[0].initiatedByEmail).toBeNull()
+      expect(runs.items[1].initiatedByEmail).toBe(`${prefix}s7-runs-actor@example.com`)
+    })
+
+    it('never shows another workspace’s runs', async () => {
+      const { workspace: mine } = await seedWorkspace(`${prefix}s7-runs-mine@example.com`, 'S7 Runs Mine')
+      const { workspace: other, user: otherUser } = await seedWorkspace(
+        `${prefix}s7-runs-other@example.com`,
+        'S7 Runs Other',
+      )
+      const { po, invoice } = await seedReadyPoAndInvoice(
+        other.id,
+        [{ sku: 'A1', quantity: '10', unitPrice: '5.00' }],
+        [{ sku: 'A1', quantity: '8', unitPrice: '5.00' }],
+      )
+      await service.compare(other.id, po.id, invoice.id, otherUser.id)
+
+      expect((await service.listRuns(mine.id, {})).items).toHaveLength(0)
+    })
+  })
+
+  // S7. The decision list carried an actor uuid and nothing a human could
+  // read. `users` has only an email, and members already see each other's
+  // emails through the members list, so this exposes nothing new.
+  describe('decision actors (S7)', () => {
+    it('names the actor on each decision, and tolerates a deleted one', async () => {
+      const { workspace, user } = await seedWorkspace(`${prefix}s7-actor@example.com`, 'S7 Actor')
+      const { po, invoice } = await seedReadyPoAndInvoice(
+        workspace.id,
+        [{ sku: 'A1', quantity: '10', unitPrice: '5.00' }],
+        [{ sku: 'A1', quantity: '8', unitPrice: '5.00' }],
+      )
+      const run = await service.compare(workspace.id, po.id, invoice.id, user.id)
+      const flagId = run.flags[0].id
+      await service.recordDecision(workspace.id, flagId, user.id, {
+        outcome: 'approved_exception',
+        note: 'Agreed with the vendor by phone.',
+      })
+
+      const decisions = await service.listDecisions(workspace.id, flagId)
+
+      expect(decisions).toHaveLength(1)
+      expect(decisions[0].actorEmail).toBe(`${prefix}s7-actor@example.com`)
+      expect(decisions[0].actorRole).toBe('owner')
+      expect(decisions[0].note).toBe('Agreed with the vendor by phone.')
+    })
+  })
+
   describe('purchase order link enforcement (S3b)', () => {
     const oneLine = [{ sku: 'A1', quantity: '10', unitPrice: '5.00' }]
 

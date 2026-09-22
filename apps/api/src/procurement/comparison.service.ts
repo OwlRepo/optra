@@ -26,6 +26,7 @@ import {
   poLineItems,
   purchaseOrders,
   resolveOffsetPage,
+  users,
   type DiscrepancyFlag,
   type GoodsReceiptLineItem,
   type InvoiceLineItem,
@@ -767,14 +768,99 @@ export class ComparisonService {
     })
   }
 
+  /**
+   * Oldest first: the history reads as a story, and a later decision correcting
+   * an earlier one only makes sense after it.
+   *
+   * `actorEmail` is joined rather than stored. `actorRole` is the opposite —
+   * it is captured at decision time on purpose, because memberships change and
+   * the record should not. A LEFT join because `actorUserId` is `set null`: a
+   * deleted account must not take its decisions out of the audit trail with it.
+   * `users` carries no display name, and members already see each other's
+   * emails through the members list, so this exposes nothing new.
+   */
   async listDecisions(workspaceId: string, flagId: string) {
     return db
-      .select()
+      .select({
+        id: discrepancyDecisions.id,
+        workspaceId: discrepancyDecisions.workspaceId,
+        discrepancyFlagId: discrepancyDecisions.discrepancyFlagId,
+        comparisonRunId: discrepancyDecisions.comparisonRunId,
+        actorUserId: discrepancyDecisions.actorUserId,
+        actorEmail: users.email,
+        actorRole: discrepancyDecisions.actorRole,
+        outcome: discrepancyDecisions.outcome,
+        note: discrepancyDecisions.note,
+        createdAt: discrepancyDecisions.createdAt,
+      })
       .from(discrepancyDecisions)
+      .leftJoin(users, eq(discrepancyDecisions.actorUserId, users.id))
       .where(
         and(eq(discrepancyDecisions.workspaceId, workspaceId), eq(discrepancyDecisions.discrepancyFlagId, flagId)),
       )
       .orderBy(discrepancyDecisions.createdAt)
+  }
+
+  /**
+   * Comparison runs have been written since S1 and were never readable. A run
+   * id could be used (`listFlags({ runId })`) but never discovered, so "what
+   * did the previous comparison say?" had no answer.
+   *
+   * A failed run is the most useful row here, which is why `lastError` is
+   * returned: S0a made it a client-safe reference with no engine text, so
+   * there is nothing to withhold.
+   */
+  async listRuns(
+    workspaceId: string,
+    filters: {
+      purchaseOrderId?: string
+      invoiceId?: string
+      status?: 'queued' | 'running' | 'succeeded' | 'failed'
+      page?: string
+      pageSize?: string
+    },
+  ) {
+    const conditions = [eq(comparisonRuns.workspaceId, workspaceId)]
+    if (filters.purchaseOrderId) conditions.push(eq(comparisonRuns.purchaseOrderId, filters.purchaseOrderId))
+    if (filters.invoiceId) conditions.push(eq(comparisonRuns.invoiceId, filters.invoiceId))
+    if (filters.status) conditions.push(eq(comparisonRuns.status, filters.status))
+
+    const where = and(...conditions)
+    const { page, pageSize, offset } = resolveOffsetPage(filters.page, filters.pageSize)
+
+    const items = await db
+      .select({
+        id: comparisonRuns.id,
+        purchaseOrderId: comparisonRuns.purchaseOrderId,
+        invoiceId: comparisonRuns.invoiceId,
+        mode: comparisonRuns.mode,
+        strategyVersion: comparisonRuns.strategyVersion,
+        status: comparisonRuns.status,
+        initiatedBy: comparisonRuns.initiatedBy,
+        // LEFT joined: `initiatedBy` is `set null`, and a run whose initiator
+        // was deleted must stay in its own history.
+        initiatedByEmail: users.email,
+        poLineCount: comparisonRuns.poLineCount,
+        invoiceLineCount: comparisonRuns.invoiceLineCount,
+        goodsReceiptLineCount: comparisonRuns.goodsReceiptLineCount,
+        flagCount: comparisonRuns.flagCount,
+        startedAt: comparisonRuns.startedAt,
+        finishedAt: comparisonRuns.finishedAt,
+        lastError: comparisonRuns.lastError,
+        createdAt: comparisonRuns.createdAt,
+      })
+      .from(comparisonRuns)
+      .leftJoin(users, eq(comparisonRuns.initiatedBy, users.id))
+      .where(where)
+      // Same id tiebreak as the flag list, for the same reason: two runs of one
+      // pair can share a timestamp, and an unstable sort breaks OFFSET.
+      .orderBy(desc(comparisonRuns.createdAt), desc(comparisonRuns.id))
+      .limit(pageSize)
+      .offset(offset)
+
+    const [{ value: total }] = await db.select({ value: count() }).from(comparisonRuns).where(where)
+
+    return buildOffsetResult(items, Number(total), page, pageSize)
   }
 
   // The reviewer's role at the moment they decided, captured rather than

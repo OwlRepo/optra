@@ -13,6 +13,9 @@ const listWorkspacesMock = vi.fn()
 const listDiscrepanciesMock = vi.fn()
 const dismissDiscrepancyMock = vi.fn()
 const logoutMock = vi.fn()
+const listDecisionsMock = vi.fn()
+const recordDecisionMock = vi.fn()
+const listRunsMock = vi.fn()
 
 let mockSearchParams = new URLSearchParams()
 
@@ -30,6 +33,10 @@ vi.mock('@/lib/api/workspaces', () => ({
 vi.mock('@/lib/api/procurement', () => ({
   listDiscrepancies: (...args: unknown[]) => listDiscrepanciesMock(...args),
   dismissDiscrepancy: (...args: unknown[]) => dismissDiscrepancyMock(...args),
+  // The review modal reaches for these through the same module.
+  listDiscrepancyDecisions: (...args: unknown[]) => listDecisionsMock(...args),
+  recordDiscrepancyDecision: (...args: unknown[]) => recordDecisionMock(...args),
+  listComparisonRuns: (...args: unknown[]) => listRunsMock(...args),
 }))
 
 vi.mock('@/lib/api/auth', () => ({
@@ -106,6 +113,9 @@ describe('DiscrepanciesPage', () => {
     listDiscrepanciesMock.mockReset()
     dismissDiscrepancyMock.mockReset()
     logoutMock.mockReset()
+    listDecisionsMock.mockReset().mockResolvedValue([])
+    recordDecisionMock.mockReset().mockResolvedValue({})
+    listRunsMock.mockReset().mockResolvedValue({ items: [], page: 1, pageSize: 20, total: 0, totalPages: 0 })
   })
 
   afterEach(() => {
@@ -235,6 +245,46 @@ describe('DiscrepanciesPage', () => {
 
     await waitFor(() => {
       expect(listDiscrepanciesMock).toHaveBeenCalledWith('ws-1', expect.objectContaining({ page: 2 }))
+    })
+  })
+
+  // S7. The decision routes and their client functions shipped in S2 and had
+  // no caller at all until now — a reviewer could only ever dismiss.
+  it('opens a review panel for a row and records a decision against it', async () => {
+    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
+    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+    listDiscrepanciesMock.mockResolvedValue(listOf([makeFlag()]))
+
+    renderPage()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Review discrepancy SKU-100' }))
+
+    expect(await screen.findByText('Record a decision')).toBeDefined()
+    fireEvent.change(screen.getByLabelText('Decision note'), { target: { value: 'Credit agreed.' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Record decision' }))
+
+    await waitFor(() => {
+      expect(recordDecisionMock).toHaveBeenCalledWith('ws-1', 'flag-1', {
+        outcome: 'false_positive',
+        note: 'Credit agreed.',
+      })
+    })
+  })
+
+  it('refetches the current page after a decision rather than trusting its copy', async () => {
+    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
+    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+    listDiscrepanciesMock.mockResolvedValue(listOf([makeFlag()], { total: 40, totalPages: 2 }))
+
+    renderPage()
+    fireEvent.click(await screen.findByRole('button', { name: 'Review discrepancy SKU-100' }))
+    fireEvent.change(await screen.findByLabelText('Decision note'), { target: { value: 'Done.' } })
+
+    const callsBefore = listDiscrepanciesMock.mock.calls.length
+    fireEvent.click(screen.getByRole('button', { name: 'Record decision' }))
+
+    await waitFor(() => {
+      expect(listDiscrepanciesMock.mock.calls.length).toBeGreaterThan(callsBefore)
     })
   })
 

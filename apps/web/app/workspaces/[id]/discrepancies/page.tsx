@@ -36,6 +36,7 @@ import {
 import { WorkspaceNav, workspacePrimaryTabItems } from '@/components/workspace-nav'
 import { MobileTabBar } from '@/components/mobile-tab-bar'
 import { WorkspaceBrandLink } from '@/components/workspace-brand-link'
+import { DiscrepancyReviewModal } from '@/components/procurement/discrepancy-review-modal'
 
 type Workspace = { id: string; name: string }
 type WorkspaceMembership = { id: string; role: 'owner' | 'admin' | 'member' }
@@ -114,6 +115,9 @@ export default function DiscrepanciesPage({ params }: { params: { id: string } }
   // Server-owned: `counts` describes the whole filtered set and `meta` the
   // paging. Neither can be derived from `flags`, which is one page.
   const [counts, setCounts] = React.useState<DiscrepancyFlagCounts>(EMPTY_COUNTS)
+  // The row under review. Null closes the panel; the flag itself is what it
+  // renders, so no second fetch is needed to open it.
+  const [reviewing, setReviewing] = React.useState<DiscrepancyFlag | null>(null)
   const [meta, setMeta] = React.useState({ page: 1, pageSize: 20, total: 0, totalPages: 0 })
 
   const canManage = membership?.role === 'owner' || membership?.role === 'admin'
@@ -305,6 +309,14 @@ export default function DiscrepanciesPage({ params }: { params: { id: string } }
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-2">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            aria-label={`Review discrepancy ${flag.sku ?? flag.id}`}
+                            onClick={() => setReviewing(flag)}
+                          >
+                            Review
+                          </Button>
                           <Button asChild variant="ghost" size="sm">
                             <Link href={catalogMatchesHref(workspaceId, flag)}>Find catalog matches</Link>
                           </Button>
@@ -343,6 +355,15 @@ export default function DiscrepanciesPage({ params }: { params: { id: string } }
           </>
         )}
       </div>
+
+      <DiscrepancyReviewModal
+        open={reviewing !== null}
+        onClose={() => setReviewing(null)}
+        onDecided={() => void loadPage()}
+        workspaceId={workspaceId}
+        canManage={canManage}
+        flag={reviewing}
+      />
     </AppShell>
   )
 }

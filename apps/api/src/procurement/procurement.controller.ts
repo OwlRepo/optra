@@ -29,6 +29,7 @@ import { WorkspaceMemberGuard } from '../auth/guards/workspace-member.guard'
 import { ComparisonService } from './comparison.service'
 import { CompareDocumentsDto } from './dto/compare-documents.dto'
 import { attachmentDisposition } from '../common/http/content-disposition'
+import { ListComparisonRunsQueryDto } from './dto/list-comparison-runs-query.dto'
 import { ListDiscrepanciesQueryDto } from './dto/list-discrepancies-query.dto'
 import { UploadGoodsReceiptDto } from './dto/upload-goods-receipt.dto'
 import { UploadInvoiceDto } from './dto/upload-invoice.dto'
@@ -276,6 +277,16 @@ export class ProcurementController {
   @UseGuards(JwtAuthGuard, WorkspaceMemberGuard)
   listDiscrepancies(@Param('workspaceId') workspaceId: string, @Query() query: ListDiscrepanciesQueryDto) {
     return this.comparison.listFlags(workspaceId, query)
+  }
+
+  /**
+   * Run history (S7). Member-readable like every other procurement read —
+   * seeing what a comparison concluded is not deciding anything.
+   */
+  @Get('comparison-runs')
+  @UseGuards(JwtAuthGuard, WorkspaceMemberGuard)
+  listComparisonRuns(@Param('workspaceId') workspaceId: string, @Query() query: ListComparisonRunsQueryDto) {
+    return this.comparison.listRuns(workspaceId, query)
   }
 
   @Patch('discrepancies/:flagId/dismiss')

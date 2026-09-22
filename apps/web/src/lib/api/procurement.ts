@@ -219,10 +219,59 @@ export type DiscrepancyDecision = {
   discrepancyFlagId: string
   comparisonRunId: string | null
   actorUserId: string | null
+  // Joined from `users`, which carries no display name. Null when the account
+  // was deleted — the decision stays in the trail regardless.
+  actorEmail: string | null
+  // Captured at decision time, not joined: memberships change, the record
+  // should not.
   actorRole: string
   outcome: DiscrepancyDecisionOutcome
   note: string
   createdAt: string
+}
+
+/** One comparison attempt. Append-only evidence — see S1. */
+export type ComparisonRun = {
+  id: string
+  purchaseOrderId: string
+  invoiceId: string
+  mode: 'two_way' | 'three_way'
+  strategyVersion: number
+  status: 'queued' | 'running' | 'succeeded' | 'failed'
+  initiatedBy: string | null
+  initiatedByEmail: string | null
+  poLineCount: number | null
+  invoiceLineCount: number | null
+  goodsReceiptLineCount: number | null
+  flagCount: number | null
+  startedAt: string
+  finishedAt: string | null
+  // Already client-safe: a reference id, never the engine's own text.
+  lastError: string | null
+  createdAt: string
+}
+
+export type ComparisonRunListResult = {
+  items: ComparisonRun[]
+  page: number
+  pageSize: number
+  total: number
+  totalPages: number
+}
+
+/** Run history. Readable by any member; the pair filter is the common case. */
+export function listComparisonRuns(
+  workspaceId: string,
+  opts?: { purchaseOrderId?: string; invoiceId?: string; page?: number; pageSize?: number },
+): Promise<ComparisonRunListResult> {
+  const params = new URLSearchParams()
+  if (opts?.purchaseOrderId) params.set('purchaseOrderId', opts.purchaseOrderId)
+  if (opts?.invoiceId) params.set('invoiceId', opts.invoiceId)
+  if (opts?.page) params.set('page', String(opts.page))
+  if (opts?.pageSize) params.set('pageSize', String(opts.pageSize))
+  const query = params.toString()
+
+  return apiFetch(`/api/workspaces/${workspaceId}/procurement/comparison-runs${query ? `?${query}` : ''}`)
 }
 
 /** Append-only history, oldest first. Readable by any workspace member. */

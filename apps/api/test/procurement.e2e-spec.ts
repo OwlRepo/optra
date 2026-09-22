@@ -130,6 +130,21 @@ async function seedOwnerWithWorkspace(app: INestApplication, email: string, work
   return { user, workspaceId: workspace.id, accessToken }
 }
 
+/**
+ * A real `member` of someone else's workspace.
+ *
+ * Until S7 this file only ever tested owner-vs-**outsider**, so every 403 came
+ * from `WorkspaceMemberGuard` and nothing here proved `RolesGuard` does
+ * anything at all — a member able to dismiss and decide would have passed the
+ * whole suite. Idiom copied from tickets.e2e-spec.ts:141-145.
+ */
+async function seedMemberOfWorkspace(app: INestApplication, workspaceId: string, email: string) {
+  const [user] = await db.insert(users).values({ email, passwordHash: 'x', isVerified: true }).returning()
+  await db.insert(workspaceMembers).values({ workspaceId, userId: user.id, role: 'member' })
+  const accessToken = app.get(JwtService).sign({ sub: user.id, email })
+  return { user, accessToken }
+}
+
 // S3b: POLICY v1 #3 requires the PO's vendor to be one of the workspace's own
 // `vendors` rows, so every PO upload in this file now needs a real vendor first.
 async function createVendor(
@@ -829,6 +844,103 @@ describe('Procurement flow (e2e)', () => {
       expect(flag.sku).toBeNull()
       expect(flag.poLineItemId).toBeNull()
       expect(flag.invoiceLineItemId).toBeNull()
+    })
+  })
+
+  // S7. Run history, and the first test in this file that proves RolesGuard
+  // does anything: every other 403 here comes from WorkspaceMemberGuard.
+  describe('comparison run history (S7)', () => {
+    it('lets a member read run history but not decide, and hides other workspaces', async () => {
+      const owner = await seedOwnerWithWorkspace(app, `${prefix}s7-runs-owner@example.com`, 'S7 Runs Owner')
+      const outsider = await seedOwnerWithWorkspace(app, `${prefix}s7-runs-outsider@example.com`, 'S7 Runs Outsider')
+      const member = await seedMemberOfWorkspace(app, owner.workspaceId, `${prefix}s7-runs-member@example.com`)
+      const vendorId = await createVendor(app, owner.workspaceId, owner.accessToken)
+      const lines = 'sku,description,qty,unit price\nA1,Widget,10,5.00'
+
+      const poUpload = await request(app.getHttpServer())
+        .post(`/workspaces/${owner.workspaceId}/procurement/purchase-orders`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .field('vendorId', vendorId)
+        .field('poNumber', 'PO-S7-1')
+        .field('currency', 'USD')
+        .attach('file', Buffer.from(lines), 'po.csv')
+        .expect(201)
+      await waitForPoDone(poUpload.body.id)
+
+      const invoiceUpload = await request(app.getHttpServer())
+        .post(`/workspaces/${owner.workspaceId}/procurement/invoices`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .field('purchaseOrderId', poUpload.body.id)
+        .field('invoiceNumber', 'INV-S7-1')
+        .field('currency', 'USD')
+        .attach('file', Buffer.from('sku,description,qty,unit price\nA1,Widget,8,5.00'), 'invoice.csv')
+        .expect(201)
+      await waitForInvoiceDone(invoiceUpload.body.id)
+
+      const compareRes = await request(app.getHttpServer())
+        .post(`/workspaces/${owner.workspaceId}/procurement/discrepancies/compare`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .send({ purchaseOrderId: poUpload.body.id, invoiceId: invoiceUpload.body.id })
+        .expect(201)
+
+      // A member can read the history.
+      const runsRes = await request(app.getHttpServer())
+        .get(`/workspaces/${owner.workspaceId}/procurement/comparison-runs`)
+        .set('Authorization', `Bearer ${member.accessToken}`)
+        .expect(200)
+      expect(runsRes.body.items).toHaveLength(1)
+      expect(runsRes.body.items[0].id).toBe(compareRes.body.runId)
+      expect(runsRes.body.items[0].initiatedByEmail).toBe(`${prefix}s7-runs-owner@example.com`)
+      expect(runsRes.body.total).toBe(1)
+
+      // …and filter it to the pair.
+      const pairRes = await request(app.getHttpServer())
+        .get(`/workspaces/${owner.workspaceId}/procurement/comparison-runs`)
+        .query({ purchaseOrderId: poUpload.body.id, invoiceId: invoiceUpload.body.id })
+        .set('Authorization', `Bearer ${member.accessToken}`)
+        .expect(200)
+      expect(pairRes.body.items).toHaveLength(1)
+
+      // But a member cannot decide. THIS is the RolesGuard assertion — the
+      // member passes WorkspaceMemberGuard and is refused on role alone.
+      const flagsRes = await request(app.getHttpServer())
+        .get(`/workspaces/${owner.workspaceId}/procurement/discrepancies`)
+        .set('Authorization', `Bearer ${member.accessToken}`)
+        .expect(200)
+      const flagId = flagsRes.body.items[0].id as string
+
+      await request(app.getHttpServer())
+        .post(`/workspaces/${owner.workspaceId}/procurement/discrepancies/${flagId}/decisions`)
+        .set('Authorization', `Bearer ${member.accessToken}`)
+        .send({ outcome: 'resolved', note: 'A member should not be able to write this.' })
+        .expect(403)
+
+      await request(app.getHttpServer())
+        .patch(`/workspaces/${owner.workspaceId}/procurement/discrepancies/${flagId}/dismiss`)
+        .set('Authorization', `Bearer ${member.accessToken}`)
+        .expect(403)
+
+      // An owner of a different workspace is not a member here at all, so the
+      // 403 comes from WorkspaceMemberGuard. (The 404s elsewhere in this file
+      // are the other shape: the caller's OWN workspace, with ids belonging to
+      // someone else's — that refusal comes from the service.)
+      await request(app.getHttpServer())
+        .get(`/workspaces/${owner.workspaceId}/procurement/comparison-runs`)
+        .set('Authorization', `Bearer ${outsider.accessToken}`)
+        .expect(403)
+
+      // And their own workspace shows none of these runs.
+      const outsiderRuns = await request(app.getHttpServer())
+        .get(`/workspaces/${outsider.workspaceId}/procurement/comparison-runs`)
+        .set('Authorization', `Bearer ${outsider.accessToken}`)
+        .expect(200)
+      expect(outsiderRuns.body.items).toHaveLength(0)
+
+      await request(app.getHttpServer())
+        .get(`/workspaces/${owner.workspaceId}/procurement/comparison-runs`)
+        .query({ purchaseOrderId: 'not-a-uuid' })
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .expect(400)
     })
   })
 
