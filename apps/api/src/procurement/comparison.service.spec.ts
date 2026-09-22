@@ -13,6 +13,8 @@ import {
   poLineItems,
   purchaseOrders,
   users,
+  vendorPriceTerms,
+  vendors,
   workspaceMembers,
   workspaces,
 } from '@repo/db'
@@ -1322,6 +1324,352 @@ describe('ComparisonService', () => {
   })
 
   // §7.4's outcome matrix, as one deliberately designed comparison rather than
+  // POLICY v1 #5 / S9 commit 5. A second, independent question: was the price
+  // we ORDERED at the one we had agreed? Never about the invoice — the
+  // PO-vs-invoice verdict above is untouched.
+  describe('contract price (S9)', () => {
+    async function seedContracted(
+      email: string,
+      name: string,
+      poItems: { sku: string; quantity: string; unitPrice: string; uom?: string }[],
+      invItems: { sku: string; quantity: string; unitPrice: string; uom?: string }[],
+      opts: { poCurrency?: string | null; orderedAt?: Date | null; withVendor?: boolean } = {},
+    ) {
+      const { workspace } = await seedWorkspace(email, name)
+      const { po, invoice } = await seedReadyPoAndInvoice(workspace.id, poItems, invItems, false, {
+        po: opts.poCurrency === undefined ? 'USD' : opts.poCurrency,
+        invoice: opts.poCurrency === undefined ? 'USD' : opts.poCurrency,
+      })
+      const [vendor] = await db
+        .insert(vendors)
+        .values({ workspaceId: workspace.id, name: `${name} Vendor` })
+        .returning()
+      if (opts.withVendor !== false) {
+        await db
+          .update(purchaseOrders)
+          .set({ vendorId: vendor.id, orderedAt: opts.orderedAt ?? null })
+          .where(eq(purchaseOrders.id, po.id))
+      }
+      return { workspace, po, invoice, vendor }
+    }
+
+    async function seedTerm(
+      workspaceId: string,
+      vendorId: string,
+      values: {
+        sku: string
+        unitPrice: string
+        currency?: string
+        uom?: string | null
+        effectiveFrom: Date
+        effectiveTo?: Date | null
+      },
+    ) {
+      const [term] = await db
+        .insert(vendorPriceTerms)
+        .values({
+          workspaceId,
+          vendorId,
+          sku: values.sku,
+          skuKey: values.sku.toLowerCase(),
+          uom: values.uom ?? null,
+          unitPrice: values.unitPrice,
+          currency: values.currency ?? 'USD',
+          effectiveFrom: values.effectiveFrom,
+          effectiveTo: values.effectiveTo ?? null,
+        })
+        .returning()
+      return term
+    }
+
+    const contractFlags = (flags: { flagType: string; reason: string }[]) =>
+      flags.filter((flag) => flag.flagType.startsWith('contract_price_'))
+
+    const LONG_AGO = new Date('2020-01-01T00:00:00.000Z')
+
+    it('says nothing when the order was placed at the agreed price', async () => {
+      const ctx = await seedContracted(
+        `${prefix}s9-onprice@example.com`,
+        'S9 On Price',
+        [{ sku: 'A1', quantity: '10', unitPrice: '5.00' }],
+        [{ sku: 'A1', quantity: '10', unitPrice: '5.00' }],
+      )
+      await seedTerm(ctx.workspace.id, ctx.vendor.id, { sku: 'A1', unitPrice: '5.00', effectiveFrom: LONG_AGO })
+
+      const result = await service.compare(ctx.workspace.id, ctx.po.id, ctx.invoice.id)
+
+      expect(contractFlags(result.flags)).toHaveLength(0)
+    })
+
+    it('flags an order placed above the agreed price, naming the term it used', async () => {
+      const ctx = await seedContracted(
+        `${prefix}s9-variance@example.com`,
+        'S9 Variance',
+        [{ sku: 'A1', quantity: '10', unitPrice: '6.00' }],
+        [{ sku: 'A1', quantity: '10', unitPrice: '6.00' }],
+      )
+      const term = await seedTerm(ctx.workspace.id, ctx.vendor.id, {
+        sku: 'A1',
+        unitPrice: '5.00',
+        effectiveFrom: LONG_AGO,
+      })
+
+      const result = await service.compare(ctx.workspace.id, ctx.po.id, ctx.invoice.id)
+
+      const flags = contractFlags(result.flags)
+      expect(flags).toHaveLength(1)
+      const flag = flags[0] as never as {
+        flagType: string
+        sku: string
+        poUnitPrice: string
+        contractUnitPrice: string
+        contractTermId: string
+        delta: string
+        invoiceLineItemId: string | null
+      }
+      expect(flag.flagType).toBe('contract_price_variance')
+      expect(flag.sku).toBe('A1')
+      expect(Number(flag.poUnitPrice)).toBe(6)
+      expect(Number(flag.contractUnitPrice)).toBe(5)
+      expect(flag.contractTermId).toBe(term.id)
+      // Ordered minus agreed: positive means we paid over the contract.
+      expect(Number(flag.delta)).toBe(1)
+      // No invoice is involved in a contract finding.
+      expect(flag.invoiceLineItemId).toBeNull()
+    })
+
+    // The case an engine-row-driven check would miss entirely: the invoice
+    // matches the order perfectly, so the engine emits no row for this line.
+    it('flags an off-contract order even when the invoice matches it exactly', async () => {
+      const ctx = await seedContracted(
+        `${prefix}s9-silentline@example.com`,
+        'S9 Silent Line',
+        [{ sku: 'A1', quantity: '10', unitPrice: '6.00' }],
+        [{ sku: 'A1', quantity: '10', unitPrice: '6.00' }],
+      )
+      await seedTerm(ctx.workspace.id, ctx.vendor.id, { sku: 'A1', unitPrice: '5.00', effectiveFrom: LONG_AGO })
+
+      const result = await service.compare(ctx.workspace.id, ctx.po.id, ctx.invoice.id)
+
+      // The only engine verdict for this line would have been 'match'.
+      expect(result.flags.filter((f) => !f.flagType.startsWith('contract_price_'))).toHaveLength(0)
+      expect(contractFlags(result.flags)).toHaveLength(1)
+    })
+
+    it('lets a line carry both a billing dispute and a contract finding', async () => {
+      const ctx = await seedContracted(
+        `${prefix}s9-both@example.com`,
+        'S9 Both',
+        [{ sku: 'A1', quantity: '10', unitPrice: '6.00' }],
+        [{ sku: 'A1', quantity: '10', unitPrice: '7.00' }],
+      )
+      await seedTerm(ctx.workspace.id, ctx.vendor.id, { sku: 'A1', unitPrice: '5.00', effectiveFrom: LONG_AGO })
+
+      const result = await service.compare(ctx.workspace.id, ctx.po.id, ctx.invoice.id)
+
+      // Two rows for one line, deliberately: the vendor over-billed AND we
+      // ordered off contract. Different counterparties, different remedies.
+      expect(result.flags).toHaveLength(2)
+      expect(result.counts.price_mismatch).toBe(1)
+      expect(result.counts.contract_price_variance).toBe(1)
+      const total = Object.values(result.counts).reduce((sum, n) => sum + n, 0)
+      expect(total).toBe(result.flags.length)
+    })
+
+    // §7.4: "Contract price expired | price applicability exception, not
+    // silent match."
+    it('refuses to judge an order whose only contract had already expired', async () => {
+      const ctx = await seedContracted(
+        `${prefix}s9-expired@example.com`,
+        'S9 Expired',
+        [{ sku: 'A1', quantity: '10', unitPrice: '6.00' }],
+        [{ sku: 'A1', quantity: '10', unitPrice: '6.00' }],
+        { orderedAt: new Date('2026-08-14T00:00:00.000Z') },
+      )
+      await seedTerm(ctx.workspace.id, ctx.vendor.id, {
+        sku: 'A1',
+        unitPrice: '5.00',
+        effectiveFrom: new Date('2026-01-01T00:00:00.000Z'),
+        effectiveTo: new Date('2026-06-30T00:00:00.000Z'),
+      })
+
+      const result = await service.compare(ctx.workspace.id, ctx.po.id, ctx.invoice.id)
+
+      const flags = contractFlags(result.flags)
+      expect(flags).toHaveLength(1)
+      expect(flags[0].flagType).toBe('contract_price_unavailable')
+      // The reason names the window that did exist, so a reviewer can see
+      // whether the order or the contract is the thing out of date.
+      expect(flags[0].reason).toContain('2026')
+      expect((flags[0] as never as { contractUnitPrice: string | null }).contractUnitPrice).toBeNull()
+    })
+
+    it('stays silent about an item the vendor never agreed a price for', async () => {
+      const ctx = await seedContracted(
+        `${prefix}s9-noterm@example.com`,
+        'S9 No Term',
+        [{ sku: 'A1', quantity: '10', unitPrice: '6.00' }],
+        [{ sku: 'A1', quantity: '10', unitPrice: '6.00' }],
+      )
+      await seedTerm(ctx.workspace.id, ctx.vendor.id, { sku: 'OTHER', unitPrice: '5.00', effectiveFrom: LONG_AGO })
+
+      const result = await service.compare(ctx.workspace.id, ctx.po.id, ctx.invoice.id)
+
+      expect(contractFlags(result.flags)).toHaveLength(0)
+    })
+
+    it('will not choose between two contracts that both cover the order', async () => {
+      const ctx = await seedContracted(
+        `${prefix}s9-ambiguous@example.com`,
+        'S9 Ambiguous',
+        [{ sku: 'A1', quantity: '10', unitPrice: '6.00' }],
+        [{ sku: 'A1', quantity: '10', unitPrice: '6.00' }],
+      )
+      await seedTerm(ctx.workspace.id, ctx.vendor.id, { sku: 'A1', unitPrice: '5.00', effectiveFrom: LONG_AGO })
+      await seedTerm(ctx.workspace.id, ctx.vendor.id, { sku: 'A1', unitPrice: '7.00', effectiveFrom: LONG_AGO })
+
+      const result = await service.compare(ctx.workspace.id, ctx.po.id, ctx.invoice.id)
+
+      const flags = contractFlags(result.flags)
+      expect(flags).toHaveLength(1)
+      expect(flags[0].flagType).toBe('contract_price_unavailable')
+      // Neither price was picked — not the cheaper, not the newer.
+      expect((flags[0] as never as { contractUnitPrice: string | null }).contractUnitPrice).toBeNull()
+    })
+
+    it('will not compare an agreed price stated in another currency', async () => {
+      const ctx = await seedContracted(
+        `${prefix}s9-contract-currency@example.com`,
+        'S9 Contract Currency',
+        [{ sku: 'A1', quantity: '10', unitPrice: '6.00' }],
+        [{ sku: 'A1', quantity: '10', unitPrice: '6.00' }],
+      )
+      await seedTerm(ctx.workspace.id, ctx.vendor.id, {
+        sku: 'A1',
+        unitPrice: '5.00',
+        currency: 'EUR',
+        effectiveFrom: LONG_AGO,
+      })
+
+      const result = await service.compare(ctx.workspace.id, ctx.po.id, ctx.invoice.id)
+
+      const flags = contractFlags(result.flags)
+      expect(flags).toHaveLength(1)
+      expect(flags[0].flagType).toBe('contract_price_unavailable')
+      expect(flags[0].reason).toContain('EUR')
+    })
+
+    // POLICY v1 #4: units are captured, never converted. A price per case and
+    // a price per each are not the same number.
+    it('will not compare an agreed price stated per a different unit', async () => {
+      const ctx = await seedContracted(
+        `${prefix}s9-contract-uom@example.com`,
+        'S9 Contract Uom',
+        [{ sku: 'A1', quantity: '10', unitPrice: '6.00', uom: 'each' }],
+        [{ sku: 'A1', quantity: '10', unitPrice: '6.00', uom: 'each' }],
+      )
+      await seedTerm(ctx.workspace.id, ctx.vendor.id, {
+        sku: 'A1',
+        unitPrice: '60.00',
+        uom: 'case',
+        effectiveFrom: LONG_AGO,
+      })
+
+      const result = await service.compare(ctx.workspace.id, ctx.po.id, ctx.invoice.id)
+
+      const flags = contractFlags(result.flags)
+      expect(flags).toHaveLength(1)
+      expect(flags[0].flagType).toBe('contract_price_unavailable')
+    })
+
+    it('applies a term that states no unit, the same way an unstated unit is not a mismatch', async () => {
+      const ctx = await seedContracted(
+        `${prefix}s9-uomnull@example.com`,
+        'S9 Contract Uom Null',
+        [{ sku: 'A1', quantity: '10', unitPrice: '6.00', uom: 'each' }],
+        [{ sku: 'A1', quantity: '10', unitPrice: '6.00', uom: 'each' }],
+      )
+      await seedTerm(ctx.workspace.id, ctx.vendor.id, { sku: 'A1', unitPrice: '5.00', effectiveFrom: LONG_AGO })
+
+      const result = await service.compare(ctx.workspace.id, ctx.po.id, ctx.invoice.id)
+
+      const flags = contractFlags(result.flags)
+      expect(flags).toHaveLength(1)
+      expect(flags[0].flagType).toBe('contract_price_variance')
+    })
+
+    it('says nothing at all about a purchase order with no vendor', async () => {
+      const ctx = await seedContracted(
+        `${prefix}s9-novendor@example.com`,
+        'S9 No Vendor',
+        [{ sku: 'A1', quantity: '10', unitPrice: '6.00' }],
+        [{ sku: 'A1', quantity: '10', unitPrice: '6.00' }],
+        { withVendor: false },
+      )
+      await seedTerm(ctx.workspace.id, ctx.vendor.id, { sku: 'A1', unitPrice: '5.00', effectiveFrom: LONG_AGO })
+
+      const result = await service.compare(ctx.workspace.id, ctx.po.id, ctx.invoice.id)
+
+      expect(contractFlags(result.flags)).toHaveLength(0)
+      const [run] = await db.select().from(comparisonRuns).where(eq(comparisonRuns.id, result.runId))
+      // Null, not zero: zero would claim we looked and found none.
+      expect(run.contractTermCount).toBeNull()
+    })
+
+    it('records how many agreed prices the run had to judge against', async () => {
+      const ctx = await seedContracted(
+        `${prefix}s9-count@example.com`,
+        'S9 Count',
+        [
+          { sku: 'A1', quantity: '10', unitPrice: '6.00' },
+          { sku: 'B2', quantity: '4', unitPrice: '3.00' },
+        ],
+        [
+          { sku: 'A1', quantity: '10', unitPrice: '6.00' },
+          { sku: 'B2', quantity: '4', unitPrice: '3.00' },
+        ],
+      )
+      await seedTerm(ctx.workspace.id, ctx.vendor.id, { sku: 'A1', unitPrice: '5.00', effectiveFrom: LONG_AGO })
+      await seedTerm(ctx.workspace.id, ctx.vendor.id, { sku: 'B2', unitPrice: '3.00', effectiveFrom: LONG_AGO })
+
+      const result = await service.compare(ctx.workspace.id, ctx.po.id, ctx.invoice.id)
+
+      const [run] = await db.select().from(comparisonRuns).where(eq(comparisonRuns.id, result.runId))
+      expect(run.contractTermCount).toBe(2)
+      expect(run.strategyVersion).toBe(COMPARISON_STRATEGY_VERSION)
+      expect(COMPARISON_STRATEGY_VERSION).toBe(3)
+    })
+
+    // The whole reason commit 4 exists: applicability is asked of the date the
+    // order was PLACED, not the date the file arrived.
+    it('judges the order against the contract live when it was placed, not when it was uploaded', async () => {
+      const ctx = await seedContracted(
+        `${prefix}s9-ordered@example.com`,
+        'S9 Ordered At',
+        [{ sku: 'A1', quantity: '10', unitPrice: '5.00' }],
+        [{ sku: 'A1', quantity: '10', unitPrice: '5.00' }],
+        { orderedAt: new Date('2026-02-01T00:00:00.000Z') },
+      )
+      // What was agreed in February — and what the order was placed at.
+      await seedTerm(ctx.workspace.id, ctx.vendor.id, {
+        sku: 'A1',
+        unitPrice: '5.00',
+        effectiveFrom: new Date('2026-01-01T00:00:00.000Z'),
+        effectiveTo: new Date('2026-06-01T00:00:00.000Z'),
+      })
+      // What is agreed now, and would have flagged a variance that never was.
+      await seedTerm(ctx.workspace.id, ctx.vendor.id, {
+        sku: 'A1',
+        unitPrice: '9.00',
+        effectiveFrom: new Date('2026-06-01T00:00:00.000Z'),
+      })
+
+      const result = await service.compare(ctx.workspace.id, ctx.po.id, ctx.invoice.id)
+
+      expect(contractFlags(result.flags)).toHaveLength(0)
+    })
+  })
+
   // POLICY v1 #5 / S9 commit 1. The CASE ladder returns its first match, so a
   // line whose quantity AND unit price both differ is labelled by the quantity
   // and the price difference was recorded nowhere. The label still belongs to
@@ -1478,8 +1826,8 @@ describe('ComparisonService', () => {
       const result = await service.compare(workspace.id, po.id, invoice.id)
 
       const [run] = await db.select().from(comparisonRuns).where(eq(comparisonRuns.id, result.runId))
+      // The literal is pinned once, in the contract block that last moved it.
       expect(run.strategyVersion).toBe(COMPARISON_STRATEGY_VERSION)
-      expect(COMPARISON_STRATEGY_VERSION).toBe(2)
     })
   })
 

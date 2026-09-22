@@ -34,6 +34,8 @@ function makeFlag(overrides: Record<string, unknown> = {}) {
     delta: '-3',
     poUnitPrice: null,
     invoiceUnitPrice: null,
+    contractUnitPrice: null,
+    contractTermId: null,
     reason: 'Three of ten arrived.',
     status: 'open',
     dismissedAt: null,

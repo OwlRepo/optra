@@ -6,6 +6,7 @@ import { invoices } from './invoices'
 import { poLineItems } from './poLineItems'
 import { purchaseOrders } from './purchaseOrders'
 import { users } from './users'
+import { vendorPriceTerms } from './vendorPriceTerms'
 import { workspaces } from './workspaces'
 
 // The four original values compare a purchase order against an invoice. S6 adds
@@ -102,6 +103,22 @@ export const discrepancyFlags = pgTable(
     // — never a price the system chose.
     poUnitPrice: numeric('po_unit_price'),
     invoiceUnitPrice: numeric('invoice_unit_price'),
+    // S9. The agreed price this line was judged against, and which term said
+    // so. Only the two `contract_price_*` types fill them.
+    //
+    // Their own columns rather than a reuse of `invoice_value`: no invoice is
+    // involved in a contract finding, and a column named for one holding a
+    // contract price would be a lie a later reader has to disprove. The three
+    // `*_value` columns already shift meaning by flag type (units on a UOM
+    // row, currency codes on a currency row) and that is exactly as far as
+    // that trick should be pushed.
+    //
+    // `contract_term_id` is `set null` for the same reason the line-item
+    // references are: a term is never deleted, but if one ever were, the flag
+    // must degrade to "we judged this against a contract" rather than vanish.
+    // The denormalized price above is what keeps the evidence readable.
+    contractUnitPrice: numeric('contract_unit_price'),
+    contractTermId: uuid('contract_term_id').references(() => vendorPriceTerms.id, { onDelete: 'set null' }),
     delta: numeric('delta'),
     reason: text('reason').notNull(),
     status: discrepancyFlagStatusEnum('status').notNull().default('open'),

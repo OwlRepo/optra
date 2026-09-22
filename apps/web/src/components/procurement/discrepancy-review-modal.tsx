@@ -143,6 +143,16 @@ export function DiscrepancyReviewModal({
               </span>
             </div>
           ) : null}
+          {/* S9. The agreed price, when the finding is about one. Shown beside
+              what was ordered, because the pair is the whole finding. */}
+          {flag.contractUnitPrice !== null ? (
+            <div className="text-sm">
+              <span className="text-muted-foreground">Agreed price</span>{' '}
+              <span className="tabular-nums">
+                {flag.contractUnitPrice} · ordered at {flag.poUnitPrice ?? '—'}
+              </span>
+            </div>
+          ) : null}
           <p className="text-sm">{flag.reason}</p>
         </section>
 

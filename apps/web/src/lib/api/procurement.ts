@@ -98,6 +98,12 @@ export type DiscrepancyFlag = {
   // on `price_mismatch`. Null means the side stated no single price.
   poUnitPrice: string | null
   invoiceUnitPrice: string | null
+  // S9. Only the two `contract_price_*` types carry these: the agreed price
+  // this line was judged against, and which term said so. Null on an
+  // unavailable finding, because the point of that type is that the system
+  // will not name a price.
+  contractUnitPrice: string | null
+  contractTermId: string | null
   // Null whenever no difference can honestly be computed — both needs-review
   // types, by POLICY v1 #4.
   delta: string | null

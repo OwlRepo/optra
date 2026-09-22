@@ -25,6 +25,7 @@ import {
   invoices,
   poLineItems,
   purchaseOrders,
+  vendorPriceTerms,
   resolveOffsetPage,
   users,
   type DiscrepancyFlag,
@@ -217,6 +218,29 @@ type FlagType =
   | 'invoice_exceeds_received'
   | 'uom_mismatch'
 
+/**
+ * S9. The shape a contract finding inserts. Its own type because these rows
+ * are built outside the engine, so nothing about `ComparisonRow` constrains
+ * them, and because `purchaseOrderId`/`invoiceId` are attached at insert time.
+ */
+type ContractFlagValues = {
+  workspaceId: string
+  poLineItemId: string | null
+  invoiceLineItemId: null
+  goodsReceiptLineItemId: null
+  sku: string
+  flagType: 'contract_price_variance' | 'contract_price_unavailable'
+  poValue: string | null
+  receivedValue: null
+  invoiceValue: null
+  poUnitPrice: string | null
+  invoiceUnitPrice: null
+  contractUnitPrice: string | null
+  contractTermId: string | null
+  delta: string | null
+  reason: string
+}
+
 interface ComparisonRow {
   po_line_item_id: string | null
   invoice_line_item_id: string | null
@@ -332,8 +356,12 @@ function serializeForCsv(item: LineItemForCsv) {
  * Bumped to 2 by S9 commit 1: flags now carry the unit prices that the branch
  * order used to discard, so a run written before this produced a strictly
  * poorer row for the same inputs.
+ *
+ * Bumped to 3 by S9 commit 5: a run now also checks the order against the
+ * vendor's agreed price, so an earlier run genuinely did not ask a question
+ * this one asks.
  */
-export const COMPARISON_STRATEGY_VERSION = 2
+export const COMPARISON_STRATEGY_VERSION = 3
 
 @Injectable()
 export class ComparisonService {
@@ -408,6 +436,13 @@ export class ComparisonService {
           )
       : []
 
+    // S9. Computed before the run row so its count can be written with it.
+    // Runs over the PURCHASE ORDER's own lines, not the engine's result rows:
+    // COMPARISON_SQL ends `WHERE flag_type <> 'match'`, so a line the invoice
+    // matches perfectly produces no row at all — and that is exactly the case
+    // where "we ordered off contract" still matters.
+    const contract = await this.contractPriceFlags(workspaceId, po, poItems)
+
     // Three-way only when there is receiving evidence to compare against.
     // POLICY v1 #14: with no linked GRN the run stays two_way, and §7.4 says a
     // missing receiving document must be "clearly labeled; no false three-way
@@ -429,6 +464,7 @@ export class ComparisonService {
         poLineCount: poItems.length,
         invoiceLineCount: invItems.length,
         goodsReceiptLineCount: mode === 'three_way' ? grnItems.length : null,
+        contractTermCount: contract.termCount,
       })
       .returning()
 
@@ -504,6 +540,7 @@ export class ComparisonService {
         // cannot be read at face value.
         const flagValues = [
           ...(currencyFlag ? [currencyFlag] : []),
+          ...contract.flags.map((flag) => ({ ...flag, purchaseOrderId: po.id, invoiceId: invoice.id })),
           ...rows.map((row) => this.toFlagValues(workspaceId, po.id, invoice.id, row, lines)),
         ]
 
@@ -1088,6 +1125,175 @@ export class ComparisonService {
         `Currency mismatch: the purchase order is in ${poCurrency} but the invoice is in ${invoiceCurrency}. ` +
         'Amounts are not comparable and no conversion is applied, so this needs review',
     }
+  }
+
+  /**
+   * Was the order placed at the price we had agreed?
+   *
+   * A second, independent question from the one the engine answers. POLICY v1
+   * #5 keeps the approved PO unit price authoritative for PO-vs-invoice, so
+   * nothing here changes what `price_mismatch` means; a disagreement with the
+   * contract is our own purchasing control finding, and a line can carry both.
+   *
+   * In TypeScript rather than the SQL ladder, and not by preference. A `CASE`
+   * returns its first match, so ranking this above `quantity_mismatch` would
+   * relabel lines that have a quantity problem — re-creating the very defect
+   * commit 1 fixed, one branch higher — while ranking it below `price_mismatch`
+   * would hide it on every line that has any other problem. An independent
+   * finding cannot live in a structure that picks exactly one. The precedent is
+   * `currencyMismatchFlag`, decided outside the engine for the same reason.
+   *
+   * Silence is the default. A vendor with no agreed price for an item is
+   * ordinary, and flagging every uncontracted line would drown the queue.
+   */
+  private async contractPriceFlags(
+    workspaceId: string,
+    po: { id: string; vendorId: string | null; currency: string | null; orderedAt: Date | null; createdAt: Date },
+    poItems: PoLineItem[],
+  ) {
+    const empty = { flags: [] as ContractFlagValues[], termCount: null as number | null }
+    if (!po.vendorId) return empty
+
+    // SKU-keyed lines only. The engine falls back to `desc::<lower>`, but a
+    // contract keyed by free-text description is not evidence anybody should
+    // act on, so those lines are never contract-checked.
+    const groups = new Map<string, { sku: string; lineIds: string[]; prices: Set<number>; uoms: Set<string> }>()
+    for (const item of poItems) {
+      const key = item.sku?.trim().toLowerCase()
+      if (!key) continue
+      const group = groups.get(key) ?? { sku: item.sku!.trim(), lineIds: [], prices: new Set(), uoms: new Set() }
+      group.lineIds.push(item.id)
+      const price = item.unitPrice === null ? null : Number(item.unitPrice)
+      if (price !== null && Number.isFinite(price)) group.prices.add(price)
+      const uom = normalizeUom(item.uom)
+      if (uom) group.uoms.add(uom)
+      groups.set(key, group)
+    }
+    if (groups.size === 0) return empty
+
+    const terms = await db
+      .select()
+      .from(vendorPriceTerms)
+      .where(
+        and(
+          eq(vendorPriceTerms.workspaceId, workspaceId),
+          eq(vendorPriceTerms.vendorId, po.vendorId),
+          inArray(vendorPriceTerms.skuKey, [...groups.keys()]),
+        ),
+      )
+    if (terms.length === 0) return empty
+
+    // The moment the order was PLACED. `ordered_at` when the uploader said so,
+    // otherwise when the file reached Optra — and the reason text says which,
+    // because judging a backfilled order against today's contract produces a
+    // variance that never happened.
+    const at = po.orderedAt ?? po.createdAt
+    const dated = po.orderedAt
+      ? `ordered ${at.toISOString().slice(0, 10)}`
+      : `dated ${at.toISOString().slice(0, 10)}, the day this order was recorded in Optra`
+    const poCurrency = po.currency?.trim().toUpperCase() ?? null
+
+    const flags: ContractFlagValues[] = []
+    for (const [key, group] of groups) {
+      const forSku = terms.filter((term) => term.skuKey === key)
+      if (forSku.length === 0) continue
+
+      const base = {
+        workspaceId,
+        poLineItemId: group.lineIds.length === 1 ? group.lineIds[0] : null,
+        invoiceLineItemId: null,
+        goodsReceiptLineItemId: null,
+        sku: group.sku,
+        poValue: null as string | null,
+        receivedValue: null,
+        invoiceValue: null,
+        poUnitPrice: null as string | null,
+        invoiceUnitPrice: null,
+        contractUnitPrice: null as string | null,
+        contractTermId: null as string | null,
+        delta: null as string | null,
+      }
+      const orderedPrice = group.prices.size === 1 ? [...group.prices][0] : null
+      const ordered = { ...base, poValue: this.numToStr(orderedPrice), poUnitPrice: this.numToStr(orderedPrice) }
+      const unavailable = (reason: string) => {
+        flags.push({ ...ordered, flagType: 'contract_price_unavailable' as const, reason })
+      }
+
+      // Half-open [from, to): the strict upper bound is what leaves exactly one
+      // live term at the instant one supersedes another.
+      const live = forSku.filter(
+        (term) => term.effectiveFrom <= at && (term.effectiveTo === null || term.effectiveTo > at),
+      )
+
+      if (live.length === 0) {
+        const windows = forSku
+          .map(
+            (term) =>
+              `${term.effectiveFrom.toISOString().slice(0, 10)} to ${term.effectiveTo ? term.effectiveTo.toISOString().slice(0, 10) : 'open'}`,
+          )
+          .join(', ')
+        unavailable(
+          `No agreed price covers this order for ${group.sku}: the contract ran ${windows}, and this order is ${dated}`,
+        )
+        continue
+      }
+      if (live.length > 1) {
+        // Never the cheapest, never the newest. Choosing here turns a guess
+        // into an accusation against our own buyer.
+        unavailable(
+          `${live.length} agreed prices cover this order for ${group.sku} (${dated}); the system will not choose between them`,
+        )
+        continue
+      }
+
+      const term = live[0]
+      if (!poCurrency || term.currency !== poCurrency) {
+        unavailable(
+          `The agreed price for ${group.sku} is in ${term.currency} but the purchase order is in ${poCurrency ?? 'no stated currency'}. No conversion is applied, so this needs review`,
+        )
+        continue
+      }
+
+      // Both sides must have said something to disagree — the same symmetry
+      // S6 used for units, and the reason an unstated unit is not a mismatch.
+      const termUom = normalizeUom(term.uom)
+      const orderUom = group.uoms.size === 1 ? [...group.uoms][0] : null
+      if (group.uoms.size > 1) {
+        unavailable(
+          `The purchase order lists more than one unit for ${group.sku}, so there is no single price to compare against the contract`,
+        )
+        continue
+      }
+      if (termUom && orderUom && termUom !== orderUom) {
+        unavailable(
+          `The agreed price for ${group.sku} is per ${term.uom} but the order is per ${orderUom}. Units are captured, never converted, so no comparison is made`,
+        )
+        continue
+      }
+
+      if (orderedPrice === null) {
+        unavailable(
+          `The purchase order states more than one unit price for ${group.sku}, so there is no single price to compare against the contract`,
+        )
+        continue
+      }
+
+      const agreed = Number(term.unitPrice)
+      if (orderedPrice === agreed) continue
+
+      flags.push({
+        ...ordered,
+        flagType: 'contract_price_variance' as const,
+        contractUnitPrice: term.unitPrice,
+        contractTermId: term.id,
+        // Ordered minus agreed, so positive always means we ordered above the
+        // contract — the same reading direction as every other delta.
+        delta: this.numToStr(this.diff(orderedPrice, agreed)),
+        reason: `${group.sku} was ordered at ${orderedPrice} but the agreed price is ${agreed} (${dated}${term.sourceReference ? `, ${term.sourceReference}` : ''})`,
+      })
+    }
+
+    return { flags, termCount: terms.length }
   }
 
   // A side's unit price, or null when its duplicate lines disagree.

@@ -53,6 +53,14 @@ export const comparisonRuns = pgTable(
     // summed. Which receipts those were lives in comparison_run_goods_receipts.
     goodsReceiptLineCount: integer('goods_receipt_line_count'),
     flagCount: integer('flag_count'),
+    // S9. How many agreed prices this run had to judge against. Null when the
+    // purchase order has no vendor, or the vendor has no terms for any of its
+    // items — which is not the same as zero, and zero is not the same as "we
+    // did not look". Deliberately a count rather than a join table: terms are
+    // workspace rows, not documents, so POLICY v1 #9's retention guard has
+    // nothing to protect here, and each flag already names the exact term it
+    // used.
+    contractTermCount: integer('contract_term_count'),
     startedAt: timestamp('started_at').defaultNow().notNull(),
     finishedAt: timestamp('finished_at'),
     lastError: text('last_error'),
