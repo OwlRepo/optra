@@ -20,6 +20,7 @@ import { ComparisonService } from './comparison.service'
 import { ProcurementCompareProcessor } from './procurement-compare.processor'
 import { ProcurementCompareService } from './procurement-compare.service'
 import { DuckDbQueryService, SqlExecutionError } from '../structured-query/duckdb-query.service'
+import { EventsService } from '../events/events.service'
 
 async function cleanupFixtures(prefix: string) {
   const testUsers = await db.select({ id: users.id }).from(users).where(like(users.email, `${prefix}%`))
@@ -47,11 +48,17 @@ async function cleanupFixtures(prefix: string) {
 
 describe('ProcurementCompareProcessor', () => {
   let processor: ProcurementCompareProcessor
+  let events: { record: jest.Mock }
   const prefix = `procurement-compare-processor-spec-${Date.now()}-`
 
   beforeEach(() => {
     const compareService = new ProcurementCompareService({ add: jest.fn(), on: jest.fn() } as never)
-    processor = new ProcurementCompareProcessor(new ComparisonService(new DuckDbQueryService()), compareService)
+    events = { record: jest.fn().mockResolvedValue(undefined) }
+    processor = new ProcurementCompareProcessor(
+      new ComparisonService(new DuckDbQueryService()),
+      compareService,
+      events as unknown as EventsService,
+    )
   })
 
   afterAll(async () => {
@@ -183,6 +190,7 @@ describe('ProcurementCompareProcessor', () => {
       const failingProcessor = new ProcurementCompareProcessor(
         new ComparisonService(failing),
         new ProcurementCompareService({ add: jest.fn(), on: jest.fn() } as never),
+        events as unknown as EventsService,
       )
 
       await expect(failingProcessor.handlePair(pairJob(workspace.id, po.id, invoice.id))).rejects.toThrow()
@@ -192,6 +200,88 @@ describe('ProcurementCompareProcessor', () => {
       const runs = await runsFor(po.id)
       expect(runs).toHaveLength(1)
       expect(runs[0].status).toBe('failed')
+    })
+  })
+
+  // Only automatic runs raise events. Someone who pressed Compare themselves
+  // is already looking at the result.
+  describe('workspace events (S8)', () => {
+    it('announces a run that found something, against the run itself', async () => {
+      const { workspace, po, invoice } = await seedPair(`${prefix}evt-flagged@example.com`, 'Event Flagged')
+
+      await processor.handlePair(pairJob(workspace.id, po.id, invoice.id))
+
+      const [run] = await runsFor(po.id)
+      expect(run.flagCount).toBeGreaterThan(0)
+      expect(events.record).toHaveBeenCalledTimes(1)
+      const [workspaceId, type, entityId, title, detail] = events.record.mock.calls[0]
+      expect(workspaceId).toBe(workspace.id)
+      expect(type).toBe('comparison_flagged')
+      // The run, not the purchase order — the same choice `scrape_completed`
+      // makes, and the row that holds the evidence.
+      expect(entityId).toBe(run.id)
+      expect(typeof title).toBe('string')
+      expect(detail).toContain('1')
+    })
+
+    // unreadCount has no per-type filter and markSeen is one global watermark,
+    // so an event for a clean run would climb the Overview badge with nothing
+    // behind it to act on.
+    it('says nothing when an automatic run finds nothing', async () => {
+      const { workspace, po, invoice } = await seedPair(`${prefix}evt-clean@example.com`, 'Event Clean')
+      // Make the two sides agree, so the run succeeds with zero flags.
+      await db.update(invoiceLineItems).set({ quantity: '10' }).where(eq(invoiceLineItems.invoiceId, invoice.id))
+
+      await processor.handlePair(pairJob(workspace.id, po.id, invoice.id))
+
+      const [run] = await runsFor(po.id)
+      expect(run.status).toBe('succeeded')
+      expect(run.flagCount).toBe(0)
+      expect(events.record).not.toHaveBeenCalled()
+    })
+
+    it('announces a run that failed, against the failed run', async () => {
+      const { workspace, po, invoice } = await seedPair(`${prefix}evt-failed@example.com`, 'Event Failed')
+      const failing = {
+        runReadOnlyMultiTableQuery: jest.fn().mockRejectedValue(new SqlExecutionError('boom')),
+      } as unknown as DuckDbQueryService
+      const failingProcessor = new ProcurementCompareProcessor(
+        new ComparisonService(failing),
+        new ProcurementCompareService({ add: jest.fn(), on: jest.fn() } as never),
+        events as unknown as EventsService,
+      )
+
+      await expect(failingProcessor.handlePair(pairJob(workspace.id, po.id, invoice.id))).rejects.toThrow()
+
+      const [run] = await runsFor(po.id)
+      expect(run.status).toBe('failed')
+      expect(events.record).toHaveBeenCalledTimes(1)
+      const [, type, entityId] = events.record.mock.calls[0]
+      expect(type).toBe('comparison_failed')
+      expect(entityId).toBe(run.id)
+    })
+
+    // Same discipline as every existing EventsService caller: the terminal
+    // state is already written, so a feed that refuses an entry must not undo
+    // a comparison that really happened.
+    it('keeps the run when the event cannot be written', async () => {
+      const { workspace, po, invoice } = await seedPair(`${prefix}evt-throws@example.com`, 'Event Throws')
+      events.record.mockRejectedValue(new Error('events table is unreachable'))
+
+      await expect(processor.handlePair(pairJob(workspace.id, po.id, invoice.id))).resolves.toBeUndefined()
+
+      const [run] = await runsFor(po.id)
+      expect(run.status).toBe('succeeded')
+    })
+
+    it('says nothing about a document that was deleted before the job ran', async () => {
+      const { workspace, po } = await seedPair(`${prefix}evt-missing@example.com`, 'Event Missing')
+
+      await processor.handlePair(pairJob(workspace.id, po.id, randomUUID()))
+
+      // No run row exists to point an event at, and the pair should never have
+      // resolved in the first place — that is a line for the log, not the feed.
+      expect(events.record).not.toHaveBeenCalled()
     })
   })
 

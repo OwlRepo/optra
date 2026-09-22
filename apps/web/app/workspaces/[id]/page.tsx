@@ -4,7 +4,7 @@ import * as React from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { AppShell, Badge, Button, Card, EmptyState, PageSection, useToast } from '@repo/ui'
-import { CircleAlert, Database, FileText, Globe, MessageSquareText, Settings, Ticket, Users } from 'lucide-react'
+import { CircleAlert, Database, FileText, Globe, MessageSquareText, Scale, Settings, Ticket, Users } from 'lucide-react'
 import { logout } from '@/lib/api/auth'
 import { listEvents, markEventsSeen } from '@/lib/api/events'
 import { isUnauthorized } from '@/lib/api/handle-unauthorized'
@@ -25,7 +25,18 @@ type WorkspaceMembership = {
 
 type WorkspaceEvent = {
   id: string
-  type: 'document_ingested' | 'document_failed' | 'scrape_completed' | 'scrape_failed' | 'ticket_extracted' | 'ticket_failed'
+  // Hand-duplicated from `workspace_event_type` — the API's shape does not
+  // reach this file as a type. It must be widened in the same change as the
+  // enum, or a new event renders with the fallback icon below.
+  type:
+    | 'document_ingested'
+    | 'document_failed'
+    | 'scrape_completed'
+    | 'scrape_failed'
+    | 'ticket_extracted'
+    | 'ticket_failed'
+    | 'comparison_flagged'
+    | 'comparison_failed'
   title: string
   detail: string | null
   createdAt: string
@@ -155,6 +166,9 @@ export default function WorkspaceOverviewPage({ params }: { params: { id: string
       case 'ticket_extracted':
       case 'ticket_failed':
         return <Ticket className="size-5" />
+      case 'comparison_flagged':
+      case 'comparison_failed':
+        return <Scale className="size-5" />
       default:
         return <CircleAlert className="size-5" />
     }
@@ -198,12 +212,12 @@ export default function WorkspaceOverviewPage({ params }: { params: { id: string
           </div>
         </PageSection>
 
-        <PageSection eyebrow={<Badge variant="outline">Activity</Badge>} title="Activity" description="Document imports, crawls, and ticket extractions in this workspace.">
+        <PageSection eyebrow={<Badge variant="outline">Activity</Badge>} title="Activity" description="What this workspace has done on its own — imports, crawls, extractions and comparisons.">
           {events.length === 0 ? (
             <EmptyState
               icon={<CircleAlert className="size-5" />}
               title="No activity yet"
-              description="Document imports, crawls, and ticket extractions will show up here."
+              description="Work this workspace does on its own will show up here."
             />
           ) : (
             <div className="space-y-4">

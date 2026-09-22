@@ -287,3 +287,18 @@ Two reusable tells. **First: a lifecycle field checked on some siblings and not 
 **Why different:** I reasoned about the job as a *thing to deduplicate* and not as a *claim about a moment*. Every one of the four corrections is the same question asked again — what state did this job read, and when? `finished_at` answers "when did we stop", `created_at` answers "when were we asked"; only `started_at` answers "what did we see". A deterministic id says "this work is already queued", which is true right up until the work changes. The generalisable form: **an idempotency key must identify the input, not the intention.** Keying on the intention is how a system loses an update while looking perfectly idempotent.
 
 *Process note.* A design agent found all four before a line was written, against a plan the owner had already approved — the same pattern as S7. It also argued the goods-receipt status filter out of this commit into its own, which turned out to be right: that defect was latent on the manual path and provable in isolation. Approval is not verification, and the second reading is where the corrections live.
+
+## 2026-09-23 — S8 commit 3: three lists that all claimed to be complete
+*Predict-verify skipped — the enum migration follows the rule 0027 established, and the event write copies the six existing `EventsService.record` callers verbatim. Recorded for the pattern the consumers exposed.*
+
+Adding two values to `workspace_event_type` meant finding everything that had quietly hard-coded the old six. There were three, and **not one of them would have failed a build**:
+
+- `apps/web/app/workspaces/[id]/page.tsx` duplicates the union by hand, because the API's shape does not reach that file as a type — and the icon `switch` beside it has a `default`, so a new event renders the generic alert glyph and nothing complains.
+- `digest-renderers.ts` keys labels off `Record<string, string>` with a `?? type` fallback, so a missing label emails a customer "3 comparison_flagged".
+- `scripts/seed/__tests__/data.test.ts` asserted the seed covered every value by comparing against a **hand-copied list of six**. A test whose expected value is a copy of the thing it is checking is not a test; it agreed with the seed and both were wrong together.
+
+The fix in each case was to derive from `workspaceEventTypeEnum.enumValues` rather than to add two more strings. The digest now renders one of every value and asserts no raw enum name survives into the HTML. The seed test compares its coverage set against the enum. The web union stays hand-written — the type genuinely does not cross that boundary — so it gets a test that renders an unknown type alongside the new ones and asserts they do not resolve to the same icon, which is the only way to catch a `default` swallowing a case.
+
+**The generalisable form: a fallback and a hand-copied list fail the same way — silently, and only in front of a user.** `?? type` and `default:` are both written to be defensive, and both convert "someone forgot" into "the product says something slightly wrong forever". Where a list must be duplicated, the duplicate needs a test that reads the original; where it need not be, derive it.
+
+*Two smaller things worth keeping.* Seeding `comparison_failed` honestly required a failed run in the demo data, which the seed had never had — so S7's run history had shipped a `lastError` rendering path that no demo could show. And the event is named `comparison_flagged` on the owner's call: it fires only when a run finds something, and `comparison_completed` would have been a name that promised every completion. Enum values cannot be dropped in Postgres, so that was a one-way door worth stopping at.

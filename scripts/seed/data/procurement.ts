@@ -29,6 +29,19 @@ export const COMPARISON_RUN_IDS = Array.from(
   (_, i) => `14000000-0000-4000-8000-${String(i + 1).padStart(12, '0')}`,
 )
 
+/**
+ * One abandoned run, so the demo shows the shape S7's run history renders and
+ * previously never displayed: a comparison that started and never closed, swept
+ * into `failed` with a client-safe reference.
+ *
+ * It is the LATEST run for its pair and has no `initiatedBy`, which makes it an
+ * automatic run — which is what lets the seeded `comparison_failed` event point
+ * at something real. It does not disturb which flags are current: that keys on
+ * the latest *succeeded* run.
+ */
+export const FAILED_COMPARISON_RUN_ID = '14000000-0000-4000-8000-000000000099'
+const FAILED_COMPARISON_PAIR = PAIRS - 1
+
 /** Which line-item template a pair uses, and which quarter it belongs to. */
 const templateOf = (pair: number) => pair % TEMPLATES
 const periodOf = (pair: number) => Math.floor(pair / TEMPLATES)
@@ -423,8 +436,28 @@ function findLine(lines: LineSpec[], sku: string): { line: LineSpec; index: numb
 // One succeeded run per pair, so the demo shows the same provenance a real
 // comparison writes: every flag belongs to a run, and the run records what it
 // read. Without these the seeded flags would be treated as pre-S1 legacy rows.
+//
+// Plus one abandoned run (see FAILED_COMPARISON_RUN_ID) — runs are append-only,
+// so more than one per pair is the real shape, not an anomaly.
 export function buildComparisonRunRows() {
-  return COMPARISON_RUN_IDS.map((id, i) => ({
+  const runs: {
+    id: string
+    workspaceId: string
+    purchaseOrderId: string
+    invoiceId: string
+    mode: string
+    strategyVersion: number
+    status: 'succeeded' | 'failed'
+    initiatedBy: string | null
+    poLineCount: number
+    invoiceLineCount: number
+    goodsReceiptLineCount: number
+    flagCount: number | null
+    startedAt: Date
+    finishedAt: Date
+    lastError: string | null
+    createdAt: Date
+  }[] = COMPARISON_RUN_IDS.map((id, i) => ({
     id,
     workspaceId: DEMO_WORKSPACE_ID,
     purchaseOrderId: PO_IDS[i]!,
@@ -445,6 +478,35 @@ export function buildComparisonRunRows() {
     lastError: null,
     createdAt: daysAgo(poAge(i) - 6),
   }))
+
+  const pair = FAILED_COMPARISON_PAIR
+  runs.push({
+    id: FAILED_COMPARISON_RUN_ID,
+    workspaceId: DEMO_WORKSPACE_ID,
+    purchaseOrderId: PO_IDS[pair]!,
+    invoiceId: INVOICE_IDS[pair]!,
+    // The mode is decided when the run row is written, before the engine runs,
+    // so an abandoned run still carries one.
+    mode: 'three_way',
+    strategyVersion: 1,
+    status: 'failed' as const,
+    initiatedBy: null,
+    poLineCount: poLinesFor(pair).length,
+    invoiceLineCount: invoiceLinesFor(pair).length,
+    goodsReceiptLineCount: grnIndexesForPo(pair).reduce(
+      (total, grnIndex) => total + grnLinesFor(grnIndex).length,
+      0,
+    ),
+    // Null, not zero: nothing ever counted. Only the success path writes it,
+    // and zero would claim the run looked and found nothing.
+    flagCount: null,
+    startedAt: daysAgo(3),
+    finishedAt: daysAgo(3),
+    lastError: 'Comparison did not finish. Reference: 4f2a9c17',
+    createdAt: daysAgo(3),
+  })
+
+  return runs
 }
 
 /** Which receipts belong to a purchase order — the inverse of `grnPoIndex`. */

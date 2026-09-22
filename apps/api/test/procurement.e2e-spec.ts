@@ -21,6 +21,7 @@ import {
   purchaseOrders,
   refreshTokens,
   users,
+  workspaceEvents,
   workspaceMembers,
   workspaces,
 } from '@repo/db'
@@ -1142,6 +1143,18 @@ describe('Procurement flow (e2e)', () => {
         .expect(200)
       expect(listRes.body.items).toHaveLength(1)
       expect(listRes.body.items[0].flagType).toBe('quantity_mismatch')
+
+      // And the workspace is told, because this run found something. The
+      // event points at the run, which is where the evidence lives.
+      const events = await db
+        .select()
+        .from(workspaceEvents)
+        .where(eq(workspaceEvents.workspaceId, owner.workspaceId))
+      expect(events).toHaveLength(1)
+      expect(events[0].type).toBe('comparison_flagged')
+      expect(events[0].entityId).toBe(run.id)
+      expect(events[0].title).toBe('PO-S8-1')
+      expect(events[0].detail).toBe('1 discrepancy to review')
     })
   })
 })

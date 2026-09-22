@@ -1,3 +1,4 @@
+import { workspaceEventTypeEnum } from '@repo/db'
 import { renderDigestEmailHtml, renderDigestSlackPayload } from './digest-renderers'
 import type { DigestContent } from './digest-content.service'
 
@@ -52,6 +53,20 @@ describe('digest renderers', () => {
       const payload = renderDigestSlackPayload(content)
       expect(payload.text).toContain('• 3 documents ingested')
       expect(payload.text).toContain('• 5 new tickets')
+    })
+
+    // EVENT_LABELS falls back to `?? type`, so a value added to the enum
+    // without a label here does not fail a build — it emails a customer
+    // "3 comparison_flagged". Derived from the enum so the next value added
+    // is caught by this test rather than by a reader of the digest.
+    it('has a human label for every workspace_event_type value', () => {
+      const html = renderDigestEmailHtml(
+        baseContent({
+          eventCounts: Object.fromEntries(workspaceEventTypeEnum.enumValues.map((value) => [value, 1])),
+        }),
+      )
+
+      workspaceEventTypeEnum.enumValues.forEach((value) => expect(html).not.toContain(value))
     })
 
     it('omits zero-count event types', () => {

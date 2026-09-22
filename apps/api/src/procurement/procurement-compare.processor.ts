@@ -1,8 +1,9 @@
 import { BadRequestException, Logger, NotFoundException } from '@nestjs/common'
 import { Process, Processor } from '@nestjs/bull'
 import type { Job } from 'bull'
-import { and, desc, eq } from 'drizzle-orm'
+import { and, desc, eq, isNull } from 'drizzle-orm'
 import { comparisonRuns, db, goodsReceipts, invoices, purchaseOrders } from '@repo/db'
+import { EventsService } from '../events/events.service'
 import { COMPARISON_STRATEGY_VERSION, ComparisonService } from './comparison.service'
 import { COMPARE_RECONCILE_JOB_NAME, ComparePairJob, ProcurementCompareService } from './procurement-compare.service'
 
@@ -32,6 +33,7 @@ export class ProcurementCompareProcessor {
   constructor(
     private readonly comparison: ComparisonService,
     private readonly compareService: ProcurementCompareService,
+    private readonly events: EventsService,
   ) {}
 
   @Process(COMPARE_RECONCILE_JOB_NAME)
@@ -54,17 +56,105 @@ export class ProcurementCompareProcessor {
       // No `initiatedBy`. That null is what makes the run distinguishable as
       // automatic — S7's review panel already renders it that way — rather than
       // attributing machine-written evidence to whoever happened to upload.
-      await this.comparison.compare(workspaceId, purchaseOrderId, invoiceId)
+      const result = await this.comparison.compare(workspaceId, purchaseOrderId, invoiceId)
+
+      // Only when it found something. A clean automatic run is not news, and
+      // `unreadCount` has no per-type filter and `markSeen` one global
+      // watermark, so it would climb the Overview badge with nothing behind it.
+      // This is also why the type is `comparison_flagged` and not
+      // `comparison_completed` — an event named for completion that stays
+      // silent on most completions is a name a later reader has to disprove.
+      if (result.flags.length > 0) {
+        await this.announce(
+          workspaceId,
+          'comparison_flagged',
+          result.runId,
+          purchaseOrderId,
+          `${result.flags.length} ${result.flags.length === 1 ? 'discrepancy' : 'discrepancies'} to review`,
+        )
+      }
     } catch (error) {
       if (isPermanentCompareError(error)) {
+        // No run row exists to point an event at, and a pair that resolved and
+        // should not have is a line for the log rather than the feed.
         this.logger.warn(
           `Auto-compare abandoned workspace=${workspaceId} po=${purchaseOrderId} invoice=${invoiceId}: ` +
             `${error instanceof Error ? error.message : 'unknown error'}`,
         )
         return
       }
+
+      const runId = await this.lastFailedAutomaticRun(workspaceId, purchaseOrderId, invoiceId)
+      if (runId) {
+        await this.announce(workspaceId, 'comparison_failed', runId, purchaseOrderId, 'Comparison did not finish')
+      }
       throw error
     }
+  }
+
+  /**
+   * Fire and forget, after the run's terminal state is already persisted —
+   * the discipline every existing `EventsService.record` caller follows, and
+   * `record` itself throws. A feed that refuses an entry must not undo a
+   * comparison that really happened.
+   *
+   * The title names the purchase order because that is what a reviewer
+   * recognises; `entityId` is the run, which is where the evidence lives.
+   * Same split as `scrape_completed` (title `Crawl of <url>`, entity the run).
+   */
+  private async announce(
+    workspaceId: string,
+    type: 'comparison_flagged' | 'comparison_failed',
+    runId: string,
+    purchaseOrderId: string,
+    detail: string,
+  ): Promise<void> {
+    try {
+      const [po] = await db
+        .select({ poNumber: purchaseOrders.poNumber, name: purchaseOrders.name })
+        .from(purchaseOrders)
+        .where(and(eq(purchaseOrders.id, purchaseOrderId), eq(purchaseOrders.workspaceId, workspaceId)))
+        .limit(1)
+
+      await this.events.record(workspaceId, type, runId, po?.poNumber ?? po?.name ?? 'Comparison', detail)
+    } catch (error) {
+      this.logger.warn(
+        `Auto-compare event not recorded type=${type} workspace=${workspaceId} run=${runId}: ` +
+          `${error instanceof Error ? error.message : 'unknown error'}`,
+      )
+    }
+  }
+
+  /**
+   * The run this attempt just failed. `compare()` writes the row and closes it
+   * as `failed` before rethrowing, so it exists — but it does not hand back the
+   * id, and widening its signature to do so belongs to a different change.
+   *
+   * Scoped to automatic runs of this pair, newest first. Two automatic jobs for
+   * one pair are already made unlikely by the versioned job id and the
+   * freshness check; if one ever did overlap, this names a sibling failed run
+   * of the same pair rather than anything untrue.
+   */
+  private async lastFailedAutomaticRun(
+    workspaceId: string,
+    purchaseOrderId: string,
+    invoiceId: string,
+  ): Promise<string | null> {
+    const [run] = await db
+      .select({ id: comparisonRuns.id })
+      .from(comparisonRuns)
+      .where(
+        and(
+          eq(comparisonRuns.workspaceId, workspaceId),
+          eq(comparisonRuns.purchaseOrderId, purchaseOrderId),
+          eq(comparisonRuns.invoiceId, invoiceId),
+          eq(comparisonRuns.status, 'failed'),
+          isNull(comparisonRuns.initiatedBy),
+        ),
+      )
+      .orderBy(desc(comparisonRuns.startedAt), desc(comparisonRuns.id))
+      .limit(1)
+    return run?.id ?? null
   }
 
   /**

@@ -3,6 +3,7 @@
 // expectation — a violation would either fail the insert or produce a demo
 // with dead links and empty filters.
 import { describe, expect, it } from 'vitest'
+import { workspaceEventTypeEnum } from '@repo/db'
 import { DEMO_USER_ID, DEMO_WORKSPACE_ID } from '../config'
 import { buildChatMessageRows, buildChatSessionRows } from '../data/chat'
 import { buildDocumentRows, seedDocuments } from '../data/documents'
@@ -225,18 +226,28 @@ describe('chat query metrics', () => {
 })
 
 describe('events and scrape runs', () => {
+  // Derived from the enum, not a hand-copied list. The previous version named
+  // six values under a claim of total coverage, so adding a seventh would have
+  // left the claim true-looking and false.
   it('covers every workspace_event_type value', () => {
     const types = new Set(buildEventRows().map(e => e.type))
-    expect(types).toEqual(
-      new Set([
-        'document_ingested',
-        'document_failed',
-        'scrape_completed',
-        'scrape_failed',
-        'ticket_extracted',
-        'ticket_failed',
-      ]),
-    )
+    expect(types).toEqual(new Set(workspaceEventTypeEnum.enumValues))
+  })
+
+  it('points comparison events at comparison runs that are actually inserted', () => {
+    const runs = buildComparisonRunRows()
+    const byId = new Map(runs.map(run => [run.id, run]))
+
+    buildEventRows()
+      .filter(e => e.type.startsWith('comparison_'))
+      .forEach(e => {
+        const run = byId.get(e.entityId)
+        expect(run).toBeDefined()
+        // The event has to agree with the run it names, or the demo shows a
+        // feed contradicting the history it links to.
+        expect(run!.status).toBe(e.type === 'comparison_flagged' ? 'succeeded' : 'failed')
+        if (e.type === 'comparison_flagged') expect(run!.flagCount).toBeGreaterThan(0)
+      })
   })
 
   it('points scrape events at the scrape runs that are actually inserted', () => {
@@ -390,11 +401,22 @@ describe('procurement', () => {
     const runIds = new Set(runs.map(r => r.id))
 
     flags.forEach(f => expect(runIds.has(f.comparisonRunId as string)).toBe(true))
-    runs.forEach(run => {
-      const own = flags.filter(f => f.comparisonRunId === run.id)
-      expect(run.flagCount).toBe(own.length)
-      expect(run.status).toBe('succeeded')
-    })
+    // Scoped to succeeded runs, which is what the claim was always about. An
+    // abandoned run wrote no flags and counted none — its flagCount is null,
+    // not zero, because nothing ever looked.
+    runs
+      .filter(run => run.status === 'succeeded')
+      .forEach(run => {
+        const own = flags.filter(f => f.comparisonRunId === run.id)
+        expect(run.flagCount).toBe(own.length)
+      })
+    runs
+      .filter(run => run.status === 'failed')
+      .forEach(run => {
+        expect(flags.some(f => f.comparisonRunId === run.id)).toBe(false)
+        expect(run.flagCount).toBeNull()
+        expect(run.lastError).toMatch(/^Comparison did not finish\. Reference: [0-9a-f]{8}$/)
+      })
   })
 
   // Every delta reads the same way — positive means "more than it should be" —
@@ -487,11 +509,15 @@ describe('procurement', () => {
     // Every seeded PO has at least one receipt, so no run can honestly claim
     // two_way — and a three_way run with no linked receipt is the false claim
     // §7.4 forbids.
-    runs.forEach(run => {
-      expect(run.mode).toBe('three_way')
-      expect(typeof run.goodsReceiptLineCount).toBe('number')
-      expect(links.some(link => link.comparisonRunId === run.id)).toBe(true)
-    })
+    // Succeeded runs only: the link rows are written in the same transaction
+    // that writes the flags, so a run that died before it never recorded any.
+    runs
+      .filter(run => run.status === 'succeeded')
+      .forEach(run => {
+        expect(run.mode).toBe('three_way')
+        expect(typeof run.goodsReceiptLineCount).toBe('number')
+        expect(links.some(link => link.comparisonRunId === run.id)).toBe(true)
+      })
 
     links.forEach(link => {
       expect(runIds.has(link.comparisonRunId)).toBe(true)

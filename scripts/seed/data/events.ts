@@ -1,22 +1,22 @@
 // Workspace activity feed plus the two scrape runs it references.
 //
-// Covers all six workspace_event_type values with staggered timestamps.
+// Covers every workspace_event_type value with staggered timestamps — asserted
+// against the enum itself in data.test.ts, not against a copied list.
 // workspace_members.events_seen_at is left null for the demo user, so the
 // dashboard renders an unread badge over these.
+import { workspaceEventTypeEnum } from '@repo/db'
 import { DEMO_WORKSPACE_ID, daysAgo } from '../config'
 import { seedDocuments } from './documents'
 import { seedTickets } from './tickets'
+import { buildComparisonRunRows, buildPurchaseOrderRows } from './procurement'
 
 export const SCRAPE_RUN_OK_ID = '90000000-0000-4000-8000-000000000001'
 export const SCRAPE_RUN_FAILED_ID = '90000000-0000-4000-8000-000000000002'
 
-type EventType =
-  | 'document_ingested'
-  | 'document_failed'
-  | 'scrape_completed'
-  | 'scrape_failed'
-  | 'ticket_extracted'
-  | 'ticket_failed'
+// Derived, not copied. The previous hand-written union claimed six values
+// under a header that claimed coverage of all of them; widening the enum left
+// both quietly wrong.
+type EventType = (typeof workspaceEventTypeEnum.enumValues)[number]
 
 export function buildEventRows() {
   const doneDocs = seedDocuments.filter(d => d.status === 'done')
@@ -90,6 +90,37 @@ export function buildEventRows() {
     detail: 'robots.txt disallows /incidents for our crawler user agent',
     createdAt: daysAgo(4, 11),
   })
+
+  // S8 auto-comparison. Both point at a real `comparison_runs` row and agree
+  // with its status — a feed that contradicted the history it links to would
+  // be the same defect S6 found in the seeded discrepancy flags.
+  const runs = buildComparisonRunRows()
+  const poNumberOf = new Map(buildPurchaseOrderRows().map(po => [po.id, po.poNumber]))
+
+  const flagged = runs.find(run => run.status === 'succeeded' && (run.flagCount ?? 0) > 0)
+  if (flagged) {
+    const count = flagged.flagCount ?? 0
+    rows.push({
+      workspaceId: DEMO_WORKSPACE_ID,
+      type: 'comparison_flagged',
+      entityId: flagged.id,
+      title: poNumberOf.get(flagged.purchaseOrderId) ?? 'Comparison',
+      detail: `${count} ${count === 1 ? 'discrepancy' : 'discrepancies'} to review`,
+      createdAt: flagged.finishedAt,
+    })
+  }
+
+  const failed = runs.find(run => run.status === 'failed')
+  if (failed) {
+    rows.push({
+      workspaceId: DEMO_WORKSPACE_ID,
+      type: 'comparison_failed',
+      entityId: failed.id,
+      title: poNumberOf.get(failed.purchaseOrderId) ?? 'Comparison',
+      detail: 'Comparison did not finish',
+      createdAt: failed.finishedAt,
+    })
+  }
 
   return rows.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
 }

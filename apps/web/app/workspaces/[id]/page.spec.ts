@@ -152,6 +152,50 @@ describe('WorkspaceOverviewPage', () => {
     })
   })
 
+  // The icon switch has a `default`, so a new event type compiles fine and
+  // renders the generic alert glyph — the failure mode has no compiler
+  // tripwire. This asserts the comparison types resolve to their own icon by
+  // comparing against what an unknown type actually falls through to.
+  it('gives comparison events their own icon rather than the generic fallback', async () => {
+    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
+    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+    listEventsMock.mockResolvedValue({
+      items: [
+        {
+          id: 'evt-1',
+          type: 'comparison_flagged',
+          title: '3 discrepancies found',
+          detail: null,
+          createdAt: '2026-07-02T01:00:00.000Z',
+        },
+        {
+          id: 'evt-2',
+          type: 'comparison_failed',
+          title: 'Comparison failed',
+          detail: null,
+          createdAt: '2026-07-02T01:00:00.000Z',
+        },
+        {
+          id: 'evt-3',
+          type: 'not_a_real_type' as never,
+          title: 'Unknown',
+          detail: null,
+          createdAt: '2026-07-02T01:00:00.000Z',
+        },
+      ],
+      nextCursor: null,
+    })
+
+    const { container } = renderPage()
+
+    expect(await screen.findByText('3 discrepancies found')).toBeDefined()
+    const icons = Array.from(container.querySelectorAll('span.shrink-0.text-secondary-foreground svg'))
+    expect(icons).toHaveLength(3)
+    const fallback = icons[2].getAttribute('class')
+    expect(icons[0].getAttribute('class')).not.toBe(fallback)
+    expect(icons[1].getAttribute('class')).not.toBe(fallback)
+  })
+
   it('renders empty state when there is no activity', async () => {
     getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
     listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })

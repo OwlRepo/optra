@@ -7,6 +7,8 @@ const EVENT_LABELS: Record<string, string> = {
   scrape_failed: 'crawls failed',
   ticket_extracted: 'tickets extracted',
   ticket_failed: 'ticket extractions failed',
+  comparison_flagged: 'comparisons with discrepancies',
+  comparison_failed: 'comparisons failed',
 }
 
 // A digest with nothing notable is a normal, expected outcome (most weeks,

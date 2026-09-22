@@ -8,6 +8,7 @@ import { ProcurementExtractionService } from './procurement-extraction.service'
 import { ComparisonService } from './comparison.service'
 import { ProcurementCompareService } from './procurement-compare.service'
 import { ProcurementCompareProcessor } from './procurement-compare.processor'
+import { EventsModule } from '../events/events.module'
 import { StorageModule } from '../storage/storage.module'
 import { LimitsModule } from '../limits/limits.module'
 import { StructuredQueryModule } from '../structured-query/structured-query.module'
@@ -16,6 +17,7 @@ import { StructuredQueryModule } from '../structured-query/structured-query.modu
   imports: [
     StorageModule,
     StructuredQueryModule,
+    EventsModule,
     LimitsModule,
     BullModule.registerQueue({ name: 'procurement-parse-queue' }),
     // Its own queue, not an inline call at the end of the parse job: a
