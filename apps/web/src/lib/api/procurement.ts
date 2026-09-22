@@ -22,7 +22,11 @@ export type ProcurementDoc = {
   vendorName?: string | null
   // Invoices only.
   invoiceNumber?: string | null
+  // Invoices and goods receipts: both link to the PO they answer.
   purchaseOrderId?: string | null
+  // Goods receipts only (S5). No currency — a receipt records what arrived,
+  // not what it cost.
+  grnNumber?: string | null
 }
 
 // POLICY v1 #3: the vendor is chosen from the workspace's existing vendors.
@@ -40,7 +44,14 @@ export type InvoiceHeader = {
   currency: string
 }
 
-export type ProcurementDocKind = 'purchase-orders' | 'invoices'
+// Same explicit link (POLICY v1 #2). No currency: a goods receipt records what
+// arrived, not what it cost.
+export type GoodsReceiptHeader = {
+  purchaseOrderId: string
+  grnNumber: string
+}
+
+export type ProcurementDocKind = 'purchase-orders' | 'invoices' | 'goods-receipts'
 export type DiscrepancyFlagType = 'quantity_mismatch' | 'price_mismatch' | 'missing_on_invoice' | 'missing_on_po'
 export type DiscrepancyFlagStatus = 'open' | 'dismissed'
 export type DiscrepancyFlag = {
@@ -99,6 +110,18 @@ export function listInvoices(workspaceId: string): Promise<ProcurementDoc[]> {
   return apiFetch(`/api/workspaces/${workspaceId}/procurement/invoices`)
 }
 
+export function uploadGoodsReceipt(
+  workspaceId: string,
+  file: File,
+  header: GoodsReceiptHeader,
+): Promise<ProcurementDocSummary> {
+  return uploadFile(`/api/workspaces/${workspaceId}/procurement/goods-receipts`, file, { ...header })
+}
+
+export function listGoodsReceipts(workspaceId: string): Promise<ProcurementDoc[]> {
+  return apiFetch(`/api/workspaces/${workspaceId}/procurement/goods-receipts`)
+}
+
 /**
  * Downloads the original uploaded file. Always an attachment, and the browser
  * names it from the API's Content-Disposition via `fetchDownload`.
@@ -107,7 +130,7 @@ export function downloadProcurementDocument(workspaceId: string, kind: Procureme
   return fetchDownload(
     `/api/workspaces/${workspaceId}/procurement/${kind}/${docId}/download`,
     { method: 'GET' },
-    kind === 'purchase-orders' ? 'purchase-order' : 'invoice',
+    kind === 'purchase-orders' ? 'purchase-order' : kind === 'invoices' ? 'invoice' : 'goods-receipt',
   )
 }
 

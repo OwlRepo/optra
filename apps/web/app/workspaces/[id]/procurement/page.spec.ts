@@ -18,6 +18,8 @@ const compareDocumentsMock = vi.fn()
 const downloadProcurementDocumentMock = vi.fn()
 const logoutMock = vi.fn()
 const listVendorsMock = vi.fn()
+const listGoodsReceiptsMock = vi.fn()
+const uploadGoodsReceiptMock = vi.fn()
 
 vi.mock('next/navigation', () => ({
   useRouter: () => routerMock,
@@ -32,6 +34,8 @@ vi.mock('@/lib/api/workspaces', () => ({
 vi.mock('@/lib/api/procurement', () => ({
   listPurchaseOrders: (...args: unknown[]) => listPurchaseOrdersMock(...args),
   listInvoices: (...args: unknown[]) => listInvoicesMock(...args),
+  listGoodsReceipts: (...args: unknown[]) => listGoodsReceiptsMock(...args),
+  uploadGoodsReceipt: (...args: unknown[]) => uploadGoodsReceiptMock(...args),
   uploadPurchaseOrder: (...args: unknown[]) => uploadPurchaseOrderMock(...args),
   uploadInvoice: (...args: unknown[]) => uploadInvoiceMock(...args),
   compareDocuments: (...args: unknown[]) => compareDocumentsMock(...args),
@@ -88,6 +92,9 @@ describe('ProcurementPage', () => {
     uploadPurchaseOrderMock.mockReset()
     uploadInvoiceMock.mockReset()
     listVendorsMock.mockReset()
+    listGoodsReceiptsMock.mockReset()
+    listGoodsReceiptsMock.mockResolvedValue([])
+    uploadGoodsReceiptMock.mockReset()
     // Default for every test: one vendor exists, so the PO modal shows its form
     // rather than the "no vendors yet" empty state. Tests that care override it.
     listVendorsMock.mockResolvedValue([
@@ -344,5 +351,67 @@ describe('ProcurementPage', () => {
     await waitFor(() => {
       expect(pushMock).toHaveBeenCalledWith('/login')
     })
+  })
+
+  // S5. A receipt answers exactly one purchase order (POLICY v1 #2), so picking
+  // a file opens the same kind of header form the invoice upload uses.
+  it('uploads a goods receipt against a chosen purchase order', async () => {
+    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme' })
+    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+    listPurchaseOrdersMock.mockResolvedValue([donePurchaseOrder])
+    listInvoicesMock.mockResolvedValue([])
+    listGoodsReceiptsMock.mockResolvedValue([])
+    uploadGoodsReceiptMock.mockResolvedValue({ id: 'grn-1', name: 'grn.csv', status: 'pending' })
+
+    renderPage()
+
+    fireEvent.click(await screen.findByRole('tab', { name: 'Goods Receipts' }))
+
+    const file = new File(['sku,qty received\nA1,8'], 'grn.csv', { type: 'text/csv' })
+    const inputs = Array.from(document.querySelectorAll('input[type="file"]')) as HTMLInputElement[]
+    const grnInput = inputs.find((input) => input.accept === '.csv,.xlsx')
+    expect(grnInput).toBeDefined()
+    fireEvent.change(grnInput as HTMLInputElement, { target: { files: [file] } })
+
+    // Scoped by id: the compare section further down the page also labels a
+    // select "Purchase order", so a label query matches two controls.
+    const poSelect = await waitFor(() => {
+      const el = document.querySelector('#grn-po')
+      expect(el).not.toBeNull()
+      return el as HTMLSelectElement
+    })
+    fireEvent.change(poSelect, { target: { value: 'po-1' } })
+    fireEvent.change(screen.getByLabelText('Goods receipt number'), { target: { value: 'GRN-9001' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Upload' }))
+
+    await waitFor(() => {
+      expect(uploadGoodsReceiptMock).toHaveBeenCalledWith('ws-1', file, {
+        purchaseOrderId: 'po-1',
+        grnNumber: 'GRN-9001',
+      })
+    })
+    expect(await screen.findByText('Goods receipt uploaded')).toBeDefined()
+  })
+
+  // Same dead-end handling as the PO modal's no-vendors case: explain it rather
+  // than letting the user submit into a guaranteed 404.
+  it('explains that a purchase order is needed before a receipt can be uploaded', async () => {
+    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme' })
+    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+    listPurchaseOrdersMock.mockResolvedValue([])
+    listInvoicesMock.mockResolvedValue([])
+    listGoodsReceiptsMock.mockResolvedValue([])
+
+    renderPage()
+
+    fireEvent.click(await screen.findByRole('tab', { name: 'Goods Receipts' }))
+
+    const file = new File(['sku,qty received\nA1,8'], 'grn.csv', { type: 'text/csv' })
+    const inputs = Array.from(document.querySelectorAll('input[type="file"]')) as HTMLInputElement[]
+    const grnInput = inputs.find((input) => input.accept === '.csv,.xlsx')
+    fireEvent.change(grnInput as HTMLInputElement, { target: { files: [file] } })
+
+    expect(await screen.findByText('No purchase orders yet')).toBeDefined()
+    expect(uploadGoodsReceiptMock).not.toHaveBeenCalled()
   })
 })

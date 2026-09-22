@@ -18,6 +18,8 @@ import {
   buildComparisonRunRows,
   buildDiscrepancyFlagRows,
   buildInvoiceLineItemRows,
+  buildGoodsReceiptLineItemRows,
+  buildGoodsReceiptRows,
   buildInvoiceRows,
   buildPoLineItemRows,
   buildPurchaseOrderRows,
@@ -309,6 +311,57 @@ describe('procurement', () => {
   // S3b. The PO/vendor and invoice/PO correspondences used to exist only as
   // matching strings in the row names; these assert they are now real keys the
   // database will enforce.
+  // S5 receiving fixtures. S6 sums accepted quantities across receipts, so the
+  // shapes it has to handle need to exist in the demo data before it is built.
+  it('links every goods receipt to a seeded purchase order', () => {
+    const poIds = new Set(buildPurchaseOrderRows().map(po => po.id))
+    const receipts = buildGoodsReceiptRows()
+
+    expect(receipts.length).toBeGreaterThan(0)
+    receipts.forEach(grn => expect(poIds.has(grn.purchaseOrderId)).toBe(true))
+  })
+
+  it('gives at least one purchase order more than one receipt (POLICY v1 #14)', () => {
+    const perPo = new Map<string, number>()
+    buildGoodsReceiptRows().forEach(grn => {
+      perPo.set(grn.purchaseOrderId, (perPo.get(grn.purchaseOrderId) ?? 0) + 1)
+    })
+
+    expect([...perPo.values()].some(count => count > 1)).toBe(true)
+  })
+
+  it('reports a rowCount matching the receipt lines actually inserted', () => {
+    const lines = buildGoodsReceiptLineItemRows()
+    buildGoodsReceiptRows().forEach(grn => {
+      expect(grn.rowCount).toBe(lines.filter(l => l.goodsReceiptId === grn.id).length)
+    })
+  })
+
+  // §1B / POLICY v1 #14: "not stated" must reach the column as null, never 0 —
+  // and at least one fixture has to exercise that path or S6 never sees it.
+  it('leaves accepted quantity null on at least one receipt line, and never writes a bare zero string for it', () => {
+    const lines = buildGoodsReceiptLineItemRows()
+
+    expect(lines.some(l => l.quantityAccepted === null)).toBe(true)
+    lines.forEach(l => {
+      expect(l.quantityReceived === null || typeof l.quantityReceived === 'string').toBe(true)
+      expect(l.quantityAccepted === null || typeof l.quantityAccepted === 'string').toBe(true)
+      expect(l.quantityRejected === null || typeof l.quantityRejected === 'string').toBe(true)
+    })
+  })
+
+  it('includes a receipt that records a rejected quantity', () => {
+    const lines = buildGoodsReceiptLineItemRows()
+
+    expect(lines.some(l => l.quantityRejected !== null && Number(l.quantityRejected) > 0)).toBe(true)
+  })
+
+  it('gives every receipt line a unique id', () => {
+    const ids = buildGoodsReceiptLineItemRows().map(l => l.id)
+
+    expect(new Set(ids).size).toBe(ids.length)
+  })
+
   it('points every purchase order at a seeded vendor', () => {
     const vendorIds = new Set(buildVendorRows().map(v => v.id))
     const pos = buildPurchaseOrderRows()

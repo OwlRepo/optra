@@ -186,6 +186,99 @@ export function buildInvoiceRows() {
   }))
 }
 
+/**
+ * Goods receipts (S5). Two per purchase order on the first template so POLICY
+ * v1 #14's "sum accepted across every GRN linked to the PO" has something real
+ * to sum in S6; one elsewhere.
+ *
+ * `14000000-…` is taken by comparison runs, so receipts start at `15000000-…`
+ * and their lines at `16000000-…`.
+ */
+export const GRN_IDS = Array.from(
+  { length: PAIRS + TEMPLATES },
+  (_, i) => `15000000-0000-4000-8000-${String(i + 1).padStart(12, '0')}`,
+)
+
+// Receipt i belongs to PO (i % PAIRS): the extra TEMPLATES entries wrap around
+// and give the first three purchase orders a second receipt each.
+export const grnPoIndex = (grnIndex: number) => grnIndex % PAIRS
+
+export function grnLineId(grnIndex: number, n: number): string {
+  return `16000000-0000-4000-8000-${String(grnIndex * 100 + n).padStart(12, '0')}`
+}
+
+export function buildGoodsReceiptRows() {
+  return GRN_IDS.map((id, i) => {
+    const poIndex = grnPoIndex(i)
+    return {
+      id,
+      workspaceId: DEMO_WORKSPACE_ID,
+      purchaseOrderId: PO_IDS[poIndex]!,
+      name: `GRN — ${TEMPLATE_NAMES[templateOf(poIndex)]} ${QUARTERS[periodOf(poIndex)]}${i >= PAIRS ? ' (second delivery)' : ''}`,
+      grnNumber: `GRN-${String(70110 + i)}`,
+      storageKey: null,
+      // No PDF receipts: the extraction chain cannot express received vs
+      // accepted, so S5 refuses them at upload.
+      sourceKind: 'csv',
+      status: 'done' as const,
+      queueJobId: null,
+      enqueuedAt: daysAgo(poAge(poIndex) - 2),
+      processingStartedAt: daysAgo(poAge(poIndex) - 2),
+      rowCount: grnLinesFor(i).length,
+      lastError: null,
+      createdAt: daysAgo(poAge(poIndex) - 2),
+      updatedAt: daysAgo(poAge(poIndex) - 3),
+    }
+  })
+}
+
+/**
+ * What actually turned up. Deliberately not a copy of the PO: receipt 0 is a
+ * short delivery, receipt 1 has a rejected quantity, and receipt 2 leaves
+ * `quantityAccepted` NULL — the "source did not say" case S6 must not read as
+ * zero (§1B, POLICY v1 #14).
+ */
+function grnLinesFor(grnIndex: number) {
+  const poIndex = grnPoIndex(grnIndex)
+  const isSecondDelivery = grnIndex >= PAIRS
+  return poLinesFor(poIndex).map((line, n) => {
+    const ordered = Number(line.qty)
+    // A second delivery carries the remainder, so the pair sums to the order.
+    const received = isSecondDelivery ? Math.max(1, ordered - Math.round(ordered * 0.75)) : Math.round(ordered * 0.75)
+    const rejected = grnIndex % 3 === 1 && n === 0 ? 1 : 0
+    const accepted = grnIndex % 3 === 2 ? null : String(Math.max(0, received - rejected))
+    return {
+      sku: line.sku,
+      description: line.description,
+      quantityReceived: String(received),
+      quantityAccepted: accepted,
+      quantityRejected: accepted === null ? null : String(rejected),
+    }
+  })
+}
+
+export function buildGoodsReceiptLineItemRows() {
+  return GRN_IDS.flatMap((grnId, grnIndex) =>
+    grnLinesFor(grnIndex).map((line, n) => ({
+      id: grnLineId(grnIndex, n + 1),
+      workspaceId: DEMO_WORKSPACE_ID,
+      goodsReceiptId: grnId,
+      lineNumber: n + 1,
+      sku: line.sku,
+      description: line.description,
+      quantityReceived: line.quantityReceived,
+      quantityAccepted: line.quantityAccepted,
+      quantityRejected: line.quantityRejected,
+      uom: UOMS[n % UOMS.length]!,
+      rawRow: null,
+      sourceSheet: null,
+      sourceRow: n + 2,
+      sourceKind: 'csv',
+      createdAt: daysAgo(poAge(grnPoIndex(grnIndex)) - 2),
+    })),
+  )
+}
+
 export function poLineId(poIndex: number, n: number): string {
   return `12000000-0000-4000-8000-${String(poIndex * 100 + n).padStart(12, '0')}`
 }

@@ -104,6 +104,8 @@ async function main(): Promise<void> {
     buildComparisonRunRows,
     buildDiscrepancyFlagRows,
     buildInvoiceLineItemRows,
+    buildGoodsReceiptLineItemRows,
+    buildGoodsReceiptRows,
     buildInvoiceRows,
     buildPoLineItemRows,
     buildPurchaseOrderRows,
@@ -236,6 +238,10 @@ async function main(): Promise<void> {
     await tx.delete(schema.discrepancyFlags).where(eq(schema.discrepancyFlags.workspaceId, DEMO_WORKSPACE_ID))
     await tx.delete(schema.comparisonRuns).where(eq(schema.comparisonRuns.workspaceId, DEMO_WORKSPACE_ID))
     await tx.delete(schema.invoiceLineItems).where(eq(schema.invoiceLineItems.workspaceId, DEMO_WORKSPACE_ID))
+    await tx
+      .delete(schema.goodsReceiptLineItems)
+      .where(eq(schema.goodsReceiptLineItems.workspaceId, DEMO_WORKSPACE_ID))
+    await tx.delete(schema.goodsReceipts).where(eq(schema.goodsReceipts.workspaceId, DEMO_WORKSPACE_ID))
     await tx.delete(schema.poLineItems).where(eq(schema.poLineItems.workspaceId, DEMO_WORKSPACE_ID))
     await tx.delete(schema.invoices).where(eq(schema.invoices.workspaceId, DEMO_WORKSPACE_ID))
     await tx.delete(schema.purchaseOrders).where(eq(schema.purchaseOrders.workspaceId, DEMO_WORKSPACE_ID))
@@ -314,6 +320,14 @@ async function main(): Promise<void> {
     await insert('invoices', schema.invoices as never, buildInvoiceRows())
     await insert('po_line_items', schema.poLineItems as never, buildPoLineItemRows())
     await insert('invoice_line_items', schema.invoiceLineItems as never, buildInvoiceLineItemRows())
+    // Receipts reference purchase_orders (NOT NULL), so they go after them and
+    // before the comparison runs that S6 will eventually read them through.
+    await insert('goods_receipts', schema.goodsReceipts as never, buildGoodsReceiptRows())
+    await insert(
+      'goods_receipt_line_items',
+      schema.goodsReceiptLineItems as never,
+      buildGoodsReceiptLineItemRows(),
+    )
     await insert('comparison_runs', schema.comparisonRuns as never, buildComparisonRunRows())
     await insert('discrepancy_flags', schema.discrepancyFlags as never, buildDiscrepancyFlagRows())
     await insert('catalog_items', schema.catalogItems as never, buildCatalogItemRows(uploadedImages))

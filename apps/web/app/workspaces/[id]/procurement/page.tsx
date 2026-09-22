@@ -21,13 +21,15 @@ import {
   Tabs,
   useToast,
 } from '@repo/ui'
-import { ClipboardList, Download, FileText, Upload } from 'lucide-react'
+import { ClipboardList, Download, FileText, PackageCheck, Upload } from 'lucide-react'
 import { logout } from '@/lib/api/auth'
 import {
   compareDocuments,
   downloadProcurementDocument,
+  listGoodsReceipts,
   listInvoices,
   listPurchaseOrders,
+  uploadGoodsReceipt,
   uploadInvoice,
   uploadPurchaseOrder,
   type ProcurementDoc,
@@ -43,7 +45,7 @@ import { WorkspaceBrandLink } from '@/components/workspace-brand-link'
 
 type Workspace = { id: string; name: string }
 type WorkspaceMembership = { id: string; role: 'owner' | 'admin' | 'member' }
-type DocTab = 'purchase-orders' | 'invoices'
+type DocTab = 'purchase-orders' | 'invoices' | 'goods-receipts'
 
 const statusVariant: Record<ProcurementDocStatus, 'secondary' | 'success' | 'destructive'> = {
   pending: 'secondary',
@@ -62,7 +64,27 @@ const statusLabel: Record<ProcurementDocStatus, string> = {
 const tabItems = [
   { id: 'purchase-orders', label: 'Purchase Orders' },
   { id: 'invoices', label: 'Invoices' },
+  { id: 'goods-receipts', label: 'Goods Receipts' },
 ]
+
+// Per-kind copy for the documents table, so a third kind is one row here rather
+// than a third arm in every ternary.
+const numberColumnLabel: Record<DocTab, string> = {
+  'purchase-orders': 'PO number',
+  invoices: 'Invoice number',
+  'goods-receipts': 'GRN number',
+}
+
+function documentNumber(doc: ProcurementDoc, kind: ProcurementDocKind): string | null | undefined {
+  switch (kind) {
+    case 'purchase-orders':
+      return doc.poNumber
+    case 'invoices':
+      return doc.invoiceNumber
+    case 'goods-receipts':
+      return doc.grnNumber
+  }
+}
 
 export default function ProcurementPage({ params }: { params: { id: string } }) {
   const workspaceId = params.id
@@ -71,15 +93,18 @@ export default function ProcurementPage({ params }: { params: { id: string } }) 
   const toastRef = React.useRef(toast)
   const poFileInputRef = React.useRef<HTMLInputElement>(null)
   const invoiceFileInputRef = React.useRef<HTMLInputElement>(null)
+  const grnFileInputRef = React.useRef<HTMLInputElement>(null)
 
   const [workspace, setWorkspace] = React.useState<Workspace | null>(null)
   const [membership, setMembership] = React.useState<WorkspaceMembership | null>(null)
   const [activeTab, setActiveTab] = React.useState<DocTab>('purchase-orders')
   const [purchaseOrders, setPurchaseOrders] = React.useState<ProcurementDoc[]>([])
   const [invoices, setInvoices] = React.useState<ProcurementDoc[]>([])
+  const [goodsReceipts, setGoodsReceipts] = React.useState<ProcurementDoc[]>([])
   const [isLoading, setIsLoading] = React.useState(true)
   const [isUploadingPO, setIsUploadingPO] = React.useState(false)
   const [isUploadingInvoice, setIsUploadingInvoice] = React.useState(false)
+  const [isUploadingGrn, setIsUploadingGrn] = React.useState(false)
   const [selectedPurchaseOrderId, setSelectedPurchaseOrderId] = React.useState('')
   const [selectedInvoiceId, setSelectedInvoiceId] = React.useState('')
   const [isComparing, setIsComparing] = React.useState(false)
@@ -96,6 +121,11 @@ export default function ProcurementPage({ params }: { params: { id: string } }) 
   const [invoicePoId, setInvoicePoId] = React.useState('')
   const [invoiceNumber, setInvoiceNumber] = React.useState('')
   const [invoiceCurrency, setInvoiceCurrency] = React.useState('USD')
+  // Goods receipts carry no currency (S5) — a receipt records what arrived, not
+  // what it cost.
+  const [pendingGrnFile, setPendingGrnFile] = React.useState<File | null>(null)
+  const [grnPoId, setGrnPoId] = React.useState('')
+  const [grnNumber, setGrnNumber] = React.useState('')
 
   const canManage = membership?.role === 'owner' || membership?.role === 'admin'
 
@@ -112,9 +142,14 @@ export default function ProcurementPage({ params }: { params: { id: string } }) 
   // poll below, so it never flips isLoading back to true and re-flashes the skeleton.
   const refreshDocs = React.useCallback(async () => {
     try {
-      const [pos, invs] = await Promise.all([listPurchaseOrders(workspaceId), listInvoices(workspaceId)])
+      const [pos, invs, grns] = await Promise.all([
+        listPurchaseOrders(workspaceId),
+        listInvoices(workspaceId),
+        listGoodsReceipts(workspaceId),
+      ])
       setPurchaseOrders(Array.isArray(pos) ? pos : [])
       setInvoices(Array.isArray(invs) ? invs : [])
+      setGoodsReceipts(Array.isArray(grns) ? grns : [])
     } catch (err) {
       if (isUnauthorized(err)) {
         router.push('/login')
@@ -130,10 +165,11 @@ export default function ProcurementPage({ params }: { params: { id: string } }) 
 
   const loadPage = React.useCallback(async () => {
     try {
-      const [workspaceData, pos, invs, memberships] = await Promise.all([
+      const [workspaceData, pos, invs, grns, memberships] = await Promise.all([
         getWorkspace(workspaceId),
         listPurchaseOrders(workspaceId),
         listInvoices(workspaceId),
+        listGoodsReceipts(workspaceId),
         listWorkspaces(),
       ])
       setWorkspace(workspaceData)
@@ -144,6 +180,7 @@ export default function ProcurementPage({ params }: { params: { id: string } }) 
         .catch(() => setVendors([]))
       setPurchaseOrders(Array.isArray(pos) ? pos : [])
       setInvoices(Array.isArray(invs) ? invs : [])
+      setGoodsReceipts(Array.isArray(grns) ? grns : [])
       const membershipItems = Array.isArray(memberships?.items) ? memberships.items : []
       setMembership(membershipItems.find((entry: WorkspaceMembership) => entry.id === workspaceId) ?? null)
     } catch (err) {
@@ -168,14 +205,14 @@ export default function ProcurementPage({ params }: { params: { id: string } }) 
   // Purchase orders and invoices are parsed asynchronously -- poll while any row across
   // either list is still pending/processing so status/rowCount update without a reload.
   React.useEffect(() => {
-    const hasInFlight = [...purchaseOrders, ...invoices].some(
+    const hasInFlight = [...purchaseOrders, ...invoices, ...goodsReceipts].some(
       (doc) => doc.status === 'pending' || doc.status === 'processing',
     )
     if (!hasInFlight) return
 
     const interval = window.setInterval(() => void refreshDocs(), 3000)
     return () => window.clearInterval(interval)
-  }, [purchaseOrders, invoices, refreshDocs])
+  }, [purchaseOrders, invoices, goodsReceipts, refreshDocs])
 
   const handleLogout = React.useCallback(async () => {
     try {
@@ -273,6 +310,44 @@ export default function ProcurementPage({ params }: { params: { id: string } }) 
     }
   }
 
+  const handleGoodsReceiptFileSelected = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+    setGrnNumber('')
+    setGrnPoId('')
+    setPendingGrnFile(file)
+  }
+
+  const submitGoodsReceiptUpload = async () => {
+    const file = pendingGrnFile
+    if (!file || !grnPoId || !grnNumber.trim()) return
+
+    setIsUploadingGrn(true)
+    try {
+      await uploadGoodsReceipt(workspaceId, file, { purchaseOrderId: grnPoId, grnNumber: grnNumber.trim() })
+      setPendingGrnFile(null)
+      toastRef.current({
+        variant: 'success',
+        title: 'Goods receipt uploaded',
+        description: `${file.name} is being parsed.`,
+      })
+      await refreshDocs()
+    } catch (err) {
+      if (isUnauthorized(err)) {
+        router.push('/login')
+        return
+      }
+      toastRef.current({
+        variant: 'error',
+        title: 'Upload failed',
+        description: extractErrorMessage(err, 'Try again in a moment.'),
+      })
+    } finally {
+      setIsUploadingGrn(false)
+    }
+  }
+
   const donePurchaseOrders = purchaseOrders.filter((doc) => doc.status === 'done')
   const doneInvoices = invoices.filter((doc) => doc.status === 'done')
 
@@ -330,9 +405,9 @@ export default function ProcurementPage({ params }: { params: { id: string } }) 
       <TableHeader>
         <TableRow>
           <TableHead>Name</TableHead>
-          <TableHead>{kind === 'purchase-orders' ? 'PO number' : 'Invoice number'}</TableHead>
+          <TableHead>{numberColumnLabel[kind]}</TableHead>
           {kind === 'purchase-orders' ? <TableHead>Vendor</TableHead> : null}
-          <TableHead>Currency</TableHead>
+          {kind !== 'goods-receipts' ? <TableHead>Currency</TableHead> : null}
           <TableHead>Status</TableHead>
           <TableHead>Rows</TableHead>
           <TableHead>Created</TableHead>
@@ -350,9 +425,9 @@ export default function ProcurementPage({ params }: { params: { id: string } }) 
             </TableCell>
             {/* Em dash, not a hidden row: documents uploaded before S3b have no
                 header, and they still need to be listed and downloadable. */}
-            <TableCell>{(kind === 'purchase-orders' ? doc.poNumber : doc.invoiceNumber) ?? '—'}</TableCell>
+            <TableCell>{documentNumber(doc, kind) ?? '—'}</TableCell>
             {kind === 'purchase-orders' ? <TableCell>{doc.vendorName ?? '—'}</TableCell> : null}
-            <TableCell>{doc.currency ?? '—'}</TableCell>
+            {kind !== 'goods-receipts' ? <TableCell>{doc.currency ?? '—'}</TableCell> : null}
             <TableCell>
               <Badge variant={statusVariant[doc.status]}>{statusLabel[doc.status]}</Badge>
             </TableCell>
@@ -385,7 +460,7 @@ export default function ProcurementPage({ params }: { params: { id: string } }) 
       mobileTabBar={({ moreActive, onMoreClick }) => (
         <MobileTabBar items={workspacePrimaryTabItems(workspaceId)} moreActive={moreActive} onMoreClick={onMoreClick} />
       )}
-      title="Purchase orders & invoices"
+      title="Purchase orders, invoices & goods receipts"
       description="Upload purchase orders and invoices, then compare a pair to surface discrepancies."
       badge={membership ? <Badge variant={membership.role === 'member' ? 'secondary' : 'success'}>{membership.role}</Badge> : null}
       onLogout={handleLogout}
@@ -405,6 +480,8 @@ export default function ProcurementPage({ params }: { params: { id: string } }) 
               aria-label="Document type"
             />
 
+            {/* Three tabs now, so this is a lookup rather than a nested
+                ternary — a fourth kind is one entry, not another arm. */}
             {activeTab === 'purchase-orders' ? (
               <Card variant="elevated" className="p-6">
                 <div className="flex items-center justify-between gap-3">
@@ -454,7 +531,7 @@ export default function ProcurementPage({ params }: { params: { id: string } }) 
                   )}
                 </div>
               </Card>
-            ) : (
+            ) : activeTab === 'invoices' ? (
               <Card variant="elevated" className="p-6">
                 <div className="flex items-center justify-between gap-3">
                   <div>
@@ -500,6 +577,58 @@ export default function ProcurementPage({ params }: { params: { id: string } }) 
                     />
                   ) : (
                     renderDocsTable(invoices, 'invoices')
+                  )}
+                </div>
+              </Card>
+            ) : (
+              <Card variant="elevated" className="p-6">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-primary">Goods receipts</p>
+                    <h2 className="mt-1 text-2xl font-semibold">Uploaded goods receipts</h2>
+                  </div>
+                  {canManage ? (
+                    <>
+                      {/* No .pdf: the extraction chain cannot express received
+                          vs accepted, so a PDF receipt would silently lose the
+                          acceptance data. Deferred, not forgotten. */}
+                      <input
+                        ref={grnFileInputRef}
+                        type="file"
+                        accept=".csv,.xlsx"
+                        className="hidden"
+                        onChange={(event) => void handleGoodsReceiptFileSelected(event)}
+                      />
+                      <Button
+                        size="sm"
+                        onClick={() => grnFileInputRef.current?.click()}
+                        isLoading={isUploadingGrn}
+                        loadingText="Uploading"
+                      >
+                        {!isUploadingGrn ? <Upload className="size-4" /> : null}
+                        {!isUploadingGrn ? 'Upload goods receipt' : null}
+                      </Button>
+                    </>
+                  ) : null}
+                </div>
+
+                <div className="mt-6">
+                  {goodsReceipts.length === 0 ? (
+                    <EmptyState
+                      icon={<PackageCheck className="size-5" />}
+                      title="No goods receipts yet"
+                      description="Upload a CSV or XLSX goods receipt to record what was actually delivered against a purchase order."
+                      actions={
+                        canManage ? (
+                          <Button size="sm" onClick={() => grnFileInputRef.current?.click()}>
+                            <Upload className="size-4" />
+                            Upload goods receipt
+                          </Button>
+                        ) : undefined
+                      }
+                    />
+                  ) : (
+                    renderDocsTable(goodsReceipts, 'goods-receipts')
                   )}
                 </div>
               </Card>
@@ -701,6 +830,68 @@ export default function ProcurementPage({ params }: { params: { id: string } }) 
                 maxLength={3}
                 placeholder="USD"
                 onChange={(event) => setInvoiceCurrency(event.target.value.toUpperCase())}
+              />
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* POLICY v1 #2 again: a receipt answers exactly one purchase order, and
+          the column behind this is NOT NULL — a receipt with no order is not
+          evidence of anything. No currency field: a receipt records what
+          arrived, not what it cost. */}
+      <Modal
+        open={pendingGrnFile !== null}
+        onClose={() => setPendingGrnFile(null)}
+        title="Goods receipt details"
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={() => setPendingGrnFile(null)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => void submitGoodsReceiptUpload()}
+              isLoading={isUploadingGrn}
+              loadingText="Uploading"
+              disabled={purchaseOrders.length === 0 || !grnPoId || !grnNumber.trim()}
+            >
+              {!isUploadingGrn ? 'Upload' : null}
+            </Button>
+          </div>
+        }
+      >
+        {purchaseOrders.length === 0 ? (
+          <EmptyState
+            icon={<ClipboardList className="size-5" />}
+            title="No purchase orders yet"
+            description="A goods receipt records what arrived against an order, so upload that purchase order first."
+          />
+        ) : (
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">{pendingGrnFile?.name}</p>
+            <div className="space-y-2">
+              <label className="text-sm font-medium" htmlFor="grn-po">
+                Purchase order
+              </label>
+              <Select id="grn-po" value={grnPoId} onChange={(event) => setGrnPoId(event.target.value)}>
+                <option value="">Select a purchase order</option>
+                {purchaseOrders.map((doc) => (
+                  <option key={doc.id} value={doc.id}>
+                    {doc.poNumber ? `${doc.poNumber} — ${doc.name}` : doc.name}
+                  </option>
+                ))}
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium" htmlFor="grn-number">
+                Goods receipt number
+              </label>
+              <Input
+                id="grn-number"
+                value={grnNumber}
+                maxLength={200}
+                placeholder="GRN-9001"
+                onChange={(event) => setGrnNumber(event.target.value)}
               />
             </div>
           </div>
