@@ -461,7 +461,7 @@ export default function ProcurementPage({ params }: { params: { id: string } }) 
         <MobileTabBar items={workspacePrimaryTabItems(workspaceId)} moreActive={moreActive} onMoreClick={onMoreClick} />
       )}
       title="Purchase orders, invoices & goods receipts"
-      description="Upload purchase orders and invoices, then compare a pair to surface discrepancies."
+      description="Upload what was ordered, what was delivered, and what was billed, then compare a pair to surface discrepancies."
       badge={membership ? <Badge variant={membership.role === 'member' ? 'secondary' : 'success'}>{membership.role}</Badge> : null}
       onLogout={handleLogout}
     >
