@@ -101,6 +101,7 @@ async function main(): Promise<void> {
     buildSavedRefinedMessageRows,
   } = await import('./data/insights')
   const {
+    buildComparisonRunGoodsReceiptRows,
     buildComparisonRunRows,
     buildDiscrepancyFlagRows,
     buildInvoiceLineItemRows,
@@ -329,6 +330,13 @@ async function main(): Promise<void> {
       buildGoodsReceiptLineItemRows(),
     )
     await insert('comparison_runs', schema.comparisonRuns as never, buildComparisonRunRows())
+    // Which receipts each run read (S6). After both parents, and before the
+    // flags that point at those same receipts' line items.
+    await insert(
+      'comparison_run_goods_receipts',
+      schema.comparisonRunGoodsReceipts as never,
+      buildComparisonRunGoodsReceiptRows(),
+    )
     await insert('discrepancy_flags', schema.discrepancyFlags as never, buildDiscrepancyFlagRows())
     await insert('catalog_items', schema.catalogItems as never, buildCatalogItemRows(uploadedImages))
     await insert('catalog_matches', schema.catalogMatches as never, buildCatalogMatchRows())

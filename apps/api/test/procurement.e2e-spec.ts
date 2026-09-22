@@ -753,6 +753,54 @@ describe('Procurement flow (e2e)', () => {
       expect(run.mode).toBe('three_way')
       expect(run.goodsReceiptLineCount).toBe(1)
     })
+
+    // The currency is chosen at upload (S3b) and decided outside the engine, so
+    // this is the only test that proves the value survives the whole trip:
+    // multipart field → DTO → column → comparison → response.
+    it('raises a currency mismatch for review when the documents are billed in different currencies', async () => {
+      const owner = await seedOwnerWithWorkspace(app, `${prefix}s6-currency@example.com`, 'S6 Currency')
+      const vendorId = await createVendor(app, owner.workspaceId, owner.accessToken)
+      const lines = 'sku,description,qty,unit price\nA1,Widget,10,5.00'
+
+      const poUpload = await request(app.getHttpServer())
+        .post(`/workspaces/${owner.workspaceId}/procurement/purchase-orders`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .field('vendorId', vendorId)
+        .field('poNumber', 'PO-S6-2')
+        .field('currency', 'USD')
+        .attach('file', Buffer.from(lines), 'po.csv')
+        .expect(201)
+      await waitForPoDone(poUpload.body.id)
+
+      const invoiceUpload = await request(app.getHttpServer())
+        .post(`/workspaces/${owner.workspaceId}/procurement/invoices`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .field('purchaseOrderId', poUpload.body.id)
+        .field('invoiceNumber', 'INV-S6-2')
+        .field('currency', 'EUR')
+        .attach('file', Buffer.from(lines), 'invoice.csv')
+        .expect(201)
+      await waitForInvoiceDone(invoiceUpload.body.id)
+
+      const compareRes = await request(app.getHttpServer())
+        .post(`/workspaces/${owner.workspaceId}/procurement/discrepancies/compare`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .send({ purchaseOrderId: poUpload.body.id, invoiceId: invoiceUpload.body.id })
+        .expect(201)
+
+      // The lines themselves agree, so the currency is the only thing to report.
+      expect(compareRes.body.counts.currency_mismatch).toBe(1)
+      expect(compareRes.body.flags).toHaveLength(1)
+      const flag = compareRes.body.flags[0]
+      expect(flag.flagType).toBe('currency_mismatch')
+      expect(flag.poValue).toBe('USD')
+      expect(flag.invoiceValue).toBe('EUR')
+      // POLICY v1 #4/#6: no difference is computed, and no line is accused.
+      expect(flag.delta).toBeNull()
+      expect(flag.sku).toBeNull()
+      expect(flag.poLineItemId).toBeNull()
+      expect(flag.invoiceLineItemId).toBeNull()
+    })
   })
 
   // S3b. The foreign key only proves a row exists; these prove the API refuses

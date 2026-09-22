@@ -52,7 +52,18 @@ export type GoodsReceiptHeader = {
 }
 
 export type ProcurementDocKind = 'purchase-orders' | 'invoices' | 'goods-receipts'
-export type DiscrepancyFlagType = 'quantity_mismatch' | 'price_mismatch' | 'missing_on_invoice' | 'missing_on_po'
+// S6. Eight values in three groups: the four original PO-vs-invoice types, the
+// two receiving types, and the two "needs review" types — the pair POLICY v1 #4
+// and #6 route there, recognisable by carrying no delta.
+export type DiscrepancyFlagType =
+  | 'quantity_mismatch'
+  | 'price_mismatch'
+  | 'missing_on_invoice'
+  | 'missing_on_po'
+  | 'short_receipt'
+  | 'invoice_exceeds_received'
+  | 'uom_mismatch'
+  | 'currency_mismatch'
 export type DiscrepancyFlagStatus = 'open' | 'dismissed'
 export type DiscrepancyFlag = {
   id: string
@@ -63,10 +74,20 @@ export type DiscrepancyFlag = {
   comparisonRunId: string | null
   poLineItemId: string | null
   invoiceLineItemId: string | null
+  // S6. Null on every pre-0027 flag, and on any flag the receiving side had no
+  // part in — including `currency_mismatch`, which belongs to the two document
+  // headers and references no line at all.
+  goodsReceiptLineItemId: string | null
   sku: string | null
   flagType: DiscrepancyFlagType
   poValue: string | null
+  // What was actually accepted, between ordered and billed. On `uom_mismatch`
+  // these three columns carry units rather than quantities: the unit is what is
+  // in dispute, and no quantity comparison is valid across different ones.
+  receivedValue: string | null
   invoiceValue: string | null
+  // Null whenever no difference can honestly be computed — both needs-review
+  // types, by POLICY v1 #4.
   delta: string | null
   reason: string
   status: DiscrepancyFlagStatus
@@ -82,6 +103,10 @@ export type CompareResult = {
     price_mismatch: number
     missing_on_invoice: number
     missing_on_po: number
+    short_receipt: number
+    invoice_exceeds_received: number
+    uom_mismatch: number
+    currency_mismatch: number
   }
   flags: DiscrepancyFlag[]
 }

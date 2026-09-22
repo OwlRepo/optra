@@ -15,6 +15,7 @@ import {
 } from '../data/insights'
 import { buildQueryMetricRows } from '../data/metrics'
 import {
+  buildComparisonRunGoodsReceiptRows,
   buildComparisonRunRows,
   buildDiscrepancyFlagRows,
   buildInvoiceLineItemRows,
@@ -396,15 +397,29 @@ describe('procurement', () => {
     })
   })
 
-  // The engine defines delta as invoice minus PO, so a positive number means
-  // the invoice asks for more than was ordered. The seed used the same
-  // convention while the engine used the inverse until S1; this pins it.
-  it('states delta as invoice minus purchase order on every flag', () => {
+  // Every delta reads the same way — positive means "more than it should be" —
+  // but each type measures against the number IT disputes, which is not always
+  // the PO. The seed used the invoice-minus-PO convention while the engine used
+  // the inverse until S1; this pins the seed to what the engine now writes
+  // (`toFlagValues` in apps/api/src/procurement/comparison.service.ts).
+  it('states each delta against the value that flag type disputes', () => {
     buildDiscrepancyFlagRows().forEach(flag => {
+      // POLICY v1 #4 and #6: the needs-review types compute none at all.
       if (flag.delta === null) return
       const po = flag.poValue === null ? 0 : Number(flag.poValue)
       const invoice = flag.invoiceValue === null ? 0 : Number(flag.invoiceValue)
-      expect(Number(flag.delta)).toBeCloseTo(invoice - po, 6)
+      const received = flag.receivedValue === null ? 0 : Number(flag.receivedValue)
+
+      const expected =
+        flag.flagType === 'short_receipt'
+          ? // What arrived against what was ordered: negative means short.
+            received - po
+          : flag.flagType === 'invoice_exceeds_received'
+            ? // What was billed against what was kept: positive means billed
+              // for more than we have.
+              invoice - received
+            : invoice - po
+      expect(Number(flag.delta)).toBeCloseTo(expected, 6)
     })
   })
 
@@ -429,10 +444,21 @@ describe('procurement', () => {
     })
   })
 
-  it('covers all four discrepancy types with real line-item references', () => {
+  // All eight since S6. A demo that only ever shows the original four teaches
+  // the reader that receiving and needs-review do not exist.
+  it('covers all eight discrepancy types with real line-item references', () => {
     const flags = buildDiscrepancyFlagRows()
     expect(new Set(flags.map(f => f.flagType))).toEqual(
-      new Set(['quantity_mismatch', 'price_mismatch', 'missing_on_invoice', 'missing_on_po']),
+      new Set([
+        'quantity_mismatch',
+        'price_mismatch',
+        'missing_on_invoice',
+        'missing_on_po',
+        'short_receipt',
+        'invoice_exceeds_received',
+        'uom_mismatch',
+        'currency_mismatch',
+      ]),
     )
     const poLineIds = new Set(poLines.map(l => l.id))
     const invoiceLineIds = new Set(invoiceLines.map(l => l.id))
@@ -441,6 +467,38 @@ describe('procurement', () => {
       if (f.invoiceLineItemId) expect(invoiceLineIds.has(f.invoiceLineItemId as string)).toBe(true)
       expect(f.status).toBe('open')
     })
+  })
+
+  // POLICY v1 #4 and #6: neither needs-review type computes a difference, and
+  // that absent delta is the mechanical mark of "a human has to look".
+  it('computes no delta for the needs-review flag types', () => {
+    buildDiscrepancyFlagRows()
+      .filter(f => f.flagType === 'uom_mismatch' || f.flagType === 'currency_mismatch')
+      .forEach(f => expect(f.delta).toBeNull())
+  })
+
+  it('records every comparison run as three_way against the receipts it read', () => {
+    const runs = buildComparisonRunRows()
+    const receipts = buildGoodsReceiptRows()
+    const links = buildComparisonRunGoodsReceiptRows()
+    const runIds = new Set(runs.map(r => r.id))
+    const receiptIds = new Set(receipts.map(r => r.id))
+
+    // Every seeded PO has at least one receipt, so no run can honestly claim
+    // two_way — and a three_way run with no linked receipt is the false claim
+    // §7.4 forbids.
+    runs.forEach(run => {
+      expect(run.mode).toBe('three_way')
+      expect(typeof run.goodsReceiptLineCount).toBe('number')
+      expect(links.some(link => link.comparisonRunId === run.id)).toBe(true)
+    })
+
+    links.forEach(link => {
+      expect(runIds.has(link.comparisonRunId)).toBe(true)
+      expect(receiptIds.has(link.goodsReceiptId)).toBe(true)
+    })
+    // Composite primary key: a receipt is linked to a run at most once.
+    expect(new Set(links.map(l => `${l.comparisonRunId}:${l.goodsReceiptId}`)).size).toBe(links.length)
   })
 })
 

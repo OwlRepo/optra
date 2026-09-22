@@ -39,6 +39,10 @@ interface LineSpec {
   description: string
   qty: string
   price: string
+  // Set only where an invoice deliberately states a different unit from the PO
+  // (S6). Everywhere else the unit comes from `provenanceFor`, so all three
+  // documents agree and no unit flag is manufactured.
+  uom?: string
 }
 
 // Office / facilities purchasing for the demo agency.
@@ -82,21 +86,36 @@ const PO_LINES: LineSpec[][] = [
 // discrepancy flags describe.
 const INVOICE_MUTATIONS: Record<
   number,
-  { skip?: string[]; extra?: LineSpec[]; qty?: Record<string, string>; price?: Record<string, string> }
+  {
+    skip?: string[]
+    extra?: LineSpec[]
+    qty?: Record<string, string>
+    price?: Record<string, string>
+    uom?: Record<string, string>
+    // S6 / POLICY v1 #6. A vendor billing in a different currency from the
+    // order is not an arithmetic error, it is a question — so the demo carries
+    // one, on a pair whose other flags are quantity-based and stay readable
+    // whatever the money is denominated in.
+    currency?: string
+  }
 > = {
   0: {
     qty: { 'MON-2704': '20' },
     price: { 'CHR-2201': '338.00' },
+    // Ordered by the box, billed by the unit. Units are captured, never
+    // converted (POLICY v1 #4), so this is a review, not a dispute.
+    uom: { 'KBD-0450': 'each' },
     skip: ['MAT-0075'],
     extra: [{ sku: 'FEE-SHIP', description: 'Freight and handling surcharge', qty: '1', price: '285.00' }],
   },
   1: {
     price: { 'LAP-9001': '2610.00' },
-    qty: { 'HDS-4400': '8' },
+    qty: { 'HDS-4400': '8', 'WEB-1200': '3' },
   },
   2: {
     qty: { 'COF-7700': '30' },
     skip: ['PLT-0012'],
+    currency: 'EUR',
   },
 }
 
@@ -121,15 +140,23 @@ function invoiceLinesFor(poIndex: number): LineSpec[] {
   // Only the first quarter of each template carries deliberate discrepancies;
   // later quarters reconcile cleanly, which is what makes the flagged ones
   // stand out instead of everything looking broken.
-  const mutation = periodOf(poIndex) === 0 ? (INVOICE_MUTATIONS[templateOf(poIndex)] ?? {}) : {}
+  const mutation = invoiceMutationFor(poIndex)
   const lines = poLinesFor(poIndex)
     .filter(line => !mutation.skip?.includes(line.sku))
     .map(line => ({
       ...line,
       qty: mutation.qty?.[line.sku] ?? line.qty,
       price: mutation.price?.[line.sku] ?? line.price,
+      uom: mutation.uom?.[line.sku],
     }))
   return [...lines, ...(mutation.extra ?? [])]
+}
+
+// Only the first quarter of each template carries deliberate discrepancies —
+// factored out because the invoice header (currency) needs the same rule as the
+// lines, and two copies of it would drift.
+function invoiceMutationFor(poIndex: number) {
+  return periodOf(poIndex) === 0 ? (INVOICE_MUTATIONS[templateOf(poIndex)] ?? {}) : {}
 }
 
 const TEMPLATE_NAMES = ['Office fit-out', 'Engineering hardware refresh', 'Facilities consumables']
@@ -169,7 +196,7 @@ export function buildInvoiceRows() {
     workspaceId: DEMO_WORKSPACE_ID,
     name: `INV — ${VENDOR_NAMES[templateOf(i)]} ${44120 + i * 137}`,
     invoiceNumber: `INV-${String(44120 + i * 137)}`,
-    currency: 'USD',
+    currency: invoiceMutationFor(i).currency ?? 'USD',
     // POLICY v1 #2: every invoice answers exactly one PO, chosen explicitly.
     // The seed pairs them by index, which is what the comparison runs assume.
     purchaseOrderId: PO_IDS[i]!,
@@ -238,23 +265,47 @@ export function buildGoodsReceiptRows() {
  * `quantityAccepted` NULL — the "source did not say" case S6 must not read as
  * zero (§1B, POLICY v1 #14).
  */
+// Items whose follow-up delivery never turned up, so the demo carries a real
+// short receipt and a real over-billing rather than only receipts that
+// reconcile. Both belong to template 1 and only its first quarter has a second
+// delivery, so nothing else is affected.
+const NEVER_REDELIVERED = new Set(['WEB-1200', 'SSD-2000'])
+
 function grnLinesFor(grnIndex: number) {
   const poIndex = grnPoIndex(grnIndex)
   const isSecondDelivery = grnIndex >= PAIRS
-  return poLinesFor(poIndex).map((line, n) => {
-    const ordered = Number(line.qty)
-    // A second delivery carries the remainder, so the pair sums to the order.
-    const received = isSecondDelivery ? Math.max(1, ordered - Math.round(ordered * 0.75)) : Math.round(ordered * 0.75)
-    const rejected = grnIndex % 3 === 1 && n === 0 ? 1 : 0
-    const accepted = grnIndex % 3 === 2 ? null : String(Math.max(0, received - rejected))
-    return {
-      sku: line.sku,
-      description: line.description,
-      quantityReceived: String(received),
-      quantityAccepted: accepted,
-      quantityRejected: accepted === null ? null : String(rejected),
-    }
-  })
+  return poLinesFor(poIndex)
+    // `n` stays the item's position on the PURCHASE ORDER, not in this
+    // receipt: the rejection below is keyed on it, and letting the filter
+    // renumber would move the rejection onto a different item.
+    .map((line, n) => ({ line, n }))
+    .filter(({ line }) => !(isSecondDelivery && NEVER_REDELIVERED.has(line.sku)))
+    .map(({ line, n }) => {
+      const ordered = Number(line.qty)
+      // A second delivery carries the remainder, so the pair sums to the order.
+      const received = isSecondDelivery
+        ? Math.max(1, ordered - Math.round(ordered * 0.75))
+        : Math.round(ordered * 0.75)
+      // The rejected item is chosen by position so it lands on the same SKU in
+      // both of that PO's receipts. Index 4 rather than 0 on purpose: line 0 of
+      // this template already carries a price flag, and a rejection there would
+      // outrank it and make the demo tell two stories about one item.
+      const rejected = grnIndex % 3 === 1 && n === 4 ? 1 : 0
+      const accepted = grnIndex % 3 === 2 ? null : String(Math.max(0, received - rejected))
+      return {
+        sku: line.sku,
+        description: line.description,
+        quantityReceived: String(received),
+        quantityAccepted: accepted,
+        quantityRejected: accepted === null ? null : String(rejected),
+        // Keyed on the item's position on the PURCHASE ORDER, not in this
+        // receipt. Deriving it from the receipt's own row number gave an item
+        // one unit in the first delivery and another in the second whenever the
+        // two receipts held different line counts — which S6 then correctly
+        // reported as a unit mismatch against data that was simply wrong.
+        uom: UOMS[n % UOMS.length]!,
+      }
+    })
 }
 
 export function buildGoodsReceiptLineItemRows() {
@@ -269,7 +320,7 @@ export function buildGoodsReceiptLineItemRows() {
       quantityReceived: line.quantityReceived,
       quantityAccepted: line.quantityAccepted,
       quantityRejected: line.quantityRejected,
-      uom: UOMS[n % UOMS.length]!,
+      uom: line.uom,
       rawRow: null,
       sourceSheet: null,
       sourceRow: n + 2,
@@ -344,9 +395,23 @@ export function buildInvoiceLineItemRows() {
       rawRow: { sku: line.sku, description: line.description, qty: line.qty, unit_price: line.price },
       sourceKind: templateOf(i) === 1 ? 'pdf-extraction' : 'csv',
       ...provenanceFor(i, n),
+      // After the spread, so a deliberate invoice unit overrides the shared one.
+      ...(line.uom ? { uom: line.uom } : {}),
       createdAt: daysAgo(poAge(i) - 4),
     })),
   )
+}
+
+/**
+ * The receipt line a receiving flag points at: the earliest delivery that
+ * mentions the item, mirroring the engine's `arg_min(id, line_number)`.
+ */
+function goodsReceiptLineIdFor(poIndex: number, sku: string): string | null {
+  for (const grnIndex of grnIndexesForPo(poIndex)) {
+    const position = grnLinesFor(grnIndex).findIndex(line => line.sku === sku)
+    if (position !== -1) return grnLineId(grnIndex, position + 1)
+  }
+  return null
 }
 
 /** Locates a line by SKU so flags can reference real line-item ids. */
@@ -364,18 +429,44 @@ export function buildComparisonRunRows() {
     workspaceId: DEMO_WORKSPACE_ID,
     purchaseOrderId: PO_IDS[i]!,
     invoiceId: INVOICE_IDS[i]!,
-    mode: 'two_way',
+    // Every seeded PO has at least one receipt, so every run is three-way.
+    // POLICY v1 #14 makes this derived, not chosen: two_way means "no receiving
+    // evidence existed", and claiming it here would be false.
+    mode: 'three_way',
     strategyVersion: 1,
     status: 'succeeded' as const,
     initiatedBy: null,
     poLineCount: poLinesFor(i).length,
     invoiceLineCount: invoiceLinesFor(i).length,
+    goodsReceiptLineCount: grnIndexesForPo(i).reduce((total, grnIndex) => total + grnLinesFor(grnIndex).length, 0),
     flagCount: flagCountFor(i),
     startedAt: daysAgo(poAge(i) - 6),
     finishedAt: daysAgo(poAge(i) - 6),
     lastError: null,
     createdAt: daysAgo(poAge(i) - 6),
   }))
+}
+
+/** Which receipts belong to a purchase order — the inverse of `grnPoIndex`. */
+function grnIndexesForPo(poIndex: number): number[] {
+  return GRN_IDS.map((_, grnIndex) => grnIndex).filter(grnIndex => grnPoIndex(grnIndex) === poIndex)
+}
+
+/**
+ * Which receipts each run actually read (§1E "source document IDs"). Recorded
+ * rather than re-derived, so a receipt uploaded later cannot change what an
+ * earlier run says it compared — and so POLICY v1 #9's retention guard has rows
+ * to find when it refuses to delete evidence.
+ */
+export function buildComparisonRunGoodsReceiptRows() {
+  return COMPARISON_RUN_IDS.flatMap((comparisonRunId, poIndex) =>
+    // Two columns only — the table is a composite key and carries no
+    // timestamp of its own; the run it points at already has one.
+    grnIndexesForPo(poIndex).map(grnIndex => ({
+      comparisonRunId,
+      goodsReceiptId: GRN_IDS[grnIndex]!,
+    })),
+  )
 }
 
 /** How many flags `buildDiscrepancyFlagRows` emits for a pair. */
@@ -389,11 +480,21 @@ export function buildDiscrepancyFlagRows() {
   const push = (
     poIndex: number,
     sku: string,
-    flagType: 'quantity_mismatch' | 'price_mismatch' | 'missing_on_invoice' | 'missing_on_po',
+    flagType:
+      | 'quantity_mismatch'
+      | 'price_mismatch'
+      | 'missing_on_invoice'
+      | 'missing_on_po'
+      | 'short_receipt'
+      | 'invoice_exceeds_received'
+      | 'uom_mismatch',
     poValue: string | null,
     invoiceValue: string | null,
     delta: string | null,
     reason: string,
+    // What was accepted, between ordered and billed. Filled on the receiving
+    // and unit types; null on the four that never read a receipt.
+    receivedValue: string | null = null,
   ) => {
     const po = findLine(poLinesFor(poIndex), sku)
     const inv = findLine(invoiceLinesFor(poIndex), sku)
@@ -404,9 +505,11 @@ export function buildDiscrepancyFlagRows() {
       comparisonRunId: COMPARISON_RUN_IDS[poIndex]!,
       poLineItemId: po ? poLineId(poIndex, po.index + 1) : null,
       invoiceLineItemId: inv ? invoiceLineId(poIndex, inv.index + 1) : null,
+      goodsReceiptLineItemId: receivedValue === null ? null : goodsReceiptLineIdFor(poIndex, sku),
       sku,
       flagType,
       poValue,
+      receivedValue,
       invoiceValue,
       delta,
       reason,
@@ -417,14 +520,86 @@ export function buildDiscrepancyFlagRows() {
     })
   }
 
-  push(0, 'MON-2704', 'quantity_mismatch', '18', '20', '2', 'Invoice bills 20 monitors against 18 ordered.')
+  // POLICY v1 #6. Header-level, so it belongs to the run rather than to a line:
+  // no SKU, no line references, and no delta — the amounts are not comparable
+  // at all, which is a different statement from "they differ by N".
+  const pushCurrencyMismatch = (poIndex: number, poCurrency: string, invoiceCurrency: string) => {
+    rows.push({
+      workspaceId: DEMO_WORKSPACE_ID,
+      purchaseOrderId: PO_IDS[poIndex]!,
+      invoiceId: INVOICE_IDS[poIndex]!,
+      comparisonRunId: COMPARISON_RUN_IDS[poIndex]!,
+      poLineItemId: null,
+      invoiceLineItemId: null,
+      goodsReceiptLineItemId: null,
+      sku: null,
+      flagType: 'currency_mismatch' as const,
+      poValue: poCurrency,
+      receivedValue: null,
+      invoiceValue: invoiceCurrency,
+      delta: null,
+      reason:
+        `Currency mismatch: the purchase order is in ${poCurrency} but the invoice is in ${invoiceCurrency}. ` +
+        'Amounts are not comparable and no conversion is applied, so this needs review',
+      status: 'open' as const,
+      dismissedAt: null,
+      dismissedBy: null,
+      createdAt: daysAgo(poAge(poIndex) - 6),
+    })
+  }
+
+  // Pair 0 — everything arrived, so the exceptions are about what was billed.
+  push(
+    0,
+    'MON-2704',
+    'invoice_exceeds_received',
+    '18',
+    '20',
+    '2',
+    'Invoice bills 20 monitors, but only 18 were received and accepted.',
+    '18',
+  )
   push(0, 'CHR-2201', 'price_mismatch', '312.50', '338.00', '25.50', 'Unit price is $25.50 above the agreed PO rate.')
   push(0, 'MAT-0075', 'missing_on_invoice', '12', null, '-12', 'Standing mats were ordered but do not appear on the invoice.')
   push(0, 'FEE-SHIP', 'missing_on_po', null, '1', '1', 'Freight surcharge of $285.00 was never quoted on the PO.')
+  push(
+    0,
+    'KBD-0450',
+    'uom_mismatch',
+    'box',
+    'each',
+    null,
+    'Keyboards were ordered by the box and billed by the unit. Units are captured, never converted, so no quantity difference is reported.',
+    'box',
+  )
+  // Pair 1 — a follow-up delivery that never came, plus a rejected item.
   push(1, 'LAP-9001', 'price_mismatch', '2450.00', '2610.00', '160.00', 'Laptop unit price exceeds the PO rate by $160.00 per unit.')
   push(1, 'HDS-4400', 'quantity_mismatch', '10', '8', '-2', 'Two fewer headsets invoiced than ordered.')
+  push(
+    1,
+    'WEB-1200',
+    'short_receipt',
+    '4',
+    '3',
+    '-1',
+    'Three of four webcams arrived; the balance was never redelivered.',
+    '3',
+  )
+  push(
+    1,
+    'SSD-2000',
+    'invoice_exceeds_received',
+    '8',
+    '8',
+    '3',
+    'All eight drives were invoiced, but one was rejected on arrival and two never shipped.',
+    '5',
+  )
+  // Pair 2 — the receipts never stated an accepted quantity, so nothing about
+  // receiving can be concluded and only the PO/invoice difference is reported.
   push(2, 'COF-7700', 'quantity_mismatch', '24', '30', '6', 'Six extra kilos of coffee invoiced against the PO.')
   push(2, 'PLT-0012', 'missing_on_invoice', '10', null, '-10', 'Office plants ordered but not invoiced; check whether they shipped.')
+  pushCurrencyMismatch(2, 'USD', 'EUR')
 
   return rows
 }

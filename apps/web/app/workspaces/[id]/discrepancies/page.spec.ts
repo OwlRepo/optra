@@ -44,9 +44,11 @@ function makeFlag(overrides: Partial<Record<string, unknown>> = {}) {
     invoiceId: 'inv-1',
     poLineItemId: 'po-line-1',
     invoiceLineItemId: 'inv-line-1',
+    goodsReceiptLineItemId: null,
     sku: 'SKU-100',
     flagType: 'quantity_mismatch',
     poValue: '10',
+    receivedValue: null,
     invoiceValue: '8',
     delta: '-2',
     reason: 'Invoice quantity is lower than the PO quantity.',
@@ -96,6 +98,72 @@ describe('DiscrepanciesPage', () => {
     expect(await screen.findByText('SKU-100')).toBeDefined()
     expect(screen.getByText('Quantity mismatch')).toBeDefined()
     expect(screen.getAllByText('1').length).toBeGreaterThan(0)
+  })
+
+  // S6 widened the flag vocabulary from four types to eight. An unlabelled type
+  // does not crash the page — it renders a blank badge — so nothing but a test
+  // like this one notices when the API learns a word the UI does not know.
+  it('labels every discrepancy type the API can return', async () => {
+    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
+    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+    listDiscrepanciesMock.mockResolvedValue([
+      makeFlag({ id: 'f1', sku: 'S-1', flagType: 'quantity_mismatch' }),
+      makeFlag({ id: 'f2', sku: 'S-2', flagType: 'price_mismatch' }),
+      makeFlag({ id: 'f3', sku: 'S-3', flagType: 'missing_on_invoice' }),
+      makeFlag({ id: 'f4', sku: 'S-4', flagType: 'missing_on_po' }),
+      makeFlag({ id: 'f5', sku: 'S-5', flagType: 'short_receipt' }),
+      makeFlag({ id: 'f6', sku: 'S-6', flagType: 'invoice_exceeds_received' }),
+      makeFlag({ id: 'f7', sku: 'S-7', flagType: 'uom_mismatch' }),
+      makeFlag({ id: 'f8', sku: null, flagType: 'currency_mismatch' }),
+    ])
+
+    renderPage()
+
+    expect(await screen.findByText('Quantity mismatch')).toBeDefined()
+    expect(screen.getByText('Price mismatch')).toBeDefined()
+    // These two read identically on the badge and on their stat card, so the
+    // badge is one of several matches rather than the only one.
+    expect(screen.getAllByText('Missing on invoice').length).toBeGreaterThan(1)
+    expect(screen.getAllByText('Missing on PO').length).toBeGreaterThan(1)
+    expect(screen.getByText('Short receipt')).toBeDefined()
+    expect(screen.getByText('Billed above received')).toBeDefined()
+    expect(screen.getByText('Unit mismatch')).toBeDefined()
+    expect(screen.getByText('Currency mismatch')).toBeDefined()
+  })
+
+  // A short receipt without the received quantity is the one number the
+  // reviewer is actually deciding on, so the table has to show all three.
+  it('shows what was received alongside what was ordered and billed', async () => {
+    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
+    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+    listDiscrepanciesMock.mockResolvedValue([
+      // Three distinct numbers, so a page that dropped the received column
+      // could not pass by rendering one of the other two twice.
+      makeFlag({ flagType: 'short_receipt', poValue: '12', receivedValue: '7', invoiceValue: '9', delta: '-5' }),
+    ])
+
+    renderPage()
+
+    expect(await screen.findByText('Received')).toBeDefined()
+    expect(screen.getByText('12')).toBeDefined()
+    expect(screen.getByText('7')).toBeDefined()
+    expect(screen.getByText('9')).toBeDefined()
+  })
+
+  it('summarises receiving exceptions and needs-review flags in the stat cards', async () => {
+    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
+    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+    listDiscrepanciesMock.mockResolvedValue([
+      makeFlag({ id: 'f1', flagType: 'short_receipt' }),
+      makeFlag({ id: 'f2', flagType: 'invoice_exceeds_received' }),
+      makeFlag({ id: 'f3', flagType: 'uom_mismatch' }),
+      makeFlag({ id: 'f4', sku: null, flagType: 'currency_mismatch' }),
+    ])
+
+    renderPage()
+
+    expect(await screen.findByText('Receiving exceptions')).toBeDefined()
+    expect(screen.getByText('Needs review')).toBeDefined()
   })
 
   it('renders a positive-toned empty state when no discrepancies are found', async () => {

@@ -57,6 +57,10 @@ interface FixtureItem {
   description?: string
   quantity?: string
   unitPrice?: string
+  // S6 commit 2. Almost every fixture leaves this unset, which is the shape of
+  // real data: `uom` arrived in S3a and only a source carrying a unit column
+  // fills it. An unset unit must never read as a mismatch.
+  uom?: string
 }
 
 describe('ComparisonService', () => {
@@ -80,10 +84,20 @@ describe('ComparisonService', () => {
     // legacy shape every pre-migration-0025 row has. compare() must keep
     // accepting it, so leaving this unset is the default on purpose.
     linkInvoiceToPo = false,
+    // S6 commit 2. Both header currencies default to unstated, which is what
+    // every pre-0025 document carries — so the currency check must stay silent
+    // for every fixture that does not opt in.
+    currencies: { po?: string | null; invoice?: string | null } = {},
   ) {
     const [po] = await db
       .insert(purchaseOrders)
-      .values({ workspaceId, name: 'po.csv', status: 'done', rowCount: poItems.length })
+      .values({
+        workspaceId,
+        name: 'po.csv',
+        status: 'done',
+        rowCount: poItems.length,
+        currency: currencies.po ?? null,
+      })
       .returning()
     const [invoice] = await db
       .insert(invoices)
@@ -93,6 +107,7 @@ describe('ComparisonService', () => {
         status: 'done',
         rowCount: invItems.length,
         purchaseOrderId: linkInvoiceToPo ? po.id : null,
+        currency: currencies.invoice ?? null,
       })
       .returning()
 
@@ -106,6 +121,7 @@ describe('ComparisonService', () => {
           description: item.description ?? null,
           quantity: item.quantity ?? null,
           unitPrice: item.unitPrice ?? null,
+          uom: item.uom ?? null,
         })),
       )
     }
@@ -119,11 +135,41 @@ describe('ComparisonService', () => {
           description: item.description ?? null,
           quantity: item.quantity ?? null,
           unitPrice: item.unitPrice ?? null,
+          uom: item.uom ?? null,
         })),
       )
     }
 
     return { po, invoice }
+  }
+
+  // Hoisted out of the three-way block: the needs-review tests below compare a
+  // receipt's unit against the order's, so both blocks seed receipts.
+  async function seedGoodsReceipt(
+    workspaceId: string,
+    purchaseOrderId: string,
+    lines: { sku: string; quantityAccepted: string | null; uom?: string }[],
+    grnNumber = 'GRN-1',
+  ) {
+    const [grn] = await db
+      .insert(goodsReceipts)
+      .values({ workspaceId, purchaseOrderId, name: `${grnNumber}.csv`, grnNumber, status: 'done' })
+      .returning()
+    if (lines.length > 0) {
+      await db.insert(goodsReceiptLineItems).values(
+        lines.map((line, index) => ({
+          workspaceId,
+          goodsReceiptId: grn.id,
+          lineNumber: index + 1,
+          sku: line.sku,
+          quantityReceived: line.quantityAccepted,
+          quantityAccepted: line.quantityAccepted,
+          quantityRejected: null,
+          uom: line.uom ?? null,
+        })),
+      )
+    }
+    return grn
   }
 
   it('flags quantity mismatch, price mismatch, missing-on-invoice, and missing-on-po in one comparison', async () => {
@@ -865,32 +911,6 @@ describe('ComparisonService', () => {
   // the SQL: every one of them is a case where a plausible implementation gives
   // a confidently wrong answer rather than an error.
   describe('three-way comparison (S6)', () => {
-    async function seedGoodsReceipt(
-      workspaceId: string,
-      purchaseOrderId: string,
-      lines: { sku: string; quantityAccepted: string | null }[],
-      grnNumber = 'GRN-1',
-    ) {
-      const [grn] = await db
-        .insert(goodsReceipts)
-        .values({ workspaceId, purchaseOrderId, name: `${grnNumber}.csv`, grnNumber, status: 'done' })
-        .returning()
-      if (lines.length > 0) {
-        await db.insert(goodsReceiptLineItems).values(
-          lines.map((line, index) => ({
-            workspaceId,
-            goodsReceiptId: grn.id,
-            lineNumber: index + 1,
-            sku: line.sku,
-            quantityReceived: line.quantityAccepted,
-            quantityAccepted: line.quantityAccepted,
-            quantityRejected: null,
-          })),
-        )
-      }
-      return grn
-    }
-
     it('flags a short receipt when less was accepted than ordered', async () => {
       const { workspace } = await seedWorkspace(`${prefix}s6-short@example.com`, 'S6 Short')
       const { po, invoice } = await seedReadyPoAndInvoice(
@@ -1038,6 +1058,300 @@ describe('ComparisonService', () => {
         .from(comparisonRunGoodsReceipts)
         .where(eq(comparisonRunGoodsReceipts.comparisonRunId, result.runId))
       expect(links).toHaveLength(0)
+    })
+  })
+
+  // POLICY v1 #4 and #6. Both types say the same thing: the documents disagree
+  // about what is being measured, so the numbers are not comparable and NO
+  // delta is computed. That absent delta is what distinguishes them from every
+  // other flag type — it is the mechanical form of "a human has to look".
+  describe('needs review — UOM and currency (S6)', () => {
+    it('flags a UOM mismatch and computes no delta when the two sides state different units', async () => {
+      const { workspace } = await seedWorkspace(`${prefix}s6-uom@example.com`, 'S6 Uom')
+      const { po, invoice } = await seedReadyPoAndInvoice(
+        workspace.id,
+        [{ sku: 'A1', quantity: '10', unitPrice: '5.00', uom: 'box' }],
+        [{ sku: 'A1', quantity: '10', unitPrice: '5.00', uom: 'each' }],
+      )
+
+      const result = await service.compare(workspace.id, po.id, invoice.id)
+
+      expect(result.counts.uom_mismatch).toBe(1)
+      const flag = result.flags[0]
+      expect(flag.flagType).toBe('uom_mismatch')
+      expect(flag.poValue).toBe('box')
+      expect(flag.invoiceValue).toBe('each')
+      // POLICY v1 #4: "no delta is computed". 10 boxes against 10 each is not a
+      // difference of zero — it is not a difference at all.
+      expect(flag.delta).toBeNull()
+    })
+
+    // The whole reason UOM outranks quantity: 10 boxes and 12 each is not a
+    // shortfall of two, and reporting one would be a fabricated number.
+    it('prefers the UOM mismatch over comparing quantities across different units', async () => {
+      const { workspace } = await seedWorkspace(`${prefix}s6-uom-qty@example.com`, 'S6 Uom Qty')
+      const { po, invoice } = await seedReadyPoAndInvoice(
+        workspace.id,
+        [{ sku: 'A1', quantity: '10', unitPrice: '5.00', uom: 'box' }],
+        [{ sku: 'A1', quantity: '12', unitPrice: '5.00', uom: 'each' }],
+      )
+
+      const result = await service.compare(workspace.id, po.id, invoice.id)
+
+      expect(result.flags).toHaveLength(1)
+      expect(result.flags[0].flagType).toBe('uom_mismatch')
+      expect(result.counts.quantity_mismatch).toBe(0)
+      expect(result.flags[0].delta).toBeNull()
+    })
+
+    // The engine SUMS duplicate lines for one item. Summing 2 boxes and 1 each
+    // produces "3" of nothing, so a side that contradicts itself is the same
+    // problem as two sides contradicting each other.
+    it('flags a UOM mismatch when one document’s own duplicate lines disagree on the unit', async () => {
+      const { workspace } = await seedWorkspace(`${prefix}s6-uom-self@example.com`, 'S6 Uom Self')
+      const { po, invoice } = await seedReadyPoAndInvoice(
+        workspace.id,
+        [
+          { sku: 'A1', quantity: '2', unitPrice: '5.00', uom: 'box' },
+          { sku: 'A1', quantity: '1', unitPrice: '5.00', uom: 'each' },
+        ],
+        [{ sku: 'A1', quantity: '3', unitPrice: '5.00', uom: 'box' }],
+      )
+
+      const result = await service.compare(workspace.id, po.id, invoice.id)
+
+      expect(result.counts.uom_mismatch).toBe(1)
+      expect(result.flags[0].delta).toBeNull()
+    })
+
+    // The receiving side is compared too, or S6's own arithmetic — accepted
+    // against ordered — runs across units.
+    it('flags a UOM mismatch when the receipt states a different unit from the order', async () => {
+      const { workspace } = await seedWorkspace(`${prefix}s6-uom-grn@example.com`, 'S6 Uom Grn')
+      const { po, invoice } = await seedReadyPoAndInvoice(
+        workspace.id,
+        [{ sku: 'A1', quantity: '10', unitPrice: '5.00', uom: 'each' }],
+        [{ sku: 'A1', quantity: '10', unitPrice: '5.00', uom: 'each' }],
+      )
+      await seedGoodsReceipt(workspace.id, po.id, [{ sku: 'A1', quantityAccepted: '10', uom: 'box' }])
+
+      const result = await service.compare(workspace.id, po.id, invoice.id)
+
+      expect(result.counts.uom_mismatch).toBe(1)
+      expect(result.flags[0].receivedValue).toBe('box')
+      expect(result.flags[0].delta).toBeNull()
+    })
+
+    // Same invariant this whole slice is built on: absent is not a value. Most
+    // lines in the system carry no unit at all, so reading "unstated" as
+    // "different" would put every comparison into review.
+    it('does not flag a UOM mismatch when only one side states a unit', async () => {
+      const { workspace } = await seedWorkspace(`${prefix}s6-uom-half@example.com`, 'S6 Uom Half')
+      const { po, invoice } = await seedReadyPoAndInvoice(
+        workspace.id,
+        [{ sku: 'A1', quantity: '10', unitPrice: '5.00', uom: 'each' }],
+        [{ sku: 'A1', quantity: '10', unitPrice: '5.00' }],
+      )
+
+      const result = await service.compare(workspace.id, po.id, invoice.id)
+
+      expect(result.counts.uom_mismatch).toBe(0)
+      expect(result.flags).toHaveLength(0)
+    })
+
+    it('treats the same unit written differently as one unit', async () => {
+      const { workspace } = await seedWorkspace(`${prefix}s6-uom-case@example.com`, 'S6 Uom Case')
+      const { po, invoice } = await seedReadyPoAndInvoice(
+        workspace.id,
+        [{ sku: 'A1', quantity: '10', unitPrice: '5.00', uom: 'EA' }],
+        [{ sku: 'A1', quantity: '10', unitPrice: '5.00', uom: ' ea ' }],
+      )
+
+      const result = await service.compare(workspace.id, po.id, invoice.id)
+
+      expect(result.counts.uom_mismatch).toBe(0)
+      expect(result.flags).toHaveLength(0)
+    })
+
+    // POLICY v1 #6. A currency mismatch is a property of the two documents, not
+    // of any one line, so it is one flag per run with no line references —
+    // unlike every other flag type, which the engine derives per matched key.
+    it('flags a currency mismatch once for the run, with no line references and no delta', async () => {
+      const { workspace } = await seedWorkspace(`${prefix}s6-cur@example.com`, 'S6 Currency')
+      const { po, invoice } = await seedReadyPoAndInvoice(
+        workspace.id,
+        [{ sku: 'A1', quantity: '10', unitPrice: '5.00' }],
+        [{ sku: 'A1', quantity: '10', unitPrice: '5.00' }],
+        false,
+        { po: 'USD', invoice: 'EUR' },
+      )
+
+      const result = await service.compare(workspace.id, po.id, invoice.id)
+
+      expect(result.counts.currency_mismatch).toBe(1)
+      expect(result.flags).toHaveLength(1)
+      const flag = result.flags[0]
+      expect(flag.flagType).toBe('currency_mismatch')
+      expect(flag.poValue).toBe('USD')
+      expect(flag.invoiceValue).toBe('EUR')
+      expect(flag.delta).toBeNull()
+      expect(flag.sku).toBeNull()
+      expect(flag.poLineItemId).toBeNull()
+      expect(flag.invoiceLineItemId).toBeNull()
+    })
+
+    it('records the currency flag against the run and counts it in the run’s flag count', async () => {
+      const { workspace } = await seedWorkspace(`${prefix}s6-cur-run@example.com`, 'S6 Currency Run')
+      const { po, invoice } = await seedReadyPoAndInvoice(
+        workspace.id,
+        [{ sku: 'A1', quantity: '10', unitPrice: '5.00' }],
+        [{ sku: 'A1', quantity: '8', unitPrice: '5.00' }],
+        false,
+        { po: 'USD', invoice: 'EUR' },
+      )
+
+      const result = await service.compare(workspace.id, po.id, invoice.id)
+
+      // The line-level evidence is not suppressed by the currency flag: the
+      // quantity disagreement is true whatever the documents are billed in.
+      expect(result.counts).toEqual({
+        quantity_mismatch: 1,
+        price_mismatch: 0,
+        missing_on_invoice: 0,
+        missing_on_po: 0,
+        short_receipt: 0,
+        invoice_exceeds_received: 0,
+        uom_mismatch: 0,
+        currency_mismatch: 1,
+      })
+      const [run] = await db.select().from(comparisonRuns).where(eq(comparisonRuns.id, result.runId))
+      expect(run.flagCount).toBe(2)
+      expect(result.flags.every((flag) => flag.comparisonRunId === result.runId)).toBe(true)
+    })
+
+    it('does not flag a currency mismatch when either document leaves the currency unstated', async () => {
+      const { workspace } = await seedWorkspace(`${prefix}s6-cur-half@example.com`, 'S6 Currency Half')
+      const { po, invoice } = await seedReadyPoAndInvoice(
+        workspace.id,
+        [{ sku: 'A1', quantity: '10', unitPrice: '5.00' }],
+        [{ sku: 'A1', quantity: '10', unitPrice: '5.00' }],
+        false,
+        { po: 'USD' },
+      )
+
+      const result = await service.compare(workspace.id, po.id, invoice.id)
+
+      expect(result.counts.currency_mismatch).toBe(0)
+      expect(result.flags).toHaveLength(0)
+    })
+
+    // S3b uppercases on the way in, so this only bites pre-0025 rows — which is
+    // exactly the population that cannot be fixed by validation.
+    it('does not flag a currency mismatch when the two codes differ only in case', async () => {
+      const { workspace } = await seedWorkspace(`${prefix}s6-cur-case@example.com`, 'S6 Currency Case')
+      const { po, invoice } = await seedReadyPoAndInvoice(
+        workspace.id,
+        [{ sku: 'A1', quantity: '10', unitPrice: '5.00' }],
+        [{ sku: 'A1', quantity: '10', unitPrice: '5.00' }],
+        false,
+        { po: 'usd', invoice: 'USD' },
+      )
+
+      const result = await service.compare(workspace.id, po.id, invoice.id)
+
+      expect(result.counts.currency_mismatch).toBe(0)
+      expect(result.flags).toHaveLength(0)
+    })
+  })
+
+  // §7.4's outcome matrix, as one deliberately designed comparison rather than
+  // a sample of whatever the demo seed happens to produce. Every row below is
+  // one line item chosen to land on exactly one classification, so a change
+  // that moves a boundary shows up here as a named row rather than a count.
+  describe('golden three-way fixture (§7.4)', () => {
+    it('classifies one deliberately built three-way comparison, row by row', async () => {
+      const { workspace } = await seedWorkspace(`${prefix}s6-golden@example.com`, 'S6 Golden')
+      const { po, invoice } = await seedReadyPoAndInvoice(
+        workspace.id,
+        [
+          { sku: 'MATCH-1', quantity: '10', unitPrice: '5.00', uom: 'each' },
+          { sku: 'SHORT-1', quantity: '10', unitPrice: '5.00', uom: 'each' },
+          { sku: 'OVER-1', quantity: '10', unitPrice: '5.00', uom: 'each' },
+          { sku: 'QTY-1', quantity: '10', unitPrice: '5.00', uom: 'each' },
+          { sku: 'PRICE-1', quantity: '10', unitPrice: '5.00', uom: 'each' },
+          { sku: 'UOM-1', quantity: '10', unitPrice: '5.00', uom: 'box' },
+          { sku: 'POONLY-1', quantity: '5', unitPrice: '1.00', uom: 'each' },
+        ],
+        [
+          { sku: 'MATCH-1', quantity: '10', unitPrice: '5.00', uom: 'each' },
+          { sku: 'SHORT-1', quantity: '8', unitPrice: '5.00', uom: 'each' },
+          { sku: 'OVER-1', quantity: '10', unitPrice: '5.00', uom: 'each' },
+          { sku: 'QTY-1', quantity: '12', unitPrice: '5.00', uom: 'each' },
+          { sku: 'PRICE-1', quantity: '10', unitPrice: '7.00', uom: 'each' },
+          { sku: 'UOM-1', quantity: '10', unitPrice: '5.00', uom: 'each' },
+          { sku: 'INVONLY-1', quantity: '3', unitPrice: '1.00', uom: 'each' },
+        ],
+        true,
+        { po: 'USD', invoice: 'USD' },
+      )
+      // Two receipts, so "partial receipt across multiple records" is exercised
+      // by MATCH-1 rather than asserted in the abstract.
+      await seedGoodsReceipt(
+        workspace.id,
+        po.id,
+        [
+          { sku: 'MATCH-1', quantityAccepted: '6', uom: 'each' },
+          { sku: 'SHORT-1', quantityAccepted: '8', uom: 'each' },
+          { sku: 'OVER-1', quantityAccepted: '7', uom: 'each' },
+          // Received, but the source never said how many were accepted.
+          { sku: 'QTY-1', quantityAccepted: null, uom: 'each' },
+          { sku: 'PRICE-1', quantityAccepted: '10', uom: 'each' },
+          { sku: 'UOM-1', quantityAccepted: '10', uom: 'box' },
+          { sku: 'POONLY-1', quantityAccepted: '5', uom: 'each' },
+        ],
+        'GRN-1',
+      )
+      await seedGoodsReceipt(workspace.id, po.id, [{ sku: 'MATCH-1', quantityAccepted: '4', uom: 'each' }], 'GRN-2')
+
+      const result = await service.compare(workspace.id, po.id, invoice.id)
+
+      const [run] = await db.select().from(comparisonRuns).where(eq(comparisonRuns.id, result.runId))
+      expect(run.mode).toBe('three_way')
+
+      const bySku = new Map(result.flags.map((flag) => [flag.sku, flag]))
+
+      // Exact SKU, same quantity and price, and two part-deliveries summing to
+      // the order → matched, no exception.
+      expect(bySku.has('MATCH-1')).toBe(false)
+      // Quantity short receipt → receiving exception with a delta.
+      expect(bySku.get('SHORT-1').flagType).toBe('short_receipt')
+      expect(Number(bySku.get('SHORT-1').delta)).toBe(-2)
+      // Invoice quantity exceeds received → invoice/receiving exception.
+      expect(bySku.get('OVER-1').flagType).toBe('invoice_exceeds_received')
+      expect(Number(bySku.get('OVER-1').delta)).toBe(3)
+      // Accepted quantity unstated, so the receiving branches must not fire and
+      // the PO/invoice disagreement is what is left to report.
+      expect(bySku.get('QTY-1').flagType).toBe('quantity_mismatch')
+      expect(Number(bySku.get('QTY-1').delta)).toBe(2)
+      // Unit-price variance against the authoritative PO price (POLICY v1 #5).
+      expect(bySku.get('PRICE-1').flagType).toBe('price_mismatch')
+      expect(Number(bySku.get('PRICE-1').delta)).toBe(2)
+      // UOM unknown / not convertible → needs review, no guessed conversion.
+      expect(bySku.get('UOM-1').flagType).toBe('uom_mismatch')
+      expect(bySku.get('UOM-1').delta).toBeNull()
+      expect(bySku.get('POONLY-1').flagType).toBe('missing_on_invoice')
+      expect(bySku.get('INVONLY-1').flagType).toBe('missing_on_po')
+
+      expect(result.counts).toEqual({
+        quantity_mismatch: 1,
+        price_mismatch: 1,
+        missing_on_invoice: 1,
+        missing_on_po: 1,
+        short_receipt: 1,
+        invoice_exceeds_received: 1,
+        uom_mismatch: 1,
+        currency_mismatch: 0,
+      })
     })
   })
 

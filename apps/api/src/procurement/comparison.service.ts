@@ -49,7 +49,7 @@ const INV_TABLE = 'inv_items'
 const GRN_TABLE = 'grn_items'
 // Must match serializeGoodsReceiptForCsv's keys exactly: it is what the empty
 // case writes, and the `grn` CTE binds these column names.
-const GRN_CSV_HEADER = 'id,line_number,mk,quantity_accepted'
+const GRN_CSV_HEADER = 'id,line_number,mk,quantity_accepted,uom'
 
 // Fixed, hand-written template — never built from row data. Row values only
 // ever enter via CSV loaded by DuckDbQueryService's trusted read_csv_auto
@@ -89,6 +89,25 @@ const GRN_CSV_HEADER = 'id,line_number,mk,quantity_accepted'
 // With no receipts linked, the `grn` CTE is empty, every `g.*` is NULL, both
 // new branches fall through, and the classification is byte-identical to the
 // two-way behaviour that shipped in S1.
+//
+// S6 commit 2 adds the unit of measure. Three things about it are deliberate:
+//
+// 1. It is compared, never converted (POLICY v1 #4), and the branch sits ABOVE
+//    every numeric branch. Ten boxes against twelve each is not a shortfall of
+//    two; reporting one would be a number nobody can act on.
+// 2. A side is also checked against ITSELF. Each CTE sums duplicate lines for
+//    one item, and adding two boxes to one each produces "3" of nothing — so
+//    `*_uom_count > 1` is the same defect as two sides disagreeing.
+// 3. An unstated unit is not a different unit. Most rows in the system carry no
+//    unit at all (`uom` arrived in S3a and only a source with a unit column
+//    fills it), so every comparison below requires BOTH sides to have said
+//    something — the same "absent is never a value" rule the accepted-quantity
+//    guard above exists to enforce.
+//
+// `CAST(uom AS VARCHAR)` is not decoration: read_csv_auto infers each file's
+// column types independently, and a file whose uom column is entirely empty can
+// be typed as something other than VARCHAR, which would then be compared
+// against another file's real text column.
 const COMPARISON_SQL = `
 WITH po AS (
   SELECT mk,
@@ -99,7 +118,10 @@ WITH po AS (
          CASE WHEN COUNT(*) = COUNT(TRY_CAST(unit_price AS DOUBLE))
               THEN MIN(TRY_CAST(unit_price AS DOUBLE)) END AS po_price_min,
          CASE WHEN COUNT(*) = COUNT(TRY_CAST(unit_price AS DOUBLE))
-              THEN MAX(TRY_CAST(unit_price AS DOUBLE)) END AS po_price_max
+              THEN MAX(TRY_CAST(unit_price AS DOUBLE)) END AS po_price_max,
+         COUNT(DISTINCT CAST(uom AS VARCHAR)) AS po_uom_count,
+         CASE WHEN COUNT(DISTINCT CAST(uom AS VARCHAR)) = 1
+              THEN MIN(CAST(uom AS VARCHAR)) END AS po_uom
   FROM ${PO_TABLE}
   GROUP BY mk
 ),
@@ -112,7 +134,10 @@ inv AS (
          CASE WHEN COUNT(*) = COUNT(TRY_CAST(unit_price AS DOUBLE))
               THEN MIN(TRY_CAST(unit_price AS DOUBLE)) END AS inv_price_min,
          CASE WHEN COUNT(*) = COUNT(TRY_CAST(unit_price AS DOUBLE))
-              THEN MAX(TRY_CAST(unit_price AS DOUBLE)) END AS inv_price_max
+              THEN MAX(TRY_CAST(unit_price AS DOUBLE)) END AS inv_price_max,
+         COUNT(DISTINCT CAST(uom AS VARCHAR)) AS inv_uom_count,
+         CASE WHEN COUNT(DISTINCT CAST(uom AS VARCHAR)) = 1
+              THEN MIN(CAST(uom AS VARCHAR)) END AS inv_uom
   FROM ${INV_TABLE}
   GROUP BY mk
 ),
@@ -121,7 +146,10 @@ grn AS (
          arg_min(id, line_number) AS goods_receipt_line_item_id,
          COUNT(*) AS grn_lines,
          CASE WHEN COUNT(*) = COUNT(TRY_CAST(quantity_accepted AS DOUBLE))
-              THEN ROUND(SUM(TRY_CAST(quantity_accepted AS DOUBLE)), 6) END AS grn_accepted_qty
+              THEN ROUND(SUM(TRY_CAST(quantity_accepted AS DOUBLE)), 6) END AS grn_accepted_qty,
+         COUNT(DISTINCT CAST(uom AS VARCHAR)) AS grn_uom_count,
+         CASE WHEN COUNT(DISTINCT CAST(uom AS VARCHAR)) = 1
+              THEN MIN(CAST(uom AS VARCHAR)) END AS grn_uom
   FROM ${GRN_TABLE}
   GROUP BY mk
 ),
@@ -130,9 +158,18 @@ joined AS (
          p.po_lines, i.inv_lines, g.grn_lines,
          p.po_qty, i.inv_qty, g.grn_accepted_qty,
          p.po_price_min, p.po_price_max, i.inv_price_min, i.inv_price_max,
+         p.po_uom, i.inv_uom, g.grn_uom,
+         p.po_uom_count, i.inv_uom_count, g.grn_uom_count,
          CASE
            WHEN p.po_line_item_id IS NULL THEN 'missing_on_po'
            WHEN i.invoice_line_item_id IS NULL THEN 'missing_on_invoice'
+           WHEN COALESCE(p.po_uom_count, 0) > 1
+             OR COALESCE(i.inv_uom_count, 0) > 1
+             OR COALESCE(g.grn_uom_count, 0) > 1
+             OR (p.po_uom IS NOT NULL AND i.inv_uom IS NOT NULL AND p.po_uom <> i.inv_uom)
+             OR (p.po_uom IS NOT NULL AND g.grn_uom IS NOT NULL AND p.po_uom <> g.grn_uom)
+             OR (i.inv_uom IS NOT NULL AND g.grn_uom IS NOT NULL AND i.inv_uom <> g.grn_uom)
+             THEN 'uom_mismatch'
            WHEN g.grn_accepted_qty IS NOT NULL AND i.inv_qty > g.grn_accepted_qty
              THEN 'invoice_exceeds_received'
            WHEN g.grn_accepted_qty IS NOT NULL AND g.grn_accepted_qty < p.po_qty
@@ -150,6 +187,10 @@ joined AS (
 SELECT *, COUNT(*) OVER () AS total_rows FROM joined WHERE flag_type <> 'match'
 `.trim()
 
+// Exactly what the CASE above can return — deliberately NOT every value of
+// `discrepancy_flag_type`. `currency_mismatch` is a property of the two document
+// headers, not of any matched line, so it never comes out of the engine and
+// buildReason's switch stays exhaustive over the rows it really receives.
 type FlagType =
   | 'quantity_mismatch'
   | 'price_mismatch'
@@ -157,6 +198,7 @@ type FlagType =
   | 'missing_on_po'
   | 'short_receipt'
   | 'invoice_exceeds_received'
+  | 'uom_mismatch'
 
 interface ComparisonRow {
   po_line_item_id: string | null
@@ -175,6 +217,16 @@ interface ComparisonRow {
   po_price_max: number | null
   inv_price_min: number | null
   inv_price_max: number | null
+  // Normalized (trimmed, lower-cased) by serializeForCsv, so 'EA' and ' ea '
+  // are one unit. NULL when the side stated none, and also when the side's own
+  // lines stated more than one — in which case the matching *_uom_count is the
+  // value that says so.
+  po_uom: string | null
+  inv_uom: string | null
+  grn_uom: string | null
+  po_uom_count: number | null
+  inv_uom_count: number | null
+  grn_uom_count: number | null
   flag_type: FlagType
   total_rows: number
 }
@@ -192,6 +244,7 @@ interface LineItemForCsv {
   description: string | null
   quantity: string | null
   unitPrice: string | null
+  uom: string | null
 }
 
 // A receipt line has no price and three quantities rather than one, so it gets
@@ -202,6 +255,15 @@ interface GoodsReceiptLineForCsv {
   sku: string | null
   description: string | null
   quantityAccepted: string | null
+  uom: string | null
+}
+
+// 'EA', 'ea' and ' Each ' from three different source files are the same unit,
+// and flagging them as a mismatch would be noise, not evidence. An empty result
+// is written as an empty cell, which read_csv_auto reads back as NULL — the
+// "not stated" case, which is never compared against anything.
+function normalizeUom(uom: string | null): string {
+  return uom?.trim().toLowerCase() ?? ''
 }
 
 // SKU primary, normalized description fallback, null when the line carries
@@ -224,6 +286,7 @@ function serializeGoodsReceiptForCsv(item: GoodsReceiptLineForCsv) {
     line_number: item.lineNumber ?? 0,
     mk: matchKey(item) ?? `unkeyed::${item.id}`,
     quantity_accepted: item.quantityAccepted ?? '',
+    uom: normalizeUom(item.uom),
   }
 }
 
@@ -234,6 +297,7 @@ function serializeForCsv(item: LineItemForCsv) {
     mk: matchKey(item) ?? `unkeyed::${item.id}`,
     quantity: item.quantity ?? '',
     unit_price: item.unitPrice ?? '',
+    uom: normalizeUom(item.uom),
   }
 }
 
@@ -369,6 +433,10 @@ export class ComparisonService {
         goodsReceipt: new Map(grnItems.map((item) => [item.id, item])),
       }
 
+      // Header-level, so it is decided outside the engine and outside the row
+      // loop — see currencyMismatchFlag.
+      const currencyFlag = this.currencyMismatchFlag(workspaceId, po, invoice)
+
       const inserted = await db.transaction(async (tx) => {
         // Row lock on the PO: concurrent compares touching this PO queue here.
         // Nothing is deleted any more, so this no longer protects a delete —
@@ -380,18 +448,21 @@ export class ComparisonService {
           .where(and(eq(purchaseOrders.id, po.id), eq(purchaseOrders.workspaceId, workspaceId)))
           .for('update')
 
+        // The header-level currency flag is written first so it leads the list:
+        // it is the one that tells a reviewer why the money columns below it
+        // cannot be read at face value.
+        const flagValues = [
+          ...(currencyFlag ? [currencyFlag] : []),
+          ...rows.map((row) => this.toFlagValues(workspaceId, po.id, invoice.id, row, lines)),
+        ]
+
         // No delete. A re-compare appends a new run; the previous run's flags
         // stay, and with them every dismissal a human recorded against them.
         const flags =
-          rows.length > 0
+          flagValues.length > 0
             ? await tx
                 .insert(discrepancyFlags)
-                .values(
-                  rows.map((row) => ({
-                    ...this.toFlagValues(workspaceId, po.id, invoice.id, row, lines),
-                    comparisonRunId: run.id,
-                  })),
-                )
+                .values(flagValues.map((value) => ({ ...value, comparisonRunId: run.id })))
                 .returning()
             : []
 
@@ -689,6 +760,10 @@ export class ComparisonService {
   ) {
     const poLine = row.po_line_item_id ? lines.po.get(row.po_line_item_id) : undefined
     const invoiceLine = row.invoice_line_item_id ? lines.invoice.get(row.invoice_line_item_id) : undefined
+    const goodsReceiptLine = row.goods_receipt_line_item_id
+      ? lines.goodsReceipt.get(row.goods_receipt_line_item_id)
+      : undefined
+    const isUom = row.flag_type === 'uom_mismatch'
     const isQuantity = row.flag_type === 'quantity_mismatch'
     const isPrice = row.flag_type === 'price_mismatch'
     const isMissingOnInvoice = row.flag_type === 'missing_on_invoice'
@@ -717,26 +792,41 @@ export class ComparisonService {
       // CASE chose: a line that is both short-received and over-billed shows
       // ordered, received and billed together, so nothing is hidden by the
       // branch order that picked between them.
+      // On a UOM flag the disputed value IS the unit, so the three value
+      // columns carry the units rather than quantities — each one the exact
+      // string its own document stored, not the lower-cased copy the engine
+      // compared, same rule as `sku` above.
       poValue:
         isQuantity || isMissingOnInvoice || isShortReceipt || isInvoiceExceedsReceived
           ? this.numToStr(row.po_qty)
           : isPrice
             ? this.numToStr(poPrice)
-            : null,
-      receivedValue:
-        isShortReceipt || isInvoiceExceedsReceived ? this.numToStr(row.grn_accepted_qty) : null,
+            : isUom
+              ? (poLine?.uom ?? null)
+              : null,
+      receivedValue: isShortReceipt || isInvoiceExceedsReceived
+        ? this.numToStr(row.grn_accepted_qty)
+        : isUom
+          ? (goodsReceiptLine?.uom ?? null)
+          : null,
       invoiceValue:
         isQuantity || isMissingOnPo || isShortReceipt || isInvoiceExceedsReceived
           ? this.numToStr(row.inv_qty)
           : isPrice
             ? this.numToStr(invoicePrice)
-            : null,
+            : isUom
+              ? (invoiceLine?.uom ?? null)
+              : null,
       // The S1 convention is unchanged for the four original types: delta is
       // invoice minus PO, so positive always means "asks for more than ordered".
       // The two receiving types keep the same reading direction against the
       // number they dispute — short_receipt is received minus ordered (negative
       // = short), invoice_exceeds_received is billed minus received (positive =
       // billed for more than we kept).
+      //
+      // uom_mismatch falls through to null on purpose: POLICY v1 #4 says no
+      // delta is computed. Ten boxes against ten each is not a difference of
+      // zero, and writing 0 here would read as "agreed".
       delta: isQuantity
         ? this.numToStr(this.diff(row.inv_qty, row.po_qty))
         : isPrice
@@ -751,6 +841,51 @@ export class ComparisonService {
                   ? this.numToStr(this.diff(row.inv_qty, row.grn_accepted_qty))
                   : null,
       reason: this.buildReason(row, poLine, invoiceLine),
+    }
+  }
+
+  /**
+   * POLICY v1 #6. The only flag in the system that is not derived from a
+   * matched line: a currency disagreement belongs to the two document headers,
+   * so it is computed here in TypeScript rather than in the engine, and written
+   * once per run with no line references and no delta.
+   *
+   * Both codes must be stated to disagree — an unstated currency is the legacy
+   * shape of every pre-0025 document, and reading it as a mismatch would put
+   * that whole population into review. Compared case-folded because S3b only
+   * started uppercasing at the API boundary; rows written before it cannot be
+   * fixed by validation.
+   *
+   * The line-level flags are NOT suppressed when this fires. A quantity
+   * disagreement is true whatever the documents are billed in, and dropping
+   * that evidence to avoid a confusing price column would hide more than it
+   * explains.
+   */
+  private currencyMismatchFlag(
+    workspaceId: string,
+    po: { id: string; currency: string | null },
+    invoice: { id: string; currency: string | null },
+  ) {
+    const poCurrency = po.currency?.trim().toUpperCase()
+    const invoiceCurrency = invoice.currency?.trim().toUpperCase()
+    if (!poCurrency || !invoiceCurrency || poCurrency === invoiceCurrency) return null
+
+    return {
+      workspaceId,
+      purchaseOrderId: po.id,
+      invoiceId: invoice.id,
+      poLineItemId: null,
+      invoiceLineItemId: null,
+      goodsReceiptLineItemId: null,
+      sku: null,
+      flagType: 'currency_mismatch' as const,
+      poValue: po.currency,
+      receivedValue: null,
+      invoiceValue: invoice.currency,
+      delta: null,
+      reason:
+        `Currency mismatch: the purchase order is in ${poCurrency} but the invoice is in ${invoiceCurrency}. ` +
+        'Amounts are not comparable and no conversion is applied, so this needs review',
     }
   }
 
@@ -789,6 +924,25 @@ export class ComparisonService {
         return `Short receipt for ${sku}: ordered ${row.po_qty ?? 'unknown'}, accepted ${row.grn_accepted_qty ?? 'unknown'}${summed}`
       case 'invoice_exceeds_received':
         return `Invoice bills more than was accepted for ${sku}: accepted ${row.grn_accepted_qty ?? 'unknown'}, invoiced ${row.inv_qty ?? 'unknown'}${summed}`
+      case 'uom_mismatch': {
+        // Two different faults share this type, and the reviewer needs to know
+        // which: one document contradicting itself is fixed at the source,
+        // while two documents disagreeing is a conversation with the vendor.
+        const selfContradicting = [
+          (row.po_uom_count ?? 0) > 1 ? 'the purchase order' : null,
+          (row.inv_uom_count ?? 0) > 1 ? 'the invoice' : null,
+          (row.grn_uom_count ?? 0) > 1 ? 'the goods receipt' : null,
+        ].filter(Boolean)
+        if (selfContradicting.length > 0) {
+          return `Unit of measure mismatch for ${sku}: ${selfContradicting.join(' and ')} lists more than one unit for this item, so its quantities cannot be added together`
+        }
+        const stated = [
+          row.po_uom ? `PO=${row.po_uom}` : null,
+          row.grn_uom ? `Received=${row.grn_uom}` : null,
+          row.inv_uom ? `Invoice=${row.inv_uom}` : null,
+        ].filter(Boolean)
+        return `Unit of measure mismatch for ${sku}: ${stated.join(' ')}. Units are captured, never converted, so no quantity difference is reported${summed}`
+      }
       case 'price_mismatch': {
         const poMixed = row.po_price_min !== row.po_price_max
         const invoiceMixed = row.inv_price_min !== row.inv_price_max
