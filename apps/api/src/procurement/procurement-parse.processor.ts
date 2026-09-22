@@ -19,6 +19,7 @@ import { StorageService } from '../storage/storage.service'
 import { isEmptyLineItem, mapRowToLineItem, receivedQuantity, validateLineItem } from './column-mapping'
 import { pdfExtractionEnabled } from './procurement-feature-flags'
 import { ProcurementDocKind, ProcurementParseService, RECONCILE_JOB_NAME } from './procurement-parse.service'
+import { ProcurementCompareService } from './procurement-compare.service'
 import { assertUnreachable, docLabel } from './procurement-kind'
 import { ProcurementExtractionService } from './procurement-extraction.service'
 
@@ -95,6 +96,7 @@ export class ProcurementParseProcessor {
     private readonly storage: StorageService,
     private readonly extraction: ProcurementExtractionService,
     private readonly parseService: ProcurementParseService,
+    private readonly compareService: ProcurementCompareService,
   ) {}
 
   @Process(RECONCILE_JOB_NAME)
@@ -177,6 +179,24 @@ export class ProcurementParseProcessor {
       }
 
       await this.replaceLineItemsAndFinish(kind, id, doc.workspaceId, rows, sourceKind)
+
+      // S8. The document is already `done` before this runs, and the failure is
+      // swallowed, because a queue that will not take the follow-up work is not
+      // this document's problem — reporting it as a parse failure would make a
+      // correctly parsed file look unreadable to its owner. Same discipline as
+      // every `EventsService.record` caller.
+      //
+      // The feature flag is checked inside `enqueueForDocument`, not here. One
+      // check, in the place that owns the behaviour, rather than two places to
+      // remember; it returns before touching the database when the flag is off.
+      await this.compareService
+        .enqueueForDocument(kind, id)
+        .catch((error: unknown) =>
+          this.logger.warn(
+            `Auto-compare enqueue failed kind=${kind} id=${id}: ` +
+              `${error instanceof Error ? error.message : 'unknown error'}`,
+          ),
+        )
 
       this.logger.log(`Procurement parse completed kind=${kind} id=${id} jobId=${String(job.id)}`)
     } catch (error) {

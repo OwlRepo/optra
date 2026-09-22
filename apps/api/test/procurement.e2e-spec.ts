@@ -5,7 +5,7 @@ import cookieParser from 'cookie-parser'
 import { mkdtemp, readFile, writeFile } from 'fs/promises'
 import { tmpdir } from 'os'
 import { join } from 'path'
-import { eq, like } from 'drizzle-orm'
+import { and, eq, like } from 'drizzle-orm'
 import request from 'supertest'
 import {
   comparisonRuns,
@@ -97,6 +97,21 @@ async function waitForGoodsReceiptDone(id: string, timeoutMs = 15_000): Promise<
     await new Promise((resolve) => setTimeout(resolve, 200))
   }
   throw new Error(`Goods receipt ${id} did not reach 'done' within ${timeoutMs}ms`)
+}
+
+// Longer than the others on purpose: the compare job is enqueued with a
+// coalescing delay, so this waits out that window plus the run itself.
+async function waitForAutomaticRun(purchaseOrderId: string, invoiceId: string, timeoutMs = 20_000) {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    const [row] = await db
+      .select()
+      .from(comparisonRuns)
+      .where(and(eq(comparisonRuns.purchaseOrderId, purchaseOrderId), eq(comparisonRuns.invoiceId, invoiceId)))
+    if (row?.status === 'succeeded') return row
+    await new Promise((resolve) => setTimeout(resolve, 250))
+  }
+  throw new Error(`No automatic comparison run appeared for ${purchaseOrderId}/${invoiceId}`)
 }
 
 async function waitForInvoiceDone(id: string, timeoutMs = 15_000): Promise<void> {
@@ -1072,6 +1087,61 @@ describe('Procurement flow (e2e)', () => {
 
       const [row] = await db.select().from(purchaseOrders).where(eq(purchaseOrders.id, upload.body.id))
       expect(row.currency).toBe('USD')
+    })
+  })
+
+  // Every other test in this file runs with auto-compare OFF, which is why none
+  // of their run-count assertions needed editing. This one turns it on for its
+  // own duration and puts nothing else in the way.
+  describe('auto-compare (S8)', () => {
+    const csv = 'sku,description,qty,unit price\nA1,Widget,10,5.00'
+
+    afterEach(() => {
+      delete process.env.PROCUREMENT_AUTO_COMPARE_ENABLED
+    })
+
+    it('compares a pair on its own once both documents have parsed, with no user behind it', async () => {
+      process.env.PROCUREMENT_AUTO_COMPARE_ENABLED = 'true'
+      const owner = await seedOwnerWithWorkspace(app, `${prefix}s8-auto@example.com`, 'S8 Auto')
+      const vendorId = await createVendor(app, owner.workspaceId, owner.accessToken)
+
+      const poUpload = await request(app.getHttpServer())
+        .post(`/workspaces/${owner.workspaceId}/procurement/purchase-orders`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .field('vendorId', vendorId)
+        .field('poNumber', 'PO-S8-1')
+        .field('currency', 'USD')
+        .attach('file', Buffer.from(csv), 'po.csv')
+        .expect(201)
+      await waitForPoDone(poUpload.body.id)
+
+      const invoiceUpload = await request(app.getHttpServer())
+        .post(`/workspaces/${owner.workspaceId}/procurement/invoices`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .field('purchaseOrderId', poUpload.body.id)
+        .field('invoiceNumber', 'INV-S8-1')
+        .field('currency', 'USD')
+        .attach('file', Buffer.from('sku,description,qty,unit price\nA1,Widget,8,5.00'), 'invoice.csv')
+        .expect(201)
+      await waitForInvoiceDone(invoiceUpload.body.id)
+
+      // Nobody calls POST .../discrepancies/compare anywhere in this test.
+      const run = await waitForAutomaticRun(poUpload.body.id, invoiceUpload.body.id)
+      expect(run.status).toBe('succeeded')
+      // The null is the point: S7's review panel renders it as `automatic`,
+      // and machine-written evidence must not be attributed to whoever
+      // happened to upload the file.
+      expect(run.initiatedBy).toBeNull()
+      expect(run.flagCount).toBe(1)
+
+      // The reviewer's queue is already populated when they arrive.
+      const listRes = await request(app.getHttpServer())
+        .get(`/workspaces/${owner.workspaceId}/procurement/discrepancies`)
+        .query({ purchaseOrderId: poUpload.body.id, invoiceId: invoiceUpload.body.id })
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .expect(200)
+      expect(listRes.body.items).toHaveLength(1)
+      expect(listRes.body.items[0].flagType).toBe('quantity_mismatch')
     })
   })
 })

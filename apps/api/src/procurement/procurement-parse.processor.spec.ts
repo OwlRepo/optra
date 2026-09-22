@@ -22,6 +22,7 @@ import { EXTRACTOR_VERSION } from '@repo/ai'
 import { ProcurementParseProcessor } from './procurement-parse.processor'
 import { ProcurementExtractionService } from './procurement-extraction.service'
 import { ProcurementParseService } from './procurement-parse.service'
+import { ProcurementCompareService } from './procurement-compare.service'
 import { StorageService } from '../storage/storage.service'
 
 // Bull job shape the processor reads: attemptsMade counts prior failed attempts,
@@ -87,6 +88,7 @@ describe('ProcurementParseProcessor', () => {
   let storage: { getToTempFile: jest.Mock; save: jest.Mock }
   let extraction: { extract: jest.Mock }
   let parseService: { reconcile: jest.Mock }
+  let compareService: { enqueueForDocument: jest.Mock }
   let processor: ProcurementParseProcessor
   const originalPdfFlag = process.env.PROCUREMENT_PDF_EXTRACTION_ENABLED
 
@@ -97,10 +99,12 @@ describe('ProcurementParseProcessor', () => {
     storage = { getToTempFile: jest.fn(), save: jest.fn().mockResolvedValue(undefined) }
     extraction = { extract: jest.fn() }
     parseService = { reconcile: jest.fn().mockResolvedValue(undefined) }
+    compareService = { enqueueForDocument: jest.fn().mockResolvedValue(undefined) }
     processor = new ProcurementParseProcessor(
       storage as unknown as StorageService,
       extraction as unknown as ProcurementExtractionService,
       parseService as unknown as ProcurementParseService,
+      compareService as unknown as ProcurementCompareService,
     )
   })
 
@@ -653,6 +657,45 @@ describe('ProcurementParseProcessor', () => {
     expect(updated.status).toBe('failed')
     expect(updated.lastError).toContain('not enabled')
     expect(extraction.extract).not.toHaveBeenCalled()
+  })
+
+  describe('auto-compare hand-off (S8)', () => {
+    it('hands a finished document to auto-compare, by kind and id', async () => {
+      const workspace = await seedWorkspace(`${prefix}autocompare@example.com`, prefix)
+      const po = await seedPo(['sku,qty,unit price', 'A1,10,5.00'].join('\n'), workspace.id)
+
+      await processor.handleParse(job('job-auto', { kind: 'purchase_order', id: po.id }))
+
+      expect(compareService.enqueueForDocument).toHaveBeenCalledWith('purchase_order', po.id)
+    })
+
+    it('does not hand off a document whose parse failed', async () => {
+      const workspace = await seedWorkspace(`${prefix}autocompare-fail@example.com`, prefix)
+      const [po] = await db
+        .insert(purchaseOrders)
+        .values({ workspaceId: workspace.id, name: 'po.csv', status: 'processing', storageKey: null })
+        .returning()
+
+      await processor.handleParse(job('job-auto-fail', { kind: 'purchase_order', id: po.id }))
+
+      expect(compareService.enqueueForDocument).not.toHaveBeenCalled()
+    })
+
+    // The parse succeeded. A queue that will not accept the follow-up work is
+    // not that document's problem, and reporting it as a parse failure would
+    // make a correctly parsed file look unreadable to its owner.
+    it('leaves the document done when the hand-off throws', async () => {
+      const workspace = await seedWorkspace(`${prefix}autocompare-throw@example.com`, prefix)
+      const po = await seedPo(['sku,qty,unit price', 'A1,10,5.00'].join('\n'), workspace.id)
+      compareService.enqueueForDocument.mockRejectedValue(new Error('redis is down'))
+
+      await expect(processor.handleParse(job('job-auto-throw', { kind: 'purchase_order', id: po.id }))).resolves
+        .toBeUndefined()
+
+      const [updated] = await db.select().from(purchaseOrders).where(eq(purchaseOrders.id, po.id))
+      expect(updated.status).toBe('done')
+      expect(updated.lastError).toBeNull()
+    })
   })
 
   it('runs queue reconciliation when the repeatable reconcile job fires', async () => {

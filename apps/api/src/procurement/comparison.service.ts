@@ -316,6 +316,19 @@ function serializeForCsv(item: LineItemForCsv) {
   }
 }
 
+/**
+ * Which engine produced a run. Persisted on every run so a later reader can
+ * tell whether a stored verdict came from the rules it is looking at.
+ *
+ * The column has existed since S1 with a DB default of 1 and no writer. S8's
+ * freshness check is the first reader: a run only counts as "still current"
+ * when its `strategy_version` matches this constant, so bumping it after an
+ * engine change makes every pair recompare instead of trusting a verdict the
+ * current rules would no longer produce. A default the code never writes could
+ * not carry that meaning.
+ */
+export const COMPARISON_STRATEGY_VERSION = 1
+
 @Injectable()
 export class ComparisonService {
   private readonly logger = new Logger(ComparisonService.name)
@@ -406,6 +419,7 @@ export class ComparisonService {
         invoiceId: invoice.id,
         initiatedBy: initiatedBy ?? null,
         mode,
+        strategyVersion: COMPARISON_STRATEGY_VERSION,
         poLineCount: poItems.length,
         invoiceLineCount: invItems.length,
         goodsReceiptLineCount: mode === 'three_way' ? grnItems.length : null,
