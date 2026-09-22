@@ -8,6 +8,7 @@ import { join } from 'path'
 import { eq, like } from 'drizzle-orm'
 import request from 'supertest'
 import {
+  comparisonRuns,
   db,
   discrepancyFlags,
   goodsReceiptLineItems,
@@ -85,6 +86,17 @@ async function waitForPoDone(id: string, timeoutMs = 15_000): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, 200))
   }
   throw new Error(`Purchase order ${id} did not reach 'done' within ${timeoutMs}ms`)
+}
+
+async function waitForGoodsReceiptDone(id: string, timeoutMs = 15_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    const [row] = await db.select().from(goodsReceipts).where(eq(goodsReceipts.id, id)).limit(1)
+    if (row?.status === 'done') return
+    if (row?.status === 'failed') throw new Error(`Goods receipt ${id} failed to parse: ${row.lastError}`)
+    await new Promise((resolve) => setTimeout(resolve, 200))
+  }
+  throw new Error(`Goods receipt ${id} did not reach 'done' within ${timeoutMs}ms`)
 }
 
 async function waitForInvoiceDone(id: string, timeoutMs = 15_000): Promise<void> {
@@ -298,6 +310,10 @@ describe('Procurement flow (e2e)', () => {
       price_mismatch: 1,
       missing_on_invoice: 1,
       missing_on_po: 1,
+      short_receipt: 0,
+      invoice_exceeds_received: 0,
+      uom_mismatch: 0,
+      currency_mismatch: 0,
     })
 
     const listRes = await request(app.getHttpServer())
@@ -506,6 +522,10 @@ describe('Procurement flow (e2e)', () => {
       price_mismatch: 1,
       missing_on_invoice: 1,
       missing_on_po: 1,
+      short_receipt: 0,
+      invoice_exceeds_received: 0,
+      uom_mismatch: 0,
+      currency_mismatch: 0,
     })
   })
 
@@ -554,6 +574,10 @@ describe('Procurement flow (e2e)', () => {
       price_mismatch: 0,
       missing_on_invoice: 2,
       missing_on_po: 1,
+      short_receipt: 0,
+      invoice_exceeds_received: 0,
+      uom_mismatch: 0,
+      currency_mismatch: 0,
     })
   })
 
@@ -584,16 +608,6 @@ describe('Procurement flow (e2e)', () => {
   // S5. Receiving ingest end to end: real Bull queue, real processor, no mocks
   // on the parse path — same posture as the PO/invoice flows above.
   describe('goods receipts (S5)', () => {
-    async function waitForGoodsReceiptDone(id: string, timeoutMs = 15_000): Promise<void> {
-      const deadline = Date.now() + timeoutMs
-      while (Date.now() < deadline) {
-        const [row] = await db.select().from(goodsReceipts).where(eq(goodsReceipts.id, id)).limit(1)
-        if (row?.status === 'done') return
-        if (row?.status === 'failed') throw new Error(`Goods receipt ${id} failed to parse: ${row.lastError}`)
-        await new Promise((resolve) => setTimeout(resolve, 200))
-      }
-      throw new Error(`Goods receipt ${id} did not reach 'done' within ${timeoutMs}ms`)
-    }
 
     const grnCsv = ['sku,description,qty received,qty accepted,qty rejected,uom', 'A1,Widget,10,8,2,box'].join('\n')
 
@@ -683,6 +697,61 @@ describe('Procurement flow (e2e)', () => {
         .expect(400)
 
       expect(res.body.message.join(' ')).toContain('purchaseOrderId')
+    })
+  })
+
+  // S6. All three documents through HTTP, with the real queue and processor —
+  // the unit tests prove the engine, this proves the wiring.
+  describe('three-way comparison (S6)', () => {
+    it('compares ordered against received against billed and labels the run three_way', async () => {
+      const owner = await seedOwnerWithWorkspace(app, `${prefix}s6-e2e@example.com`, 'S6 E2E')
+      const vendorId = await createVendor(app, owner.workspaceId, owner.accessToken)
+
+      const poUpload = await request(app.getHttpServer())
+        .post(`/workspaces/${owner.workspaceId}/procurement/purchase-orders`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .field('vendorId', vendorId)
+        .field('poNumber', 'PO-S6-1')
+        .field('currency', 'USD')
+        .attach('file', Buffer.from('sku,description,qty,unit price\nA1,Widget,10,5.00'), 'po.csv')
+        .expect(201)
+      await waitForPoDone(poUpload.body.id)
+
+      // Accepted 7 of 10 ordered, and the invoice bills all 10.
+      const grnUpload = await request(app.getHttpServer())
+        .post(`/workspaces/${owner.workspaceId}/procurement/goods-receipts`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .field('purchaseOrderId', poUpload.body.id)
+        .field('grnNumber', 'GRN-S6-1')
+        .attach('file', Buffer.from('sku,qty received,qty accepted\nA1,7,7'), 'grn.csv')
+        .expect(201)
+      await waitForGoodsReceiptDone(grnUpload.body.id)
+
+      const invoiceUpload = await request(app.getHttpServer())
+        .post(`/workspaces/${owner.workspaceId}/procurement/invoices`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .field('purchaseOrderId', poUpload.body.id)
+        .field('invoiceNumber', 'INV-S6-1')
+        .field('currency', 'USD')
+        .attach('file', Buffer.from('sku,description,qty,unit price\nA1,Widget,10,5.00'), 'invoice.csv')
+        .expect(201)
+      await waitForInvoiceDone(invoiceUpload.body.id)
+
+      const compareRes = await request(app.getHttpServer())
+        .post(`/workspaces/${owner.workspaceId}/procurement/discrepancies/compare`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .send({ purchaseOrderId: poUpload.body.id, invoiceId: invoiceUpload.body.id })
+        .expect(201)
+
+      expect(compareRes.body.counts.invoice_exceeds_received).toBe(1)
+      const flag = compareRes.body.flags[0]
+      expect(Number(flag.poValue)).toBe(10)
+      expect(Number(flag.receivedValue)).toBe(7)
+      expect(Number(flag.invoiceValue)).toBe(10)
+
+      const [run] = await db.select().from(comparisonRuns).where(eq(comparisonRuns.id, compareRes.body.runId))
+      expect(run.mode).toBe('three_way')
+      expect(run.goodsReceiptLineCount).toBe(1)
     })
   })
 

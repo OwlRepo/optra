@@ -12,16 +12,20 @@ import {
 import { and, desc, eq, inArray, isNull, or } from 'drizzle-orm'
 import Papa from 'papaparse'
 import {
+  comparisonRunGoodsReceipts,
   comparisonRuns,
   db,
   discrepancyDecisions,
   discrepancyFlags,
   workspaceMembers,
+  goodsReceiptLineItems,
+  goodsReceipts,
   invoiceLineItems,
   invoices,
   poLineItems,
   purchaseOrders,
   type DiscrepancyFlag,
+  type GoodsReceiptLineItem,
   type InvoiceLineItem,
   type PoLineItem,
 } from '@repo/db'
@@ -39,6 +43,13 @@ function pairKey(purchaseOrderId: string, invoiceId: string): string {
 
 const PO_TABLE = 'po_items'
 const INV_TABLE = 'inv_items'
+// Must satisfy assertSafeIdentifier (/^[a-zA-Z_][a-zA-Z0-9_]*$/) and must not
+// contain a FORBIDDEN_KEYWORDS word — 'set', 'call', 'load' and 'create' are
+// matched on word boundaries by assertReadOnlySelect.
+const GRN_TABLE = 'grn_items'
+// Must match serializeGoodsReceiptForCsv's keys exactly: it is what the empty
+// case writes, and the `grn` CTE binds these column names.
+const GRN_CSV_HEADER = 'id,line_number,mk,quantity_accepted'
 
 // Fixed, hand-written template — never built from row data. Row values only
 // ever enter via CSV loaded by DuckDbQueryService's trusted read_csv_auto
@@ -58,6 +69,26 @@ const INV_TABLE = 'inv_items'
 // aggregates stay NULL when any line in the group is unparseable, matching the
 // old per-line IS DISTINCT FROM semantics. `total_rows` lets the caller prove
 // the result was not truncated.
+//
+// S6 adds the receiving side. Two properties are load-bearing:
+//
+// 1. `grn_accepted_qty` uses the SAME guard as the quantity aggregates above,
+//    and that is the whole point. A bare SUM() would silently skip NULLs and
+//    return a PARTIAL total, so a receipt that never stated an accepted
+//    quantity would look like a short delivery and Optra would accuse a
+//    supplier who did nothing wrong. The guard yields NULL instead, and every
+//    branch below tests `IS NOT NULL` before using it (POLICY v1 #14, §1B).
+//
+// 2. A line can be short-received AND over-billed at once (ordered 10,
+//    accepted 7, billed 10). A CASE returns only its first match, so the order
+//    here picks which LABEL that line gets — money first, because "billed for
+//    more than we kept" is the actionable one. No information is lost by that
+//    choice: the flag row carries po/received/invoice values together, so the
+//    reviewer sees all three numbers whichever label won.
+//
+// With no receipts linked, the `grn` CTE is empty, every `g.*` is NULL, both
+// new branches fall through, and the classification is byte-identical to the
+// two-way behaviour that shipped in S1.
 const COMPARISON_SQL = `
 WITH po AS (
   SELECT mk,
@@ -85,32 +116,61 @@ inv AS (
   FROM ${INV_TABLE}
   GROUP BY mk
 ),
+grn AS (
+  SELECT mk,
+         arg_min(id, line_number) AS goods_receipt_line_item_id,
+         COUNT(*) AS grn_lines,
+         CASE WHEN COUNT(*) = COUNT(TRY_CAST(quantity_accepted AS DOUBLE))
+              THEN ROUND(SUM(TRY_CAST(quantity_accepted AS DOUBLE)), 6) END AS grn_accepted_qty
+  FROM ${GRN_TABLE}
+  GROUP BY mk
+),
 joined AS (
-  SELECT p.po_line_item_id, i.invoice_line_item_id, p.po_lines, i.inv_lines,
-         p.po_qty, i.inv_qty, p.po_price_min, p.po_price_max, i.inv_price_min, i.inv_price_max,
+  SELECT p.po_line_item_id, i.invoice_line_item_id, g.goods_receipt_line_item_id,
+         p.po_lines, i.inv_lines, g.grn_lines,
+         p.po_qty, i.inv_qty, g.grn_accepted_qty,
+         p.po_price_min, p.po_price_max, i.inv_price_min, i.inv_price_max,
          CASE
            WHEN p.po_line_item_id IS NULL THEN 'missing_on_po'
            WHEN i.invoice_line_item_id IS NULL THEN 'missing_on_invoice'
+           WHEN g.grn_accepted_qty IS NOT NULL AND i.inv_qty > g.grn_accepted_qty
+             THEN 'invoice_exceeds_received'
+           WHEN g.grn_accepted_qty IS NOT NULL AND g.grn_accepted_qty < p.po_qty
+             THEN 'short_receipt'
            WHEN p.po_qty IS DISTINCT FROM i.inv_qty THEN 'quantity_mismatch'
            WHEN p.po_price_min IS DISTINCT FROM p.po_price_max
              OR i.inv_price_min IS DISTINCT FROM i.inv_price_max
              OR p.po_price_min IS DISTINCT FROM i.inv_price_min THEN 'price_mismatch'
            ELSE 'match'
          END AS flag_type
-  FROM po p FULL OUTER JOIN inv i ON p.mk = i.mk
+  FROM po p
+  FULL OUTER JOIN inv i ON p.mk = i.mk
+  FULL OUTER JOIN grn g ON COALESCE(p.mk, i.mk) = g.mk
 )
 SELECT *, COUNT(*) OVER () AS total_rows FROM joined WHERE flag_type <> 'match'
 `.trim()
 
-type FlagType = 'quantity_mismatch' | 'price_mismatch' | 'missing_on_invoice' | 'missing_on_po'
+type FlagType =
+  | 'quantity_mismatch'
+  | 'price_mismatch'
+  | 'missing_on_invoice'
+  | 'missing_on_po'
+  | 'short_receipt'
+  | 'invoice_exceeds_received'
 
 interface ComparisonRow {
   po_line_item_id: string | null
   invoice_line_item_id: string | null
+  goods_receipt_line_item_id: string | null
   po_lines: number | null
   inv_lines: number | null
+  grn_lines: number | null
   po_qty: number | null
   inv_qty: number | null
+  // Accepted quantity, summed across every receipt this run read. NULL when no
+  // receipt exists for the key OR when any contributing line left it unstated —
+  // never 0 for "unknown" (POLICY v1 #14).
+  grn_accepted_qty: number | null
   po_price_min: number | null
   po_price_max: number | null
   inv_price_min: number | null
@@ -122,6 +182,7 @@ interface ComparisonRow {
 interface ComparedLines {
   po: Map<string, PoLineItem>
   invoice: Map<string, InvoiceLineItem>
+  goodsReceipt: Map<string, GoodsReceiptLineItem>
 }
 
 interface LineItemForCsv {
@@ -133,6 +194,16 @@ interface LineItemForCsv {
   unitPrice: string | null
 }
 
+// A receipt line has no price and three quantities rather than one, so it gets
+// its own CSV shape instead of being forced into LineItemForCsv.
+interface GoodsReceiptLineForCsv {
+  id: string
+  lineNumber: number | null
+  sku: string | null
+  description: string | null
+  quantityAccepted: string | null
+}
+
 // SKU primary, normalized description fallback, null when the line carries
 // neither (it cannot be matched to anything).
 function matchKey(item: { sku: string | null; description: string | null }): string | null {
@@ -141,6 +212,19 @@ function matchKey(item: { sku: string | null; description: string | null }): str
   const description = item.description?.trim().toLowerCase()
   if (description) return `desc::${description}`
   return null
+}
+
+// Mirrors serializeForCsv: same `mk` derivation so the three sides join on the
+// same key, minus price, plus the one quantity the comparison consumes. An
+// unstated accepted quantity stays empty, which read_csv_auto reads as NULL and
+// the CTE's guard then propagates as NULL rather than zero.
+function serializeGoodsReceiptForCsv(item: GoodsReceiptLineForCsv) {
+  return {
+    id: item.id,
+    line_number: item.lineNumber ?? 0,
+    mk: matchKey(item) ?? `unkeyed::${item.id}`,
+    quantity_accepted: item.quantityAccepted ?? '',
+  }
 }
 
 function serializeForCsv(item: LineItemForCsv) {
@@ -190,6 +274,32 @@ export class ComparisonService {
       throw new BadRequestException('Both documents must have parsed line items to compare')
     }
 
+    // S6 / POLICY v1 #14: accepted quantity is summed across EVERY receipt
+    // linked to this PO, so all of them are read, not one. Workspace-scoped on
+    // both the header and the line rows, same defense in depth as above.
+    const receipts = await db
+      .select({ id: goodsReceipts.id })
+      .from(goodsReceipts)
+      .where(and(eq(goodsReceipts.workspaceId, workspaceId), eq(goodsReceipts.purchaseOrderId, po.id)))
+    const receiptIds = receipts.map((receipt) => receipt.id)
+    const grnItems = receiptIds.length
+      ? await db
+          .select()
+          .from(goodsReceiptLineItems)
+          .where(
+            and(
+              eq(goodsReceiptLineItems.workspaceId, workspaceId),
+              inArray(goodsReceiptLineItems.goodsReceiptId, receiptIds),
+            ),
+          )
+      : []
+
+    // Three-way only when there is receiving evidence to compare against.
+    // POLICY v1 #14: with no linked GRN the run stays two_way, and §7.4 says a
+    // missing receiving document must be "clearly labeled; no false three-way
+    // claim". A receipt that exists but parsed to zero lines is no evidence.
+    const mode = grnItems.length > 0 ? 'three_way' : 'two_way'
+
     // The run row is written before the engine call so a failed attempt still
     // leaves evidence that someone tried, and when. A request that never gets
     // this far (unknown document, nothing parsed) records no run at all.
@@ -200,18 +310,38 @@ export class ComparisonService {
         purchaseOrderId: po.id,
         invoiceId: invoice.id,
         initiatedBy: initiatedBy ?? null,
+        mode,
         poLineCount: poItems.length,
         invoiceLineCount: invItems.length,
+        goodsReceiptLineCount: mode === 'three_way' ? grnItems.length : null,
       })
       .returning()
 
     const dir = await mkdtemp(join(tmpdir(), 'optra-cmp-'))
     const poCsvPath = join(dir, 'po.csv')
     const invCsvPath = join(dir, 'invoice.csv')
+    const grnCsvPath = join(dir, 'grn.csv')
 
     try {
       await writeFile(poCsvPath, Papa.unparse(poItems.map(serializeForCsv)), 'utf-8')
       await writeFile(invCsvPath, Papa.unparse(invItems.map(serializeForCsv)), 'utf-8')
+      // Always written, even when empty: the SQL names ${GRN_TABLE}
+      // unconditionally, and a header-only CSV gives an empty CTE whose NULLs
+      // make the two new branches fall through to the original two-way
+      // classification.
+      //
+      // The header is written explicitly rather than left to Papa.unparse([]),
+      // which emits an empty string. read_csv_auto then builds a table with no
+      // columns at all and the `grn` CTE fails to bind `mk` — which broke every
+      // two-way comparison, not just three-way ones, because this file is
+      // loaded on every run.
+      await writeFile(
+        grnCsvPath,
+        grnItems.length > 0
+          ? Papa.unparse(grnItems.map(serializeGoodsReceiptForCsv))
+          : GRN_CSV_HEADER,
+        'utf-8',
+      )
 
       // Every result row is one distinct key from one side or both, so the
       // result can never exceed the combined line count. Every row is persisted,
@@ -220,9 +350,13 @@ export class ComparisonService {
         [
           { csvPath: poCsvPath, tableName: PO_TABLE },
           { csvPath: invCsvPath, tableName: INV_TABLE },
+          { csvPath: grnCsvPath, tableName: GRN_TABLE },
         ],
         COMPARISON_SQL,
-        { maxRows: poItems.length + invItems.length },
+        // Still one row per distinct key, so the bound is the combined line
+        // count of all three sides. Leaving the receipt side out of this sum
+        // would make the total_rows assertion below fire on a correct result.
+        { maxRows: poItems.length + invItems.length + grnItems.length },
       )) as unknown as ComparisonRow[]
 
       if (rows.length > 0 && rows[0].total_rows !== rows.length) {
@@ -232,6 +366,7 @@ export class ComparisonService {
       const lines: ComparedLines = {
         po: new Map(poItems.map((item) => [item.id, item])),
         invoice: new Map(invItems.map((item) => [item.id, item])),
+        goodsReceipt: new Map(grnItems.map((item) => [item.id, item])),
       }
 
       const inserted = await db.transaction(async (tx) => {
@@ -259,6 +394,16 @@ export class ComparisonService {
                 )
                 .returning()
             : []
+
+        // Which receipts this run actually read, recorded rather than re-derived
+        // (§1E "source document IDs"). A receipt uploaded tomorrow must not
+        // change what this run says it compared — and POLICY v1 #9's retention
+        // guard reads these rows to know a receipt is now evidence.
+        if (mode === 'three_way') {
+          await tx
+            .insert(comparisonRunGoodsReceipts)
+            .values(receiptIds.map((goodsReceiptId) => ({ comparisonRunId: run.id, goodsReceiptId })))
+        }
 
         await tx
           .update(comparisonRuns)
@@ -548,6 +693,8 @@ export class ComparisonService {
     const isPrice = row.flag_type === 'price_mismatch'
     const isMissingOnInvoice = row.flag_type === 'missing_on_invoice'
     const isMissingOnPo = row.flag_type === 'missing_on_po'
+    const isShortReceipt = row.flag_type === 'short_receipt'
+    const isInvoiceExceedsReceived = row.flag_type === 'invoice_exceeds_received'
     const poPrice = this.singlePrice(row.po_price_min, row.po_price_max)
     const invoicePrice = this.singlePrice(row.inv_price_min, row.inv_price_max)
 
@@ -557,6 +704,7 @@ export class ComparisonService {
       invoiceId,
       poLineItemId: row.po_line_item_id,
       invoiceLineItemId: row.invoice_line_item_id,
+      goodsReceiptLineItemId: row.goods_receipt_line_item_id,
       // The exact stored string, never DuckDB's re-typed copy of it.
       sku: poLine?.sku ?? invoiceLine?.sku ?? null,
       flagType: row.flag_type,
@@ -565,20 +713,30 @@ export class ComparisonService {
       // On a missing-side flag the absent side counts as zero and the present
       // side's value is kept, so the row renders as evidence instead of three
       // blank columns.
-      poValue: isQuantity
-        ? this.numToStr(row.po_qty)
-        : isPrice
-          ? this.numToStr(poPrice)
-          : isMissingOnInvoice
-            ? this.numToStr(row.po_qty)
+      // On a receiving flag all three numbers are filled, whichever label the
+      // CASE chose: a line that is both short-received and over-billed shows
+      // ordered, received and billed together, so nothing is hidden by the
+      // branch order that picked between them.
+      poValue:
+        isQuantity || isMissingOnInvoice || isShortReceipt || isInvoiceExceedsReceived
+          ? this.numToStr(row.po_qty)
+          : isPrice
+            ? this.numToStr(poPrice)
             : null,
-      invoiceValue: isQuantity
-        ? this.numToStr(row.inv_qty)
-        : isPrice
-          ? this.numToStr(invoicePrice)
-          : isMissingOnPo
-            ? this.numToStr(row.inv_qty)
+      receivedValue:
+        isShortReceipt || isInvoiceExceedsReceived ? this.numToStr(row.grn_accepted_qty) : null,
+      invoiceValue:
+        isQuantity || isMissingOnPo || isShortReceipt || isInvoiceExceedsReceived
+          ? this.numToStr(row.inv_qty)
+          : isPrice
+            ? this.numToStr(invoicePrice)
             : null,
+      // The S1 convention is unchanged for the four original types: delta is
+      // invoice minus PO, so positive always means "asks for more than ordered".
+      // The two receiving types keep the same reading direction against the
+      // number they dispute — short_receipt is received minus ordered (negative
+      // = short), invoice_exceeds_received is billed minus received (positive =
+      // billed for more than we kept).
       delta: isQuantity
         ? this.numToStr(this.diff(row.inv_qty, row.po_qty))
         : isPrice
@@ -587,7 +745,11 @@ export class ComparisonService {
             ? this.numToStr(this.diff(0, row.po_qty))
             : isMissingOnPo
               ? this.numToStr(this.diff(row.inv_qty, 0))
-              : null,
+              : isShortReceipt
+                ? this.numToStr(this.diff(row.grn_accepted_qty, row.po_qty))
+                : isInvoiceExceedsReceived
+                  ? this.numToStr(this.diff(row.inv_qty, row.grn_accepted_qty))
+                  : null,
       reason: this.buildReason(row, poLine, invoiceLine),
     }
   }
@@ -623,6 +785,10 @@ export class ComparisonService {
         return `Item ${sku} appears on the purchase order but not on the invoice${summed}`
       case 'quantity_mismatch':
         return `Quantity mismatch for ${sku}: PO=${row.po_qty ?? 'unknown'} Invoice=${row.inv_qty ?? 'unknown'}${summed}`
+      case 'short_receipt':
+        return `Short receipt for ${sku}: ordered ${row.po_qty ?? 'unknown'}, accepted ${row.grn_accepted_qty ?? 'unknown'}${summed}`
+      case 'invoice_exceeds_received':
+        return `Invoice bills more than was accepted for ${sku}: accepted ${row.grn_accepted_qty ?? 'unknown'}, invoiced ${row.inv_qty ?? 'unknown'}${summed}`
       case 'price_mismatch': {
         const poMixed = row.po_price_min !== row.po_price_max
         const invoiceMixed = row.inv_price_min !== row.inv_price_max
@@ -635,6 +801,12 @@ export class ComparisonService {
         }
         return `Unit price mismatch for ${sku}: PO=${row.po_price_min ?? 'unknown'} Invoice=${row.inv_price_min ?? 'unknown'}${summed}`
       }
+      default:
+        // Not decoration. apps/api runs with strictNullChecks:false, so an
+        // unhandled case here would fall through returning `undefined` and TS
+        // would accept it against the declared `string` — the flag would then
+        // fail on insert against a NOT NULL column, far from the cause.
+        throw new Error(`Unhandled comparison flag type: ${String(row.flag_type)}`)
     }
   }
 
@@ -642,6 +814,7 @@ export class ComparisonService {
     const parts: string[] = []
     if ((row.po_lines ?? 0) > 1) parts.push(`${row.po_lines} purchase order lines`)
     if ((row.inv_lines ?? 0) > 1) parts.push(`${row.inv_lines} invoice lines`)
+    if ((row.grn_lines ?? 0) > 1) parts.push(`${row.grn_lines} goods receipt lines`)
     return parts.length > 0 ? ` (summed across ${parts.join(' and ')})` : ''
   }
 
@@ -651,6 +824,10 @@ export class ComparisonService {
       price_mismatch: flags.filter((flag) => flag.flagType === 'price_mismatch').length,
       missing_on_invoice: flags.filter((flag) => flag.flagType === 'missing_on_invoice').length,
       missing_on_po: flags.filter((flag) => flag.flagType === 'missing_on_po').length,
+      short_receipt: flags.filter((flag) => flag.flagType === 'short_receipt').length,
+      invoice_exceeds_received: flags.filter((flag) => flag.flagType === 'invoice_exceeds_received').length,
+      uom_mismatch: flags.filter((flag) => flag.flagType === 'uom_mismatch').length,
+      currency_mismatch: flags.filter((flag) => flag.flagType === 'currency_mismatch').length,
     }
   }
 }

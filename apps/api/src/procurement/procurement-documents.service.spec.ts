@@ -1,5 +1,6 @@
 import { eq, like } from 'drizzle-orm'
 import {
+  comparisonRunGoodsReceipts,
   comparisonRuns,
   db,
   goodsReceipts,
@@ -439,6 +440,61 @@ describe('ProcurementDocumentsService', () => {
       expect(first.id).not.toBe(second.id)
       const rows = await db.select().from(goodsReceipts).where(eq(goodsReceipts.purchaseOrderId, po.id))
       expect(rows).toHaveLength(2)
+    })
+
+    // POLICY v1 #9: a document referenced by a comparison run is evidence and
+    // cannot be hard-deleted. S5 shipped this branch uncovered because no run
+    // could reference a receipt yet; S6 is where it starts to matter.
+    it('refuses to delete a goods receipt that a comparison run read', async () => {
+      const workspace = await seedWorkspace(`${prefix}grn-retained@example.com`, 'GRN Retained')
+      const [po] = await db
+        .insert(purchaseOrders)
+        .values({ workspaceId: workspace.id, name: 'po.csv', status: 'done' })
+        .returning()
+      const [invoice] = await db
+        .insert(invoices)
+        .values({ workspaceId: workspace.id, name: 'inv.csv', status: 'done' })
+        .returning()
+      const [grn] = await db
+        .insert(goodsReceipts)
+        .values({ workspaceId: workspace.id, purchaseOrderId: po.id, name: 'grn.csv', status: 'done' })
+        .returning()
+      const [run] = await db
+        .insert(comparisonRuns)
+        .values({
+          workspaceId: workspace.id,
+          purchaseOrderId: po.id,
+          invoiceId: invoice.id,
+          mode: 'three_way',
+          status: 'succeeded',
+        })
+        .returning()
+      await db
+        .insert(comparisonRunGoodsReceipts)
+        .values({ comparisonRunId: run.id, goodsReceiptId: grn.id })
+
+      await expect(service.remove(workspace.id, 'goods_receipt', grn.id)).rejects.toThrow(
+        'referenced by a comparison run',
+      )
+
+      expect(storage.delete).not.toHaveBeenCalled()
+      expect(await db.select().from(goodsReceipts).where(eq(goodsReceipts.id, grn.id))).toHaveLength(1)
+    })
+
+    it('still deletes a goods receipt no run has read', async () => {
+      const workspace = await seedWorkspace(`${prefix}grn-deletable@example.com`, 'GRN Deletable')
+      const [po] = await db
+        .insert(purchaseOrders)
+        .values({ workspaceId: workspace.id, name: 'po.csv', status: 'done' })
+        .returning()
+      const [grn] = await db
+        .insert(goodsReceipts)
+        .values({ workspaceId: workspace.id, purchaseOrderId: po.id, name: 'grn.csv', status: 'done' })
+        .returning()
+
+      await service.remove(workspace.id, 'goods_receipt', grn.id)
+
+      expect(await db.select().from(goodsReceipts).where(eq(goodsReceipts.id, grn.id))).toHaveLength(0)
     })
 
     it('lists goods receipts with their header fields, newest first', async () => {

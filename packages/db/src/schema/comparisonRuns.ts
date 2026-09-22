@@ -49,6 +49,9 @@ export const comparisonRuns = pgTable(
     initiatedBy: uuid('initiated_by').references(() => users.id, { onDelete: 'set null' }),
     poLineCount: integer('po_line_count'),
     invoiceLineCount: integer('invoice_line_count'),
+    // S6. Null on a two-way run; on a three-way run, how many receipt lines were
+    // summed. Which receipts those were lives in comparison_run_goods_receipts.
+    goodsReceiptLineCount: integer('goods_receipt_line_count'),
     flagCount: integer('flag_count'),
     startedAt: timestamp('started_at').defaultNow().notNull(),
     finishedAt: timestamp('finished_at'),

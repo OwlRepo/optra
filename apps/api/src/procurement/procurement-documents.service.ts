@@ -1,8 +1,16 @@
 import { randomUUID } from 'crypto'
 import { extname } from 'path'
 import { ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common'
-import { and, desc, eq } from 'drizzle-orm'
-import { comparisonRuns, db, goodsReceipts, invoices, purchaseOrders, vendors } from '@repo/db'
+import { and, desc, eq, inArray } from 'drizzle-orm'
+import {
+  comparisonRunGoodsReceipts,
+  comparisonRuns,
+  db,
+  goodsReceipts,
+  invoices,
+  purchaseOrders,
+  vendors,
+} from '@repo/db'
 import { StorageService } from '../storage/storage.service'
 import { ProcurementDocKind, ProcurementParseService } from './procurement-parse.service'
 import { assertUnreachable, docLabel } from './procurement-kind'
@@ -42,15 +50,18 @@ function runReferencePredicate(kind: ProcurementDocKind, id: string) {
     case 'invoice':
       return eq(comparisonRuns.invoiceId, id)
     case 'goods_receipt':
-      // `comparison_runs` has no goods-receipt column yet — S6 adds it with the
-      // three-way match. Until then a receipt genuinely cannot be referenced by
-      // a run, so there is nothing to guard against and null skips the check.
-      //
-      // S6 MUST return that predicate here. If it adds the column and leaves
-      // this null, POLICY v1 #9's retention guard silently stops covering
-      // receipts and a referenced receipt becomes deletable — which is why this
-      // returns null explicitly rather than falling through to a default.
-      return null
+      // S6. A receipt is referenced through the join table rather than a column
+      // on the run, because POLICY v1 #14 lets one run read several receipts.
+      // The subquery is what restores POLICY v1 #9 coverage here — S5 shipped
+      // this branch returning null, correctly, because no run could reference a
+      // receipt before the three-way match existed.
+      return inArray(
+        comparisonRuns.id,
+        db
+          .select({ id: comparisonRunGoodsReceipts.comparisonRunId })
+          .from(comparisonRunGoodsReceipts)
+          .where(eq(comparisonRunGoodsReceipts.goodsReceiptId, id)),
+      )
     default:
       return assertUnreachable(kind)
   }
@@ -287,14 +298,11 @@ export class ProcurementDocumentsService {
     // deleting it would cascade away that run and its flags. This method has no
     // route and no production caller; the guard is here so exposing it later
     // cannot silently destroy an audit trail.
-    const runPredicate = runReferencePredicate(kind, id)
-    const [referencingRun] = runPredicate
-      ? await db
-          .select({ id: comparisonRuns.id })
-          .from(comparisonRuns)
-          .where(and(eq(comparisonRuns.workspaceId, workspaceId), runPredicate))
-          .limit(1)
-      : []
+    const [referencingRun] = await db
+      .select({ id: comparisonRuns.id })
+      .from(comparisonRuns)
+      .where(and(eq(comparisonRuns.workspaceId, workspaceId), runReferencePredicate(kind, id)))
+      .limit(1)
 
     if (referencingRun) {
       throw new ConflictException(`${docLabel(kind)} is referenced by a comparison run and cannot be deleted`)

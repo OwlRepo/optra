@@ -1,7 +1,10 @@
 import { eq, like } from 'drizzle-orm'
 import {
+  comparisonRunGoodsReceipts,
   comparisonRuns,
   db,
+  goodsReceiptLineItems,
+  goodsReceipts,
   discrepancyDecisions,
   discrepancyFlags,
   invoiceLineItems,
@@ -27,6 +30,10 @@ async function cleanupFixtures(prefix: string) {
       await db.delete(discrepancyDecisions).where(eq(discrepancyDecisions.workspaceId, membership.workspaceId))
       await db.delete(discrepancyFlags).where(eq(discrepancyFlags.workspaceId, membership.workspaceId))
       await db.delete(comparisonRuns).where(eq(comparisonRuns.workspaceId, membership.workspaceId))
+      await db
+        .delete(goodsReceiptLineItems)
+        .where(eq(goodsReceiptLineItems.workspaceId, membership.workspaceId))
+      await db.delete(goodsReceipts).where(eq(goodsReceipts.workspaceId, membership.workspaceId))
       await db.delete(poLineItems).where(eq(poLineItems.workspaceId, membership.workspaceId))
       await db.delete(invoiceLineItems).where(eq(invoiceLineItems.workspaceId, membership.workspaceId))
       await db.delete(purchaseOrders).where(eq(purchaseOrders.workspaceId, membership.workspaceId))
@@ -142,6 +149,10 @@ describe('ComparisonService', () => {
       price_mismatch: 1,
       missing_on_invoice: 1,
       missing_on_po: 1,
+      short_receipt: 0,
+      invoice_exceeds_received: 0,
+      uom_mismatch: 0,
+      currency_mismatch: 0,
     })
     const skus = result.flags.map((f) => f.sku).sort()
     expect(skus).toEqual(['INV-ONLY', 'PO-ONLY', 'PRICE-1', 'QTY-1'])
@@ -176,6 +187,10 @@ describe('ComparisonService', () => {
       price_mismatch: 0,
       missing_on_invoice: 0,
       missing_on_po: 0,
+      short_receipt: 0,
+      invoice_exceeds_received: 0,
+      uom_mismatch: 0,
+      currency_mismatch: 0,
     })
   })
 
@@ -844,6 +859,186 @@ describe('ComparisonService', () => {
 
     const stillOpen = await service.listFlags(workspace.id, { status: 'open' })
     expect(stillOpen).toHaveLength(0)
+  })
+
+  // S6. The receiving side. What makes these worth writing rather than trusting
+  // the SQL: every one of them is a case where a plausible implementation gives
+  // a confidently wrong answer rather than an error.
+  describe('three-way comparison (S6)', () => {
+    async function seedGoodsReceipt(
+      workspaceId: string,
+      purchaseOrderId: string,
+      lines: { sku: string; quantityAccepted: string | null }[],
+      grnNumber = 'GRN-1',
+    ) {
+      const [grn] = await db
+        .insert(goodsReceipts)
+        .values({ workspaceId, purchaseOrderId, name: `${grnNumber}.csv`, grnNumber, status: 'done' })
+        .returning()
+      if (lines.length > 0) {
+        await db.insert(goodsReceiptLineItems).values(
+          lines.map((line, index) => ({
+            workspaceId,
+            goodsReceiptId: grn.id,
+            lineNumber: index + 1,
+            sku: line.sku,
+            quantityReceived: line.quantityAccepted,
+            quantityAccepted: line.quantityAccepted,
+            quantityRejected: null,
+          })),
+        )
+      }
+      return grn
+    }
+
+    it('flags a short receipt when less was accepted than ordered', async () => {
+      const { workspace } = await seedWorkspace(`${prefix}s6-short@example.com`, 'S6 Short')
+      const { po, invoice } = await seedReadyPoAndInvoice(
+        workspace.id,
+        [{ sku: 'A1', quantity: '10', unitPrice: '5.00' }],
+        [{ sku: 'A1', quantity: '10', unitPrice: '5.00' }],
+      )
+      await seedGoodsReceipt(workspace.id, po.id, [{ sku: 'A1', quantityAccepted: '7' }])
+
+      const result = await service.compare(workspace.id, po.id, invoice.id)
+
+      // Ordered 10, accepted 7, billed 10 — both short-received AND over-billed.
+      // The money case wins the label, but all three numbers must be present.
+      const flag = result.flags[0]
+      expect(flag.flagType).toBe('invoice_exceeds_received')
+      expect(Number(flag.poValue)).toBe(10)
+      expect(Number(flag.receivedValue)).toBe(7)
+      expect(Number(flag.invoiceValue)).toBe(10)
+      expect(Number(flag.delta)).toBe(3)
+    })
+
+    it('flags a short receipt on its own when the invoice bills only what arrived', async () => {
+      const { workspace } = await seedWorkspace(`${prefix}s6-short-only@example.com`, 'S6 Short Only')
+      const { po, invoice } = await seedReadyPoAndInvoice(
+        workspace.id,
+        [{ sku: 'A1', quantity: '10', unitPrice: '5.00' }],
+        [{ sku: 'A1', quantity: '7', unitPrice: '5.00' }],
+      )
+      await seedGoodsReceipt(workspace.id, po.id, [{ sku: 'A1', quantityAccepted: '7' }])
+
+      const result = await service.compare(workspace.id, po.id, invoice.id)
+
+      const flag = result.flags[0]
+      expect(flag.flagType).toBe('short_receipt')
+      expect(Number(flag.receivedValue)).toBe(7)
+      expect(Number(flag.delta)).toBe(-3)
+    })
+
+    // THE headline test. A bare SUM() skips NULLs and returns a PARTIAL total,
+    // so an unstated accepted quantity would look like a short delivery and
+    // Optra would accuse a supplier who did nothing wrong (POLICY v1 #14, §1B).
+    it('treats an unstated accepted quantity as not-stated, never as zero', async () => {
+      const { workspace } = await seedWorkspace(`${prefix}s6-null@example.com`, 'S6 Null')
+      const { po, invoice } = await seedReadyPoAndInvoice(
+        workspace.id,
+        [{ sku: 'A1', quantity: '10', unitPrice: '5.00' }],
+        [{ sku: 'A1', quantity: '10', unitPrice: '5.00' }],
+      )
+      await seedGoodsReceipt(workspace.id, po.id, [{ sku: 'A1', quantityAccepted: null }])
+
+      const result = await service.compare(workspace.id, po.id, invoice.id)
+
+      expect(result.counts.short_receipt).toBe(0)
+      expect(result.counts.invoice_exceeds_received).toBe(0)
+      expect(result.flags).toHaveLength(0)
+    })
+
+    // POLICY v1 #14: accepted quantity is summed across EVERY receipt linked to
+    // the PO. Two part-deliveries that together fulfil the order are not a
+    // short receipt.
+    it('sums accepted quantity across every receipt linked to the purchase order', async () => {
+      const { workspace } = await seedWorkspace(`${prefix}s6-multi@example.com`, 'S6 Multi')
+      const { po, invoice } = await seedReadyPoAndInvoice(
+        workspace.id,
+        [{ sku: 'A1', quantity: '10', unitPrice: '5.00' }],
+        [{ sku: 'A1', quantity: '10', unitPrice: '5.00' }],
+      )
+      await seedGoodsReceipt(workspace.id, po.id, [{ sku: 'A1', quantityAccepted: '6' }], 'GRN-1')
+      await seedGoodsReceipt(workspace.id, po.id, [{ sku: 'A1', quantityAccepted: '4' }], 'GRN-2')
+
+      const result = await service.compare(workspace.id, po.id, invoice.id)
+
+      // Neither receipt alone covers the order, so an implementation that
+      // compared receipts one at a time would flag a short delivery here.
+      // Summing them first is what makes this correct — and asserting the run
+      // is three_way is what stops this passing vacuously against a two-way
+      // engine, which also returns no flags for a matching pair.
+      const [run] = await db.select().from(comparisonRuns).where(eq(comparisonRuns.id, result.runId))
+      expect(run.mode).toBe('three_way')
+      expect(run.goodsReceiptLineCount).toBe(2)
+      expect(result.flags).toHaveLength(0)
+    })
+
+    it('records three_way mode, the receipt line count, and which receipts it read', async () => {
+      const { workspace } = await seedWorkspace(`${prefix}s6-run@example.com`, 'S6 Run')
+      const { po, invoice } = await seedReadyPoAndInvoice(
+        workspace.id,
+        [{ sku: 'A1', quantity: '10', unitPrice: '5.00' }],
+        [{ sku: 'A1', quantity: '10', unitPrice: '5.00' }],
+      )
+      const grn = await seedGoodsReceipt(workspace.id, po.id, [{ sku: 'A1', quantityAccepted: '10' }])
+
+      const result = await service.compare(workspace.id, po.id, invoice.id)
+
+      const [run] = await db.select().from(comparisonRuns).where(eq(comparisonRuns.id, result.runId))
+      expect(run.mode).toBe('three_way')
+      expect(run.goodsReceiptLineCount).toBe(1)
+
+      const links = await db
+        .select()
+        .from(comparisonRunGoodsReceipts)
+        .where(eq(comparisonRunGoodsReceipts.comparisonRunId, result.runId))
+      expect(links.map((link) => link.goodsReceiptId)).toEqual([grn.id])
+    })
+
+    // §7.4: "Missing receiving document | two-way result clearly labeled; no
+    // false three-way claim." The classification must also be untouched.
+    it('stays two_way and classifies exactly as before when no receipt is linked', async () => {
+      const { workspace } = await seedWorkspace(`${prefix}s6-none@example.com`, 'S6 None')
+      const { po, invoice } = await seedReadyPoAndInvoice(
+        workspace.id,
+        [{ sku: 'A1', quantity: '10', unitPrice: '5.00' }],
+        [{ sku: 'A1', quantity: '8', unitPrice: '5.00' }],
+      )
+
+      const result = await service.compare(workspace.id, po.id, invoice.id)
+
+      const [run] = await db.select().from(comparisonRuns).where(eq(comparisonRuns.id, result.runId))
+      expect(run.mode).toBe('two_way')
+      expect(run.goodsReceiptLineCount).toBeNull()
+      expect(result.flags[0].flagType).toBe('quantity_mismatch')
+      expect(result.flags[0].receivedValue).toBeNull()
+    })
+
+    // A receipt row that parsed to nothing is not receiving evidence.
+    it('stays two_way when a linked receipt has no parsed lines', async () => {
+      const { workspace } = await seedWorkspace(`${prefix}s6-empty@example.com`, 'S6 Empty')
+      const { po, invoice } = await seedReadyPoAndInvoice(
+        workspace.id,
+        [{ sku: 'A1', quantity: '10', unitPrice: '5.00' }],
+        [{ sku: 'A1', quantity: '8', unitPrice: '5.00' }],
+      )
+      await seedGoodsReceipt(workspace.id, po.id, [])
+
+      const result = await service.compare(workspace.id, po.id, invoice.id)
+
+      // A receipt row exists, so an implementation keying three_way off "is a
+      // receipt linked?" rather than "did one parse?" would wrongly claim a
+      // three-way match over no receiving evidence at all (§7.4 :1213).
+      const [run] = await db.select().from(comparisonRuns).where(eq(comparisonRuns.id, result.runId))
+      expect(run.mode).toBe('two_way')
+      expect(run.goodsReceiptLineCount).toBeNull()
+      const links = await db
+        .select()
+        .from(comparisonRunGoodsReceipts)
+        .where(eq(comparisonRunGoodsReceipts.comparisonRunId, result.runId))
+      expect(links).toHaveLength(0)
+    })
   })
 
   // S3b / POLICY v1 #2. Once an invoice records which PO it answers, comparing

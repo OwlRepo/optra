@@ -1,5 +1,6 @@
 import { index, numeric, pgEnum, pgTable, text, timestamp, uuid, varchar } from 'drizzle-orm/pg-core'
 import { comparisonRuns } from './comparisonRuns'
+import { goodsReceiptLineItems } from './goodsReceiptLineItems'
 import { invoiceLineItems } from './invoiceLineItems'
 import { invoices } from './invoices'
 import { poLineItems } from './poLineItems'
@@ -7,11 +8,26 @@ import { purchaseOrders } from './purchaseOrders'
 import { users } from './users'
 import { workspaces } from './workspaces'
 
+// The four original values compare a purchase order against an invoice. S6 adds
+// four more: two receiving exceptions that only a three-way run can produce, and
+// two "needs review" cases where POLICY v1 #4/#6 say a delta must NOT be
+// computed — the reason is kept as the type so a reviewer (and S7's queue) can
+// tell a UOM problem from a currency one.
+//
+// This is the repo's first ALTER TYPE. §6.7 of the development plan sanctions it
+// ("new enum values added through `ALTER TYPE … ADD VALUE`"), but note the
+// constraint that comes with it: the migration may ADD these values and must
+// never WRITE one, because on an already-migrated database the type predates the
+// migration's transaction and Postgres refuses to use a value added inside it.
 export const discrepancyFlagTypeEnum = pgEnum('discrepancy_flag_type', [
   'quantity_mismatch',
   'price_mismatch',
   'missing_on_invoice',
   'missing_on_po',
+  'short_receipt',
+  'invoice_exceeds_received',
+  'uom_mismatch',
+  'currency_mismatch',
 ])
 
 export const discrepancyFlagStatusEnum = pgEnum('discrepancy_flag_status', ['open', 'dismissed'])
@@ -43,10 +59,22 @@ export const discrepancyFlags = pgTable(
     invoiceLineItemId: uuid('invoice_line_item_id').references(() => invoiceLineItems.id, {
       onDelete: 'set null',
     }),
+    // S6. Which receipt line the accepted quantity came from, when the flag is a
+    // receiving exception. `set null` for the same reason as its two siblings:
+    // re-parsing a document replaces its line rows, and the flag's denormalized
+    // values below are what keep the evidence readable afterwards.
+    goodsReceiptLineItemId: uuid('goods_receipt_line_item_id').references(() => goodsReceiptLineItems.id, {
+      onDelete: 'set null',
+    }),
     sku: varchar('sku', { length: 200 }),
     flagType: discrepancyFlagTypeEnum('flag_type').notNull(),
     poValue: text('po_value'),
     invoiceValue: text('invoice_value'),
+    // S6. The third number a three-way exception needs: accepted quantity,
+    // summed across the receipts this run read. Null on every two-way flag and
+    // on any line whose receipt did not state an accepted quantity — null here
+    // means "not stated", never zero (POLICY v1 #14).
+    receivedValue: text('received_value'),
     delta: numeric('delta'),
     reason: text('reason').notNull(),
     status: discrepancyFlagStatusEnum('status').notNull().default('open'),
