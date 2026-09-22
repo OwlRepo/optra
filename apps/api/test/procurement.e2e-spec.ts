@@ -10,6 +10,8 @@ import request from 'supertest'
 import {
   db,
   discrepancyFlags,
+  goodsReceiptLineItems,
+  goodsReceipts,
   invoiceLineItems,
   invoices,
   otps,
@@ -45,8 +47,10 @@ async function cleanupUsers(prefix: string) {
       await db.delete(discrepancyFlags).where(eq(discrepancyFlags.workspaceId, membership.workspaceId))
       await db.delete(poLineItems).where(eq(poLineItems.workspaceId, membership.workspaceId))
       await db.delete(invoiceLineItems).where(eq(invoiceLineItems.workspaceId, membership.workspaceId))
-      await db.delete(purchaseOrders).where(eq(purchaseOrders.workspaceId, membership.workspaceId))
+      await db.delete(goodsReceiptLineItems).where(eq(goodsReceiptLineItems.workspaceId, membership.workspaceId))
+      await db.delete(goodsReceipts).where(eq(goodsReceipts.workspaceId, membership.workspaceId))
       await db.delete(invoices).where(eq(invoices.workspaceId, membership.workspaceId))
+      await db.delete(purchaseOrders).where(eq(purchaseOrders.workspaceId, membership.workspaceId))
       await db.delete(workspaceMembers).where(eq(workspaceMembers.workspaceId, membership.workspaceId))
       await db.delete(workspaces).where(eq(workspaces.id, membership.workspaceId))
     }
@@ -575,6 +579,111 @@ describe('Procurement flow (e2e)', () => {
       .expect(400)
 
     expect(rejected.body.message).toBe('Only CSV, XLSX, or PDF files are supported')
+  })
+
+  // S5. Receiving ingest end to end: real Bull queue, real processor, no mocks
+  // on the parse path — same posture as the PO/invoice flows above.
+  describe('goods receipts (S5)', () => {
+    async function waitForGoodsReceiptDone(id: string, timeoutMs = 15_000): Promise<void> {
+      const deadline = Date.now() + timeoutMs
+      while (Date.now() < deadline) {
+        const [row] = await db.select().from(goodsReceipts).where(eq(goodsReceipts.id, id)).limit(1)
+        if (row?.status === 'done') return
+        if (row?.status === 'failed') throw new Error(`Goods receipt ${id} failed to parse: ${row.lastError}`)
+        await new Promise((resolve) => setTimeout(resolve, 200))
+      }
+      throw new Error(`Goods receipt ${id} did not reach 'done' within ${timeoutMs}ms`)
+    }
+
+    const grnCsv = ['sku,description,qty received,qty accepted,qty rejected,uom', 'A1,Widget,10,8,2,box'].join('\n')
+
+    async function seedOwnerPo(email: string, workspaceName: string) {
+      const owner = await seedOwnerWithWorkspace(app, email, workspaceName)
+      const vendorId = await createVendor(app, owner.workspaceId, owner.accessToken)
+      const po = await request(app.getHttpServer())
+        .post(`/workspaces/${owner.workspaceId}/procurement/purchase-orders`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .field('vendorId', vendorId)
+        .field('poNumber', 'PO-GRN-1')
+        .field('currency', 'USD')
+        .attach('file', Buffer.from('sku,description,qty,unit price\nA1,Widget,10,5.00'), 'po.csv')
+        .expect(201)
+      return { owner, purchaseOrderId: po.body.id as string }
+    }
+
+    it('uploads, parses and lists a goods receipt linked to its purchase order', async () => {
+      const { owner, purchaseOrderId } = await seedOwnerPo(`${prefix}s5-grn@example.com`, 'S5 GRN')
+
+      const upload = await request(app.getHttpServer())
+        .post(`/workspaces/${owner.workspaceId}/procurement/goods-receipts`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .field('purchaseOrderId', purchaseOrderId)
+        .field('grnNumber', 'GRN-9001')
+        .attach('file', Buffer.from(grnCsv), 'grn.csv')
+        .expect(201)
+
+      expect(upload.body.status).toBe('pending')
+      await waitForGoodsReceiptDone(upload.body.id)
+
+      const [line] = await db
+        .select()
+        .from(goodsReceiptLineItems)
+        .where(eq(goodsReceiptLineItems.goodsReceiptId, upload.body.id))
+      expect(line.quantityReceived).toBe('10')
+      expect(line.quantityAccepted).toBe('8')
+      expect(line.quantityRejected).toBe('2')
+
+      const listed = await request(app.getHttpServer())
+        .get(`/workspaces/${owner.workspaceId}/procurement/goods-receipts`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .expect(200)
+
+      const row = listed.body.find((item: { id: string }) => item.id === upload.body.id)
+      expect(row.grnNumber).toBe('GRN-9001')
+      expect(row.purchaseOrderId).toBe(purchaseOrderId)
+      expect(row.status).toBe('done')
+    })
+
+    it('refuses a purchase order belonging to another workspace', async () => {
+      const owner = await seedOwnerWithWorkspace(app, `${prefix}s5-grn-mine@example.com`, 'S5 GRN Mine')
+      const { purchaseOrderId: theirPo } = await seedOwnerPo(`${prefix}s5-grn-other@example.com`, 'S5 GRN Other')
+
+      await request(app.getHttpServer())
+        .post(`/workspaces/${owner.workspaceId}/procurement/goods-receipts`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .field('purchaseOrderId', theirPo)
+        .field('grnNumber', 'GRN-1')
+        .attach('file', Buffer.from(grnCsv), 'grn.csv')
+        .expect(404)
+    })
+
+    // PDF is deferred: the extraction chain cannot express received vs accepted,
+    // so a PDF receipt would silently lose the acceptance data.
+    it('refuses a PDF goods receipt with an explanation', async () => {
+      const { owner, purchaseOrderId } = await seedOwnerPo(`${prefix}s5-grn-pdf@example.com`, 'S5 GRN PDF')
+
+      const res = await request(app.getHttpServer())
+        .post(`/workspaces/${owner.workspaceId}/procurement/goods-receipts`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .field('purchaseOrderId', purchaseOrderId)
+        .field('grnNumber', 'GRN-PDF')
+        .attach('file', Buffer.from('%PDF-1.4 PDF-PO-MARKER'), 'grn.pdf')
+        .expect(400)
+
+      expect(res.body.message).toContain('CSV or XLSX')
+    })
+
+    it('rejects an upload with no header fields', async () => {
+      const { owner } = await seedOwnerPo(`${prefix}s5-grn-nohdr@example.com`, 'S5 GRN NoHdr')
+
+      const res = await request(app.getHttpServer())
+        .post(`/workspaces/${owner.workspaceId}/procurement/goods-receipts`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .attach('file', Buffer.from(grnCsv), 'grn.csv')
+        .expect(400)
+
+      expect(res.body.message.join(' ')).toContain('purchaseOrderId')
+    })
   })
 
   // S3b. The foreign key only proves a row exists; these prove the API refuses

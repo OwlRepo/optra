@@ -7,6 +7,8 @@ import { eq, like } from 'drizzle-orm'
 import * as XLSX from 'xlsx'
 import {
   db,
+  goodsReceiptLineItems,
+  goodsReceipts,
   invoiceLineItems,
   invoices,
   pool,
@@ -24,7 +26,12 @@ import { StorageService } from '../storage/storage.service'
 
 // Bull job shape the processor reads: attemptsMade counts prior failed attempts,
 // opts.attempts is the configured total. Missing opts means a single attempt.
-function job(id: string, data: { kind: 'purchase_order' | 'invoice'; id: string }, attemptsMade = 0, attempts = 3) {
+function job(
+  id: string,
+  data: { kind: 'purchase_order' | 'invoice' | 'goods_receipt'; id: string },
+  attemptsMade = 0,
+  attempts = 3,
+) {
   return { id, data, attemptsMade, opts: { attempts } } as any
 }
 
@@ -63,8 +70,10 @@ async function cleanupFixtures(prefix: string) {
     for (const membership of memberships) {
       await db.delete(poLineItems).where(eq(poLineItems.workspaceId, membership.workspaceId))
       await db.delete(invoiceLineItems).where(eq(invoiceLineItems.workspaceId, membership.workspaceId))
-      await db.delete(purchaseOrders).where(eq(purchaseOrders.workspaceId, membership.workspaceId))
+      await db.delete(goodsReceiptLineItems).where(eq(goodsReceiptLineItems.workspaceId, membership.workspaceId))
+      await db.delete(goodsReceipts).where(eq(goodsReceipts.workspaceId, membership.workspaceId))
       await db.delete(invoices).where(eq(invoices.workspaceId, membership.workspaceId))
+      await db.delete(purchaseOrders).where(eq(purchaseOrders.workspaceId, membership.workspaceId))
       await db.delete(workspaceMembers).where(eq(workspaceMembers.workspaceId, membership.workspaceId))
       await db.delete(workspaces).where(eq(workspaces.id, membership.workspaceId))
     }
@@ -139,6 +148,113 @@ describe('ProcurementParseProcessor', () => {
 
     return po
   }
+
+  async function seedGoodsReceipt(csvContent: string, workspaceId: string, name = 'grn.csv') {
+    const csvPath = join(dir, `${randomUUID()}.csv`)
+    writeFileSync(csvPath, csvContent)
+    storage.getToTempFile.mockResolvedValue(csvPath)
+
+    const [po] = await db
+      .insert(purchaseOrders)
+      .values({ workspaceId, name: 'linked-po.csv', status: 'done' })
+      .returning()
+    const [grn] = await db
+      .insert(goodsReceipts)
+      .values({
+        workspaceId,
+        purchaseOrderId: po.id,
+        name,
+        storageKey: `k/${randomUUID()}`,
+        status: 'pending',
+      })
+      .returning()
+
+    return grn
+  }
+
+  describe('goods receipts (S5)', () => {
+    it('writes receipt lines to goods_receipt_line_items and not to invoice_line_items', async () => {
+      const workspace = await seedWorkspace(`${prefix}grn@example.com`, prefix)
+      const grn = await seedGoodsReceipt(
+        ['sku,description,qty received,qty accepted,qty rejected,uom', 'A1,Widget,10,8,2,box'].join('\n'),
+        workspace.id,
+      )
+
+      await processor.handleParse(job('job-grn', { kind: 'goods_receipt', id: grn.id }))
+
+      const lines = await db
+        .select()
+        .from(goodsReceiptLineItems)
+        .where(eq(goodsReceiptLineItems.goodsReceiptId, grn.id))
+      expect(lines).toHaveLength(1)
+      expect(lines[0].sku).toBe('A1')
+      expect(lines[0].quantityReceived).toBe('10')
+      expect(lines[0].quantityAccepted).toBe('8')
+      expect(lines[0].quantityRejected).toBe('2')
+      expect(lines[0].uom).toBe('box')
+
+      // The failure the exhaustiveness refactor exists to prevent.
+      const strays = await db
+        .select()
+        .from(invoiceLineItems)
+        .where(eq(invoiceLineItems.workspaceId, workspace.id))
+      expect(strays).toHaveLength(0)
+
+      const [header] = await db.select().from(goodsReceipts).where(eq(goodsReceipts.id, grn.id))
+      expect(header.status).toBe('done')
+      expect(header.rowCount).toBe(1)
+    })
+
+    // §1B and POLICY v1 #14: missing receiving data is never zero. If these
+    // land as '0', S6 reports rejections that never happened.
+    it('stores NULL, not zero, for quantities the source does not state', async () => {
+      const workspace = await seedWorkspace(`${prefix}grn-null@example.com`, prefix)
+      const grn = await seedGoodsReceipt(['sku,qty received', 'A1,8'].join('\n'), workspace.id)
+
+      await processor.handleParse(job('job-grn-null', { kind: 'goods_receipt', id: grn.id }))
+
+      const [line] = await db
+        .select()
+        .from(goodsReceiptLineItems)
+        .where(eq(goodsReceiptLineItems.goodsReceiptId, grn.id))
+      expect(line.quantityReceived).toBe('8')
+      expect(line.quantityAccepted).toBeNull()
+      expect(line.quantityRejected).toBeNull()
+    })
+
+    // A receipt whose only quantity column is a plain "Qty" still means received.
+    it('reads a plain Qty column as the received quantity', async () => {
+      const workspace = await seedWorkspace(`${prefix}grn-plain@example.com`, prefix)
+      const grn = await seedGoodsReceipt(['sku,qty', 'A1,5'].join('\n'), workspace.id)
+
+      await processor.handleParse(job('job-grn-plain', { kind: 'goods_receipt', id: grn.id }))
+
+      const [line] = await db
+        .select()
+        .from(goodsReceiptLineItems)
+        .where(eq(goodsReceiptLineItems.goodsReceiptId, grn.id))
+      expect(line.quantityReceived).toBe('5')
+    })
+
+    it('records the row position so a reviewer can find the line in the file', async () => {
+      const workspace = await seedWorkspace(`${prefix}grn-prov@example.com`, prefix)
+      const grn = await seedGoodsReceipt(
+        ['sku,qty received', '', 'A1,8'].join('\n'),
+        workspace.id,
+      )
+
+      await processor.handleParse(job('job-grn-prov', { kind: 'goods_receipt', id: grn.id }))
+
+      const [line] = await db
+        .select()
+        .from(goodsReceiptLineItems)
+        .where(eq(goodsReceiptLineItems.goodsReceiptId, grn.id))
+      // Header is file line 1, the blank line is 2, so this row is 3 — S3a made
+      // source_row the real position in the file, blanks included.
+      expect(line.sourceRow).toBe(3)
+      expect(line.sourceKind).toBe('csv')
+    })
+  })
 
   it('parses PO line items, infers mapped fields, and marks done', async () => {
     const workspace = await seedWorkspace(`${prefix}po@example.com`, prefix)

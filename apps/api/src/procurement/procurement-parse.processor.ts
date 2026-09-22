@@ -13,12 +13,13 @@ import {
   ProcurementExtractionRefusalError,
   ProcurementExtractionUnsupportedError,
 } from '@repo/ai'
-import { db, invoiceLineItems, invoices, poLineItems, purchaseOrders } from '@repo/db'
+import { db, goodsReceiptLineItems, goodsReceipts, invoiceLineItems, invoices, poLineItems, purchaseOrders } from '@repo/db'
 import { isBudgetExceeded } from '../limits/usage.service'
 import { StorageService } from '../storage/storage.service'
-import { isEmptyLineItem, mapRowToLineItem, validateLineItem } from './column-mapping'
+import { isEmptyLineItem, mapRowToLineItem, receivedQuantity, validateLineItem } from './column-mapping'
 import { pdfExtractionEnabled } from './procurement-feature-flags'
 import { ProcurementDocKind, ProcurementParseService, RECONCILE_JOB_NAME } from './procurement-parse.service'
+import { assertUnreachable, docLabel } from './procurement-kind'
 import { ProcurementExtractionService } from './procurement-extraction.service'
 
 interface MappedLineItemRow {
@@ -28,6 +29,12 @@ interface MappedLineItemRow {
   unitPrice: string | null
   lineTotal: string | null
   uom: string | null
+  // Goods receipt only (S5); null on a purchase order or invoice row. Null is
+  // never zero — a source that did not state acceptance must not be read as
+  // "nothing accepted" (POLICY v1 #14, §1B).
+  quantityReceived: string | null
+  quantityAccepted: string | null
+  quantityRejected: string | null
   rawRow: Record<string, unknown>
   // Provenance (S3a). Which of these is knowable depends on the source: a
   // spreadsheet knows where the row sat, a PDF knows how sure the model was.
@@ -111,11 +118,7 @@ export class ProcurementParseProcessor {
     }
 
     if (!doc.storageKey) {
-      await this.markFailed(
-        kind,
-        id,
-        `${kind === 'purchase_order' ? 'Purchase order' : 'Invoice'} is missing storageKey`,
-      )
+      await this.markFailed(kind, id, `${docLabel(kind)} is missing storageKey`)
       return
     }
 
@@ -129,6 +132,14 @@ export class ProcurementParseProcessor {
       // flag was turned off must not reach the model afterwards.
       if (isPdf && !pdfExtractionEnabled()) {
         throw new ProcurementParseInputError('PDF extraction is not enabled')
+      }
+
+      // Same reasoning as the upload filter, repeated here because the two can
+      // disagree: the extraction chain has no received/accepted/rejected in its
+      // result shape, so a PDF receipt would land a single quantity and lose
+      // the acceptance data silently. Refusing is the honest outcome.
+      if (isPdf && kind === 'goods_receipt') {
+        throw new ProcurementParseInputError('Goods receipts must be CSV or XLSX; PDF is not supported yet')
       }
 
       tempPath = await this.storage.getToTempFile(doc.storageKey)
@@ -258,6 +269,9 @@ export class ProcurementParseProcessor {
       unitPrice: row.unitPrice,
       lineTotal: row.lineTotal,
       uom: row.uom,
+      quantityReceived: receivedQuantity(row),
+      quantityAccepted: row.quantityAccepted ?? null,
+      quantityRejected: row.quantityRejected ?? null,
       rawRow: row.rawRow,
       sourceKind,
       sourceRow: row.sourceRow,
@@ -268,34 +282,78 @@ export class ProcurementParseProcessor {
     const done = { status: 'done' as const, rowCount: rows.length, lastError: null, updatedAt: new Date() }
 
     await db.transaction(async (tx) => {
-      if (kind === 'purchase_order') {
-        await tx.delete(poLineItems).where(eq(poLineItems.purchaseOrderId, id))
-        for (let start = 0; start < lineValues.length; start += INSERT_CHUNK_ROWS) {
-          await tx
-            .insert(poLineItems)
-            .values(lineValues.slice(start, start + INSERT_CHUNK_ROWS).map((value) => ({ ...value, purchaseOrderId: id })))
+      switch (kind) {
+        case 'purchase_order': {
+          await tx.delete(poLineItems).where(eq(poLineItems.purchaseOrderId, id))
+          for (let start = 0; start < lineValues.length; start += INSERT_CHUNK_ROWS) {
+            await tx.insert(poLineItems).values(
+              lineValues.slice(start, start + INSERT_CHUNK_ROWS).map((value) => ({ ...value, purchaseOrderId: id })),
+            )
+          }
+          await tx.update(purchaseOrders).set(done).where(eq(purchaseOrders.id, id))
+          break
         }
-        await tx.update(purchaseOrders).set(done).where(eq(purchaseOrders.id, id))
-        return
+        case 'invoice': {
+          await tx.delete(invoiceLineItems).where(eq(invoiceLineItems.invoiceId, id))
+          for (let start = 0; start < lineValues.length; start += INSERT_CHUNK_ROWS) {
+            await tx.insert(invoiceLineItems).values(
+              lineValues.slice(start, start + INSERT_CHUNK_ROWS).map((value) => ({ ...value, invoiceId: id })),
+            )
+          }
+          await tx.update(invoices).set(done).where(eq(invoices.id, id))
+          break
+        }
+        case 'goods_receipt': {
+          // A receipt's line table has no quantity/unitPrice/lineTotal and no
+          // PDF provenance, so the shared `lineValues` shape is mapped here
+          // rather than weakened for every kind. `receivedQuantity` falls back
+          // to a plain "Qty" column, which on a receipt means received.
+          await tx.delete(goodsReceiptLineItems).where(eq(goodsReceiptLineItems.goodsReceiptId, id))
+          for (let start = 0; start < lineValues.length; start += INSERT_CHUNK_ROWS) {
+            await tx.insert(goodsReceiptLineItems).values(
+              lineValues.slice(start, start + INSERT_CHUNK_ROWS).map((value) => ({
+                workspaceId: value.workspaceId,
+                goodsReceiptId: id,
+                lineNumber: value.lineNumber,
+                sku: value.sku,
+                description: value.description,
+                quantityReceived: value.quantityReceived,
+                quantityAccepted: value.quantityAccepted,
+                quantityRejected: value.quantityRejected,
+                uom: value.uom,
+                rawRow: value.rawRow,
+                sourceKind: value.sourceKind,
+                sourceRow: value.sourceRow,
+                sourceSheet: value.sourceSheet,
+              })),
+            )
+          }
+          await tx.update(goodsReceipts).set(done).where(eq(goodsReceipts.id, id))
+          break
+        }
+        default:
+          assertUnreachable(kind)
       }
-
-      await tx.delete(invoiceLineItems).where(eq(invoiceLineItems.invoiceId, id))
-      for (let start = 0; start < lineValues.length; start += INSERT_CHUNK_ROWS) {
-        await tx
-          .insert(invoiceLineItems)
-          .values(lineValues.slice(start, start + INSERT_CHUNK_ROWS).map((value) => ({ ...value, invoiceId: id })))
-      }
-      await tx.update(invoices).set(done).where(eq(invoices.id, id))
     })
   }
 
   private async loadDoc(kind: ProcurementDocKind, id: string) {
-    if (kind === 'purchase_order') {
-      const [row] = await db.select().from(purchaseOrders).where(eq(purchaseOrders.id, id)).limit(1)
-      return row
+    switch (kind) {
+      case 'purchase_order': {
+        const [row] = await db.select().from(purchaseOrders).where(eq(purchaseOrders.id, id)).limit(1)
+        return row
+      }
+      case 'invoice': {
+        const [row] = await db.select().from(invoices).where(eq(invoices.id, id)).limit(1)
+        return row
+      }
+      case 'goods_receipt': {
+        const [row] = await db.select().from(goodsReceipts).where(eq(goodsReceipts.id, id)).limit(1)
+        return row
+      }
+      default:
+        return assertUnreachable(kind)
     }
-    const [row] = await db.select().from(invoices).where(eq(invoices.id, id)).limit(1)
-    return row
   }
 
   private async setProcessing(kind: ProcurementDocKind, id: string, processingStartedAt: Date) {
@@ -305,19 +363,32 @@ export class ProcurementParseProcessor {
       lastError: null,
       updatedAt: processingStartedAt,
     }
-    if (kind === 'purchase_order') {
-      await db.update(purchaseOrders).set(patch).where(eq(purchaseOrders.id, id))
-    } else {
-      await db.update(invoices).set(patch).where(eq(invoices.id, id))
-    }
+    await this.patchHeader(kind, id, patch)
   }
 
   private async markFailed(kind: ProcurementDocKind, id: string, lastError: string) {
-    const patch = { status: 'failed' as const, lastError, updatedAt: new Date() }
-    if (kind === 'purchase_order') {
-      await db.update(purchaseOrders).set(patch).where(eq(purchaseOrders.id, id))
-    } else {
-      await db.update(invoices).set(patch).where(eq(invoices.id, id))
+    await this.patchHeader(kind, id, { status: 'failed' as const, lastError, updatedAt: new Date() })
+  }
+
+  // One place that maps a kind to its header table, so setProcessing and
+  // markFailed cannot drift apart when a kind is added.
+  private async patchHeader(
+    kind: ProcurementDocKind,
+    id: string,
+    patch: Partial<{ status: 'pending' | 'processing' | 'done' | 'failed'; lastError: string | null; processingStartedAt: Date | null; updatedAt: Date }>,
+  ) {
+    switch (kind) {
+      case 'purchase_order':
+        await db.update(purchaseOrders).set(patch).where(eq(purchaseOrders.id, id))
+        break
+      case 'invoice':
+        await db.update(invoices).set(patch).where(eq(invoices.id, id))
+        break
+      case 'goods_receipt':
+        await db.update(goodsReceipts).set(patch).where(eq(goodsReceipts.id, id))
+        break
+      default:
+        assertUnreachable(kind)
     }
   }
 }

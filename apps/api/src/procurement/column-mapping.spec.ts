@@ -1,4 +1,4 @@
-import { isEmptyLineItem, mapRowToLineItem, validateLineItem } from './column-mapping'
+import { isEmptyLineItem, mapRowToLineItem, receivedQuantity, validateLineItem } from './column-mapping'
 
 describe('validateLineItem', () => {
   const base = { sku: 'A1', description: 'Widget', quantity: '10', unitPrice: '5.50', lineTotal: '55' }
@@ -10,6 +10,9 @@ describe('validateLineItem', () => {
       unitPrice: '.5',
       lineTotal: '1e3',
       uom: null,
+      quantityReceived: null,
+      quantityAccepted: null,
+      quantityRejected: null,
     })
   })
 
@@ -45,6 +48,9 @@ describe('mapRowToLineItem', () => {
       unitPrice: '5.50',
       lineTotal: '55.00',
       uom: null,
+      quantityReceived: null,
+      quantityAccepted: null,
+      quantityRejected: null,
     })
   })
 
@@ -58,6 +64,9 @@ describe('mapRowToLineItem', () => {
       unitPrice: '9.99',
       lineTotal: '29.97',
       uom: null,
+      quantityReceived: null,
+      quantityAccepted: null,
+      quantityRejected: null,
     })
   })
 
@@ -71,6 +80,9 @@ describe('mapRowToLineItem', () => {
       unitPrice: null,
       lineTotal: null,
       uom: null,
+      quantityReceived: null,
+      quantityAccepted: null,
+      quantityRejected: null,
     })
   })
 
@@ -96,6 +108,9 @@ describe('mapRowToLineItem', () => {
       unitPrice: '5.50',
       lineTotal: '55.00',
       uom: null,
+      quantityReceived: null,
+      quantityAccepted: null,
+      quantityRejected: null,
     })
   })
 })
@@ -131,5 +146,86 @@ describe('uom mapping (S3a)', () => {
     expect(
       isEmptyLineItem({ sku: null, description: null, quantity: null, unitPrice: null, lineTotal: null, uom: 'each' }),
     ).toBe(true)
+  })
+})
+
+// S5. A goods receipt states what arrived, what was accepted and what was sent
+// back. Header matching is exact-equality (findValue), so none of these spellings
+// resolved to anything before this slice — a GRN CSV parsed to zero rows, and the
+// upload reported success on an empty document.
+describe('goods receipt quantities (S5)', () => {
+  it('maps the received quantity from each of its aliases', () => {
+    for (const header of ['Qty Received', 'Received Qty', 'Received Quantity', 'Qty Rcvd']) {
+      const item = mapRowToLineItem({ SKU: 'A1', [header]: '8' })
+      expect(item.quantityReceived).toBe('8')
+    }
+  })
+
+  it('maps accepted and rejected quantities from their aliases', () => {
+    for (const header of ['Qty Accepted', 'Accepted Qty', 'Accepted Quantity']) {
+      expect(mapRowToLineItem({ SKU: 'A1', [header]: '6' }).quantityAccepted).toBe('6')
+    }
+    for (const header of ['Qty Rejected', 'Rejected Qty', 'Rejected Quantity']) {
+      expect(mapRowToLineItem({ SKU: 'A1', [header]: '2' }).quantityRejected).toBe('2')
+    }
+  })
+
+  // Alias lookup is first-match-wins, and 'qty' is already a QUANTITY alias, so
+  // a receipt carrying both columns must not let the generic one win.
+  it('prefers an explicit received column over a generic Qty column', () => {
+    const item = mapRowToLineItem({ SKU: 'A1', Qty: '10', 'Qty Received': '8' })
+
+    expect(item.quantity).toBe('10')
+    expect(item.quantityReceived).toBe('8')
+    expect(receivedQuantity(item)).toBe('8')
+  })
+
+  // A receipt whose only quantity column is a plain "Qty" still means received.
+  it('falls back to the generic quantity when no received column exists', () => {
+    const item = mapRowToLineItem({ SKU: 'A1', Qty: '10' })
+
+    expect(item.quantityReceived).toBeNull()
+    expect(receivedQuantity(item)).toBe('10')
+  })
+
+  // Without this the row is filtered out at procurement-parse.processor.ts and
+  // the document parses to nothing.
+  it('does not treat a row carrying only a received quantity as empty', () => {
+    const item = validateLineItem(
+      mapRowToLineItem({ 'Qty Received': '8' }),
+    )
+
+    expect(item.sku).toBeNull()
+    expect(item.quantity).toBeNull()
+    expect(isEmptyLineItem(item)).toBe(false)
+  })
+
+  it('still treats a genuinely blank row as empty', () => {
+    expect(isEmptyLineItem(validateLineItem(mapRowToLineItem({ SKU: '', Qty: '' })))).toBe(true)
+  })
+
+  it('nulls a non-numeric quantity the way it does for the other numeric columns', () => {
+    const item = validateLineItem(mapRowToLineItem({ SKU: 'A1', 'Qty Received': 'eight' }))
+
+    expect(item.quantityReceived).toBeNull()
+  })
+
+  // POLICY v1 #14 and §1B: a source that does not state acceptance must not be
+  // read as "nothing accepted". Absent stays null all the way to the column.
+  it('leaves accepted and rejected null when the source does not state them', () => {
+    const item = validateLineItem(mapRowToLineItem({ SKU: 'A1', 'Qty Received': '8' }))
+
+    expect(item.quantityAccepted).toBeNull()
+    expect(item.quantityRejected).toBeNull()
+  })
+
+  // The purchase-order and invoice paths must be untouched by all of the above.
+  it('leaves the receipt fields null for an ordinary purchase order row', () => {
+    const item = validateLineItem(mapRowToLineItem({ SKU: 'A1', Description: 'Widget', Qty: '10', Price: '5.00' }))
+
+    expect(item.quantity).toBe('10')
+    expect(item.quantityReceived).toBeNull()
+    expect(item.quantityAccepted).toBeNull()
+    expect(item.quantityRejected).toBeNull()
   })
 })

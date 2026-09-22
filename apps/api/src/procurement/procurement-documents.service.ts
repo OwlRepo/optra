@@ -2,13 +2,10 @@ import { randomUUID } from 'crypto'
 import { extname } from 'path'
 import { ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common'
 import { and, desc, eq } from 'drizzle-orm'
-import { comparisonRuns, db, invoices, purchaseOrders, vendors } from '@repo/db'
+import { comparisonRuns, db, goodsReceipts, invoices, purchaseOrders, vendors } from '@repo/db'
 import { StorageService } from '../storage/storage.service'
 import { ProcurementDocKind, ProcurementParseService } from './procurement-parse.service'
-
-function docLabel(kind: ProcurementDocKind): string {
-  return kind === 'purchase_order' ? 'Purchase order' : 'Invoice'
-}
+import { assertUnreachable, docLabel } from './procurement-kind'
 
 // Header metadata supplied by the user at upload time (S3b). Nothing in the
 // repo extracts document-level fields, and POLICY v1 #2/#3 want the vendor and
@@ -26,7 +23,38 @@ export type ProcurementInvoiceHeader = {
   currency: string
 }
 
-export type ProcurementHeader = ProcurementPoHeader | ProcurementInvoiceHeader
+// A goods receipt records what arrived, not what it cost, so there is no
+// currency here — POLICY v1 #1 declares only SKU, description, the three
+// quantities and UOM, and hard stop #1 forbids adding beyond it.
+export type ProcurementGrnHeader = {
+  purchaseOrderId: string
+  grnNumber: string
+}
+
+export type ProcurementHeader = ProcurementPoHeader | ProcurementInvoiceHeader | ProcurementGrnHeader
+
+// Which comparison-run column references this kind of document. Extracted so
+// the POLICY v1 #9 retention guard cannot silently stop covering a new kind.
+function runReferencePredicate(kind: ProcurementDocKind, id: string) {
+  switch (kind) {
+    case 'purchase_order':
+      return eq(comparisonRuns.purchaseOrderId, id)
+    case 'invoice':
+      return eq(comparisonRuns.invoiceId, id)
+    case 'goods_receipt':
+      // `comparison_runs` has no goods-receipt column yet — S6 adds it with the
+      // three-way match. Until then a receipt genuinely cannot be referenced by
+      // a run, so there is nothing to guard against and null skips the check.
+      //
+      // S6 MUST return that predicate here. If it adds the column and leaves
+      // this null, POLICY v1 #9's retention guard silently stops covering
+      // receipts and a referenced receipt becomes deletable — which is why this
+      // returns null explicitly rather than falling through to a default.
+      return null
+    default:
+      return assertUnreachable(kind)
+  }
+}
 
 // The UI needs to know whether a row has bytes to download, but the storage key
 // is an internal S3 path and never leaves the API.
@@ -69,38 +97,66 @@ export class ProcurementDocumentsService {
       storageKey,
       status: 'pending' as const,
       sourceKind,
-      // Normalized here, not in the DTO: validator's isISO4217 is
-      // case-INSENSITIVE, so "usd" and "USD" both pass validation and would
-      // both reach the column. POLICY v1 #6 compares currencies between a PO
-      // and its invoice in S6; two spellings of the same currency would read as
-      // a mismatch and manufacture exactly the false discrepancy this product
-      // exists to remove. The global ValidationPipe runs without `transform`,
-      // so a class-transformer @Transform would never fire — it has to be here.
-      currency: header.currency.toUpperCase(),
     }
+
+    // Normalized here, not in the DTO: validator's isISO4217 is
+    // case-INSENSITIVE, so "usd" and "USD" both pass validation and would both
+    // reach the column. POLICY v1 #6 compares currencies between a PO and its
+    // invoice in S6; two spellings of the same currency would read as a
+    // mismatch and manufacture exactly the false discrepancy this product
+    // exists to remove. The global ValidationPipe runs without `transform`, so
+    // a class-transformer @Transform would never fire — it has to be here.
+    //
+    // Lives per-branch rather than in `common` because a goods receipt has no
+    // currency column at all.
+    const normalizedCurrency = (value: string) => value.toUpperCase()
 
     // The object is written first; if the row cannot be created the object
     // would be unreachable forever, so remove it before surfacing the error.
     let inserted: { id: string; name: string; status: 'pending' | 'processing' | 'done' | 'failed' }[]
     try {
-      inserted =
-        kind === 'purchase_order'
-          ? await db
-              .insert(purchaseOrders)
-              .values({
-                ...common,
-                vendorId: (header as ProcurementPoHeader).vendorId,
-                poNumber: (header as ProcurementPoHeader).poNumber,
-              })
-              .returning()
-          : await db
-              .insert(invoices)
-              .values({
-                ...common,
-                purchaseOrderId: (header as ProcurementInvoiceHeader).purchaseOrderId,
-                invoiceNumber: (header as ProcurementInvoiceHeader).invoiceNumber,
-              })
-              .returning()
+      switch (kind) {
+        case 'purchase_order': {
+          const poHeader = header as ProcurementPoHeader
+          inserted = await db
+            .insert(purchaseOrders)
+            .values({
+              ...common,
+              currency: normalizedCurrency(poHeader.currency),
+              vendorId: poHeader.vendorId,
+              poNumber: poHeader.poNumber,
+            })
+            .returning()
+          break
+        }
+        case 'invoice': {
+          const invoiceHeader = header as ProcurementInvoiceHeader
+          inserted = await db
+            .insert(invoices)
+            .values({
+              ...common,
+              currency: normalizedCurrency(invoiceHeader.currency),
+              purchaseOrderId: invoiceHeader.purchaseOrderId,
+              invoiceNumber: invoiceHeader.invoiceNumber,
+            })
+            .returning()
+          break
+        }
+        case 'goods_receipt': {
+          const grnHeader = header as ProcurementGrnHeader
+          inserted = await db
+            .insert(goodsReceipts)
+            .values({
+              ...common,
+              purchaseOrderId: grnHeader.purchaseOrderId,
+              grnNumber: grnHeader.grnNumber,
+            })
+            .returning()
+          break
+        }
+        default:
+          return assertUnreachable(kind)
+      }
     } catch (error) {
       await this.storage.delete(storageKey).catch((cleanupError: unknown) => {
         this.logger.warn(
@@ -177,6 +233,26 @@ export class ProcurementDocumentsService {
     return rows.map(toListItem)
   }
 
+  async listGoodsReceipts(workspaceId: string) {
+    const rows = await db
+      .select({
+        id: goodsReceipts.id,
+        name: goodsReceipts.name,
+        status: goodsReceipts.status,
+        rowCount: goodsReceipts.rowCount,
+        lastError: goodsReceipts.lastError,
+        createdAt: goodsReceipts.createdAt,
+        storageKey: goodsReceipts.storageKey,
+        grnNumber: goodsReceipts.grnNumber,
+        purchaseOrderId: goodsReceipts.purchaseOrderId,
+      })
+      .from(goodsReceipts)
+      .where(eq(goodsReceipts.workspaceId, workspaceId))
+      .orderBy(desc(goodsReceipts.createdAt))
+
+    return rows.map(toListItem)
+  }
+
   /**
    * The original uploaded bytes, for a reviewer who wants to see the source
    * behind a discrepancy (D4). Scoped the way the knowledge-base download is:
@@ -185,10 +261,7 @@ export class ProcurementDocumentsService {
    * 403 so it cannot be used to probe for documents in other workspaces.
    */
   async getDownloadable(workspaceId: string, kind: ProcurementDocKind, id: string) {
-    const doc =
-      kind === 'purchase_order'
-        ? (await db.select().from(purchaseOrders).where(eq(purchaseOrders.id, id)).limit(1))[0]
-        : (await db.select().from(invoices).where(eq(invoices.id, id)).limit(1))[0]
+    const doc = await this.loadHeader(kind, id)
 
     if (!doc || doc.workspaceId !== workspaceId) {
       throw new NotFoundException(`${docLabel(kind)} not found`)
@@ -204,10 +277,7 @@ export class ProcurementDocumentsService {
   }
 
   async remove(workspaceId: string, kind: ProcurementDocKind, id: string): Promise<{ message: string }> {
-    const doc =
-      kind === 'purchase_order'
-        ? (await db.select().from(purchaseOrders).where(eq(purchaseOrders.id, id)).limit(1))[0]
-        : (await db.select().from(invoices).where(eq(invoices.id, id)).limit(1))[0]
+    const doc = await this.loadHeader(kind, id)
 
     if (!doc || doc.workspaceId !== workspaceId) {
       throw new NotFoundException(`${docLabel(kind)} not found`)
@@ -217,16 +287,14 @@ export class ProcurementDocumentsService {
     // deleting it would cascade away that run and its flags. This method has no
     // route and no production caller; the guard is here so exposing it later
     // cannot silently destroy an audit trail.
-    const [referencingRun] = await db
-      .select({ id: comparisonRuns.id })
-      .from(comparisonRuns)
-      .where(
-        and(
-          eq(comparisonRuns.workspaceId, workspaceId),
-          kind === 'purchase_order' ? eq(comparisonRuns.purchaseOrderId, id) : eq(comparisonRuns.invoiceId, id),
-        ),
-      )
-      .limit(1)
+    const runPredicate = runReferencePredicate(kind, id)
+    const [referencingRun] = runPredicate
+      ? await db
+          .select({ id: comparisonRuns.id })
+          .from(comparisonRuns)
+          .where(and(eq(comparisonRuns.workspaceId, workspaceId), runPredicate))
+          .limit(1)
+      : []
 
     if (referencingRun) {
       throw new ConflictException(`${docLabel(kind)} is referenced by a comparison run and cannot be deleted`)
@@ -240,10 +308,18 @@ export class ProcurementDocumentsService {
       })
     }
 
-    if (kind === 'purchase_order') {
-      await db.delete(purchaseOrders).where(eq(purchaseOrders.id, id))
-    } else {
-      await db.delete(invoices).where(eq(invoices.id, id))
+    switch (kind) {
+      case 'purchase_order':
+        await db.delete(purchaseOrders).where(eq(purchaseOrders.id, id))
+        break
+      case 'invoice':
+        await db.delete(invoices).where(eq(invoices.id, id))
+        break
+      case 'goods_receipt':
+        await db.delete(goodsReceipts).where(eq(goodsReceipts.id, id))
+        break
+      default:
+        assertUnreachable(kind)
     }
 
     return { message: `${docLabel(kind)} deleted` }
@@ -261,39 +337,70 @@ export class ProcurementDocumentsService {
     kind: ProcurementDocKind,
     header: ProcurementHeader,
   ): Promise<void> {
-    if (kind === 'purchase_order') {
-      const vendorId = (header as ProcurementPoHeader).vendorId
-      const [vendor] = await db
-        .select({ id: vendors.id })
-        .from(vendors)
-        .where(and(eq(vendors.id, vendorId), eq(vendors.workspaceId, workspaceId)))
-        .limit(1)
-      if (!vendor) {
-        throw new NotFoundException('Vendor not found')
+    switch (kind) {
+      case 'purchase_order': {
+        const vendorId = (header as ProcurementPoHeader).vendorId
+        const [vendor] = await db
+          .select({ id: vendors.id })
+          .from(vendors)
+          .where(and(eq(vendors.id, vendorId), eq(vendors.workspaceId, workspaceId)))
+          .limit(1)
+        if (!vendor) {
+          throw new NotFoundException('Vendor not found')
+        }
+        return
       }
-      return
+      // Both link to a purchase order (POLICY v1 #2), so the same check serves
+      // them — but they are listed separately rather than sharing a fallthrough
+      // so a future kind cannot land here by accident.
+      case 'invoice':
+      case 'goods_receipt': {
+        const purchaseOrderId = (header as ProcurementInvoiceHeader | ProcurementGrnHeader).purchaseOrderId
+        const [po] = await db
+          .select({ id: purchaseOrders.id })
+          .from(purchaseOrders)
+          .where(and(eq(purchaseOrders.id, purchaseOrderId), eq(purchaseOrders.workspaceId, workspaceId)))
+          .limit(1)
+        if (!po) {
+          throw new NotFoundException('Purchase order not found')
+        }
+        return
+      }
+      default:
+        return assertUnreachable(kind)
     }
+  }
 
-    const purchaseOrderId = (header as ProcurementInvoiceHeader).purchaseOrderId
-    const [po] = await db
-      .select({ id: purchaseOrders.id })
-      .from(purchaseOrders)
-      .where(and(eq(purchaseOrders.id, purchaseOrderId), eq(purchaseOrders.workspaceId, workspaceId)))
-      .limit(1)
-    if (!po) {
-      throw new NotFoundException('Purchase order not found')
+  // One place mapping a kind to its header table. getDownloadable and remove
+  // both used to inline this ternary, which is two chances to forget a kind.
+  private async loadHeader(kind: ProcurementDocKind, id: string) {
+    switch (kind) {
+      case 'purchase_order':
+        return (await db.select().from(purchaseOrders).where(eq(purchaseOrders.id, id)).limit(1))[0]
+      case 'invoice':
+        return (await db.select().from(invoices).where(eq(invoices.id, id)).limit(1))[0]
+      case 'goods_receipt':
+        return (await db.select().from(goodsReceipts).where(eq(goodsReceipts.id, id)).limit(1))[0]
+      default:
+        return assertUnreachable(kind)
     }
   }
 
   private async markFailed(kind: ProcurementDocKind, id: string, lastError: string) {
     const updatedAt = new Date()
-    if (kind === 'purchase_order') {
-      await db
-        .update(purchaseOrders)
-        .set({ status: 'failed', lastError, updatedAt })
-        .where(eq(purchaseOrders.id, id))
-    } else {
-      await db.update(invoices).set({ status: 'failed', lastError, updatedAt }).where(eq(invoices.id, id))
+    const patch = { status: 'failed' as const, lastError, updatedAt }
+    switch (kind) {
+      case 'purchase_order':
+        await db.update(purchaseOrders).set(patch).where(eq(purchaseOrders.id, id))
+        break
+      case 'invoice':
+        await db.update(invoices).set(patch).where(eq(invoices.id, id))
+        break
+      case 'goods_receipt':
+        await db.update(goodsReceipts).set(patch).where(eq(goodsReceipts.id, id))
+        break
+      default:
+        assertUnreachable(kind)
     }
   }
 }

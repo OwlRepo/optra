@@ -2,6 +2,7 @@ import { eq, like } from 'drizzle-orm'
 import {
   comparisonRuns,
   db,
+  goodsReceipts,
   invoices,
   pool,
   purchaseOrders,
@@ -12,6 +13,7 @@ import {
 } from '@repo/db'
 import {
   ProcurementDocumentsService,
+  type ProcurementGrnHeader,
   type ProcurementInvoiceHeader,
   type ProcurementPoHeader,
 } from './procurement-documents.service'
@@ -31,6 +33,7 @@ async function cleanupFixtures(prefix: string) {
       // either order is legal, but deleting the child first keeps the intent
       // obvious rather than relying on the constraint to tidy up.
       await db.delete(invoices).where(eq(invoices.workspaceId, membership.workspaceId))
+      await db.delete(goodsReceipts).where(eq(goodsReceipts.workspaceId, membership.workspaceId))
       await db.delete(purchaseOrders).where(eq(purchaseOrders.workspaceId, membership.workspaceId))
       await db.delete(vendors).where(eq(vendors.workspaceId, membership.workspaceId))
       await db.delete(workspaceMembers).where(eq(workspaceMembers.workspaceId, membership.workspaceId))
@@ -59,6 +62,14 @@ async function seedVendor(workspaceId: string, name = 'Nordwerk Interiors') {
 async function poHeader(workspaceId: string, overrides: Partial<ProcurementPoHeader> = {}) {
   const vendor = await seedVendor(workspaceId)
   return { vendorId: vendor.id, poNumber: 'PO-2026-1180', currency: 'USD', ...overrides }
+}
+
+async function grnHeader(workspaceId: string, overrides: Partial<ProcurementGrnHeader> = {}) {
+  const [po] = await db
+    .insert(purchaseOrders)
+    .values({ workspaceId, name: 'linked-po.csv', status: 'done' })
+    .returning()
+  return { purchaseOrderId: po.id, grnNumber: 'GRN-9001', ...overrides }
 }
 
 async function invoiceHeader(workspaceId: string, overrides: Partial<ProcurementInvoiceHeader> = {}) {
@@ -353,6 +364,103 @@ describe('ProcurementDocumentsService', () => {
     await expect(service.remove(workspace.id, 'invoice', invoice.id)).rejects.toThrow(
       'referenced by a comparison run',
     )
+  })
+
+  // S5. Ingest for the receiving side. The comparison that consumes these is S6;
+  // what matters here is that the rows land in the right table with the link
+  // POLICY v1 #2 requires, and that "not stated" survives as null.
+  describe('goods receipts (S5)', () => {
+    const csv = () =>
+      ({ originalname: 'grn.csv', mimetype: 'text/csv', buffer: Buffer.from('sku,qty received\nA1,8') }) as Express.Multer.File
+
+    it('persists the grn number and the linked purchase order', async () => {
+      const workspace = await seedWorkspace(`${prefix}grn-upload@example.com`, 'GRN Upload')
+      const [po] = await db
+        .insert(purchaseOrders)
+        .values({ workspaceId: workspace.id, name: 'po.csv', status: 'done' })
+        .returning()
+
+      const result = await service.upload(workspace.id, 'goods_receipt', csv(), {
+        purchaseOrderId: po.id,
+        grnNumber: 'GRN-9001',
+      })
+
+      const [row] = await db.select().from(goodsReceipts).where(eq(goodsReceipts.id, result.id))
+      expect(row.purchaseOrderId).toBe(po.id)
+      expect(row.grnNumber).toBe('GRN-9001')
+      expect(row.workspaceId).toBe(workspace.id)
+      expect(parse.queueDoc).toHaveBeenCalledWith('goods_receipt', result.id)
+    })
+
+    // The regression the whole exhaustiveness refactor exists to prevent: with
+    // a bare `kind === 'purchase_order' ? … : …` this row lands in `invoices`.
+    it('writes to goods_receipts and not to invoices', async () => {
+      const workspace = await seedWorkspace(`${prefix}grn-table@example.com`, 'GRN Table')
+
+      const result = await service.upload(workspace.id, 'goods_receipt', csv(), await grnHeader(workspace.id))
+
+      expect(await db.select().from(goodsReceipts).where(eq(goodsReceipts.id, result.id))).toHaveLength(1)
+      expect(await db.select().from(invoices).where(eq(invoices.workspaceId, workspace.id))).toHaveLength(0)
+    })
+
+    it('refuses a purchase order from another workspace and never writes the object', async () => {
+      const mine = await seedWorkspace(`${prefix}grn-po-mine@example.com`, 'GRN PO Mine')
+      const other = await seedWorkspace(`${prefix}grn-po-other@example.com`, 'GRN PO Other')
+      const [foreignPo] = await db
+        .insert(purchaseOrders)
+        .values({ workspaceId: other.id, name: 'theirs.csv', status: 'done' })
+        .returning()
+
+      await expect(
+        service.upload(mine.id, 'goods_receipt', csv(), { purchaseOrderId: foreignPo.id, grnNumber: 'GRN-1' }),
+      ).rejects.toThrow('Purchase order not found')
+
+      expect(storage.save).not.toHaveBeenCalled()
+    })
+
+    // POLICY v1 #14: accepted quantity is summed across every GRN linked to the
+    // PO, so nothing may constrain a purchase order to a single receipt.
+    it('accepts more than one receipt against the same purchase order', async () => {
+      const workspace = await seedWorkspace(`${prefix}grn-multi@example.com`, 'GRN Multi')
+      const [po] = await db
+        .insert(purchaseOrders)
+        .values({ workspaceId: workspace.id, name: 'po.csv', status: 'done' })
+        .returning()
+
+      const first = await service.upload(workspace.id, 'goods_receipt', csv(), {
+        purchaseOrderId: po.id,
+        grnNumber: 'GRN-1',
+      })
+      const second = await service.upload(workspace.id, 'goods_receipt', csv(), {
+        purchaseOrderId: po.id,
+        grnNumber: 'GRN-2',
+      })
+
+      expect(first.id).not.toBe(second.id)
+      const rows = await db.select().from(goodsReceipts).where(eq(goodsReceipts.purchaseOrderId, po.id))
+      expect(rows).toHaveLength(2)
+    })
+
+    it('lists goods receipts with their header fields, newest first', async () => {
+      const workspace = await seedWorkspace(`${prefix}grn-list@example.com`, 'GRN List')
+      const [po] = await db
+        .insert(purchaseOrders)
+        .values({ workspaceId: workspace.id, name: 'po.csv', status: 'done' })
+        .returning()
+      await db
+        .insert(goodsReceipts)
+        .values({ workspaceId: workspace.id, purchaseOrderId: po.id, name: 'a.csv', status: 'done', grnNumber: 'GRN-A' })
+      await db
+        .insert(goodsReceipts)
+        .values({ workspaceId: workspace.id, purchaseOrderId: po.id, name: 'b.csv', status: 'done', grnNumber: 'GRN-B' })
+
+      const items = await service.listGoodsReceipts(workspace.id)
+
+      expect(items.map((item) => item.name)).toEqual(['b.csv', 'a.csv'])
+      expect(items[0].grnNumber).toBe('GRN-B')
+      expect(items[0].purchaseOrderId).toBe(po.id)
+      expect(items[0].hasSourceFile).toBe(false)
+    })
   })
 
   // S3b. The foreign key proves the row exists; it does not prove it belongs to

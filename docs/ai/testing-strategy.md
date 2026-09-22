@@ -360,3 +360,9 @@ Object storage is required for catalog photos and datasets. If it is
 unreachable the seeder logs a warning, skips both, and inserts everything else —
 dataset rows in particular are skipped rather than written with a storage key
 pointing at a missing object.
+
+**2026-09-22 (S5) — what the goods-receipt slice added to the recipe.**
+- **Prove a behaviour-preserving refactor by not touching its tests.** The exhaustiveness conversion (15 branch sites → `switch` + `assertUnreachable`) was verified by running the whole suite with **zero** test edits: 515 unit and 46 e2e green before the union was widened. If that step had needed a test changed, it had stopped being behaviour-preserving. Later steps did edit tests, and that distinction is the point.
+- **Growing a `toEqual` is not weakening it.** `MappedLineItem` gained three fields, so five full-shape assertions in `column-mapping.spec.ts` gained three keys. The assertions stayed exact.
+- **Test the table, not just the row.** The highest-value new test asserts that a parsed goods receipt wrote to `goods_receipt_line_items` **and that `invoice_line_items` is empty** — the silent-wrong-table failure is invisible to a test that only checks the happy path.
+- **Assert null, not zero.** Receipt quantities the source did not state must come back `null`; a test that accepts `0` would let S6 invent rejections that never happened.

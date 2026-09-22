@@ -1,8 +1,9 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common'
 import { InjectQueue } from '@nestjs/bull'
 import { Job, Queue } from 'bull'
-import { db, invoices, purchaseOrders } from '@repo/db'
+import { db, goodsReceipts, invoices, purchaseOrders } from '@repo/db'
 import { eq, or } from 'drizzle-orm'
+import { assertUnreachable } from './procurement-kind'
 
 const PENDING_DOC_STALE_MS = 2 * 60_000
 const PROCESSING_DOC_STALE_MS = 30 * 60_000
@@ -13,7 +14,7 @@ const RECONCILE_EVERY_MS = 5 * 60_000
 const MAX_RECONCILE_REQUEUES = 2
 export const RECONCILE_JOB_NAME = 'reconcile'
 
-export type ProcurementDocKind = 'purchase_order' | 'invoice'
+export type ProcurementDocKind = 'purchase_order' | 'invoice' | 'goods_receipt'
 
 interface StaleDocRow {
   id: string
@@ -77,10 +78,18 @@ export class ProcurementParseService implements OnModuleInit {
       updatedAt: enqueuedAt,
     }
 
-    if (kind === 'purchase_order') {
-      await db.update(purchaseOrders).set(patch).where(eq(purchaseOrders.id, id))
-    } else {
-      await db.update(invoices).set(patch).where(eq(invoices.id, id))
+    switch (kind) {
+      case 'purchase_order':
+        await db.update(purchaseOrders).set(patch).where(eq(purchaseOrders.id, id))
+        break
+      case 'invoice':
+        await db.update(invoices).set(patch).where(eq(invoices.id, id))
+        break
+      case 'goods_receipt':
+        await db.update(goodsReceipts).set(patch).where(eq(goodsReceipts.id, id))
+        break
+      default:
+        assertUnreachable(kind)
     }
 
     try {
@@ -117,6 +126,17 @@ export class ProcurementParseService implements OnModuleInit {
       .from(invoices)
       .where(or(eq(invoices.status, 'pending'), eq(invoices.status, 'processing')))
     await this.reconcileRows('invoice', invoiceRows, now)
+
+    // NOTE: this method is a sequence of per-table scans, not a branch on
+    // `kind`, so `assertUnreachable` cannot protect it — adding a document kind
+    // and forgetting a block here compiles cleanly and leaves that kind's stuck
+    // documents unreconciled forever. Anyone adding a fourth kind must add a
+    // block here by hand; there is no compiler error to remind them.
+    const goodsReceiptRows = await db
+      .select()
+      .from(goodsReceipts)
+      .where(or(eq(goodsReceipts.status, 'pending'), eq(goodsReceipts.status, 'processing')))
+    await this.reconcileRows('goods_receipt', goodsReceiptRows, now)
   }
 
   private async reconcileRows(kind: ProcurementDocKind, rows: StaleDocRow[], now: Date) {
@@ -167,13 +187,19 @@ export class ProcurementParseService implements OnModuleInit {
   }
 
   private async markFailed(kind: ProcurementDocKind, id: string, lastError: string, updatedAt = new Date()) {
-    if (kind === 'purchase_order') {
-      await db
-        .update(purchaseOrders)
-        .set({ status: 'failed', lastError, updatedAt })
-        .where(eq(purchaseOrders.id, id))
-    } else {
-      await db.update(invoices).set({ status: 'failed', lastError, updatedAt }).where(eq(invoices.id, id))
+    const patch = { status: 'failed' as const, lastError, updatedAt }
+    switch (kind) {
+      case 'purchase_order':
+        await db.update(purchaseOrders).set(patch).where(eq(purchaseOrders.id, id))
+        break
+      case 'invoice':
+        await db.update(invoices).set(patch).where(eq(invoices.id, id))
+        break
+      case 'goods_receipt':
+        await db.update(goodsReceipts).set(patch).where(eq(goodsReceipts.id, id))
+        break
+      default:
+        assertUnreachable(kind)
     }
   }
 

@@ -7,6 +7,17 @@ export interface MappedLineItem {
   // Captured, never converted (POLICY v1 #4). A mismatch between two compared
   // lines becomes `needs_review` in S6; nothing normalizes or converts it here.
   uom: string | null
+  // Goods receipt only (S5). Null on a purchase order or invoice row, which
+  // have no such columns — and null on a receipt whose source did not state
+  // the value. Null is NOT zero: POLICY v1 #14 and §1B both require that
+  // missing receiving data is never read as "nothing was accepted".
+  //
+  // Optional, not just nullable: a purchase-order or invoice caller builds this
+  // literal without them, exactly as it already may for `uom`. Absent and null
+  // mean the same thing here — "the source did not say".
+  quantityReceived?: string | null
+  quantityAccepted?: string | null
+  quantityRejected?: string | null
 }
 
 const SKU_ALIASES = ['sku', 'item', 'item code', 'itemcode', 'product code', 'productcode']
@@ -19,6 +30,36 @@ const LINE_TOTAL_ALIASES = ['total', 'line total', 'linetotal', 'amount']
 // it for UOM would silently corrupt every quantity on that document, so only
 // unambiguous headers are listed here.
 const UOM_ALIASES = ['uom', 'u/m', 'u.o.m.', 'unit of measure', 'units of measure', 'measure']
+// Goods receipt columns (S5). Matching is exact equality, so every spelling a
+// receipt might use has to be listed — before this, a column headed
+// "Qty Received" resolved to nothing and the whole document parsed empty.
+//
+// 'damaged' is deliberately NOT a rejected alias: damage and rejection are not
+// the same event, and POLICY v1 has not declared that mapping (hard stop #1).
+// 'received'/'accepted'/'rejected' bare words are included — no other alias
+// list claims them, so there is nothing for them to steal.
+const QUANTITY_RECEIVED_ALIASES = [
+  'qty received',
+  'received qty',
+  'received quantity',
+  'quantity received',
+  'qty rcvd',
+  'received',
+]
+const QUANTITY_ACCEPTED_ALIASES = [
+  'qty accepted',
+  'accepted qty',
+  'accepted quantity',
+  'quantity accepted',
+  'accepted',
+]
+const QUANTITY_REJECTED_ALIASES = [
+  'qty rejected',
+  'rejected qty',
+  'rejected quantity',
+  'quantity rejected',
+  'rejected',
+]
 
 function normalizeHeader(header: string): string {
   return header.trim().toLowerCase()
@@ -59,10 +100,25 @@ function numericOrNull(value: string | null): string | null {
   return value !== null && DECIMAL_PATTERN.test(value) ? value : null
 }
 
+/**
+ * What `validateLineItem` guarantees: the receipt quantities are optional on the
+ * way IN (a purchase-order caller builds a literal without them) but always
+ * present on the way OUT, so a consumer spreading the result gets a complete
+ * row rather than three possibly-undefined fields.
+ */
+export type ValidatedLineItem = Omit<
+  MappedLineItem,
+  'quantityReceived' | 'quantityAccepted' | 'quantityRejected'
+> & {
+  quantityReceived: string | null
+  quantityAccepted: string | null
+  quantityRejected: string | null
+}
+
 // One bad cell must not fail a whole document: a value the column cannot hold
 // becomes null (the caller keeps the original in rawRow, and comparison flags
 // the unknown value) instead of aborting the bulk insert for every row.
-export function validateLineItem(item: MappedLineItem): MappedLineItem {
+export function validateLineItem(item: MappedLineItem): ValidatedLineItem {
   return {
     sku: item.sku !== null && item.sku.length <= MAX_SKU_LENGTH ? item.sku : null,
     description: item.description,
@@ -72,16 +128,39 @@ export function validateLineItem(item: MappedLineItem): MappedLineItem {
     // Nullish rather than !== null: callers (and older fixtures) may omit the
     // field entirely, and an absent uom means the same as an empty one.
     uom: item.uom && item.uom.length <= MAX_UOM_LENGTH ? item.uom : null,
+    // Nullish-safe for the same reason as uom: callers and older fixtures build
+    // MappedLineItem literals without these fields.
+    quantityReceived: numericOrNull(item.quantityReceived ?? null),
+    quantityAccepted: numericOrNull(item.quantityAccepted ?? null),
+    quantityRejected: numericOrNull(item.quantityRejected ?? null),
   }
 }
 
+/**
+ * What a goods-receipt line actually says arrived.
+ *
+ * A receipt whose only quantity column is a plain "Qty" still means received,
+ * so the generic column is the fallback — but an explicit received column wins,
+ * because alias lookup is first-match-wins and 'qty' would otherwise take a row
+ * that carries both.
+ */
+export function receivedQuantity(item: MappedLineItem): string | null {
+  return item.quantityReceived ?? item.quantity
+}
+
+// A row describing nothing is dropped before insert. The receipt quantities
+// count here: a receipt line that states only "8 received" is a real line, and
+// leaving them out of this check filtered every such row out silently.
 export function isEmptyLineItem(item: MappedLineItem): boolean {
   return (
     item.sku === null &&
     item.description === null &&
     item.quantity === null &&
     item.unitPrice === null &&
-    item.lineTotal === null
+    item.lineTotal === null &&
+    (item.quantityReceived ?? null) === null &&
+    (item.quantityAccepted ?? null) === null &&
+    (item.quantityRejected ?? null) === null
   )
 }
 
@@ -93,5 +172,8 @@ export function mapRowToLineItem(row: Record<string, string>): MappedLineItem {
     unitPrice: findValue(row, UNIT_PRICE_ALIASES),
     lineTotal: findValue(row, LINE_TOTAL_ALIASES),
     uom: findValue(row, UOM_ALIASES),
+    quantityReceived: findValue(row, QUANTITY_RECEIVED_ALIASES),
+    quantityAccepted: findValue(row, QUANTITY_ACCEPTED_ALIASES),
+    quantityRejected: findValue(row, QUANTITY_REJECTED_ALIASES),
   }
 }

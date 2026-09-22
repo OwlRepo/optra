@@ -30,6 +30,7 @@ import { ComparisonService } from './comparison.service'
 import { CompareDocumentsDto } from './dto/compare-documents.dto'
 import { attachmentDisposition } from '../common/http/content-disposition'
 import { ListDiscrepanciesQueryDto } from './dto/list-discrepancies-query.dto'
+import { UploadGoodsReceiptDto } from './dto/upload-goods-receipt.dto'
 import { UploadInvoiceDto } from './dto/upload-invoice.dto'
 import { UploadPurchaseOrderDto } from './dto/upload-purchase-order.dto'
 import { RecordDecisionDto } from './dto/record-decision.dto'
@@ -75,6 +76,23 @@ function fileFilter(
   }
 
   callback(null, true)
+}
+
+// Goods receipts are CSV/XLSX only (S5). The PDF extraction chain prompts for
+// "purchase order or invoice" and its result shape has no received/accepted/
+// rejected fields, so a PDF receipt would land one quantity and silently lose
+// the acceptance data — worse than refusing it. Reuses the shared allow-list
+// minus '.pdf' rather than a second copy of the extension logic.
+function spreadsheetOnlyFileFilter(
+  req: unknown,
+  file: Express.Multer.File,
+  callback: (error: Error | null, acceptFile: boolean) => void,
+) {
+  if (extname(file.originalname).toLowerCase() === '.pdf') {
+    callback(new BadRequestException('Goods receipts must be CSV or XLSX; PDF is not supported yet'), false)
+    return
+  }
+  fileFilter(req, file, callback)
 }
 
 @Catch(MulterError, BadRequestException)
@@ -162,6 +180,30 @@ export class ProcurementController {
     return this.documents.listInvoices(workspaceId)
   }
 
+  @Post('goods-receipts')
+  @UseGuards(JwtAuthGuard, WorkspaceMemberGuard, RolesGuard)
+  @Roles('owner', 'admin')
+  @UseFilters(UploadExceptionFilter)
+  @UseInterceptors(
+    FileInterceptor('file', { limits: { fileSize: MAX_UPLOAD_BYTES }, fileFilter: spreadsheetOnlyFileFilter }),
+  )
+  uploadGoodsReceipt(
+    @Param('workspaceId') workspaceId: string,
+    @Body() header: UploadGoodsReceiptDto,
+    @UploadedFile() file?: Express.Multer.File,
+  ) {
+    if (!file) {
+      throw new BadRequestException('file is required')
+    }
+    return this.documents.upload(workspaceId, 'goods_receipt', file, header)
+  }
+
+  @Get('goods-receipts')
+  @UseGuards(JwtAuthGuard, WorkspaceMemberGuard)
+  listGoodsReceipts(@Param('workspaceId') workspaceId: string) {
+    return this.documents.listGoodsReceipts(workspaceId)
+  }
+
   // The original uploaded file, so a reviewer can check a discrepancy against
   // its source (D4). Member-readable, matching the document download in the
   // knowledge-base domain and the list routes above.
@@ -190,6 +232,16 @@ export class ProcurementController {
     @Res() res: Response,
   ) {
     await this.sendSourceDocument(res, workspaceId, 'invoice', docId)
+  }
+
+  @Get('goods-receipts/:docId/download')
+  @UseGuards(JwtAuthGuard, WorkspaceMemberGuard)
+  async downloadGoodsReceipt(
+    @Param('workspaceId') workspaceId: string,
+    @Param('docId', new ParseUUIDPipe()) docId: string,
+    @Res() res: Response,
+  ) {
+    await this.sendSourceDocument(res, workspaceId, 'goods_receipt', docId)
   }
 
   private async sendSourceDocument(
