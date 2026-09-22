@@ -68,6 +68,82 @@ export function listVendors(workspaceId: string): Promise<VendorDetail[]> {
   return apiFetch(`/api/workspaces/${workspaceId}/vendors`)
 }
 
+// S9. One vendor, by id — the page used to scan the whole list to find it.
+export function getVendor(workspaceId: string, vendorId: string): Promise<VendorDetail> {
+  return apiFetch(`/api/workspaces/${workspaceId}/vendors/${vendorId}`)
+}
+
+export type VendorPriceHistoryRow = {
+  poLineItemId: string
+  purchaseOrderId: string
+  poNumber: string | null
+  poName: string
+  currency: string | null
+  // When the order was placed, if the uploader said so; `recordedAt` is when
+  // the file reached Optra. The table shows the first and labels the second.
+  orderedAt: string | null
+  recordedAt: string
+  sku: string | null
+  uom: string | null
+  quantity: string | null
+  unitPrice: string | null
+  // The price agreed for THIS order's date. Null means no single agreed price
+  // applied — no contract, or more than one covering that day.
+  contractUnitPrice: string | null
+}
+
+export type VendorPriceHistoryPage = {
+  items: VendorPriceHistoryRow[]
+  page: number
+  pageSize: number
+  total: number
+  totalPages: number
+  // Every item ever bought from this vendor, not just the filtered ones.
+  skus: string[]
+}
+
+export type VendorExceptionSummary = {
+  counts: Record<string, number>
+  openTotal: number
+  purchaseOrderCount: number
+}
+
+export function listVendorPriceHistory(
+  workspaceId: string,
+  vendorId: string,
+  params: { sku?: string; page?: number; pageSize?: number } = {},
+): Promise<VendorPriceHistoryPage> {
+  const query = new URLSearchParams()
+  if (params.sku) query.set('sku', params.sku)
+  if (params.page) query.set('page', String(params.page))
+  if (params.pageSize) query.set('pageSize', String(params.pageSize))
+  const suffix = query.toString() ? `?${query.toString()}` : ''
+  return apiFetch(`/api/workspaces/${workspaceId}/vendors/${vendorId}/price-history${suffix}`)
+}
+
+export function getVendorExceptionSummary(
+  workspaceId: string,
+  vendorId: string,
+): Promise<VendorExceptionSummary> {
+  return apiFetch(`/api/workspaces/${workspaceId}/vendors/${vendorId}/exception-summary`)
+}
+
+export type VendorPriceTerm = {
+  id: string
+  sku: string
+  uom: string | null
+  unitPrice: string
+  currency: string
+  effectiveFrom: string
+  effectiveTo: string | null
+  sourceReference: string | null
+  supersedesId: string | null
+}
+
+export function listVendorPriceTerms(workspaceId: string, vendorId: string): Promise<VendorPriceTerm[]> {
+  return apiFetch(`/api/workspaces/${workspaceId}/vendors/${vendorId}/price-terms`)
+}
+
 export function uploadCatalog(workspaceId: string, vendorId: string, file: File): Promise<CatalogSummary> {
   return uploadFile(`/api/workspaces/${workspaceId}/vendors/${vendorId}/catalogs`, file)
 }

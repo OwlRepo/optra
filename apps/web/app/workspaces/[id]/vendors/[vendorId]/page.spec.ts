@@ -11,6 +11,9 @@ const routerMock = { push: pushMock }
 const getWorkspaceMock = vi.fn()
 const listWorkspacesMock = vi.fn()
 const listVendorsMock = vi.fn()
+const getVendorMock = vi.fn()
+const listVendorPriceHistoryMock = vi.fn()
+const getVendorExceptionSummaryMock = vi.fn()
 const listCatalogsMock = vi.fn()
 const uploadCatalogMock = vi.fn()
 const scrapeCatalogMock = vi.fn()
@@ -29,6 +32,9 @@ vi.mock('@/lib/api/workspaces', () => ({
 
 vi.mock('@/lib/api/catalog', () => ({
   listVendors: (...args: unknown[]) => listVendorsMock(...args),
+  getVendor: (...args: unknown[]) => getVendorMock(...args),
+  listVendorPriceHistory: (...args: unknown[]) => listVendorPriceHistoryMock(...args),
+  getVendorExceptionSummary: (...args: unknown[]) => getVendorExceptionSummaryMock(...args),
   listCatalogs: (...args: unknown[]) => listCatalogsMock(...args),
   uploadCatalog: (...args: unknown[]) => uploadCatalogMock(...args),
   scrapeCatalog: (...args: unknown[]) => scrapeCatalogMock(...args),
@@ -59,6 +65,9 @@ describe('VendorDetailPage', () => {
     getWorkspaceMock.mockReset()
     listWorkspacesMock.mockReset()
     listVendorsMock.mockReset()
+    getVendorMock.mockReset()
+    listVendorPriceHistoryMock.mockReset()
+    getVendorExceptionSummaryMock.mockReset()
     listCatalogsMock.mockReset()
     uploadCatalogMock.mockReset()
     scrapeCatalogMock.mockReset()
@@ -67,6 +76,9 @@ describe('VendorDetailPage', () => {
 
     getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
     listVendorsMock.mockResolvedValue([vendor])
+    getVendorMock.mockResolvedValue(vendor)
+    listVendorPriceHistoryMock.mockResolvedValue({ items: [], page: 1, pageSize: 50, total: 0, totalPages: 0, skus: [] })
+    getVendorExceptionSummaryMock.mockResolvedValue({ counts: {}, openTotal: 0, purchaseOrderCount: 0 })
     listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
     listCatalogsMock.mockResolvedValue([])
   })
@@ -283,5 +295,78 @@ describe('VendorDetailPage', () => {
     await waitFor(() => {
       expect(pushMock).toHaveBeenCalledWith('/login')
     })
+  })
+
+  // S9. The vendor page had zero procurement data on it until now.
+  it('shows what the vendor charged and how it compares with the agreed price', async () => {
+    getVendorExceptionSummaryMock.mockResolvedValue({
+      counts: { contract_price_variance: 1 },
+      openTotal: 3,
+      purchaseOrderCount: 2,
+    })
+    listVendorPriceHistoryMock.mockResolvedValue({
+      items: [
+        {
+          poLineItemId: 'line-1',
+          purchaseOrderId: 'po-1',
+          poNumber: 'PO-2026-1188',
+          poName: 'po.csv',
+          currency: 'USD',
+          orderedAt: '2026-06-01T00:00:00.000Z',
+          recordedAt: '2026-06-02T00:00:00.000Z',
+          sku: 'DSK-1042',
+          uom: null,
+          quantity: '12',
+          unitPrice: '542.79',
+          contractUnitPrice: '489.00',
+        },
+        {
+          poLineItemId: 'line-2',
+          purchaseOrderId: 'po-2',
+          poNumber: null,
+          poName: 'older-po.csv',
+          currency: 'USD',
+          orderedAt: null,
+          recordedAt: '2026-01-02T00:00:00.000Z',
+          sku: 'CHR-2201',
+          uom: null,
+          quantity: '12',
+          unitPrice: '312.50',
+          contractUnitPrice: '312.50',
+        },
+      ],
+      page: 1,
+      pageSize: 50,
+      total: 2,
+      totalPages: 1,
+      skus: ['CHR-2201', 'DSK-1042'],
+    })
+
+    renderPage()
+
+    expect(await screen.findByText('DSK-1042')).toBeTruthy()
+    expect(screen.getByText('542.79')).toBeTruthy()
+    expect(screen.getByText('489.00')).toBeTruthy()
+    // Ordered above contract: the gap is stated, not just implied.
+    expect(screen.getByText('+53.79')).toBeTruthy()
+    expect(screen.getByText('On contract')).toBeTruthy()
+    // An order with no stated order date says so rather than passing the
+    // upload date off as one.
+    expect(screen.getByText(/uploaded/)).toBeTruthy()
+    expect(screen.getByText('Open exceptions')).toBeTruthy()
+  })
+
+  it('says nothing has been bought yet rather than showing an empty table', async () => {
+    renderPage()
+
+    expect(await screen.findByText('Nothing bought from this vendor yet')).toBeTruthy()
+  })
+
+  it('fetches the vendor by id instead of scanning every vendor in the workspace', async () => {
+    renderPage()
+
+    await screen.findByText('Acme Supplies')
+    expect(getVendorMock).toHaveBeenCalledWith('ws-1', 'vendor-1')
+    expect(listVendorsMock).not.toHaveBeenCalled()
   })
 })

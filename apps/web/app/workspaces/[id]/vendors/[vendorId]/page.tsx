@@ -12,6 +12,7 @@ import {
   Modal,
   PhotoGrid,
   Skeleton,
+  StatCard,
   Table,
   TableBody,
   TableCell,
@@ -20,14 +21,18 @@ import {
   TableRow,
   useToast,
 } from '@repo/ui'
-import { PackageSearch, Upload } from 'lucide-react'
+import { PackageSearch, Receipt, ScrollText, TrendingUp, TriangleAlert, Upload } from 'lucide-react'
 import { logout } from '@/lib/api/auth'
 import { isUnauthorized } from '@/lib/api/handle-unauthorized'
 import { getWorkspace, listWorkspaces } from '@/lib/api/workspaces'
+import type { VendorExceptionSummary, VendorPriceHistoryRow } from '@/lib/api/catalog'
 import {
   catalogItemPhotoUrl,
+  getVendor,
+  getVendorExceptionSummary,
   listCatalogItems,
   listCatalogs,
+  listVendorPriceHistory,
   listVendors,
   scrapeCatalog,
   uploadCatalog,
@@ -80,6 +85,22 @@ export default function VendorDetailPage({ params }: { params: { id: string; ven
   const [workspace, setWorkspace] = React.useState<Workspace | null>(null)
   const [vendor, setVendor] = React.useState<VendorDetail | null>(null)
   const [catalogs, setCatalogs] = React.useState<Catalog[]>([])
+  const [history, setHistory] = React.useState<VendorPriceHistoryRow[]>([])
+  const [summary, setSummary] = React.useState<VendorExceptionSummary | null>(null)
+
+  // Derived here rather than asked of the API: an average across quarters
+  // would silently mix units and currencies, which POLICY v1 #4 and #6 forbid
+  // comparing. Counting rows is safe; averaging them is not.
+  const priceStats = React.useMemo(() => {
+    const skus = new Set(history.map((row) => row.sku).filter(Boolean))
+    const offContract = history.filter(
+      (row) =>
+        row.unitPrice !== null &&
+        row.contractUnitPrice !== null &&
+        Number(row.unitPrice) !== Number(row.contractUnitPrice),
+    ).length
+    return { skuCount: skus.size, offContract }
+  }, [history])
   const [membership, setMembership] = React.useState<WorkspaceMembership | null>(null)
   const [isLoading, setIsLoading] = React.useState(true)
   const [isUploading, setIsUploading] = React.useState(false)
@@ -107,15 +128,20 @@ export default function VendorDetailPage({ params }: { params: { id: string; ven
   const loadPage = React.useCallback(async () => {
     try {
       setIsLoading(true)
-      const [workspaceData, vendors, catalogData, memberships] = await Promise.all([
+      const [workspaceData, vendorData, catalogData, memberships, historyData, summaryData] = await Promise.all([
         getWorkspace(workspaceId),
-        listVendors(workspaceId),
+        // S9. Fetched by id. This used to load every vendor in the workspace
+        // and find this one in the array.
+        getVendor(workspaceId, vendorId),
         listCatalogs(workspaceId, vendorId),
         listWorkspaces(),
+        listVendorPriceHistory(workspaceId, vendorId, { pageSize: 50 }),
+        getVendorExceptionSummary(workspaceId, vendorId),
       ])
       setWorkspace(workspaceData)
-      const vendorList = Array.isArray(vendors) ? vendors : []
-      setVendor(vendorList.find((entry: VendorDetail) => entry.id === vendorId) ?? null)
+      setVendor(vendorData ?? null)
+      setHistory(historyData?.items ?? [])
+      setSummary(summaryData ?? null)
       setCatalogs(Array.isArray(catalogData) ? catalogData : [])
       const membershipItems = Array.isArray(memberships?.items) ? memberships.items : []
       setMembership(membershipItems.find((entry: WorkspaceMembership) => entry.id === workspaceId) ?? null)
@@ -308,6 +334,78 @@ export default function VendorDetailPage({ params }: { params: { id: string; ven
       onLogout={handleLogout}
     >
       <div className="mx-auto w-full max-w-5xl space-y-8 px-6 py-10">
+        {/* S9. What this vendor has charged, and what has gone wrong with
+            them. Rendered as numbers and a table rather than a chart:
+            packages/ui has no chart component, and a handful of observations
+            per item is a table's job, not a graph's. */}
+        {!isLoading ? (
+          <section className="space-y-4">
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <StatCard label="Orders" value={summary?.purchaseOrderCount ?? 0} icon={<Receipt className="size-4" />} />
+              <StatCard label="Items bought" value={priceStats.skuCount} icon={<PackageSearch className="size-4" />} />
+              <StatCard label="Priced off contract" value={priceStats.offContract} icon={<TrendingUp className="size-4" />} />
+              <StatCard label="Open exceptions" value={summary?.openTotal ?? 0} icon={<TriangleAlert className="size-4" />} />
+            </div>
+
+            {history.length === 0 ? (
+              <EmptyState
+                icon={<ScrollText className="size-5" />}
+                title="Nothing bought from this vendor yet"
+                description="Upload a purchase order against them and its prices will show up here."
+              />
+            ) : (
+              <Card variant="elevated" className="p-0">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Item</TableHead>
+                      <TableHead>Order</TableHead>
+                      <TableHead>Date</TableHead>
+                      <TableHead className="text-right">Unit price</TableHead>
+                      <TableHead className="text-right">Agreed</TableHead>
+                      <TableHead>Against contract</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {history.map((row) => {
+                      const ordered = row.unitPrice === null ? null : Number(row.unitPrice)
+                      const agreed = row.contractUnitPrice === null ? null : Number(row.contractUnitPrice)
+                      const gap = ordered !== null && agreed !== null ? ordered - agreed : null
+                      return (
+                        <TableRow key={row.poLineItemId}>
+                          <TableCell className="font-medium">{row.sku ?? '—'}</TableCell>
+                          <TableCell className="text-muted-foreground">{row.poNumber ?? row.poName}</TableCell>
+                          <TableCell className="text-muted-foreground">
+                            {/* The order date when we have it; otherwise the day the
+                                file arrived, said out loud rather than passed off. */}
+                            {row.orderedAt
+                              ? new Date(row.orderedAt).toLocaleDateString()
+                              : `${new Date(row.recordedAt).toLocaleDateString()} (uploaded)`}
+                          </TableCell>
+                          <TableCell className="text-right tabular-nums">{row.unitPrice ?? '—'}</TableCell>
+                          <TableCell className="text-right tabular-nums">{row.contractUnitPrice ?? '—'}</TableCell>
+                          <TableCell>
+                            {gap === null ? (
+                              <span className="text-sm text-muted-foreground">No agreed price</span>
+                            ) : gap === 0 ? (
+                              <Badge variant="success">On contract</Badge>
+                            ) : (
+                              <Badge variant="warning">
+                                {gap > 0 ? '+' : ''}
+                                {gap.toFixed(2)}
+                              </Badge>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      )
+                    })}
+                  </TableBody>
+                </Table>
+              </Card>
+            )}
+          </section>
+        ) : null}
+
         {isLoading ? (
           <Card variant="elevated" className="space-y-4 p-6">
             <Skeleton className="h-12 w-full" />
