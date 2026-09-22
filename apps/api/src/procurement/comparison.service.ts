@@ -356,10 +356,26 @@ export class ComparisonService {
     // S6 / POLICY v1 #14: accepted quantity is summed across EVERY receipt
     // linked to this PO, so all of them are read, not one. Workspace-scoped on
     // both the header and the line rows, same defense in depth as above.
+    //
+    // S8: only `done` receipts, the same guard loadReadyPo/loadReadyInvoice
+    // already apply to the other two sides. A receipt's line rows exist
+    // independently of its header status — a re-parse replaces them wholesale,
+    // and a failed parse leaves the previous attempt's rows in place while
+    // marking the header `failed`. Reading those would compute a three-way
+    // verdict from a document the system knows it could not read, and the
+    // direction of that error is an accusation: a stale low accepted quantity
+    // becomes `short_receipt` or `invoice_exceeds_received` against a supplier
+    // who delivered correctly.
     const receipts = await db
       .select({ id: goodsReceipts.id })
       .from(goodsReceipts)
-      .where(and(eq(goodsReceipts.workspaceId, workspaceId), eq(goodsReceipts.purchaseOrderId, po.id)))
+      .where(
+        and(
+          eq(goodsReceipts.workspaceId, workspaceId),
+          eq(goodsReceipts.purchaseOrderId, po.id),
+          eq(goodsReceipts.status, 'done'),
+        ),
+      )
     const receiptIds = receipts.map((receipt) => receipt.id)
     const grnItems = receiptIds.length
       ? await db

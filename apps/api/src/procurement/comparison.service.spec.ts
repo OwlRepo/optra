@@ -150,10 +150,11 @@ describe('ComparisonService', () => {
     purchaseOrderId: string,
     lines: { sku: string; quantityAccepted: string | null; uom?: string }[],
     grnNumber = 'GRN-1',
+    status: 'pending' | 'processing' | 'done' | 'failed' = 'done',
   ) {
     const [grn] = await db
       .insert(goodsReceipts)
-      .values({ workspaceId, purchaseOrderId, name: `${grnNumber}.csv`, grnNumber, status: 'done' })
+      .values({ workspaceId, purchaseOrderId, name: `${grnNumber}.csv`, grnNumber, status })
       .returning()
     if (lines.length > 0) {
       await db.insert(goodsReceiptLineItems).values(
@@ -1058,6 +1059,53 @@ describe('ComparisonService', () => {
         .from(comparisonRunGoodsReceipts)
         .where(eq(comparisonRunGoodsReceipts.comparisonRunId, result.runId))
       expect(links).toHaveLength(0)
+    })
+
+    // A receipt only becomes receiving evidence once it has finished parsing.
+    // Mid-parse its line rows are whatever the previous attempt left behind,
+    // and a re-parse replaces them wholesale — so reading them here computes a
+    // three-way verdict from a document that is still changing underneath it.
+    it('ignores a receipt that has not finished parsing, even when it has lines', async () => {
+      const { workspace } = await seedWorkspace(`${prefix}s8-processing@example.com`, 'S8 Processing GRN')
+      const { po, invoice } = await seedReadyPoAndInvoice(
+        workspace.id,
+        [{ sku: 'A1', quantity: '10', unitPrice: '5.00' }],
+        [{ sku: 'A1', quantity: '8', unitPrice: '5.00' }],
+      )
+      await seedGoodsReceipt(workspace.id, po.id, [{ sku: 'A1', quantityAccepted: '7' }], 'GRN-1', 'processing')
+
+      const result = await service.compare(workspace.id, po.id, invoice.id)
+
+      const [run] = await db.select().from(comparisonRuns).where(eq(comparisonRuns.id, result.runId))
+      expect(run.mode).toBe('two_way')
+      expect(run.goodsReceiptLineCount).toBeNull()
+      const links = await db
+        .select()
+        .from(comparisonRunGoodsReceipts)
+        .where(eq(comparisonRunGoodsReceipts.comparisonRunId, result.runId))
+      expect(links).toHaveLength(0)
+    })
+
+    // A failed re-parse marks the header `failed` but leaves the previous
+    // attempt's line rows in place. Reading them accuses a supplier of
+    // under-delivering on the authority of a document the system already knows
+    // it could not read.
+    it('ignores a receipt whose parse failed, rather than accusing on stale lines', async () => {
+      const { workspace } = await seedWorkspace(`${prefix}s8-failed@example.com`, 'S8 Failed GRN')
+      const { po, invoice } = await seedReadyPoAndInvoice(
+        workspace.id,
+        [{ sku: 'A1', quantity: '10', unitPrice: '5.00' }],
+        [{ sku: 'A1', quantity: '10', unitPrice: '5.00' }],
+      )
+      await seedGoodsReceipt(workspace.id, po.id, [{ sku: 'A1', quantityAccepted: '7' }], 'GRN-1', 'failed')
+
+      const result = await service.compare(workspace.id, po.id, invoice.id)
+
+      // Ordered 10, billed 10. The only thing that could make this a
+      // discrepancy is the failed receipt's claim that 7 arrived.
+      expect(result.flags).toHaveLength(0)
+      const [run] = await db.select().from(comparisonRuns).where(eq(comparisonRuns.id, result.runId))
+      expect(run.mode).toBe('two_way')
     })
   })
 
