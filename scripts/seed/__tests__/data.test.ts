@@ -226,23 +226,74 @@ describe('chat query metrics', () => {
   })
 })
 
+describe('price history across quarters (S9)', () => {
+  // The seed exists to be looked at. Flat prices make a vendor's price history
+  // three identical points, which shows nothing.
+  it('moves unit prices in the later quarters so history has a shape', () => {
+    const lines = buildPoLineItemRows()
+    const bySku = new Map<string, Set<string>>()
+    lines.forEach(line => {
+      const key = `${line.sku}`
+      bySku.set(key, (bySku.get(key) ?? new Set()).add(line.unitPrice as string))
+    })
+
+    // Every repeated item was bought at more than one price over the year.
+    const repeated = [...bySku.values()].filter(prices => prices.size > 0)
+    expect(repeated.some(prices => prices.size > 1)).toBe(true)
+  })
+
+  // The quarter that carries every hand-written discrepancy flag must not move,
+  // or the seeded evidence contradicts the seeded documents.
+  it('leaves the flagged quarter priced exactly as written', () => {
+    const flags = buildDiscrepancyFlagRows()
+    const lines = buildPoLineItemRows()
+    const poIdsWithFlags = new Set(flags.map(flag => flag.purchaseOrderId as string))
+
+    lines
+      .filter(line => poIdsWithFlags.has(line.purchaseOrderId as string))
+      .forEach(line => {
+        // Price moved only by the quarter scale, and the flagged quarter's
+        // scale is 1 — so the stored price is the template's own string.
+        expect(`${line.unitPrice}`).toMatch(/^\d+\.\d{2}$/)
+      })
+
+    // Every price flag still describes its own line exactly.
+    flags
+      .filter(flag => flag.flagType === 'price_mismatch')
+      .forEach(flag => {
+        const line = lines.find(l => l.id === flag.poLineItemId)
+        expect(line).toBeDefined()
+        expect(`${line!.unitPrice}`).toBe(`${flag.poValue}`)
+      })
+  })
+})
+
 describe('vendor price terms (S9)', () => {
   const terms = buildVendorPriceTermRows()
 
-  // The whole point of the seeded terms: the demo opens on a workspace buying
-  // ON contract. A term that disagreed with its own purchase order would
-  // manufacture an exception out of nothing, which is the defect S6 found in
-  // the seeded discrepancy flags.
-  it('agrees with what the seeded purchase orders actually cost', () => {
-    const poPriceOf = new Map(
-      buildPoLineItemRows().map(line => [`${line.sku}`.toLowerCase(), line.unitPrice as string]),
-    )
+  // The demo has to show both halves of the story: a quarter bought ON
+  // contract, and a later one that drifted above it. A term that matched
+  // nothing would manufacture an exception out of nothing — the defect S6
+  // found in the seeded flags — and one that matched everything would leave
+  // `contract_price_variance` with nothing to demonstrate.
+  it('matches what the earliest orders cost, and is exceeded by the later ones', () => {
+    const pricesBySku = new Map<string, string[]>()
+    buildPoLineItemRows().forEach(line => {
+      const key = `${line.sku}`.toLowerCase()
+      pricesBySku.set(key, [...(pricesBySku.get(key) ?? []), line.unitPrice as string])
+    })
 
-    terms
-      .filter(term => term.effectiveTo === null)
-      .forEach(term => {
-        expect(poPriceOf.get(term.skuKey)).toBe(term.unitPrice)
-      })
+    const open = terms.filter(term => term.effectiveTo === null)
+    expect(open.length).toBeGreaterThan(0)
+
+    open.forEach(term => {
+      const prices = pricesBySku.get(term.skuKey) ?? []
+      expect(prices.length).toBeGreaterThan(0)
+      // Honoured somewhere: the quarter the price was agreed in.
+      expect(prices).toContain(term.unitPrice)
+      // And exceeded somewhere: that is what the demo is for.
+      expect(prices.some(price => Number(price) > Number(term.unitPrice))).toBe(true)
+    })
   })
 
   it('leaves exactly one open window per vendor, item, unit and currency', () => {

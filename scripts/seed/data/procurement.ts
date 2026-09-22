@@ -146,9 +146,24 @@ function lineTotal(qty: string, price: string): string {
 function poLinesFor(pair: number): LineSpec[] {
   const period = periodOf(pair)
   const scale = [1, 0.6, 1.4][period] ?? 1
+  // S9. Prices drift upward across quarters, so a vendor's price history has a
+  // shape to read instead of three identical points.
+  //
+  // Period 0 is left EXACTLY as written, and that is load-bearing rather than
+  // tidy: every INVOICE_MUTATIONS entry and every hand-written
+  // `discrepancy_flags` row belongs to pairs 0-2, which are period 0. Moving a
+  // price there would silently contradict a flag whose poValue/invoiceValue
+  // were typed by hand — the defect S6 found when it first ran the real engine
+  // over the demo data.
+  //
+  // It also means the seeded contract prices, authored at the period-0 price,
+  // are honoured in period 0 and exceeded later: the demo shows a real
+  // `contract_price_variance` without manufacturing a flood of them.
+  const priceScale = [1, 1.04, 1.11][period] ?? 1
   return PO_LINE_SPECS[templateOf(pair)]!.map(line => ({
     ...line,
     qty: String(Math.max(1, Math.round(Number(line.qty) * scale))),
+    price: priceScale === 1 ? line.price : (Number(line.price) * priceScale).toFixed(2),
   }))
 }
 
