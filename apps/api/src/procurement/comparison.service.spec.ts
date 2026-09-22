@@ -16,7 +16,7 @@ import {
   workspaceMembers,
   workspaces,
 } from '@repo/db'
-import { ComparisonService } from './comparison.service'
+import { COMPARISON_STRATEGY_VERSION, ComparisonService } from './comparison.service'
 import { DuckDbQueryService, SqlExecutionError } from '../structured-query/duckdb-query.service'
 
 async function cleanupFixtures(prefix: string) {
@@ -502,7 +502,10 @@ describe('ComparisonService', () => {
 
       expect(run.status).toBe('succeeded')
       expect(run.mode).toBe('two_way')
-      expect(run.strategyVersion).toBe(1)
+      // The invariant is that a run records the engine that produced it, not
+      // that the engine is forever version 1. The literal is pinned once, in
+      // the S9 block that bumped it.
+      expect(run.strategyVersion).toBe(COMPARISON_STRATEGY_VERSION)
       expect(run.initiatedBy).toBe(user.id)
       expect(run.poLineCount).toBe(3)
       expect(run.invoiceLineCount).toBe(2)
@@ -1313,6 +1316,167 @@ describe('ComparisonService', () => {
   })
 
   // §7.4's outcome matrix, as one deliberately designed comparison rather than
+  // POLICY v1 #5 / S9 commit 1. The CASE ladder returns its first match, so a
+  // line whose quantity AND unit price both differ is labelled by the quantity
+  // and the price difference was recorded nowhere. The label still belongs to
+  // the quantity — what changes is that the price no longer disappears with it.
+  describe('unit price carried past the branch that masked it (S9)', () => {
+    it('keeps the quantity label but records both unit prices when the price also differs', async () => {
+      const { workspace } = await seedWorkspace(`${prefix}s9-masked@example.com`, 'S9 Masked Price')
+      const { po, invoice } = await seedReadyPoAndInvoice(
+        workspace.id,
+        [{ sku: 'A1', quantity: '10', unitPrice: '25.00' }],
+        [{ sku: 'A1', quantity: '12', unitPrice: '27.50' }],
+      )
+
+      const result = await service.compare(workspace.id, po.id, invoice.id)
+
+      // Exactly one flag: the line is not split into two rows.
+      expect(result.flags).toHaveLength(1)
+      const flag = result.flags[0]
+      expect(flag.flagType).toBe('quantity_mismatch')
+      // The nothing-moved assertions — label and delta are the quantity's.
+      expect(Number(flag.poValue)).toBe(10)
+      expect(Number(flag.invoiceValue)).toBe(12)
+      expect(Number(flag.delta)).toBe(2)
+      // …and the price the branch used to swallow.
+      expect(Number(flag.poUnitPrice)).toBe(25)
+      expect(Number(flag.invoiceUnitPrice)).toBe(27.5)
+      expect(flag.reason).toContain('25')
+      expect(flag.reason).toContain('27.5')
+    })
+
+    it('leaves the price columns alone when only the quantity differs', async () => {
+      const { workspace } = await seedWorkspace(`${prefix}s9-qtyonly@example.com`, 'S9 Quantity Only')
+      const { po, invoice } = await seedReadyPoAndInvoice(
+        workspace.id,
+        [{ sku: 'A1', quantity: '10', unitPrice: '5.00' }],
+        [{ sku: 'A1', quantity: '8', unitPrice: '5.00' }],
+      )
+
+      const result = await service.compare(workspace.id, po.id, invoice.id)
+
+      const flag = result.flags[0]
+      expect(flag.flagType).toBe('quantity_mismatch')
+      // Both sides agree on price, so both columns state it — and the reason
+      // gains no price clause, because there is no disagreement to report.
+      expect(Number(flag.poUnitPrice)).toBe(5)
+      expect(Number(flag.invoiceUnitPrice)).toBe(5)
+      expect(flag.reason).toBe('Quantity mismatch for A1: PO=10 Invoice=8')
+    })
+
+    it('states the prices on a price mismatch too, so one column can be read across every type', async () => {
+      const { workspace } = await seedWorkspace(`${prefix}s9-price@example.com`, 'S9 Price Flag')
+      const { po, invoice } = await seedReadyPoAndInvoice(
+        workspace.id,
+        [{ sku: 'A1', quantity: '10', unitPrice: '5.00' }],
+        [{ sku: 'A1', quantity: '10', unitPrice: '6.00' }],
+      )
+
+      const result = await service.compare(workspace.id, po.id, invoice.id)
+
+      const flag = result.flags[0]
+      expect(flag.flagType).toBe('price_mismatch')
+      // Deliberately the same numbers as poValue/invoiceValue. A numeric column
+      // populated on one flag type only cannot be aggregated.
+      expect(Number(flag.poUnitPrice)).toBe(5)
+      expect(Number(flag.invoiceUnitPrice)).toBe(6)
+      expect(flag.poUnitPrice).toBe(flag.poValue)
+      expect(flag.invoiceUnitPrice).toBe(flag.invoiceValue)
+    })
+
+    // POLICY v1 #4 must not move: units are captured, never converted, so a UOM
+    // flag still computes no delta. The prices ride along as evidence only.
+    it('carries the prices on a UOM mismatch without computing a delta', async () => {
+      const { workspace } = await seedWorkspace(`${prefix}s9-uom@example.com`, 'S9 Uom Price')
+      const { po, invoice } = await seedReadyPoAndInvoice(
+        workspace.id,
+        [{ sku: 'A1', quantity: '10', unitPrice: '5.00', uom: 'each' }],
+        [{ sku: 'A1', quantity: '10', unitPrice: '60.00', uom: 'box' }],
+      )
+
+      const result = await service.compare(workspace.id, po.id, invoice.id)
+
+      const flag = result.flags[0]
+      expect(flag.flagType).toBe('uom_mismatch')
+      expect(flag.delta).toBeNull()
+      expect(Number(flag.poUnitPrice)).toBe(5)
+      expect(Number(flag.invoiceUnitPrice)).toBe(60)
+    })
+
+    // Null means "we do not know", never a number we picked. singlePrice()
+    // already refuses a side whose own duplicate lines disagree.
+    it('leaves a side null when that document states more than one price for the item', async () => {
+      const { workspace } = await seedWorkspace(`${prefix}s9-mixed@example.com`, 'S9 Mixed Price')
+      const { po, invoice } = await seedReadyPoAndInvoice(
+        workspace.id,
+        [
+          { sku: 'A1', quantity: '4', unitPrice: '5.00' },
+          { sku: 'A1', quantity: '6', unitPrice: '7.00' },
+        ],
+        [{ sku: 'A1', quantity: '12', unitPrice: '5.00' }],
+      )
+
+      const result = await service.compare(workspace.id, po.id, invoice.id)
+
+      const flag = result.flags[0]
+      expect(flag.poUnitPrice).toBeNull()
+      expect(Number(flag.invoiceUnitPrice)).toBe(5)
+    })
+
+    it('states the present side only when the item is missing from the other document', async () => {
+      const { workspace } = await seedWorkspace(`${prefix}s9-missing@example.com`, 'S9 Missing Side')
+      const { po, invoice } = await seedReadyPoAndInvoice(
+        workspace.id,
+        [{ sku: 'PO-ONLY', quantity: '3', unitPrice: '9.00' }],
+        [{ sku: 'INV-ONLY', quantity: '2', unitPrice: '4.00' }],
+      )
+
+      const result = await service.compare(workspace.id, po.id, invoice.id)
+
+      const missingOnInvoice = result.flags.find((f) => f.flagType === 'missing_on_invoice')!
+      expect(Number(missingOnInvoice.poUnitPrice)).toBe(9)
+      expect(missingOnInvoice.invoiceUnitPrice).toBeNull()
+
+      const missingOnPo = result.flags.find((f) => f.flagType === 'missing_on_po')!
+      expect(missingOnPo.poUnitPrice).toBeNull()
+      expect(Number(missingOnPo.invoiceUnitPrice)).toBe(4)
+    })
+
+    // The header-level flag has no line behind it, so it has no price either.
+    it('leaves both columns null on the currency flag', async () => {
+      const { workspace } = await seedWorkspace(`${prefix}s9-currency@example.com`, 'S9 Currency Price')
+      const { po, invoice } = await seedReadyPoAndInvoice(
+        workspace.id,
+        [{ sku: 'A1', quantity: '10', unitPrice: '5.00' }],
+        [{ sku: 'A1', quantity: '10', unitPrice: '5.00' }],
+        false,
+        { po: 'USD', invoice: 'EUR' },
+      )
+
+      const result = await service.compare(workspace.id, po.id, invoice.id)
+
+      const flag = result.flags.find((f) => f.flagType === 'currency_mismatch')!
+      expect(flag.poUnitPrice).toBeNull()
+      expect(flag.invoiceUnitPrice).toBeNull()
+    })
+
+    it('records the engine version that produced the run, so S8 recompares after this change', async () => {
+      const { workspace } = await seedWorkspace(`${prefix}s9-version@example.com`, 'S9 Version')
+      const { po, invoice } = await seedReadyPoAndInvoice(
+        workspace.id,
+        [{ sku: 'A1', quantity: '10', unitPrice: '5.00' }],
+        [{ sku: 'A1', quantity: '8', unitPrice: '5.00' }],
+      )
+
+      const result = await service.compare(workspace.id, po.id, invoice.id)
+
+      const [run] = await db.select().from(comparisonRuns).where(eq(comparisonRuns.id, result.runId))
+      expect(run.strategyVersion).toBe(COMPARISON_STRATEGY_VERSION)
+      expect(COMPARISON_STRATEGY_VERSION).toBe(2)
+    })
+  })
+
   // a sample of whatever the demo seed happens to produce. Every row below is
   // one line item chosen to land on exactly one classification, so a change
   // that moves a boundary shows up here as a named row rather than a count.

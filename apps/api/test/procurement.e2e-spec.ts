@@ -347,6 +347,12 @@ describe('Procurement flow (e2e)', () => {
       currency_mismatch: 0,
     })
 
+    // S9. Every flag with a line behind it states that line's unit price,
+    // whichever exception the engine labelled it with.
+    const quantityFlag = compareRes.body.flags.find((f: { flagType: string }) => f.flagType === 'quantity_mismatch')
+    expect(Number(quantityFlag.poUnitPrice)).toBeGreaterThan(0)
+    expect(Number(quantityFlag.invoiceUnitPrice)).toBeGreaterThan(0)
+
     const listRes = await request(app.getHttpServer())
       .get(`/workspaces/${workspaceId}/procurement/discrepancies`)
       .query({ purchaseOrderId: poUpload.body.id, invoiceId: invoiceUpload.body.id })

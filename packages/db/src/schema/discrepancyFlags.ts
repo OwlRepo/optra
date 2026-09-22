@@ -75,6 +75,21 @@ export const discrepancyFlags = pgTable(
     // on any line whose receipt did not state an accepted quantity — null here
     // means "not stated", never zero (POLICY v1 #14).
     receivedValue: text('received_value'),
+    // S9. The unit prices behind the line, on every flag that has a line.
+    //
+    // Separate columns rather than reusing the three `*_value` fields above,
+    // because those are `text` and already carry whatever the flag's own type
+    // disputes — units on a `uom_mismatch` row, currency codes on a
+    // `currency_mismatch` row. Nothing can be aggregated over a column that
+    // sometimes holds "EA".
+    //
+    // Filled on `price_mismatch` too, duplicating `po_value`/`invoice_value`
+    // there on purpose: a numeric column populated on one flag type only is
+    // useless to read across the others. Null means the side did not state one
+    // price — either it has no line at all, or its own duplicate lines disagree
+    // — never a price the system chose.
+    poUnitPrice: numeric('po_unit_price'),
+    invoiceUnitPrice: numeric('invoice_unit_price'),
     delta: numeric('delta'),
     reason: text('reason').notNull(),
     status: discrepancyFlagStatusEnum('status').notNull().default('open'),

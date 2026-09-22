@@ -132,6 +132,17 @@ export function DiscrepancyReviewModal({
               <div className="tabular-nums">{flag.invoiceValue ?? '—'}</div>
             </div>
           </div>
+          {/* S9. Shown for the exceptions that outrank price in the engine's
+              ladder, where the unit price would otherwise go unmentioned. Not
+              repeated on a price flag — the grid above already is the prices. */}
+          {flag.flagType !== 'price_mismatch' && (flag.poUnitPrice !== null || flag.invoiceUnitPrice !== null) ? (
+            <div className="text-sm">
+              <span className="text-muted-foreground">Unit price</span>{' '}
+              <span className="tabular-nums">
+                PO {flag.poUnitPrice ?? '—'} · Invoice {flag.invoiceUnitPrice ?? '—'}
+              </span>
+            </div>
+          ) : null}
           <p className="text-sm">{flag.reason}</p>
         </section>
 

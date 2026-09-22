@@ -326,8 +326,12 @@ function serializeForCsv(item: LineItemForCsv) {
  * engine change makes every pair recompare instead of trusting a verdict the
  * current rules would no longer produce. A default the code never writes could
  * not carry that meaning.
+ *
+ * Bumped to 2 by S9 commit 1: flags now carry the unit prices that the branch
+ * order used to discard, so a run written before this produced a strictly
+ * poorer row for the same inputs.
  */
-export const COMPARISON_STRATEGY_VERSION = 1
+export const COMPARISON_STRATEGY_VERSION = 2
 
 @Injectable()
 export class ComparisonService {
@@ -993,6 +997,17 @@ export class ComparisonService {
         : isUom
           ? (goodsReceiptLine?.uom ?? null)
           : null,
+      // S9. Unconditional — every flag with a line states what that line cost,
+      // whatever label the CASE chose. The engine always computed these (see
+      // the `joined` CTE); before this they were read only when the flag
+      // happened to be a price flag, so a line whose quantity AND price both
+      // differed reported the quantity and dropped the price entirely.
+      //
+      // `singlePrice` returns null when a side's duplicate lines disagree, so
+      // an uncertain side stays null rather than becoming a number nobody
+      // stated. A side with no line at all is null for the same reason.
+      poUnitPrice: this.numToStr(poPrice),
+      invoiceUnitPrice: this.numToStr(invoicePrice),
       invoiceValue:
         isQuantity || isMissingOnPo || isShortReceipt || isInvoiceExceedsReceived
           ? this.numToStr(row.inv_qty)
@@ -1103,11 +1118,11 @@ export class ComparisonService {
         }
         return `Item ${sku} appears on the purchase order but not on the invoice${summed}`
       case 'quantity_mismatch':
-        return `Quantity mismatch for ${sku}: PO=${row.po_qty ?? 'unknown'} Invoice=${row.inv_qty ?? 'unknown'}${summed}`
+        return `Quantity mismatch for ${sku}: PO=${row.po_qty ?? 'unknown'} Invoice=${row.inv_qty ?? 'unknown'}${summed}${this.maskedPriceNote(row)}`
       case 'short_receipt':
-        return `Short receipt for ${sku}: ordered ${row.po_qty ?? 'unknown'}, accepted ${row.grn_accepted_qty ?? 'unknown'}${summed}`
+        return `Short receipt for ${sku}: ordered ${row.po_qty ?? 'unknown'}, accepted ${row.grn_accepted_qty ?? 'unknown'}${summed}${this.maskedPriceNote(row)}`
       case 'invoice_exceeds_received':
-        return `Invoice bills more than was accepted for ${sku}: accepted ${row.grn_accepted_qty ?? 'unknown'}, invoiced ${row.inv_qty ?? 'unknown'}${summed}`
+        return `Invoice bills more than was accepted for ${sku}: accepted ${row.grn_accepted_qty ?? 'unknown'}, invoiced ${row.inv_qty ?? 'unknown'}${summed}${this.maskedPriceNote(row)}`
       case 'uom_mismatch': {
         // Two different faults share this type, and the reviewer needs to know
         // which: one document contradicting itself is fixed at the source,
@@ -1146,6 +1161,22 @@ export class ComparisonService {
         // fail on insert against a NOT NULL column, far from the cause.
         throw new Error(`Unhandled comparison flag type: ${String(row.flag_type)}`)
     }
+  }
+
+  /**
+   * S9. Says out loud that the unit price disagrees too, on the three types
+   * that outrank price in the CASE ladder.
+   *
+   * Deliberately NOT applied to `uom_mismatch`. When the two sides measure in
+   * different units their prices are per different things, so calling them a
+   * disagreement would invite exactly the comparison POLICY v1 #4 forbids. The
+   * columns still carry both numbers there; the sentence does not.
+   */
+  private maskedPriceNote(row: ComparisonRow): string {
+    const poPrice = this.singlePrice(row.po_price_min, row.po_price_max)
+    const invoicePrice = this.singlePrice(row.inv_price_min, row.inv_price_max)
+    if (poPrice === null || invoicePrice === null || poPrice === invoicePrice) return ''
+    return ` (the unit price also differs: PO=${poPrice} Invoice=${invoicePrice})`
   }
 
   private summedNote(row: ComparisonRow): string {

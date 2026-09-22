@@ -32,6 +32,8 @@ function makeFlag(overrides: Record<string, unknown> = {}) {
     receivedValue: '7',
     invoiceValue: '7',
     delta: '-3',
+    poUnitPrice: null,
+    invoiceUnitPrice: null,
     reason: 'Three of ten arrived.',
     status: 'open',
     dismissedAt: null,
@@ -98,6 +100,31 @@ describe('DiscrepancyReviewModal', () => {
 
   // Oldest first: a later decision correcting an earlier one only makes sense
   // after it.
+  // S9. The unit price used to vanish whenever another exception outranked it.
+  it('shows the unit prices behind a flag that is not itself about price', async () => {
+    renderModal({ flag: makeFlag({ poUnitPrice: '25', invoiceUnitPrice: '27.5' }) })
+
+    expect(await screen.findByText('Unit price')).toBeTruthy()
+    expect(screen.getByText(/25/)).toBeTruthy()
+    expect(screen.getByText(/27\.5/)).toBeTruthy()
+  })
+
+  it('does not repeat the prices on a flag whose own numbers already are the prices', async () => {
+    renderModal({
+      flag: makeFlag({ flagType: 'price_mismatch', poValue: '25', invoiceValue: '27.5', poUnitPrice: '25', invoiceUnitPrice: '27.5' }),
+    })
+
+    await screen.findByText('Ordered')
+    expect(screen.queryByText('Unit price')).toBeNull()
+  })
+
+  it('says nothing about price when neither side stated one', async () => {
+    renderModal({ flag: makeFlag() })
+
+    await screen.findByText('Ordered')
+    expect(screen.queryByText('Unit price')).toBeNull()
+  })
+
   it('lists the decision history oldest first, naming who decided and as what', async () => {
     listDecisionsMock.mockResolvedValue([
       makeDecision({ id: 'd1', note: 'First call.', createdAt: '2026-07-02T00:00:00.000Z' }),

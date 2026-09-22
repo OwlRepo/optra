@@ -302,3 +302,16 @@ The fix in each case was to derive from `workspaceEventTypeEnum.enumValues` rath
 **The generalisable form: a fallback and a hand-copied list fail the same way — silently, and only in front of a user.** `?? type` and `default:` are both written to be defensive, and both convert "someone forgot" into "the product says something slightly wrong forever". Where a list must be duplicated, the duplicate needs a test that reads the original; where it need not be, derive it.
 
 *Two smaller things worth keeping.* Seeding `comparison_failed` honestly required a failed run in the demo data, which the seed had never had — so S7's run history had shipped a `lastError` rendering path that no demo could show. And the event is named `comparison_flagged` on the owner's call: it fires only when a run finds something, and `comparison_completed` would have been a name that promised every completion. Enum values cannot be dropped in Postgres, so that was a one-way door worth stopping at.
+
+## 2026-09-23 — S9 commit 1: the branch chose the label and quietly chose the evidence
+*Predict-verify skipped — this is S6's `received_value` move applied to a second pair of columns. Recorded because the shape of the defect generalises past this repo.*
+
+`COMPARISON_SQL` classifies a line with a `CASE`, which returns its first match, and `quantity_mismatch` is tested before price. Everyone knows a `CASE` picks one label. What nobody had noticed is that it was also picking what got **stored**: the engine computed `po_price_min/max` and `inv_price_min/max` on every row and always had, but `toFlagValues` read them only when the winning label happened to be `price_mismatch`. So a line where the vendor changed both the quantity and the unit price — the single commonest real case — was recorded as a quantity problem, and the price difference existed nowhere in the system. A reviewer fixes the quantity, closes the flag, and pays the new price without ever seeing it.
+
+No test failed, and none could have. Every test asserted the label, and the label was right.
+
+Two things made it findable. The data was already in the row — `joined` selects all four price aggregates and `ComparisonRow` types them — so the fix touched no SQL at all, which is what let the whole change be reviewed as "the engine's verdict cannot have moved". And S6 had already solved this exact problem once, for the receiving trio, and written the reason down in a comment three lines above the bug: *"nothing is hidden by the branch order that picked between them."* The rule was in the file. It had been applied to three columns and not the fourth.
+
+**The generalisable form: a branch that selects a label must never also select what is recorded.** Ranking is a presentation decision — which single word best describes this row. Persistence is an evidence decision — what did we know when we looked. Collapsing the two means the losing branches take their findings with them, silently, and the only symptom is a downstream human making a worse decision much later.
+
+The tell to grep for: a computed value read inside a conditional whose condition is the classification. If `isPrice ? price : null` appears next to a value the engine produced unconditionally, the `null` branch is throwing away something real.

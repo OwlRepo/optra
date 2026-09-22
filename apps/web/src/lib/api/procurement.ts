@@ -86,6 +86,10 @@ export type DiscrepancyFlag = {
   // in dispute, and no quantity comparison is valid across different ones.
   receivedValue: string | null
   invoiceValue: string | null
+  // S9. The unit prices behind the line, on every flag that has one — not only
+  // on `price_mismatch`. Null means the side stated no single price.
+  poUnitPrice: string | null
+  invoiceUnitPrice: string | null
   // Null whenever no difference can honestly be computed — both needs-review
   // types, by POLICY v1 #4.
   delta: string | null
