@@ -344,5 +344,40 @@ describe('Catalog flow (e2e)', () => {
       .set('Authorization', `Bearer ${outsider.accessToken}`)
       .send({ sku: 'X', unitPrice: '1.00', currency: 'USD', effectiveFrom: '2026-01-01T00:00:00.000Z' })
       .expect(403)
+
+    // S9 commit 7. The three vendor reads, in the same test because registering
+    // more users here trips the auth throttle that auth-rate-limit.e2e-spec
+    // exists to protect.
+    const got = await request(app.getHttpServer())
+      .get(`/workspaces/${workspaceId}/vendors/${vendorId}`)
+      .set('Authorization', `Bearer ${owner.accessToken}`)
+      .expect(200)
+    expect(got.body.name).toBe('Cedar Supply Co')
+
+    // A vendor nothing has been bought from reports an empty page and zeroes,
+    // never an error: missing data is distinct from good performance.
+    const history = await request(app.getHttpServer())
+      .get(`/workspaces/${workspaceId}/vendors/${vendorId}/price-history`)
+      .set('Authorization', `Bearer ${owner.accessToken}`)
+      .expect(200)
+    expect(history.body.items).toEqual([])
+    expect(history.body.total).toBe(0)
+    expect(history.body.skus).toEqual([])
+
+    const summary = await request(app.getHttpServer())
+      .get(`/workspaces/${workspaceId}/vendors/${vendorId}/exception-summary`)
+      .set('Authorization', `Bearer ${owner.accessToken}`)
+      .expect(200)
+    expect(summary.body.openTotal).toBe(0)
+    expect(summary.body.purchaseOrderCount).toBe(0)
+    expect(summary.body.counts.contract_price_variance).toBe(0)
+
+    for (const path of ['', '/price-history', '/exception-summary']) {
+      await request(app.getHttpServer())
+        .get(`/workspaces/${workspaceId}/vendors/${vendorId}${path}`)
+        .set('Authorization', `Bearer ${outsider.accessToken}`)
+        .expect(403)
+    }
   })
+
 })

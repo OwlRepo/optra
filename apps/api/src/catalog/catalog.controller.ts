@@ -28,6 +28,8 @@ import { RolesGuard } from '../auth/guards/roles.guard'
 import { WorkspaceMemberGuard } from '../auth/guards/workspace-member.guard'
 import { CatalogDocumentsService } from './catalog-documents.service'
 import { VendorPriceTermsService } from './vendor-price-terms.service'
+import { VendorHistoryService } from './vendor-history.service'
+import { VendorPriceHistoryQueryDto } from './dto/vendor-price-history-query.dto'
 import { CreatePriceTermDto } from './dto/create-price-term.dto'
 import { CatalogMatchService } from './catalog-match.service'
 import { CatalogScrapeService } from './catalog-scrape.service'
@@ -106,6 +108,7 @@ export class CatalogController {
     private readonly scrape: CatalogScrapeService,
     private readonly matches: CatalogMatchService,
     private readonly priceTerms: VendorPriceTermsService,
+    private readonly history: VendorHistoryService,
   ) {}
 
   @Post('vendors')
@@ -119,6 +122,32 @@ export class CatalogController {
   @UseGuards(JwtAuthGuard, WorkspaceMemberGuard)
   listVendors(@Param('workspaceId') workspaceId: string) {
     return this.vendors.list(workspaceId)
+  }
+
+  // S9. One vendor, by id. Until now the vendor detail page found its vendor
+  // by scanning the whole list array client-side.
+  @Get('vendors/:vendorId')
+  @UseGuards(JwtAuthGuard, WorkspaceMemberGuard)
+  getVendor(@Param('workspaceId') workspaceId: string, @Param('vendorId') vendorId: string) {
+    return this.history.get(workspaceId, vendorId)
+  }
+
+  // S9. What this vendor has charged over time, one row per purchase-order
+  // line, each measured against the price agreed when THAT order was placed.
+  @Get('vendors/:vendorId/price-history')
+  @UseGuards(JwtAuthGuard, WorkspaceMemberGuard)
+  vendorPriceHistory(
+    @Param('workspaceId') workspaceId: string,
+    @Param('vendorId') vendorId: string,
+    @Query() query: VendorPriceHistoryQueryDto,
+  ) {
+    return this.history.priceHistory(workspaceId, vendorId, query)
+  }
+
+  @Get('vendors/:vendorId/exception-summary')
+  @UseGuards(JwtAuthGuard, WorkspaceMemberGuard)
+  vendorExceptionSummary(@Param('workspaceId') workspaceId: string, @Param('vendorId') vendorId: string) {
+    return this.history.exceptionSummary(workspaceId, vendorId)
   }
 
   // S9. POLICY v1 #5 keeps the approved PO price authoritative for the

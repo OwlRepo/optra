@@ -3,6 +3,7 @@ import { BullModule } from '@nestjs/bull'
 import { CatalogController } from './catalog.controller'
 import { VendorsService } from './vendors.service'
 import { VendorPriceTermsService } from './vendor-price-terms.service'
+import { VendorHistoryService } from './vendor-history.service'
 import { CatalogDocumentsService } from './catalog-documents.service'
 import { CatalogParseService } from './catalog-parse.service'
 import { CatalogParseProcessor } from './catalog-parse.processor'
@@ -25,6 +26,7 @@ import { LimitsModule } from '../limits/limits.module'
   providers: [
     VendorsService,
     VendorPriceTermsService,
+    VendorHistoryService,
     CatalogDocumentsService,
     CatalogParseService,
     CatalogParseProcessor,
