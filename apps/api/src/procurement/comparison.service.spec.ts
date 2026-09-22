@@ -269,7 +269,7 @@ describe('ComparisonService', () => {
     const stored = await db.select().from(discrepancyFlags).where(eq(discrepancyFlags.purchaseOrderId, po.id))
     expect(stored).toHaveLength(2)
 
-    expect(await service.listFlags(workspace.id, {})).toHaveLength(1)
+    expect((await service.listFlags(workspace.id, {})).items).toHaveLength(1)
   })
 
   it('rejects comparing when the purchase order has not finished parsing', async () => {
@@ -438,7 +438,7 @@ describe('ComparisonService', () => {
     const flags = await db.select().from(discrepancyFlags).where(eq(discrepancyFlags.purchaseOrderId, po.id))
     expect(flags).toHaveLength(4)
 
-    expect(await service.listFlags(workspace.id, {})).toHaveLength(1)
+    expect((await service.listFlags(workspace.id, {})).items).toHaveLength(1)
   })
 
   describe('comparison runs (S1)', () => {
@@ -544,12 +544,12 @@ describe('ComparisonService', () => {
       const second = await service.compare(workspace.id, po.id, invoice.id, user.id)
 
       const current = await service.listFlags(workspace.id, {})
-      expect(current).toHaveLength(1)
-      expect(current[0].comparisonRunId).toBe(second.runId)
+      expect(current.items).toHaveLength(1)
+      expect(current.items[0].comparisonRunId).toBe(second.runId)
 
       const historical = await service.listFlags(workspace.id, { runId: first.runId })
-      expect(historical).toHaveLength(1)
-      expect(historical[0].comparisonRunId).toBe(first.runId)
+      expect(historical.items).toHaveLength(1)
+      expect(historical.items[0].comparisonRunId).toBe(first.runId)
     })
 
     it('treats pre-run flags as current until that pair has a succeeded run', async () => {
@@ -572,14 +572,14 @@ describe('ComparisonService', () => {
         })
         .returning()
 
-      expect(await service.listFlags(workspace.id, {})).toEqual([expect.objectContaining({ id: legacy.id })])
+      expect((await service.listFlags(workspace.id, {})).items).toEqual([expect.objectContaining({ id: legacy.id })])
 
       const run = await service.compare(workspace.id, po.id, invoice.id, user.id)
 
       const current = await service.listFlags(workspace.id, {})
-      expect(current).toHaveLength(1)
-      expect(current[0].comparisonRunId).toBe(run.runId)
-      expect(current.map((flag) => flag.id)).not.toContain(legacy.id)
+      expect(current.items).toHaveLength(1)
+      expect(current.items[0].comparisonRunId).toBe(run.runId)
+      expect(current.items.map((flag) => flag.id)).not.toContain(legacy.id)
 
       const [stillThere] = await db.select().from(discrepancyFlags).where(eq(discrepancyFlags.id, legacy.id))
       expect(stillThere).toBeDefined()
@@ -897,14 +897,14 @@ describe('ComparisonService', () => {
     await service.compare(workspace.id, po.id, invoice.id)
 
     const openFlags = await service.listFlags(workspace.id, { status: 'open' })
-    expect(openFlags).toHaveLength(1)
+    expect(openFlags.items).toHaveLength(1)
 
-    const dismissed = await service.dismissFlag(workspace.id, openFlags[0].id, user.id)
+    const dismissed = await service.dismissFlag(workspace.id, openFlags.items[0].id, user.id)
     expect(dismissed.status).toBe('dismissed')
     expect(dismissed.dismissedBy).toBe(user.id)
 
     const stillOpen = await service.listFlags(workspace.id, { status: 'open' })
-    expect(stillOpen).toHaveLength(0)
+    expect(stillOpen.items).toHaveLength(0)
   })
 
   // S6. The receiving side. What makes these worth writing rather than trusting
@@ -1358,6 +1358,112 @@ describe('ComparisonService', () => {
   // S3b / POLICY v1 #2. Once an invoice records which PO it answers, comparing
   // it against a different PO is a mistake worth refusing — otherwise the link
   // is decoration that can silently contradict what was actually compared.
+  // S7. The list is the product's main surface and it was unbounded: every
+  // flag in the workspace in one response, with the six stat-card counts
+  // computed in the browser from whatever happened to arrive.
+  describe('listFlags pagination (S7)', () => {
+    // Four flags from ONE comparison — the case that breaks a naive
+    // implementation. compare() inserts every flag of a run inside a single
+    // transaction, so `created_at` is `now()` evaluated once and all four rows
+    // share it to the microsecond.
+    async function seedFourFlags(email: string, name: string) {
+      const { workspace } = await seedWorkspace(email, name)
+      const { po, invoice } = await seedReadyPoAndInvoice(
+        workspace.id,
+        [
+          { sku: 'QTY-1', quantity: '10', unitPrice: '5.00' },
+          { sku: 'PRICE-1', quantity: '2', unitPrice: '9.99' },
+          { sku: 'PO-ONLY', quantity: '1', unitPrice: '1.00' },
+        ],
+        [
+          { sku: 'QTY-1', quantity: '8', unitPrice: '5.00' },
+          { sku: 'PRICE-1', quantity: '2', unitPrice: '12.00' },
+          { sku: 'INV-ONLY', quantity: '1', unitPrice: '1.00' },
+        ],
+      )
+      const result = await service.compare(workspace.id, po.id, invoice.id)
+      expect(result.flags).toHaveLength(4)
+      return { workspace, po, invoice }
+    }
+
+    it('returns one page at a time and reports the size of the whole result', async () => {
+      const { workspace } = await seedFourFlags(`${prefix}s7-page@example.com`, 'S7 Page')
+
+      const page = await service.listFlags(workspace.id, { page: '1', pageSize: '2' })
+
+      expect(page.items).toHaveLength(2)
+      expect(page.page).toBe(1)
+      expect(page.pageSize).toBe(2)
+      expect(page.total).toBe(4)
+      expect(page.totalPages).toBe(2)
+    })
+
+    // THE test for this commit. Ordering on `created_at` alone is not a total
+    // order when four rows share the timestamp, so Postgres may return them in
+    // a different order for each OFFSET — silently repeating some flags on
+    // page 2 and dropping others entirely. A reviewer working the queue would
+    // never see the dropped ones.
+    it('never repeats or drops a flag across pages when one run wrote them all at once', async () => {
+      const { workspace } = await seedFourFlags(`${prefix}s7-stable@example.com`, 'S7 Stable')
+
+      const first = await service.listFlags(workspace.id, { page: '1', pageSize: '2' })
+      const second = await service.listFlags(workspace.id, { page: '2', pageSize: '2' })
+
+      expect(second.items).toHaveLength(2)
+      const seen = [...first.items, ...second.items].map((flag) => flag.id)
+      expect(new Set(seen).size).toBe(4)
+    })
+
+    it('defaults to a page of twenty and clamps an oversized page size', async () => {
+      const { workspace } = await seedFourFlags(`${prefix}s7-clamp@example.com`, 'S7 Clamp')
+
+      expect((await service.listFlags(workspace.id, {})).pageSize).toBe(20)
+      expect((await service.listFlags(workspace.id, { pageSize: '5000' })).pageSize).toBe(100)
+    })
+
+    // The stat cards used to be computed in the browser from the array it held.
+    // Paginated, that reports "1 price mismatch" on a page showing one of
+    // forty. The counts have to describe the filtered set, not the page.
+    it('counts the whole filtered set, not the page, and always carries all eight types', async () => {
+      const { workspace } = await seedFourFlags(`${prefix}s7-counts@example.com`, 'S7 Counts')
+
+      const page = await service.listFlags(workspace.id, { page: '1', pageSize: '1' })
+
+      expect(page.items).toHaveLength(1)
+      expect(page.counts).toEqual({
+        quantity_mismatch: 1,
+        price_mismatch: 1,
+        missing_on_invoice: 1,
+        missing_on_po: 1,
+        short_receipt: 0,
+        invoice_exceeds_received: 0,
+        uom_mismatch: 0,
+        currency_mismatch: 0,
+      })
+      expect(Object.values(page.counts).reduce((a, b) => a + b, 0)).toBe(page.total)
+    })
+
+    it('narrows the counts by the same filters that narrow the list', async () => {
+      const { workspace, user } = await (async () => {
+        const seeded = await seedFourFlags(`${prefix}s7-count-filter@example.com`, 'S7 Count Filter')
+        const [owner] = await db
+          .select()
+          .from(users)
+          .where(like(users.email, `${prefix}s7-count-filter%`))
+        return { ...seeded, user: owner }
+      })()
+
+      const open = await service.listFlags(workspace.id, { status: 'open' })
+      expect(open.total).toBe(4)
+
+      await service.dismissFlag(workspace.id, open.items[0].id, user.id)
+      const stillOpen = await service.listFlags(workspace.id, { status: 'open' })
+
+      expect(stillOpen.total).toBe(3)
+      expect(Object.values(stillOpen.counts).reduce((a, b) => a + b, 0)).toBe(3)
+    })
+  })
+
   describe('purchase order link enforcement (S3b)', () => {
     const oneLine = [{ sku: 'A1', quantity: '10', unitPrice: '5.00' }]
 

@@ -169,17 +169,44 @@ export function compareDocuments(
   })
 }
 
+export type DiscrepancyFlagCounts = Record<DiscrepancyFlagType, number>
+
+/**
+ * Offset paging, the house convention for admin tables.
+ *
+ * `counts` describes the whole filtered set, not the page. The stat cards read
+ * it, and computing them from `items` would report whatever happened to land
+ * on screen. They always carry all eight types, zero-filled.
+ */
+export type DiscrepancyListResult = {
+  items: DiscrepancyFlag[]
+  page: number
+  pageSize: number
+  total: number
+  totalPages: number
+  counts: DiscrepancyFlagCounts
+}
+
 export function listDiscrepancies(
   workspaceId: string,
   // Omitting runId returns the current flags: the latest succeeded run for
   // each PO/invoice pair, plus pre-S1 flags for pairs never re-compared.
-  opts?: { purchaseOrderId?: string; invoiceId?: string; status?: DiscrepancyFlagStatus; runId?: string },
-): Promise<DiscrepancyFlag[]> {
+  opts?: {
+    purchaseOrderId?: string
+    invoiceId?: string
+    status?: DiscrepancyFlagStatus
+    runId?: string
+    page?: number
+    pageSize?: number
+  },
+): Promise<DiscrepancyListResult> {
   const params = new URLSearchParams()
   if (opts?.purchaseOrderId) params.set('purchaseOrderId', opts.purchaseOrderId)
   if (opts?.invoiceId) params.set('invoiceId', opts.invoiceId)
   if (opts?.status) params.set('status', opts.status)
   if (opts?.runId) params.set('runId', opts.runId)
+  if (opts?.page) params.set('page', String(opts.page))
+  if (opts?.pageSize) params.set('pageSize', String(opts.pageSize))
   const query = params.toString()
 
   return apiFetch(`/api/workspaces/${workspaceId}/procurement/discrepancies${query ? `?${query}` : ''}`)

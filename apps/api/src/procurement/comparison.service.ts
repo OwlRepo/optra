@@ -9,9 +9,10 @@ import {
   NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common'
-import { and, desc, eq, inArray, isNull, or } from 'drizzle-orm'
+import { and, count, desc, eq, inArray, isNull, notExists, or, sql } from 'drizzle-orm'
 import Papa from 'papaparse'
 import {
+  buildOffsetResult,
   comparisonRunGoodsReceipts,
   comparisonRuns,
   db,
@@ -24,6 +25,7 @@ import {
   invoices,
   poLineItems,
   purchaseOrders,
+  resolveOffsetPage,
   type DiscrepancyFlag,
   type GoodsReceiptLineItem,
   type InvoiceLineItem,
@@ -35,11 +37,23 @@ type DecisionOutcome = (typeof discrepancyDecisions.$inferInsert)['outcome']
 
 const DISMISS_SYSTEM_NOTE = 'Dismissed from the discrepancies list without a note.'
 
-type DbTx = Parameters<Parameters<typeof db.transaction>[0]>[0]
-
-function pairKey(purchaseOrderId: string, invoiceId: string): string {
-  return `${purchaseOrderId}:${invoiceId}`
+// Every value of `discrepancy_flag_type`, zero-filled. The shape of a `counts`
+// object must never depend on what the data happens to contain — a caller
+// indexing a type that saw no rows would otherwise read `undefined`. One list,
+// used by both the compare response and the paginated list, so the two can
+// never drift apart.
+const EMPTY_FLAG_COUNTS: Record<DiscrepancyFlag['flagType'], number> = {
+  quantity_mismatch: 0,
+  price_mismatch: 0,
+  missing_on_invoice: 0,
+  missing_on_po: 0,
+  short_receipt: 0,
+  invoice_exceeds_received: 0,
+  uom_mismatch: 0,
+  currency_mismatch: 0,
 }
+
+type DbTx = Parameters<Parameters<typeof db.transaction>[0]>[0]
 
 const PO_TABLE = 'po_items'
 const INV_TABLE = 'inv_items'
@@ -531,63 +545,117 @@ export class ComparisonService {
    */
   async listFlags(
     workspaceId: string,
-    filters: { purchaseOrderId?: string; invoiceId?: string; status?: 'open' | 'dismissed'; runId?: string },
+    filters: {
+      purchaseOrderId?: string
+      invoiceId?: string
+      status?: 'open' | 'dismissed'
+      runId?: string
+      page?: string
+      pageSize?: string
+    },
   ) {
     const conditions = [eq(discrepancyFlags.workspaceId, workspaceId)]
     if (filters.purchaseOrderId) conditions.push(eq(discrepancyFlags.purchaseOrderId, filters.purchaseOrderId))
     if (filters.invoiceId) conditions.push(eq(discrepancyFlags.invoiceId, filters.invoiceId))
     if (filters.status) conditions.push(eq(discrepancyFlags.status, filters.status))
+    conditions.push(
+      filters.runId ? eq(discrepancyFlags.comparisonRunId, filters.runId) : this.currentFlagScope(workspaceId),
+    )
 
-    if (filters.runId) {
-      conditions.push(eq(discrepancyFlags.comparisonRunId, filters.runId))
-      return db
-        .select()
-        .from(discrepancyFlags)
-        .where(and(...conditions))
-        .orderBy(discrepancyFlags.createdAt)
-    }
+    const where = and(...conditions)
+    const { page, pageSize, offset } = resolveOffsetPage(filters.page, filters.pageSize)
 
-    const currentRunByPair = await this.currentRunIdByPair(workspaceId)
-    const currentRunIds = [...currentRunByPair.values()]
-
-    // Narrow in SQL to current-run and legacy rows, so history does not have to
-    // be read to be discarded; the remaining decision — whether a legacy row's
-    // pair has since been compared — is settled from the same small map.
-    const runScope = currentRunIds.length
-      ? or(inArray(discrepancyFlags.comparisonRunId, currentRunIds), isNull(discrepancyFlags.comparisonRunId))
-      : isNull(discrepancyFlags.comparisonRunId)
-    if (runScope) conditions.push(runScope)
-
-    const rows = await db
+    // Oldest first, which is how a queue is worked — and `id` is not a
+    // tiebreak for tidiness. compare() writes every flag of a run in ONE
+    // transaction, so `created_at` is `now()` evaluated once and all of them
+    // share it exactly. Ordering on that alone is not a total order, so
+    // Postgres could return a different sequence per OFFSET and the reviewer
+    // would see some flags twice and never see others at all.
+    const items = await db
       .select()
       .from(discrepancyFlags)
-      .where(and(...conditions))
-      .orderBy(discrepancyFlags.createdAt)
+      .where(where)
+      .orderBy(discrepancyFlags.createdAt, discrepancyFlags.id)
+      .limit(pageSize)
+      .offset(offset)
 
-    return rows.filter(
-      (row) => row.comparisonRunId !== null || !currentRunByPair.has(pairKey(row.purchaseOrderId, row.invoiceId)),
-    )
+    // One aggregate serves both the stat cards and `total`. Deriving the total
+    // by summing the counts makes "the cards add up to the list" structural
+    // rather than something a test has to keep checking.
+    const grouped = await db
+      .select({ flagType: discrepancyFlags.flagType, value: count() })
+      .from(discrepancyFlags)
+      .where(where)
+      .groupBy(discrepancyFlags.flagType)
+
+    const counts = { ...EMPTY_FLAG_COUNTS }
+    let total = 0
+    for (const row of grouped) {
+      counts[row.flagType] = Number(row.value)
+      total += Number(row.value)
+    }
+
+    return { ...buildOffsetResult(items, total, page, pageSize), counts }
   }
 
-  // Latest succeeded run per PO/invoice pair. Ordered newest-first, so the
-  // first id seen for a pair is the one that wins.
-  private async currentRunIdByPair(workspaceId: string): Promise<Map<string, string>> {
-    const runs = await db
-      .select({
-        id: comparisonRuns.id,
-        purchaseOrderId: comparisonRuns.purchaseOrderId,
-        invoiceId: comparisonRuns.invoiceId,
-      })
+  /**
+   * "Current" as a SQL predicate rather than a map plus an in-memory filter.
+   *
+   * It says exactly what the two-step version said:
+   *   - a flag WITH a run is current when that run is its pair's latest
+   *     succeeded run;
+   *   - a flag with NO run is current until its pair has any succeeded run.
+   * The second branch is the pre-S1 legacy path — it is what stopped flags
+   * disappearing from the UI when comparison runs shipped.
+   *
+   * Why it had to move: the old version decided the legacy branch in
+   * JavaScript, AFTER the query returned. A filter that runs after the query
+   * cannot be paginated — `LIMIT 20` would hand back fewer than twenty rows,
+   * and a total would count rows the caller never sees. As a predicate it
+   * composes with LIMIT/OFFSET and with COUNT, and the workspace-wide read of
+   * every succeeded run disappears along with it.
+   *
+   * `desc(createdAt), desc(id)`: the old code ordered on createdAt alone and
+   * kept the first row it saw, so two runs sharing a timestamp picked an
+   * arbitrary winner. The id tiebreak makes that deterministic. No test pinned
+   * the old behaviour, because there was nothing stable to pin.
+   *
+   * Honest limit: this bounds the response, not the scan. Postgres still
+   * evaluates the scope over every matching flag before LIMIT applies.
+   */
+  private currentFlagScope(workspaceId: string) {
+    const currentRunIds = db
+      .selectDistinctOn([comparisonRuns.purchaseOrderId, comparisonRuns.invoiceId], { id: comparisonRuns.id })
       .from(comparisonRuns)
       .where(and(eq(comparisonRuns.workspaceId, workspaceId), eq(comparisonRuns.status, 'succeeded')))
-      .orderBy(desc(comparisonRuns.createdAt))
+      .orderBy(
+        comparisonRuns.purchaseOrderId,
+        comparisonRuns.invoiceId,
+        desc(comparisonRuns.createdAt),
+        desc(comparisonRuns.id),
+      )
 
-    const latest = new Map<string, string>()
-    for (const run of runs) {
-      const key = pairKey(run.purchaseOrderId, run.invoiceId)
-      if (!latest.has(key)) latest.set(key, run.id)
-    }
-    return latest
+    return or(
+      // A NULL run id yields NULL here, never true, so a legacy flag can only
+      // ever qualify through the second branch.
+      inArray(discrepancyFlags.comparisonRunId, currentRunIds),
+      and(
+        isNull(discrepancyFlags.comparisonRunId),
+        notExists(
+          db
+            .select({ one: sql`1` })
+            .from(comparisonRuns)
+            .where(
+              and(
+                eq(comparisonRuns.workspaceId, workspaceId),
+                eq(comparisonRuns.purchaseOrderId, discrepancyFlags.purchaseOrderId),
+                eq(comparisonRuns.invoiceId, discrepancyFlags.invoiceId),
+                eq(comparisonRuns.status, 'succeeded'),
+              ),
+            ),
+        ),
+      ),
+    )
   }
 
   private async failRun(runId: string, lastError: string) {
@@ -973,15 +1041,8 @@ export class ComparisonService {
   }
 
   private countByType(flags: DiscrepancyFlag[]) {
-    return {
-      quantity_mismatch: flags.filter((flag) => flag.flagType === 'quantity_mismatch').length,
-      price_mismatch: flags.filter((flag) => flag.flagType === 'price_mismatch').length,
-      missing_on_invoice: flags.filter((flag) => flag.flagType === 'missing_on_invoice').length,
-      missing_on_po: flags.filter((flag) => flag.flagType === 'missing_on_po').length,
-      short_receipt: flags.filter((flag) => flag.flagType === 'short_receipt').length,
-      invoice_exceeds_received: flags.filter((flag) => flag.flagType === 'invoice_exceeds_received').length,
-      uom_mismatch: flags.filter((flag) => flag.flagType === 'uom_mismatch').length,
-      currency_mismatch: flags.filter((flag) => flag.flagType === 'currency_mismatch').length,
-    }
+    const counts = { ...EMPTY_FLAG_COUNTS }
+    for (const flag of flags) counts[flag.flagType] += 1
+    return counts
   }
 }

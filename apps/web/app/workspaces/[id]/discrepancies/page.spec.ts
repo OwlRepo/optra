@@ -60,6 +60,31 @@ function makeFlag(overrides: Partial<Record<string, unknown>> = {}) {
   }
 }
 
+// S7: the list is an offset page with server-computed counts, not a bare
+// array. Wrapping here keeps each test stating only the flags it cares about.
+function listOf(flags: ReturnType<typeof makeFlag>[], overrides: Record<string, unknown> = {}) {
+  const counts: Record<string, number> = {
+    quantity_mismatch: 0,
+    price_mismatch: 0,
+    missing_on_invoice: 0,
+    missing_on_po: 0,
+    short_receipt: 0,
+    invoice_exceeds_received: 0,
+    uom_mismatch: 0,
+    currency_mismatch: 0,
+  }
+  for (const flag of flags) counts[flag.flagType as string] += 1
+  return {
+    items: flags,
+    page: 1,
+    pageSize: 20,
+    total: flags.length,
+    totalPages: flags.length === 0 ? 0 : 1,
+    counts,
+    ...overrides,
+  }
+}
+
 function renderPage() {
   return render(
     React.createElement(
@@ -91,7 +116,7 @@ describe('DiscrepanciesPage', () => {
   it('renders fetched discrepancy flags with stat counts', async () => {
     getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
     listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
-    listDiscrepanciesMock.mockResolvedValue([makeFlag()])
+    listDiscrepanciesMock.mockResolvedValue(listOf([makeFlag()]))
 
     renderPage()
 
@@ -106,7 +131,7 @@ describe('DiscrepanciesPage', () => {
   it('labels every discrepancy type the API can return', async () => {
     getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
     listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
-    listDiscrepanciesMock.mockResolvedValue([
+    listDiscrepanciesMock.mockResolvedValue(listOf([
       makeFlag({ id: 'f1', sku: 'S-1', flagType: 'quantity_mismatch' }),
       makeFlag({ id: 'f2', sku: 'S-2', flagType: 'price_mismatch' }),
       makeFlag({ id: 'f3', sku: 'S-3', flagType: 'missing_on_invoice' }),
@@ -115,7 +140,7 @@ describe('DiscrepanciesPage', () => {
       makeFlag({ id: 'f6', sku: 'S-6', flagType: 'invoice_exceeds_received' }),
       makeFlag({ id: 'f7', sku: 'S-7', flagType: 'uom_mismatch' }),
       makeFlag({ id: 'f8', sku: null, flagType: 'currency_mismatch' }),
-    ])
+    ]))
 
     renderPage()
 
@@ -136,11 +161,11 @@ describe('DiscrepanciesPage', () => {
   it('shows what was received alongside what was ordered and billed', async () => {
     getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
     listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
-    listDiscrepanciesMock.mockResolvedValue([
+    listDiscrepanciesMock.mockResolvedValue(listOf([
       // Three distinct numbers, so a page that dropped the received column
       // could not pass by rendering one of the other two twice.
       makeFlag({ flagType: 'short_receipt', poValue: '12', receivedValue: '7', invoiceValue: '9', delta: '-5' }),
-    ])
+    ]))
 
     renderPage()
 
@@ -153,12 +178,12 @@ describe('DiscrepanciesPage', () => {
   it('summarises receiving exceptions and needs-review flags in the stat cards', async () => {
     getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
     listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
-    listDiscrepanciesMock.mockResolvedValue([
+    listDiscrepanciesMock.mockResolvedValue(listOf([
       makeFlag({ id: 'f1', flagType: 'short_receipt' }),
       makeFlag({ id: 'f2', flagType: 'invoice_exceeds_received' }),
       makeFlag({ id: 'f3', flagType: 'uom_mismatch' }),
       makeFlag({ id: 'f4', sku: null, flagType: 'currency_mismatch' }),
-    ])
+    ]))
 
     renderPage()
 
@@ -166,10 +191,57 @@ describe('DiscrepanciesPage', () => {
     expect(screen.getByText('Needs review')).toBeDefined()
   })
 
+  // S7. The cards used to be computed in the browser from the array it held.
+  // Paginated, that reports the visible page and calls it the total — and the
+  // total is the one number a reviewer uses to decide where to start.
+  it('reads the stat counts from the server, not from the visible page', async () => {
+    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
+    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+    listDiscrepanciesMock.mockResolvedValue(
+      listOf([makeFlag({ flagType: 'price_mismatch' })], {
+        total: 47,
+        totalPages: 3,
+        counts: {
+          quantity_mismatch: 4,
+          price_mismatch: 31,
+          missing_on_invoice: 2,
+          missing_on_po: 9,
+          short_receipt: 5,
+          invoice_exceeds_received: 6,
+          uom_mismatch: 1,
+          currency_mismatch: 0,
+        },
+      }),
+    )
+
+    renderPage()
+
+    expect(await screen.findByText('Price mismatches')).toBeDefined()
+    // 31, not the single flag on screen.
+    expect(screen.getByText('31')).toBeDefined()
+    // Receiving exceptions groups short_receipt + invoice_exceeds_received.
+    expect(screen.getByText('11')).toBeDefined()
+  })
+
+  it('asks the server for the next page instead of slicing what it already has', async () => {
+    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
+    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+    listDiscrepanciesMock.mockResolvedValue(listOf([makeFlag()], { total: 40, totalPages: 2 }))
+
+    renderPage()
+    expect(await screen.findByText('SKU-100')).toBeDefined()
+
+    fireEvent.click(screen.getByLabelText('Next page'))
+
+    await waitFor(() => {
+      expect(listDiscrepanciesMock).toHaveBeenCalledWith('ws-1', expect.objectContaining({ page: 2 }))
+    })
+  })
+
   it('renders a positive-toned empty state when no discrepancies are found', async () => {
     getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
     listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
-    listDiscrepanciesMock.mockResolvedValue([])
+    listDiscrepanciesMock.mockResolvedValue(listOf([]))
 
     renderPage()
 
@@ -179,7 +251,7 @@ describe('DiscrepanciesPage', () => {
 
   it('hides dismiss for member role and shows it for owner/admin', async () => {
     getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
-    listDiscrepanciesMock.mockResolvedValue([makeFlag()])
+    listDiscrepanciesMock.mockResolvedValue(listOf([makeFlag()]))
     listWorkspacesMock.mockResolvedValueOnce({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
 
     const view = renderPage()
@@ -200,9 +272,9 @@ describe('DiscrepanciesPage', () => {
   it('builds the catalog-matches link using only the non-null line item id', async () => {
     getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
     listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
-    listDiscrepanciesMock.mockResolvedValue([
+    listDiscrepanciesMock.mockResolvedValue(listOf([
       makeFlag({ id: 'flag-2', sku: 'SKU-200', flagType: 'missing_on_po', poLineItemId: null, invoiceLineItemId: 'inv-line-2' }),
-    ])
+    ]))
 
     renderPage()
 
@@ -210,10 +282,12 @@ describe('DiscrepanciesPage', () => {
     expect(link.getAttribute('href')).toBe('/workspaces/ws-1/catalog-matches?invoiceLineItemId=inv-line-2')
   })
 
-  it('dismisses a discrepancy and removes it from the list on success', async () => {
+  // Since S7 the page refetches rather than splicing the row out locally: on a
+  // paginated list a local removal leaves a short page and stale counts.
+  it('dismisses a discrepancy and refetches the page', async () => {
     getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
     listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
-    listDiscrepanciesMock.mockResolvedValue([makeFlag()])
+    listDiscrepanciesMock.mockResolvedValueOnce(listOf([makeFlag()])).mockResolvedValue(listOf([]))
     dismissDiscrepancyMock.mockResolvedValue(makeFlag({ status: 'dismissed' }))
 
     renderPage()
@@ -230,7 +304,7 @@ describe('DiscrepanciesPage', () => {
   it('shows an error toast when dismiss fails', async () => {
     getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
     listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
-    listDiscrepanciesMock.mockResolvedValue([makeFlag()])
+    listDiscrepanciesMock.mockResolvedValue(listOf([makeFlag()]))
     dismissDiscrepancyMock.mockRejectedValue({ message: 'Something went wrong' })
 
     renderPage()
@@ -245,7 +319,7 @@ describe('DiscrepanciesPage', () => {
   it('refetches with the status filter when changed', async () => {
     getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
     listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
-    listDiscrepanciesMock.mockResolvedValue([makeFlag()])
+    listDiscrepanciesMock.mockResolvedValue(listOf([makeFlag()]))
 
     renderPage()
 
@@ -257,6 +331,8 @@ describe('DiscrepanciesPage', () => {
         purchaseOrderId: undefined,
         invoiceId: undefined,
         status: 'dismissed',
+        page: 1,
+        pageSize: 20,
       })
     })
   })
@@ -265,7 +341,7 @@ describe('DiscrepanciesPage', () => {
     mockSearchParams = new URLSearchParams({ purchaseOrderId: 'po-9', invoiceId: 'inv-9' })
     getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
     listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
-    listDiscrepanciesMock.mockResolvedValue([])
+    listDiscrepanciesMock.mockResolvedValue(listOf([]))
 
     renderPage()
 
@@ -274,6 +350,8 @@ describe('DiscrepanciesPage', () => {
         purchaseOrderId: 'po-9',
         invoiceId: 'inv-9',
         status: undefined,
+        page: 1,
+        pageSize: 20,
       })
     })
   })
@@ -281,7 +359,7 @@ describe('DiscrepanciesPage', () => {
   it('redirects to login on unauthorized load error', async () => {
     getWorkspaceMock.mockRejectedValue({ statusCode: 401, message: 'Unauthorized' })
     listWorkspacesMock.mockResolvedValue({ items: [], nextCursor: null })
-    listDiscrepanciesMock.mockResolvedValue([])
+    listDiscrepanciesMock.mockResolvedValue(listOf([]))
 
     renderPage()
 

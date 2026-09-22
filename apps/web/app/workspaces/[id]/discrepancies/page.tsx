@@ -11,6 +11,7 @@ import {
   EmptyState,
   Select,
   Skeleton,
+  Pagination,
   StatCard,
   Table,
   TableBody,
@@ -28,6 +29,7 @@ import {
   dismissDiscrepancy,
   listDiscrepancies,
   type DiscrepancyFlag,
+  type DiscrepancyFlagCounts,
   type DiscrepancyFlagStatus,
   type DiscrepancyFlagType,
 } from '@/lib/api/procurement'
@@ -72,6 +74,21 @@ const RECEIVING_TYPES: DiscrepancyFlagType[] = ['short_receipt', 'invoice_exceed
 // The two types POLICY v1 #4 and #6 send to review rather than dispute.
 const NEEDS_REVIEW_TYPES: DiscrepancyFlagType[] = ['uom_mismatch', 'currency_mismatch']
 
+// What the cards read before the first response lands.
+const EMPTY_COUNTS: DiscrepancyFlagCounts = {
+  quantity_mismatch: 0,
+  price_mismatch: 0,
+  missing_on_invoice: 0,
+  missing_on_po: 0,
+  short_receipt: 0,
+  invoice_exceeds_received: 0,
+  uom_mismatch: 0,
+  currency_mismatch: 0,
+}
+
+const sumOf = (counts: DiscrepancyFlagCounts, types: DiscrepancyFlagType[]) =>
+  types.reduce((total, type) => total + (counts[type] ?? 0), 0)
+
 function catalogMatchesHref(workspaceId: string, flag: DiscrepancyFlag) {
   const params = new URLSearchParams()
   if (flag.poLineItemId) params.set('poLineItemId', flag.poLineItemId)
@@ -92,6 +109,12 @@ export default function DiscrepanciesPage({ params }: { params: { id: string } }
   const [membership, setMembership] = React.useState<WorkspaceMembership | null>(null)
   const [isLoading, setIsLoading] = React.useState(true)
   const [statusFilter, setStatusFilter] = React.useState<StatusFilterValue>('')
+  const [page, setPage] = React.useState(1)
+  const [pageSize, setPageSize] = React.useState(20)
+  // Server-owned: `counts` describes the whole filtered set and `meta` the
+  // paging. Neither can be derived from `flags`, which is one page.
+  const [counts, setCounts] = React.useState<DiscrepancyFlagCounts>(EMPTY_COUNTS)
+  const [meta, setMeta] = React.useState({ page: 1, pageSize: 20, total: 0, totalPages: 0 })
 
   const canManage = membership?.role === 'owner' || membership?.role === 'admin'
   const purchaseOrderIdFilter = searchParams.get('purchaseOrderId') ?? undefined
@@ -113,11 +136,20 @@ export default function DiscrepanciesPage({ params }: { params: { id: string } }
           purchaseOrderId: purchaseOrderIdFilter,
           invoiceId: invoiceIdFilter,
           status: statusFilter || undefined,
+          page,
+          pageSize,
         }),
         listWorkspaces(),
       ])
       setWorkspace(workspaceData)
-      setFlags(Array.isArray(flagsData) ? flagsData : [])
+      setFlags(Array.isArray(flagsData?.items) ? flagsData.items : [])
+      setCounts(flagsData?.counts ?? EMPTY_COUNTS)
+      setMeta({
+        page: flagsData?.page ?? 1,
+        pageSize: flagsData?.pageSize ?? pageSize,
+        total: flagsData?.total ?? 0,
+        totalPages: flagsData?.totalPages ?? 0,
+      })
       const membershipItems = Array.isArray(memberships?.items) ? memberships.items : []
       setMembership(membershipItems.find((entry: WorkspaceMembership) => entry.id === workspaceId) ?? null)
     } catch (err) {
@@ -133,7 +165,7 @@ export default function DiscrepanciesPage({ params }: { params: { id: string } }
     } finally {
       setIsLoading(false)
     }
-  }, [invoiceIdFilter, purchaseOrderIdFilter, router, statusFilter, workspaceId])
+  }, [invoiceIdFilter, page, pageSize, purchaseOrderIdFilter, router, statusFilter, workspaceId])
 
   React.useEffect(() => {
     void loadPage()
@@ -151,7 +183,9 @@ export default function DiscrepanciesPage({ params }: { params: { id: string } }
     async (flag: DiscrepancyFlag) => {
       try {
         await dismissDiscrepancy(workspaceId, flag.id)
-        setFlags((current) => current.filter((row) => row.id !== flag.id))
+        // Refetch rather than splice: on a server-paginated list, dropping the
+        // row locally leaves a short page and counts that no longer match.
+        await loadPage()
         toast({
           variant: 'success',
           title: 'Discrepancy dismissed',
@@ -169,23 +203,15 @@ export default function DiscrepanciesPage({ params }: { params: { id: string } }
         })
       }
     },
-    [router, toast, workspaceId],
+    [loadPage, router, toast, workspaceId],
   )
 
-  // Six cards, not eight: the two receiving types and the two needs-review
-  // types each answer one question, and the exact type stays readable on every
-  // row's badge. The summary is for deciding where to start.
-  const counts = React.useMemo(
-    () => ({
-      quantity_mismatch: flags.filter((flag) => flag.flagType === 'quantity_mismatch').length,
-      price_mismatch: flags.filter((flag) => flag.flagType === 'price_mismatch').length,
-      missing_on_invoice: flags.filter((flag) => flag.flagType === 'missing_on_invoice').length,
-      missing_on_po: flags.filter((flag) => flag.flagType === 'missing_on_po').length,
-      receiving: flags.filter((flag) => RECEIVING_TYPES.includes(flag.flagType)).length,
-      needs_review: flags.filter((flag) => NEEDS_REVIEW_TYPES.includes(flag.flagType)).length,
-    }),
-    [flags],
-  )
+  // Any filter change restarts the queue: page 3 of the old filter is not a
+  // meaningful place to land in the new one.
+  const applyStatusFilter = React.useCallback((value: StatusFilterValue) => {
+    setStatusFilter(value)
+    setPage(1)
+  }, [])
 
   return (
     <AppShell
@@ -210,10 +236,18 @@ export default function DiscrepanciesPage({ params }: { params: { id: string } }
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               <StatCard label="Quantity mismatches" value={counts.quantity_mismatch} icon={<Hash className="size-5" />} />
               <StatCard label="Price mismatches" value={counts.price_mismatch} icon={<DollarSign className="size-5" />} />
-              <StatCard label="Receiving exceptions" value={counts.receiving} icon={<Truck className="size-5" />} />
+              <StatCard
+                label="Receiving exceptions"
+                value={sumOf(counts, RECEIVING_TYPES)}
+                icon={<Truck className="size-5" />}
+              />
               <StatCard label="Missing on invoice" value={counts.missing_on_invoice} icon={<FileX className="size-5" />} />
               <StatCard label="Missing on PO" value={counts.missing_on_po} icon={<PackageX className="size-5" />} />
-              <StatCard label="Needs review" value={counts.needs_review} icon={<HelpCircle className="size-5" />} />
+              <StatCard
+                label="Needs review"
+                value={sumOf(counts, NEEDS_REVIEW_TYPES)}
+                icon={<HelpCircle className="size-5" />}
+              />
             </div>
 
             <Card variant="elevated" className="p-6">
@@ -222,7 +256,7 @@ export default function DiscrepanciesPage({ params }: { params: { id: string } }
                   aria-label="Filter by status"
                   className="sm:w-40"
                   value={statusFilter}
-                  onChange={(event) => setStatusFilter(event.target.value as StatusFilterValue)}
+                  onChange={(event) => applyStatusFilter(event.target.value as StatusFilterValue)}
                 >
                   <option value="">All</option>
                   <option value="open">Open</option>
@@ -291,6 +325,21 @@ export default function DiscrepanciesPage({ params }: { params: { id: string } }
                 </TableBody>
               </Table>
             )}
+
+            {meta.total > 0 ? (
+              <Pagination
+                page={meta.page}
+                pageSize={meta.pageSize}
+                total={meta.total}
+                totalPages={meta.totalPages}
+                onPageChange={setPage}
+                onPageSizeChange={(size) => {
+                  setPageSize(size)
+                  setPage(1)
+                }}
+                isLoading={isLoading}
+              />
+            ) : null}
           </>
         )}
       </div>

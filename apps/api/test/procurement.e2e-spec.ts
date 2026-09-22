@@ -322,8 +322,22 @@ describe('Procurement flow (e2e)', () => {
       .set('Authorization', `Bearer ${owner.accessToken}`)
       .expect(200)
 
-    expect(listRes.body).toHaveLength(4)
-    const flagId = listRes.body[0].id as string
+    expect(listRes.body.items).toHaveLength(4)
+    expect(listRes.body.total).toBe(4)
+    expect(listRes.body.totalPages).toBe(1)
+    // The stat cards read these, so they carry every type whether or not this
+    // comparison produced one.
+    expect(listRes.body.counts).toEqual({
+      quantity_mismatch: 1,
+      price_mismatch: 1,
+      missing_on_invoice: 1,
+      missing_on_po: 1,
+      short_receipt: 0,
+      invoice_exceeds_received: 0,
+      uom_mismatch: 0,
+      currency_mismatch: 0,
+    })
+    const flagId = listRes.body.items[0].id as string
 
     const dismissRes = await request(app.getHttpServer())
       .patch(`/workspaces/${workspaceId}/procurement/discrepancies/${flagId}/dismiss`)
@@ -337,7 +351,20 @@ describe('Procurement flow (e2e)', () => {
       .query({ status: 'open' })
       .set('Authorization', `Bearer ${owner.accessToken}`)
       .expect(200)
-    expect(openOnlyRes.body).toHaveLength(3)
+    expect(openOnlyRes.body.items).toHaveLength(3)
+    // Counts follow the same filter the list did.
+    expect(openOnlyRes.body.total).toBe(3)
+
+    // One page at a time, and the page never claims to be the whole set.
+    const firstPage = await request(app.getHttpServer())
+      .get(`/workspaces/${workspaceId}/procurement/discrepancies`)
+      .query({ pageSize: 1 })
+      .set('Authorization', `Bearer ${owner.accessToken}`)
+      .expect(200)
+    expect(firstPage.body.items).toHaveLength(1)
+    expect(firstPage.body.pageSize).toBe(1)
+    expect(firstPage.body.total).toBe(4)
+    expect(firstPage.body.totalPages).toBe(4)
 
     // Cross-workspace isolation: outsider is not a member of workspaceId at all.
     await request(app.getHttpServer())
@@ -355,7 +382,7 @@ describe('Procurement flow (e2e)', () => {
 
     // Same for dismiss: the outsider owns their own workspace (passes RolesGuard),
     // but the flag belongs to the owner's workspace — 404, and the flag stays open.
-    const foreignFlagId = openOnlyRes.body[0].id as string
+    const foreignFlagId = openOnlyRes.body.items[0].id as string
     await request(app.getHttpServer())
       .patch(`/workspaces/${outsiderWorkspaceId}/procurement/discrepancies/${foreignFlagId}/dismiss`)
       .set('Authorization', `Bearer ${outsider.accessToken}`)
@@ -365,7 +392,7 @@ describe('Procurement flow (e2e)', () => {
       .query({ status: 'open' })
       .set('Authorization', `Bearer ${owner.accessToken}`)
       .expect(200)
-    expect(afterForeignDismiss.body.map((flag: { id: string }) => flag.id)).toContain(foreignFlagId)
+    expect(afterForeignDismiss.body.items.map((flag: { id: string }) => flag.id)).toContain(foreignFlagId)
 
     // A malformed flag id is a client error, not a uuid-cast failure inside Postgres.
     await request(app.getHttpServer())
@@ -390,9 +417,11 @@ describe('Procurement flow (e2e)', () => {
       .query({ purchaseOrderId: poUpload.body.id, invoiceId: invoiceUpload.body.id })
       .set('Authorization', `Bearer ${owner.accessToken}`)
       .expect(200)
-    expect(afterRerun.body).toHaveLength(4)
+    expect(afterRerun.body.items).toHaveLength(4)
     expect(
-      afterRerun.body.every((flag: { comparisonRunId: string }) => flag.comparisonRunId === secondCompare.body.runId),
+      afterRerun.body.items.every(
+        (flag: { comparisonRunId: string }) => flag.comparisonRunId === secondCompare.body.runId,
+      ),
     ).toBe(true)
 
     const history = await request(app.getHttpServer())
@@ -400,8 +429,8 @@ describe('Procurement flow (e2e)', () => {
       .query({ runId: compareRes.body.runId })
       .set('Authorization', `Bearer ${owner.accessToken}`)
       .expect(200)
-    expect(history.body).toHaveLength(4)
-    expect(history.body.filter((flag: { status: string }) => flag.status === 'dismissed')).toHaveLength(1)
+    expect(history.body.items).toHaveLength(4)
+    expect(history.body.items.filter((flag: { status: string }) => flag.status === 'dismissed')).toHaveLength(1)
 
     await request(app.getHttpServer())
       .get(`/workspaces/${workspaceId}/procurement/discrepancies`)
@@ -410,7 +439,7 @@ describe('Procurement flow (e2e)', () => {
       .expect(400)
 
     // S2: decisions are append-only, role-gated on write, readable by members.
-    const currentFlagId = afterRerun.body[0].id as string
+    const currentFlagId = afterRerun.body.items[0].id as string
 
     await request(app.getHttpServer())
       .post(`/workspaces/${workspaceId}/procurement/discrepancies/${currentFlagId}/decisions`)
