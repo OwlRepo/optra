@@ -27,7 +27,8 @@ Rules:
 - `core/evidence-policy.md`
 - `core/operating-model.md`
 - `core/safety.md`
-- `core/task-lifecycle.md`
+- `core/task-lifecycle.md` (state meanings)
+- `core/task-state-machine.md` (legal transitions and their guards; does not restate state meanings)
 - `memory/architecture-decisions.md`
 - `memory/lessons-learned.md`
 - `memory/project-memory.md`

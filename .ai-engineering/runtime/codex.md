@@ -11,10 +11,14 @@ Codex should:
 
 ## Status in this repository
 
-Codex is retired here. `CLAUDE.md` defines a single-agent rule: Claude owns
-routing, analysis, planning, implementation, and validation in one lane, and
-no work is handed off through a scratchpad file.
+Codex is retired here (owner decision, reaffirmed 2026-09-23). Claude runs
+every task; persona agents are generated for Claude Code only, into
+`.claude/agents/`. No work is handed off through a scratchpad file.
 
 These rules stay installed as canonical package inventory only. Do not create
-`AGENTS.md`, `.codex/instructions.md`, or `.ai-scratchpad.md` in this repo; if
-they reappear from a stale branch, flag them as stale.
+`.codex/`, `.codex/instructions.md` or `.ai-scratchpad.md` in this repo; if one
+reappears from a stale branch, flag it as stale and ask before deleting it.
+
+`AGENTS.md` is no longer on that list. It exists as the always-on workflow core
+that `CLAUDE.md` imports through `@AGENTS.md`, and it contains no Codex-specific
+content.

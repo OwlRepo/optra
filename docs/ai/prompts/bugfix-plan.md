@@ -1,5 +1,10 @@
 # Bugfix Implementation Plan Template
 
+> Purpose: turn an approved RCA into a concrete, testable fix plan.
+> When to use: after a `docs/ai/prompts/bugfix-rca.md` RCA is approved (`docs/ai/task-router.md`).
+> Source of truth: this is a MAP of the process. The real code and tests win.
+> Deterministic implementation rule: read `docs/ai/planning.md` and `docs/ai/plan-template.md` first (flow node `L`) and expand this plan per their rules. Every path, symbol, operation, dependency, test, acceptance mapping and regression risk is explicit, and every code change is a literal old/new block (`docs/ai/plan-template.md` "Deterministic implementation rule").
+
 After RCA approval, Claude may generate bugfix implementation plan.
 
 Every plan step must map to verified RCA facts.
@@ -10,7 +15,7 @@ No source edits during planning. Implementation begins only after approval.
 
 ## Plan Contract
 
-Follow the Plan Contract in `CLAUDE.md`.
+Follow the Plan Contract in `docs/ai/plan-template.md` ("Plan Contract by task size", "Blast-radius rule").
 
 Two layers required for Standard/Deep:
 
@@ -102,6 +107,8 @@ If FE is not involved, state `Not applicable.`
 
 ### 5. Implementation Verification & Testing Plan
 
+Tests first. Phase 1 of the plan is RED: the regression test that fails on today's code (title prefixed `regression:`), plus `error:` / `edge:` cases, ordered `error:` > `edge:` > `regression:` > `happy:`. Name each spec file and its assertions, run `bun run tdd:red`, and paste the failing output (`docs/ai/testing-strategy.md` "Strict TDD").
+
 Include verification commands verified from package scripts or repo docs.
 
 Include manual QA flow.
@@ -121,7 +128,7 @@ For Tiny/Express tasks, state `Low risk. No special rollback required.` if appli
 
 ### 7. Approval Gate
 
-Present the plan and wait for approval before implementing (Standard/Deep).
+Present the plan and wait for approval before implementing (Standard/Deep). Record the approval in `.claude/.plan-ack` only after it is given (flow node `R`).
 
 For Deep tasks, implementation starts only after explicit human approval of the plan.
 
@@ -194,7 +201,7 @@ No source edits during planning. Implementation begins only after approval.
 
 ## Implementation Start
 
-After approval, Claude implements directly in the same thread — one step at a time, strict TDD, explaining each step.
+After approval, execution follows `AGENTS.md` from node `S`: read `docs/ai/execution.md`, create the task worktree, run the RED phase, then implement (dispatching personas per `docs/ai/agent-orchestration.md` when the fix spans backend and frontend). Phases continue automatically while the model/reasoning pair is unchanged.
 
 For Deep tasks:
 

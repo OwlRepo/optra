@@ -1,5 +1,14 @@
 autonomy_level: 2
 
+# Structured autonomous work orders stay disabled until a task source is
+# configured and the owner activates the pilot in a reviewed PR.
+# See docs/ai/autonomous-engineering.md.
+activation: PILOT_FROZEN
+
+pilot:
+  simulation_required: true
+  first_real_task_merge_blocked: true
+
 agents:
   - coordinator
   - product-manager
@@ -42,6 +51,10 @@ validation_commands:
     - bun run lint
     - bun run type-check
     - bun run build
+    - bun run db:seed:test
+    - bun run tdd:gate
+    - bun run test:scripts
+    - bun run agents:lint
   apps/api:
     - bun run test
     - bun run test:cov
@@ -56,6 +69,7 @@ validation_commands:
     - bun run test
 
 existing_instructions:
+  - AGENTS.md
   - CLAUDE.md
   - DESIGN.md
   - docs/ai/

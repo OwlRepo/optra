@@ -32,6 +32,27 @@ Missing areas must be marked `TODO: Fill after repository analysis. Do not treat
 - `docs/ai/risk-register.md`
 - `docs/ai/file-index/repository-map.md`
 
+Workflow docs, refreshed when their sources change (verify against
+`package.json` scripts, `.github/workflows/deploy.yml`, `.claude/settings.json`,
+`scripts/ci/`, `scripts/hooks/`, `agents/src/`, `docker-compose*.yml`,
+`.ai-engineering/config/autonomous-engineering.yaml`):
+
+- `AGENTS.md` (workflow core; project facts stay in `CLAUDE.md`)
+- `docs/ai/task-router.md`
+- `docs/ai/planning.md`
+- `docs/ai/plan-template.md`
+- `docs/ai/execution.md`
+- `docs/ai/handoff.md`
+- `docs/ai/agent-orchestration.md` (persona roster and `ownedGlobs` must match `agents/src/*.agent.mjs`)
+- `docs/ai/pr-evidence.md` and `.github/PULL_REQUEST_TEMPLATE.md`
+- `docs/ai/dev-environment.md`
+- `docs/ai/autonomous-engineering.md` (must match the yaml's `activation` and `approval` blocks)
+- `docs/ai/entry-point.md`
+- `.ai-engineering/core/task-state-machine.md`
+
+`docs/ai/operating-contract.md`, `AI_WORKFLOW.md` and `PLANNING_STANDARDS.md`
+are pointer pages; refresh only their links.
+
 ## Source Verification Rules
 
 Verify facts against:

@@ -20,6 +20,97 @@ Standing rule (overrides "if available" below for any task that touches code): s
 
 ---
 
+## Strict TDD
+
+Enforced by tools, not by trust: a Claude hook blocks the edit locally and a CI
+gate blocks the PR.
+
+### Rules
+
+1. **RED before any implementation.** Write every test in the plan's Test
+   Matrix, run `bun run tdd:red`, and watch it fail. Commit the tests on their
+   own as `test(<scope>): …` before changing guarded source. `tdd:red` records
+   the RED in `<git-dir>/tdd-red.json` (per worktree, never committed). For a
+   stacked slice set `TDD_RED_BASE=<parent-branch>`; the default base is
+   `origin/main`.
+2. **Case order `error:` > `edge:` > `regression:` > `happy:`.** Every new test
+   title starts with one of those prefixes, and new files declare them in that
+   order, so error and edge cases are written (and run) first. A valid RED has
+   at least one failing `error:`, `edge:` or `regression:` case, or a test file
+   that cannot load yet because the module it imports does not exist. Only
+   `happy:` failing is not a RED.
+3. **Then implement until green.** Implementers may add tests. They never weaken
+   or delete a RED test without saying why in the PR.
+4. **Coverage.** Every touched guarded file has unit coverage. User-facing or
+   cross-layer flows also get e2e coverage (`apps/api/test/*.e2e-spec.ts` for
+   endpoint flows). Missing test tooling is set up first rather than skipped;
+   a new test dependency still needs approval (`CLAUDE.md` "Don't do this").
+
+### Guarded source (what the hook and gate watch)
+
+- `apps/api/src/**/*.ts`
+- `apps/web/app/**/*.{ts,tsx}`, `apps/web/src/**/*.{ts,tsx}`, `apps/web/middleware.ts`
+- `packages/ai/src/**`, `packages/db/src/**`, `packages/ui/src/**` (`*.ts`, `*.tsx`)
+- `scripts/seed/**/*.ts`
+
+Not guarded: test files (`*.spec.ts(x)`, `*.test.ts`, `*.e2e-spec.ts`,
+anything under `__tests__/`), `*.d.ts`, and `packages/types` (type-only, no
+runner; `bun run type-check` verifies it). Infra files (Dockerfiles, compose,
+workflows, shell scripts) are not guarded source either; they follow the
+operational checklist in "Infrastructure / Docker / Deployment Verification"
+below.
+
+### Test kinds
+
+| Kind | Files | Runner (cwd) | Used for RED |
+|---|---|---|---|
+| unit | `apps/api/src/**/*.spec.ts` | Jest (`apps/api`) | yes |
+| unit | `*.spec.ts(x)` in `apps/web`, `packages/ai`, `packages/db`, `packages/ui` | Vitest (that package) | yes |
+| unit | `scripts/seed/**/*.test.ts` | Vitest (root) | yes |
+| script tests | `scripts/**/*.test.mjs` | `node --test` (root, `bun run test:scripts`) | yes |
+| e2e | `apps/api/test/**/*.e2e-spec.ts` | Jest e2e config (`apps/api`) | no (needs the full stack) |
+| migration tests | `packages/db/src/**/*.spec.ts` or an api e2e spec | as above | per kind |
+
+`scripts/ci/tdd-runner.mjs` reads Jest's `--json` and Vitest's
+`--reporter=json` reports (`parseJsonReport`) and `node --test` TAP output
+(`parseTapFailures`). UI (`.tsx`) changes are held to the same rule as logic:
+they need a runnable Vitest spec. There is no browser e2e runner (no
+Playwright) in the repo, so no change is required to add an e2e spec.
+
+### Enforcement
+
+| Where | What | Bypass |
+|---|---|---|
+| Claude session | `.claude/settings.json` PreToolUse hook `scripts/hooks/tdd-red-guard.mjs` (matcher `Edit\|Write\|MultiEdit\|NotebookEdit\|Bash`) blocks edits to guarded source, including Bash writes such as `sed -i`, `>`, `tee`, `cp`/`mv`, until a valid RED marker exists for the current branch | `bun run tdd:red -- --waiver "<reason>"`; the reason must then appear in the PR body as `TDD-Waiver: <reason>` |
+| Every PR (`ci` job, `if: github.event_name == 'pull_request'`) | `bun run tdd:gate` (`scripts/ci/tdd-gate.mjs`): changed logic or UI has at least one runnable test in the PR; changed migrations (`packages/db/drizzle/**`) come with a `packages/db/src/**/*.spec.ts` or `apps/api/test/**/*.e2e-spec.ts`; every new test title has a literal `error:`/`edge:`/`regression:`/`happy:` prefix; in new files no `error:`/`edge:` case is declared after a `happy:` case; a PR that adds `happy:` cases also adds at least one `error:` or `edge:` case; the PR's runnable tests are re-run against the merge-base code and must fail there (a valid RED). `TDD-Waiver: refactor …` flips that last check (the tests must pass on the base); any other `TDD-Waiver:` skips the RED proof. A PR whose head branch is `main` is skipped. Exit 0 = pass, 1 = violation, 2 = could not evaluate. Violations and every waiver applied are written to the job summary | `TDD-Waiver:` and `Migration-Waiver:` lines in the PR body. `E2E-Waiver:` is parsed for compatibility but changes nothing, since no rule requires e2e |
+| Every push and PR | `bun run test:scripts` (the tooling's own tests) and `bun run agents:lint` | none |
+| Local commit | `scripts/git-hooks/pre-commit`: blocks commits on `main`; runs `agents:lint` when persona files are staged | none |
+
+Known limits:
+
+- The Bash part of the guard is a heuristic; unusual shell writes can slip past
+  it. A human editing by hand bypasses the local guard, never the CI gate.
+- The RED proof re-runs unit and script tests only. E2E specs need the running
+  stack, so they are never a RED proof; their titles are still checked, and
+  their red run goes in the PR body when they matter.
+- Existing tests are grandfathered: only titles a diff adds are checked.
+- To re-run the PR's tests on the base, the gate builds a temporary base
+  worktree (`bun install --frozen-lockfile` plus a `@repo/db` / `@repo/ai`
+  build; `planBaseSetup` in `scripts/ci/tdd-lib.mjs`), so `@repo/*` links
+  resolve to the base code and a RED cannot pass for the wrong reason. Setup has
+  a 10-minute default timeout (`TDD_GATE_SETUP_TIMEOUT_MS`) and the test run a
+  5-minute one (`TDD_GATE_TIMEOUT_MS`); hitting either exits 2 ("could not
+  evaluate"), never a pass.
+- A docs-only PR (`**/*.md`, `docs/**`) triggers no workflow at all
+  (`paths-ignore`), so the gate does not run on it.
+- Waiver lines are self-declared by the PR author and are listed in the job
+  summary; review is where they are challenged. Whether GitHub branch
+  protection enforces the check on `main` is UNVERIFIED, so
+  `gh pr checks <number>` is part of the Completion Gate
+  (`docs/ai/handoff.md`).
+
+---
+
 ## Verification By Task Size
 
 | Task Size | Minimum Verification                                                   | Extra Verification                                            | Manual QA           | Notes                                          |

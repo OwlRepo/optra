@@ -411,3 +411,43 @@ zero DDL, no migration.
 | `catalogItemPhotoUrl` | `apps/web/src/lib/api/catalog.ts` | Builds the proxy URL for an item photo |
 | catalog photo proxy | `apps/web/app/api/workspaces/[id]/catalog-items/[itemId]/photo/route.ts` | `proxyRaw` passthrough that attaches the bearer token server-side |
 | `seed-demo-if-enabled.sh` | `docker/seed-demo-if-enabled.sh` | Prod start-up hook (wired into `apps/api/Dockerfile` CMD). No-op unless `SEED_DEMO_DATA=true`; runs the seeder with `--once` and never fails the container |
+
+## Workflow & Agent Tooling (added 2026-09-23)
+
+Line numbers verified 2026-09-23 against the tooling commits on `infra/no-ticket-ai-workflow-port` (`docs/plans/infra-ai-workflow-port.md`).
+
+| Symbol | Location | Purpose |
+|---|---|---|
+| always-on workflow core | `AGENTS.md` | Canonical Task Flow (nodes A–Z), core principles, stop conditions, agent routing, caveman/persona default; imported by `CLAUDE.md` |
+| project facts | `CLAUDE.md` | What Optra is, real stack, invariants, conventions, verified commands, don't-do list |
+| pointer pages | `AI_WORKFLOW.md`, `PLANNING_STANDARDS.md`, `docs/ai/operating-contract.md` | Signposts to the phase docs; `PLANNING_STANDARDS.md` mirrors the evidence and Graphify gates |
+| phase docs | `docs/ai/planning.md`, `docs/ai/plan-template.md`, `docs/ai/execution.md`, `docs/ai/handoff.md`, `docs/ai/pr-evidence.md` | Rules loaded at flow nodes L, S, W and before PR creation |
+| orchestration map | `docs/ai/agent-orchestration.md` | Persona roster, File Ownership Rule (`ownedGlobs`), round structure, domain briefings |
+| environment map | `docs/ai/dev-environment.md` | Local compose stack, ports, seed, migrations, prod VPS pointers |
+| autonomy status | `docs/ai/autonomous-engineering.md` | Why structured work orders are disabled (`activation: PILOT_FROZEN`) and what activation requires |
+| state transitions | `.ai-engineering/core/task-state-machine.md` | Legal task-state transitions and their guards |
+| PR template | `.github/PULL_REQUEST_TEMPLATE.md` | Spanish/English summary, then Change Type, Evidence, Testing, TDD evidence, Risk, Rollback |
+| `isGuardedSource` | `scripts/ci/tdd-lib.mjs:23` | Whether a repo path is guarded source for the TDD hook and gate |
+| `classifyChanges` | `scripts/ci/tdd-lib.mjs:72` | Sorts a diff's paths into logic / ui / migrations / test kinds |
+| `parseWaivers` | `scripts/ci/tdd-lib.mjs:143` | Reads `TDD-Waiver:` / `E2E-Waiver:` / `Migration-Waiver:` lines from a PR body |
+| `extractTestTitles` | `scripts/ci/tdd-lib.mjs:196` | Pulls test titles out of a spec file's source |
+| `checkTitles` | `scripts/ci/tdd-lib.mjs:215` | Enforces the `error:` > `edge:` > `regression:` > `happy:` prefixes and order on new titles |
+| `parseJsonReport` | `scripts/ci/tdd-lib.mjs:273` | Reads Jest `--json` / Vitest `--reporter=json` output into per-test results |
+| `judgeRed` | `scripts/ci/tdd-lib.mjs:296` | Decides whether a test run is a valid RED |
+| `findBashWriteTargets` | `scripts/ci/tdd-lib.mjs:368` | Heuristic: which files a Bash command would write (for the hook) |
+| `parseTapFailures` | `scripts/ci/tdd-lib.mjs:245` | Reads `node --test` TAP output into per-test and file-level failures |
+| `planBaseSetup` | `scripts/ci/tdd-lib.mjs:130` | How the gate prepares its temporary base worktree (`bun install --frozen-lockfile` + `@repo/db`/`@repo/ai` build) |
+| `runTestGroups` | `scripts/ci/tdd-runner.mjs:118` | Runs the planned Jest / Vitest / `node --test` groups and returns parsed results |
+| test runner | `scripts/ci/tdd-runner.mjs` | Runs Jest / Vitest / `node --test` per package and collects JSON reports |
+| RED recorder (`MARKER_FILE`) | `scripts/ci/tdd-red.mjs:16` | `bun run tdd:red`; writes `<git-dir>/tdd-red.json`, supports `--waiver` and `TDD_RED_BASE` |
+| PR gate | `scripts/ci/tdd-gate.mjs` | `bun run tdd:gate`; the CI "TDD gate" step on PRs |
+| scratch repos | `scripts/ci/test-repo.mjs` | Fixture git repos for the tooling's own `*.test.mjs` suites |
+| edit guard | `scripts/hooks/tdd-red-guard.mjs` | Claude PreToolUse hook blocking guarded-source edits without a RED marker |
+| `GLOBAL_POLICY` | `scripts/generate-agent-defs.mjs:25` | Shared policy block appended to every persona prompt |
+| persona generator | `scripts/generate-agent-defs.mjs` | `bun run agents:generate` / `agents:lint` (`--check`): `agents/src/*.agent.mjs` → `.claude/agents/*.md` |
+| persona sources | `agents/src/` | Nine `*.agent.mjs` definitions plus `prompts/*.md` |
+| generated personas | `.claude/agents/` | Generated output; never hand-edited |
+| worktree script | `scripts/new-task-worktree.sh` | Fresh branch + worktree per task, optional base ref for stacked slices |
+| pre-commit hook | `scripts/git-hooks/pre-commit` | Blocks commits on `main`; runs `agents:lint` when persona files are staged |
+| CI workflow graph fragment | `scripts/graphify/ci_workflows.py` | Adds `.github/workflows/*.yml` nodes/edges to the Graphify graph (test: `scripts/graphify/test_ci_workflows.py`) |
+| plan-gate hook | `.claude/hooks/check-plan-gate.sh` | Blocks source edits without a fresh `.claude/.plan-ack` |

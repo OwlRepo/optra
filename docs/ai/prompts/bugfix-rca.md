@@ -1,6 +1,10 @@
 # Bugfix RCA Template
 
-For bug reports, Claude must produce RCA first.
+> Purpose: root-cause a bug BEFORE any code is written.
+> When to use: intent `BUG_FIX` (`docs/ai/task-router.md`), flow node `D` in `AGENTS.md`.
+> Source of truth: this is a MAP of the process. The real code proves the root cause. If a map conflicts with code, code wins.
+
+For bug reports, Claude must produce RCA first. `/investigate` is the default skill for this stage.
 
 Do not generate implementation steps.
 
@@ -21,6 +25,8 @@ If map conflicts with source code, mark `CONTEXT DRIFT`.
 Verify all domain assumptions against source code.
 
 ## Repository Navigation Rule
+
+Discovery goes through Graphify first (`AGENTS.md` node `K`): `/graphify query "<question>"`, `/graphify path "<a>" "<b>"`, `/graphify explain "<symbol>"` against `graphify-out/graph.json`. Then use the context docs below; `grep` is a fallback, and the RCA names the graphify query that failed when it was used.
 
 Use context docs to find likely files:
 
@@ -136,6 +142,7 @@ Must include:
 - Confirmed Contract Details
 - Files / Causes Ruled Out
 - Required Verification Commands (verified from package scripts or repo docs)
+- Regression Test Direction: which spec file will carry the `regression:` (and `error:` / `edge:`) case that must fail on today's code
 - Planning Constraints
 
 ## Task Size Classification
@@ -165,7 +172,7 @@ If detail is unknown, mark `UNVERIFIED DEPENDENCY`.
 
 ## Deep Task Gate
 
-If task is Deep:
+If task is Deep (flow node `E` in `AGENTS.md`):
 
 - stop after RCA
 - human approval required before plan
