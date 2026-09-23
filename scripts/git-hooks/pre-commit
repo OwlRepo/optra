@@ -1,0 +1,21 @@
+#!/bin/sh
+# Activated via package.json "prepare": git config core.hooksPath scripts/git-hooks
+# (runs on bun install). Local backstop for two rules CI cannot fully cover:
+# main only changes through a merged PR, and .claude/agents/*.md stays generated
+# (CI's paths-ignore skips a PR that only touches markdown).
+
+branch="$(git rev-parse --abbrev-ref HEAD)"
+if [ "$branch" = "main" ]; then
+  echo "pre-commit: direct commits to main are blocked. Create a task branch/worktree: scripts/new-task-worktree.sh <type> <short-name> [base-ref]" >&2
+  exit 1
+fi
+
+if git diff --cached --name-only | grep -qE '^(agents/src/|scripts/generate-agent-defs\.mjs|\.claude/agents/)'; then
+  echo "pre-commit: persona files staged - running agents:lint..."
+  if ! node scripts/generate-agent-defs.mjs --check; then
+    echo "pre-commit: agents:lint failed. Run 'bun run agents:generate' and restage the generated files." >&2
+    exit 1
+  fi
+fi
+
+exit 0

@@ -1,5 +1,5 @@
 {
-  "description": "Example Claude Code settings for this project. The active copy is settings.json (schema verified in this environment). Claude Code implements directly in this repo (single-agent setup) — source edits are gated by the predict-verify hook, not disabled.",
+  "description": "Example Claude Code settings for this project. The active copy is settings.json (schema verified in this environment). Source edits are gated by two hooks: check-plan-gate.sh (Tiny/Express/Standard/Deep plan acknowledgment in .claude/.plan-ack) and scripts/hooks/tdd-red-guard.mjs (guarded source stays locked until `bun run tdd:red` records failing tests for the branch; it also inspects Bash writes). check-gstack.sh guards Skill calls.",
   "hooks": {
     "PreToolUse": [
       {
@@ -16,11 +16,16 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/check-predict-verify.sh\""
-          },
+            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/check-plan-gate.sh\""
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit|Bash",
+        "hooks": [
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/check-plan-gate.sh\""
+            "command": "node \"$CLAUDE_PROJECT_DIR/scripts/hooks/tdd-red-guard.mjs\""
           }
         ]
       }

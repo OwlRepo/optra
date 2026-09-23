@@ -20,7 +20,13 @@
     "docker:prod:build": "docker compose -f docker-compose.prod.yml build",
     "docker:prod:up": "docker compose -f docker-compose.prod.yml up -d --remove-orphans",
     "deploy": "./scripts/deploy.sh",
-    "deploy:remote": "./scripts/deploy-remote.sh"
+    "deploy:remote": "./scripts/deploy-remote.sh",
+    "agents:generate": "node scripts/generate-agent-defs.mjs",
+    "agents:lint": "node scripts/generate-agent-defs.mjs --check",
+    "tdd:red": "node scripts/ci/tdd-red.mjs",
+    "tdd:gate": "node scripts/ci/tdd-gate.mjs",
+    "test:scripts": "node --test \"scripts/**/*.test.mjs\"",
+    "prepare": "git config core.hooksPath scripts/git-hooks || true"
   },
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^8",
