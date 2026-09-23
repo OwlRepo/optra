@@ -11,6 +11,7 @@ writing a ledger for every collapsed edge variant.
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import re
 import subprocess
@@ -27,6 +28,16 @@ from graphify.diagnostics import diagnose_extraction
 from graphify.export import to_json
 from graphify.extract import collect_files, extract
 from graphify.report import generate
+
+
+def ci_workflows_fragment(root: Path, known_ids: set[str]) -> dict:
+    """Load scripts/graphify/ci_workflows.py by path (scripts/ is not a package)."""
+    spec = importlib.util.spec_from_file_location(
+        "ci_workflows", Path(__file__).resolve().parent / "graphify" / "ci_workflows.py"
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.extract(root, known_ids)
 
 
 def parse_args() -> argparse.Namespace:
@@ -342,6 +353,11 @@ def main() -> None:
 
     nodes = merge_nodes(ast.get("nodes", []), semantic_nodes)
     edges = [*ast.get("edges", []), *semantic_edges]
+    # Deterministic CI structure (workflow -> job -> step -> script), which the
+    # semantic pass only ever summarised as prose. See scripts/graphify/ci_workflows.py.
+    ci_fragment = ci_workflows_fragment(root, {node["id"] for node in nodes})
+    nodes = merge_nodes(nodes, ci_fragment["nodes"])
+    edges.extend(ci_fragment["edges"])
     nodes, zero_node_files, unresolved = add_coverage_nodes(root, detection, nodes, edges)
 
     extraction = {
