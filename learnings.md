@@ -1,6 +1,6 @@
 # Learnings
 
-Predict → Verify log, per the Learning Contract in `CLAUDE.md`. One entry per new pattern, library, or design decision: I write a prediction before implementation, Claude implements, then we diff prediction vs. reality here. Appended automatically by Claude — the value is in the "why different" line (the tradeoff), not the diff itself.
+Predict → Verify log, written at handoff (`docs/ai/handoff.md` "Docs and learning sync"). One entry per new pattern, library, or design decision. Since 2026-09-23 the "Predicted" line is taken from the approved plan — there is no live prediction ask and no predict-verify hook. Appended automatically by Claude — the value is in the "why different" line (the tradeoff), not the diff itself.
 
 Entry format:
 
@@ -354,3 +354,8 @@ The same restraint shows up in `exceptionSummary` returning zeroes rather than a
 **The generalisable form: an aggregate is a claim about a population, so it is only as valid as the population is homogeneous.** Before adding `avg()` or `sum()` to a column, ask what would have to be true of every row for the result to mean anything — and if the schema does not enforce that, the aggregate is a well-formatted guess. `count()` is nearly always safe because it makes no claim about the values at all.
 
 One duplication accepted on purpose: `agreedPriceAt` in the history service repeats the window and ambiguity rules from `contractPriceFlags`. A shared helper would have had to live somewhere both the procurement and catalog modules import, and the pull for that was weaker than the cost of a new shared surface. Both sides carry a comment saying the other exists. That is a bet that the comment outlives my memory of writing it, and the honest thing is to record that it is a bet.
+
+## 2026-09-23 — AI workflow port (AGENTS.md flow, TDD guard + gate, persona generator)
+**Predicted:** Port Tarraula's TDD scripts nearly verbatim — swap globs, keep the node:test TAP parser, symlink `node_modules` into the gate's base worktree; `ci_workflows.py` copies across unchanged.
+**Actual:** The runner parses Jest/Vitest JSON reports (one parser for both), resolves `node_modules/.bin` itself instead of `bunx`, kills whole process groups on timeout, and the gate's base worktree runs `bun install --frozen-lockfile` + builds `@repo/db`/`@repo/ai` instead of symlinking; the reference YAML parser looped forever on scalar list items (`- '**/*.md'`) and needed a fix.
+**Why different:** A Bun workspace resolves `@repo/*` through links into the checkout that installed them, so a symlinked `node_modules` would test the *head* code in the "base" worktree and fake a valid RED; `bunx` silently downloads a missing binary instead of failing. Tarraula's workflows never had a block-style scalar list, so its parser bug was latent until Optra's `paths-ignore` hit it.
