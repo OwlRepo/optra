@@ -307,11 +307,22 @@ cd /home/deploy/apps/optra && sh scripts/backup.sh --reason=scheduled
 
 ### Restore Database
 
+**See [`docs/ops/restore.md`](./docs/ops/restore.md)** — it covers choosing the right
+dump, restoring into a scratch database and checking it before swapping it in, and what
+to do when the whole server is gone.
+
+The short version, because the old snippet here was wrong once the dumps changed format:
+they are `pg_dump -Fc` archives, so `psql <` cannot read them.
+
 ```bash
 # On server
+docker compose -f docker-compose.prod.yml cp backup.dump postgres:/tmp/restore.dump
 docker compose -f docker-compose.prod.yml exec -T postgres \
-  sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"' < backup.sql
+  sh -c 'pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" --clean /tmp/restore.dump'
 ```
+
+Restoring straight over the live database like that destroys the evidence of whatever
+went wrong. The runbook's scratch-database route is the one to use under pressure.
 
 ### View Logs
 
