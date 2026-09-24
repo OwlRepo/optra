@@ -165,6 +165,21 @@ Configure these **GitHub Secrets** on the repo (`Settings → Secrets and variab
 | `VPS_SSH_KEY` | Private key with access to that user |
 | `VPS_PORT` | SSH port (usually `22`) |
 
+For the daily off-box backup (`.github/workflows/backup.yml`), four more. Leave them
+unset and backups still run — the script warns on every run that every copy is on the
+VPS disk, and exits 0:
+
+| Secret | Value |
+|---|---|
+| `BACKUP_S3_BUCKET` | Backblaze B2 bucket for database dumps, e.g. `optra-prod-backups` |
+| `BACKUP_S3_ENDPOINT` | B2 S3 endpoint, e.g. `https://s3.us-west-004.backblazeb2.com` |
+| `BACKUP_S3_ACCESS_KEY` | keyID of a **write-only** application key scoped to that bucket |
+| `BACKUP_S3_SECRET_KEY` | applicationKey for the same key |
+
+The backup key is deliberately write-only: a compromised VPS can add junk to the bucket
+but cannot read or destroy backup history. Retention is a B2 lifecycle rule, not
+something the server is permitted to do.
+
 ### 5. Verify Deployment
 
 **Check services:**
@@ -270,7 +285,25 @@ docker compose -f docker-compose.prod.yml exec -T postgres \
   sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB"' > backup_$(date +%Y%m%d_%H%M%S).sql
 ```
 
-The GitHub Actions deploy workflow also takes an automatic backup before every deploy, stored in `/home/deploy/apps/optra-backups/`, retained 14 days.
+Two automatic backups run without you:
+
+- **Before every deploy** (`deploy.yml` → `scripts/backup.sh --reason=deploy`) — a
+  rollback point for that deploy.
+- **Daily at 03:17 UTC** (`backup.yml` → `scripts/backup.sh --reason=scheduled`) — so
+  the database is protected on days when nothing ships.
+
+Both write `pg_dump -Fc` archives to `/home/deploy/apps/optra-backups/`, keep the newest
+7 locally, and upload off-box to B2 when the secrets above are set. Neither trusts the
+dump: each proves the archive parses with `pg_restore --list`, then restores it into a
+throwaway database and counts the tables before reporting success. A dump truncated
+half-way fails the run instead of sitting on disk looking healthy.
+
+Run one by hand at any time:
+
+```bash
+# On server
+cd /home/deploy/apps/optra && sh scripts/backup.sh --reason=scheduled
+```
 
 ### Restore Database
 
