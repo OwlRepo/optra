@@ -153,7 +153,7 @@ nano .env  # Fill in values
 
 **Option C: Automatic deploy via GitHub Actions**
 
-`.github/workflows/deploy.yml` deploys automatically on every push to `main` (or via manual `workflow_dispatch`). It SSHes into the VPS, pulls latest, backs up Postgres, rebuilds `api`/`web`, brings the stack up, and runs internal API/Web/S3 checks before declaring success.
+`.github/workflows/deploy.yml` deploys automatically on every push to `main` (or via manual `workflow_dispatch`). It SSHes into the VPS, pulls latest, takes a **verified** Postgres backup via `scripts/backup.sh --reason=deploy`, rebuilds `api`/`web`, brings the stack up, and runs internal API/Web/S3 checks before declaring success. The backup is a rollback point for that deploy: it is a `pg_dump -Fc` archive that the script proves parses *and* restores into a throwaway database before the deploy continues, so a dump truncated half-way fails the deploy rather than sitting on disk looking healthy.
 
 This assumes the deploy directory already has a working checkout with `.env` in place (i.e. you've already done Option A or B once). If `docker/seaweedfs/s3.prod.json` is missing, the workflow creates it from `S3_ACCESS_KEY`/`S3_SECRET_KEY` in `.env`. Set `COMPOSE_PROFILES=public` only when Optra's bundled Caddy should own host ports `80`/`443`; otherwise the workflow skips the public HTTPS smoke and leaves ingress to an external host proxy.
 

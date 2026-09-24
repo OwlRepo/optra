@@ -176,19 +176,19 @@ jobs:
 
             sh scripts/ensure-seaweedfs-s3-config.sh
 
-            mkdir -p /home/deploy/apps/optra-backups
-            postgres_container_id="$(docker compose -f docker-compose.prod.yml ps -q postgres || true)"
-
-            if [ -n "$postgres_container_id" ]; then
-              backup_file=/home/deploy/apps/optra-backups/optra-$(date +%F-%H%M%S).sql
-              echo "creating PostgreSQL backup: $backup_file"
-              docker compose -f docker-compose.prod.yml exec -T postgres \
-                sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB"' > "$backup_file"
-              test -s "$backup_file"
-              find /home/deploy/apps/optra-backups -type f -name 'optra-*.sql' -mtime +14 -delete
-            else
-              echo "skipping backup: postgres container not running yet"
-            fi
+            # A rollback point for THIS deploy, taken before anything is
+            # recreated. The daily off-box backup is a separate workflow with a
+            # different purpose; this one exists so a bad migration can be undone.
+            #
+            # The logic moved to scripts/backup.sh because these eleven lines
+            # could not be exercised without a production deploy — so nothing
+            # ever had, and the verification was `test -s`, which passes on a
+            # dump truncated half-way. The script now proves the archive parses
+            # and actually restores before the deploy continues.
+            #
+            # `--reason=deploy` tolerates a missing postgres container, because
+            # a first-ever deploy has none. The scheduled run refuses to.
+            sh scripts/backup.sh --reason=deploy
 
             echo "building images"
             docker compose -f docker-compose.prod.yml build api
