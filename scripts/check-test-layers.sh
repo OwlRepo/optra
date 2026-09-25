@@ -52,6 +52,9 @@ for commit in $(git rev-list --no-merges --reverse "$BASE..$HEAD"); do
     printf '%s\n' "$files" | while IFS= read -r file; do
         case "$file" in
             apps/api/src/*.spec.ts | apps/web/*.spec.ts) ;;
+            # `*` crosses `/` in case patterns, so common/** would also catch
+            # these: declarations and wiring, not behaviour.
+            apps/api/src/*.dto.ts | apps/api/src/*.module.ts | apps/api/src/*.d.ts) ;;
             apps/api/src/*.service.ts | apps/api/src/*.controller.ts | apps/api/src/*.processor.ts | \
             apps/api/src/*.guard.ts | apps/api/src/*.filter.ts | apps/api/src/*.pipe.ts | \
             apps/api/src/*.interceptor.ts | apps/api/src/common/*.ts | \
@@ -95,7 +98,9 @@ if [ "$failures" -gt 0 ]; then
     echo ""
     echo "$failures commit(s) change code without the tests for the layers they touch."
     echo "Add the tests to the same commit, or state why none are needed with a"
-    echo "'Test-Layers-Skip: <reason>' trailer. See docs/ai/testing-strategy.md."
+    echo "'Test-Layers-Skip: <reason>' trailer - on one line, in the message's final"
+    echo "paragraph (with Co-Authored-By), or git does not read it as a trailer."
+    echo "See docs/ai/testing-strategy.md."
     exit 1
 fi
 echo "check-test-layers: every commit in $(git rev-parse --short "$BASE")..$(git rev-parse --short "$HEAD") carries its tests"

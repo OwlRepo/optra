@@ -75,6 +75,7 @@ scenario 'web middleware without its spec fails' 1 'fix: x' apps/web/middleware.
 scenario 'a BFF helper with its spec passes' 0 'fix: x' \
     apps/web/src/lib/http/client-ip.ts apps/web/src/lib/http/client-ip.spec.ts
 scenario 'a DTO is not policed' 0 'feat: x' apps/api/src/auth/dto/login.dto.ts
+scenario 'a DTO under common/ is not policed either' 0 'feat: x' apps/api/src/common/dto/pagination.dto.ts
 
 echo ""
 echo "$passed passed, $failed failed"
