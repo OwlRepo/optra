@@ -70,11 +70,17 @@ export async function download(
 export async function bff(
   page: Page,
   url: string,
-  init: { method?: string } = {},
+  init: { method?: string; json?: unknown } = {},
 ): Promise<{ status: number; headers: Record<string, string>; body: string }> {
   return page.evaluate(
     async ({ url, init }) => {
-      const response = await fetch(url, { method: init.method ?? 'GET', credentials: 'same-origin' })
+      const response = await fetch(url, {
+        method: init.method ?? 'GET',
+        credentials: 'same-origin',
+        ...(init.json === undefined
+          ? {}
+          : { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(init.json) }),
+      })
       const headers: Record<string, string> = {}
       response.headers.forEach((value, key) => {
         headers[key] = value
