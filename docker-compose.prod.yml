@@ -83,7 +83,13 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-optra}
       REDIS_HOST: redis
       REDIS_PORT: 6379
-      S3_ENDPOINT: http://seaweedfs:8333
+      # From .env, never hard-coded. Production objects live in Backblaze B2;
+      # this line used to pin http://seaweedfs:8333, and because `environment:`
+      # beats `env_file:`, it silently overrode the B2 endpoint in .env while
+      # the bucket, keys and path-style still came from .env - so the SDK asked
+      # for optra-prod-objects.seaweedfs. `:?` makes a missing value fail the
+      # deploy at `compose up` instead of at the first upload.
+      S3_ENDPOINT: ${S3_ENDPOINT:?S3_ENDPOINT required}
       WEB_URL: https://${DOMAIN}
       OPENAI_API_KEY: ${OPENAI_API_KEY:?OPENAI_API_KEY required}
       LANGSMITH_API_KEY: ${LANGSMITH_API_KEY:-}

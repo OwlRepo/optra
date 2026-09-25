@@ -241,9 +241,10 @@ Local development:
 - `S3_BUCKET=optra-documents`
 - credentials come from `docker/seaweedfs/s3.json`
 
-Production:
-- `S3_ENDPOINT=http://seaweedfs:8333`
-- prod must have real `S3_ACCESS_KEY`/`S3_SECRET_KEY` in `.env`; `scripts/ensure-seaweedfs-s3-config.sh` creates `docker/seaweedfs/s3.prod.json` from those values when missing
+Production (Backblaze B2, since 2026-09-25):
+- `S3_ENDPOINT=https://s3.us-east-005.backblazeb2.com`, `S3_REGION=us-east-005`, `S3_BUCKET=optra-prod-objects`, `S3_FORCE_PATH_STYLE=false`, plus a bucket-scoped `S3_ACCESS_KEY`/`S3_SECRET_KEY` — all in the VPS `.env`
+- `docker-compose.prod.yml` takes `S3_ENDPOINT` from `.env` (`${S3_ENDPOINT:?}`) and never hard-codes it: `environment:` overrides `env_file:`, so a pinned value there silently wins over `.env`
+- the `seaweedfs` service still runs in prod until it is retired; nothing reads from it
 
 ---
 
