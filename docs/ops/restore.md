@@ -26,9 +26,13 @@ Older ones, or any at all if the box is gone, are in B2 under
 `s3://optra-prod-backups/YYYY-MM-DD/`. The filename timestamp is **UTC**, so sort order
 is chronological — pick the newest one from *before* the damage, not simply the newest.
 
-> The backup application key is **write-only**. It cannot list or download. Use a
+> The backup application key is **write-only**. It cannot list or download, so use a
 > read-capable key from the B2 console, or download through the web UI. That restriction
-> is deliberate: it is what stops a compromised server from destroying its own backups.
+> is deliberate — a copy the server can read is a copy an attacker on that server can
+> exfiltrate.
+>
+> Note it does *not* prevent deletion: B2's "Write Only" removes read, not delete. See
+> DEPLOYMENT.md for how to close that gap if it ever matters.
 
 Every dump in that directory has already been restored once, into a throwaway database,
 at the moment it was taken — that is what `scripts/backup.sh` does before it reports

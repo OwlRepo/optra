@@ -173,12 +173,23 @@ VPS disk, and exits 0:
 |---|---|
 | `BACKUP_S3_BUCKET` | Backblaze B2 bucket for database dumps, e.g. `optra-prod-backups` |
 | `BACKUP_S3_ENDPOINT` | B2 S3 endpoint, e.g. `https://s3.us-west-004.backblazeb2.com` |
-| `BACKUP_S3_ACCESS_KEY` | keyID of a **write-only** application key scoped to that bucket |
+| `BACKUP_S3_ACCESS_KEY` | keyID of a write-only application key scoped to that bucket |
 | `BACKUP_S3_SECRET_KEY` | applicationKey for the same key |
 
-The backup key is deliberately write-only: a compromised VPS can add junk to the bucket
-but cannot read or destroy backup history. Retention is a B2 lifecycle rule, not
-something the server is permitted to do.
+The backup key is deliberately write-only, so the server cannot **read** backup history —
+useful, because a copy an attacker can read is a copy they can exfiltrate. Retention is a
+B2 lifecycle rule; nothing on the box ever issues a delete.
+
+**It cannot, however, stop a delete.** B2's "Write Only" access type removes read, not
+delete: a key created that way in the web console still carries `deleteFiles` (verified
+2026-09-25 — the key uploaded, was denied on list, and then successfully deleted a test
+object). A compromised VPS could therefore destroy backup history. Closing that properly
+needs one of:
+
+- `b2 key create --bucket optra-prod-backups <name> writeFiles` via the B2 CLI, which
+  allows exact capabilities where the web console does not; or
+- Object Lock on the bucket, which makes objects immutable regardless of key — but B2
+  only allows enabling it at bucket creation, so it means a new bucket.
 
 ### 5. Verify Deployment
 

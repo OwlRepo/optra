@@ -8,9 +8,17 @@
 #   BACKUP_DIR=/tmp/t sh scripts/backup.sh --reason=scheduled \
 #     --compose-file=docker-compose.yml
 #
-# What it does NOT do, deliberately: delete anything in B2. The backup
-# application key is created write-only, so a compromised VPS can add junk but
-# cannot destroy history. Long-term expiry is a B2 lifecycle rule instead.
+# What it does NOT do, deliberately: delete anything in B2. Long-term expiry is
+# a B2 lifecycle rule instead, so nothing on this box ever issues a delete.
+#
+# That is a weaker guarantee than intended, and the gap is worth knowing.
+# B2's "Write Only" access type removes READ, not DELETE — a key created that
+# way in the web console still carries `deleteFiles` (verified 2026-09-25: the
+# backups key uploaded, was denied on list, and successfully deleted). So the
+# server is *not* prevented from destroying backup history; it merely never
+# tries. To actually prevent it, create the key with the B2 CLI and exact
+# capabilities (`b2 key create --bucket optra-prod-backups <name> writeFiles`),
+# or enable Object Lock on the bucket, which can only be done at creation.
 set -eu
 
 REASON=""
