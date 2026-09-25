@@ -7,18 +7,27 @@ import {
 } from '@nestjs/common'
 import { JwtService } from '@nestjs/jwt'
 import { ConfigService } from '@nestjs/config'
-import { eq, and, gt, isNull } from 'drizzle-orm'
+import { eq, and, gt, isNull, lt, desc, sql } from 'drizzle-orm'
 import * as bcrypt from 'bcrypt'
-import { createHash, randomBytes } from 'crypto'
+import { createHash, randomBytes, randomInt, timingSafeEqual } from 'crypto'
 import { db, users, otps, refreshTokens, workspaceMembers, workspaces } from '@repo/db'
 import type { RegisterDto } from './dto/register.dto'
 import type { VerifyOtpDto } from './dto/verify-otp.dto'
 import type { LoginDto } from './dto/login.dto'
+import type { ResendOtpDto } from './dto/resend-otp.dto'
 import { NotificationsService } from '../notifications/notifications.service'
+import { AuthLimitsService } from './auth-limits.service'
 
 const BCRYPT_ROUNDS = 12
 const OTP_EXPIRY_MINUTES = 10
 const RT_EXPIRY_DAYS = 7
+/** Wrong guesses one verification code survives. */
+const MAX_OTP_ATTEMPTS = 5
+const INVALID_CODE = 'Invalid or expired code'
+const RESEND_ANSWER = 'If that account is waiting for verification, a new code is on its way.'
+// Compared against when the email has no account, so an unknown email costs
+// the same bcrypt time as a known one and response time reveals nothing.
+const TIMING_HASH = bcrypt.hashSync('optra-timing-equaliser', BCRYPT_ROUNDS)
 
 type DbClient = typeof db | Parameters<Parameters<typeof db.transaction>[0]>[0]
 
@@ -28,6 +37,7 @@ export class AuthService {
     private jwtService: JwtService,
     private config: ConfigService,
     private notifications: NotificationsService,
+    private limits: AuthLimitsService,
   ) {}
 
   async register(dto: RegisterDto): Promise<{ message: string }> {
@@ -50,7 +60,7 @@ export class AuthService {
       .values({ email, passwordHash })
       .returning({ id: users.id })
 
-    const code = Math.floor(100000 + Math.random() * 900000).toString()
+    const code = this.newOtpCode()
     const expiresAt = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000)
 
     await db.insert(otps).values({ userId: user.id, code, expiresAt })
@@ -62,32 +72,58 @@ export class AuthService {
 
   async verifyOtp(dto: VerifyOtpDto): Promise<{ accessToken: string; refreshToken: string }> {
     const [user] = await db
-      .select()
+      .select({ id: users.id, email: users.email, isVerified: users.isVerified })
       .from(users)
       .where(eq(users.email, this.normalizeEmail(dto.email)))
       .limit(1)
 
-    if (!user) throw new UnauthorizedException('Invalid credentials')
+    // One answer for an unknown email, a verified account and a wrong or
+    // expired code, so the route does not reveal which emails exist. A
+    // verified account has nothing to verify; letting it through created a
+    // second workspace.
+    if (!user || user.isVerified) throw new UnauthorizedException(INVALID_CODE)
 
     const now = new Date()
 
     const [otp] = await db
-      .select()
+      .select({ id: otps.id, code: otps.code })
       .from(otps)
       .where(
         and(
           eq(otps.userId, user.id),
-          eq(otps.code, dto.code),
           gt(otps.expiresAt, now),
           isNull(otps.usedAt),
+          lt(otps.failedAttempts, MAX_OTP_ATTEMPTS),
         ),
       )
+      .orderBy(desc(otps.createdAt))
       .limit(1)
 
-    if (!otp) throw new UnauthorizedException('Invalid or expired code')
+    if (!otp) throw new UnauthorizedException(INVALID_CODE)
+
+    if (!this.codesMatch(otp.code, dto.code)) {
+      // Counted on the code itself, atomically: once it reaches the limit it
+      // no longer matches the query above, from any address.
+      const [counted] = await db
+        .update(otps)
+        .set({ failedAttempts: sql`${otps.failedAttempts} + 1` })
+        .where(eq(otps.id, otp.id))
+        .returning({ failedAttempts: otps.failedAttempts })
+      if (counted && counted.failedAttempts >= MAX_OTP_ATTEMPTS) {
+        throw new UnauthorizedException('Too many wrong codes. Request a new code.')
+      }
+      throw new UnauthorizedException(INVALID_CODE)
+    }
 
     return db.transaction(async (tx) => {
-      await tx.update(otps).set({ usedAt: now }).where(eq(otps.id, otp.id))
+      // Claims the code: of two requests racing with the right code, only one
+      // row update wins, so only one workspace is created.
+      const claimed = await tx
+        .update(otps)
+        .set({ usedAt: now })
+        .where(and(eq(otps.id, otp.id), isNull(otps.usedAt)))
+        .returning({ id: otps.id })
+      if (claimed.length === 0) throw new UnauthorizedException(INVALID_CODE)
       await tx.update(users).set({ isVerified: true }).where(eq(users.id, user.id))
 
       const [workspace] = await tx
@@ -108,17 +144,53 @@ export class AuthService {
     })
   }
 
-  async login(dto: LoginDto): Promise<{ accessToken: string; refreshToken: string }> {
+  async resendOtp(dto: ResendOtpDto): Promise<{ message: string }> {
+    const email = this.normalizeEmail(dto.email)
+    // The same answer whatever happens below, so the route reveals nothing
+    // about which emails exist or are verified.
+    const answer = { message: RESEND_ANSWER }
+
     const [user] = await db
-      .select()
+      .select({ id: users.id, isVerified: users.isVerified })
       .from(users)
-      .where(eq(users.email, this.normalizeEmail(dto.email)))
+      .where(eq(users.email, email))
+      .limit(1)
+    if (!user || user.isVerified) return answer
+    if (!(await this.limits.takeOtpResend(email))) return answer
+
+    const code = this.newOtpCode()
+    const now = new Date()
+    const expiresAt = new Date(now.getTime() + OTP_EXPIRY_MINUTES * 60 * 1000)
+    await db.transaction(async (tx) => {
+      // Only the newest code is ever live.
+      await tx
+        .update(otps)
+        .set({ expiresAt: now })
+        .where(and(eq(otps.userId, user.id), isNull(otps.usedAt), gt(otps.expiresAt, now)))
+      await tx.insert(otps).values({ userId: user.id, code, expiresAt })
+    })
+
+    await this.notifications.sendOtp(email, code)
+    return answer
+  }
+
+  async login(dto: LoginDto): Promise<{ accessToken: string; refreshToken: string }> {
+    const email = this.normalizeEmail(dto.email)
+    await this.limits.assertLoginAllowed(email)
+
+    const [user] = await db
+      .select({ id: users.id, email: users.email, passwordHash: users.passwordHash, isVerified: users.isVerified })
+      .from(users)
+      .where(eq(users.email, email))
       .limit(1)
 
-    if (!user) throw new UnauthorizedException('Invalid credentials')
+    const passwordMatch = await bcrypt.compare(dto.password, user?.passwordHash ?? TIMING_HASH)
+    if (!user || !passwordMatch) {
+      await this.limits.recordLoginFailure(email)
+      throw new UnauthorizedException('Invalid credentials')
+    }
 
-    const passwordMatch = await bcrypt.compare(dto.password, user.passwordHash)
-    if (!passwordMatch) throw new UnauthorizedException('Invalid credentials')
+    await this.limits.clearLoginFailures(email)
 
     if (!user.isVerified) {
       throw new ForbiddenException('Email not verified. Check your inbox for a verification code.')
@@ -217,6 +289,19 @@ export class AuthService {
     await client.insert(refreshTokens).values({ userId, tokenHash, expiresAt })
 
     return { accessToken, refreshToken: rawToken }
+  }
+
+  // crypto.randomInt, not Math.random: a verification code must not be predictable.
+  private newOtpCode(): string {
+    return randomInt(100_000, 1_000_000).toString()
+  }
+
+  // Constant time: an early exit at the first wrong digit would leak how many
+  // leading digits were right.
+  private codesMatch(stored: string, given: string): boolean {
+    const a = Buffer.from(stored)
+    const b = Buffer.from(given)
+    return a.length === b.length && timingSafeEqual(a, b)
   }
 
   private hashToken(token: string): string {
