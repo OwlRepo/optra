@@ -7,10 +7,6 @@ import { readOrNotFound } from '../storage/storage.errors'
 import { SERVABLE_PHOTO_TYPES, mediaTypeOf } from './catalog-photo-types'
 import { CatalogParseService } from './catalog-parse.service'
 
-// Raster types only (catalog-photo-types.ts). Still checked when serving, not
-// only when storing: objects stored before the fetcher applied the same list,
-// or written by any future path, must not be echoed back as SVG.
-
 const EXTENSION_CONTENT_TYPES: Record<string, string> = {
   '.png': 'image/png',
   '.jpg': 'image/jpeg',
@@ -27,6 +23,9 @@ function resolvePhotoContentType(storageKey: string, storedContentType: string |
   const stored = mediaTypeOf(storedContentType)
 
   if (stored) {
+    // Raster types only (catalog-photo-types.ts). Still checked when serving,
+    // not only when storing: objects stored before the fetcher applied the
+    // same list, or written by any future path, must not be echoed back as SVG.
     if (!SERVABLE_PHOTO_TYPES.has(stored)) {
       throw new BadRequestException('Unsupported image type')
     }

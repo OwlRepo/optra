@@ -1346,6 +1346,28 @@ New:
 ```
 The three-run CI check restarts on the commit carrying this change.
 
+### Amendment 2 (approved 2026-09-25, pre-PR /review, owner answers D1/D2/D4)
+
+The pre-merge `/review` (Claude specialists + adversarial pass; Codex retired) found test gaps and latent production footguns. None is live today: the production `.env` has no `PORT`, `THROTTLE_*`, `TRUST_PROXY` or duplicate keys (checked read-only). Owner decisions: D1 fix now, D2 fix now, D3 per-account auth limits get their own Deep plan after this deploy (logged open in the risk register), D4 fix the orphan comment and log the rest.
+
+Allowed files (the diff of the Amendment 2 commits is the literal record):
+
+| File | Change | Decision |
+|---|---|---|
+| `apps/api/src/datasets/datasets.service.spec.ts`, `apps/api/src/documents/documents.service.spec.ts` | Cleanup tests stub `storage.delete`, assert the insert's own error (`/too long/`) instead of any error; new `error:` case - cleanup itself fails, insert error still surfaces | D1 |
+| `apps/api/src/catalog/catalog-documents.service.spec.ts` | Same assertion tightened to `/too long/` | D1 |
+| `apps/web/middleware.spec.ts` | `happy:` silent refresh forwards `X-Forwarded-For`; `edge:` non-IP forwards nothing | D1 |
+| `apps/web/src/lib/http/auth-proxy.spec.ts` | `it.each` over `proxyJson`/`proxyRaw`/`proxyMultipart`: forwards the address; forwards none when absent | D1 |
+| `apps/web/app/api/auth/register/route.spec.ts`, `.../verify-otp/route.spec.ts` | `happy:` forwards the visitor address (IPv4 / IPv6) | D1 |
+| `apps/api/test/auth-rate-limit.e2e-spec.ts` | Untrusted describe boots through `configureApp` with `TRUST_PROXY` deleted, so the spoofing test proves the production bootstrap | D1 |
+| `apps/api/src/storage/storage.service.ts` + `.spec.ts` | `isMissingObjectError`: only `NoSuchKey`/`NotFound`; a bare 404 stays a configuration fault (500, retryable). RED first: bare-404 case moved to "leaves untouched" | D2 |
+| `scripts/check-prod-env.sh` + `.spec.sh` | Last assignment wins, surrounding quotes stripped, commented `.env.example` placeholders count, `THROTTLE_DEFAULT_LIMIT` refused; `TRUST_PROXY` check dropped (compose pins it). 11 cases | D2 |
+| `docker-compose.prod.yml` | api `environment:` pins `PORT: "3001"` | D2 |
+| `apps/api/src/catalog/catalog-documents.service.ts` | Orphan comment moved onto the `SERVABLE_PHOTO_TYPES` check | D4 |
+| `DEPLOYMENT.md`, `docs/ai/file-index/repository-map.md`, `docs/ai/risk-register.md` | Describe the stricter check; add "Per-Account Auth Limits" (open, Deep) and "Deferred Review Items (2026-09-25)" rows | D3/D4 |
+
+Validation: touched unit suites; `sh scripts/check-prod-env.spec.sh` (11 passed); `shellcheck`; the live prod `.env` still passes the stricter check (read-only); API e2e `auth-rate-limit`; then CI green once on the new head before the PR.
+
 ### Validation and acceptance
 
 **Test Matrix**
