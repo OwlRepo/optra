@@ -200,6 +200,13 @@ describe('Catalog flow (e2e)', () => {
       .expect(201)
     expect(uploadRes.body.status).toBe('pending')
 
+    const tooBig = await request(app.getHttpServer())
+      .post(`/workspaces/${workspaceId}/vendors/${vendorId}/catalogs`)
+      .set('Authorization', `Bearer ${owner.accessToken}`)
+      .attach('file', Buffer.alloc(26 * 1024 * 1024, 'a'), 'too-big.csv')
+      .expect(413)
+    expect(tooBig.body.message).toMatch(/^File exceeds \d+MB upload limit$/)
+
     await waitForCatalogDone(uploadRes.body.id)
 
     const itemsRes = await request(app.getHttpServer())

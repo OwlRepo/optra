@@ -138,6 +138,13 @@ describe('Datasets (e2e)', () => {
 
     await request(app.getHttpServer()).post(base).set('Authorization', `Bearer ${owner.accessToken}`).expect(400)
 
+    const tooBig = await request(app.getHttpServer())
+      .post(base)
+      .set('Authorization', `Bearer ${owner.accessToken}`)
+      .attach('file', Buffer.alloc(26 * 1024 * 1024, 'a'), 'too-big.csv')
+      .expect(413)
+    expect(tooBig.body.message).toMatch(/^File exceeds \d+MB upload limit$/)
+
     // A member reads but does not write.
     await request(app.getHttpServer()).get(base).set('Authorization', `Bearer ${member.accessToken}`).expect(200)
     await request(app.getHttpServer())

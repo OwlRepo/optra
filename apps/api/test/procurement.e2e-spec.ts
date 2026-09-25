@@ -693,6 +693,18 @@ describe('Procurement flow (e2e)', () => {
       .expect(400)
 
     expect(rejected.body.message).toBe('Only CSV, XLSX, or PDF files are supported')
+
+    // Over the size limit: a 413 that names the limit - through the real
+    // FileInterceptor, which is what a unit test of the filter cannot reach.
+    const tooBig = await request(app.getHttpServer())
+      .post(`/workspaces/${workspaceId}/procurement/purchase-orders`)
+      .set('Authorization', `Bearer ${owner.accessToken}`)
+      .field('vendorId', vendorId)
+      .field('poNumber', 'PO-2026-1184')
+      .field('currency', 'USD')
+      .attach('file', Buffer.alloc(26 * 1024 * 1024, 'a'), 'too-big.csv')
+      .expect(413)
+    expect(tooBig.body.message).toMatch(/^File exceeds \d+MB upload limit$/)
   })
 
   // B3, end to end on the real queue: a source file that is gone from storage

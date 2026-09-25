@@ -375,11 +375,13 @@ describe('Documents flow (e2e)', () => {
       .expect(201)
     const kbId = kbRes.body.id as string
 
-    await request(app.getHttpServer())
+    const tooBig = await request(app.getHttpServer())
       .post(`/workspaces/${workspaceId}/knowledge-bases/${kbId}/documents`)
       .set('Authorization', `Bearer ${owner.accessToken}`)
       .attach('file', Buffer.alloc(26 * 1024 * 1024, 'a'), 'too-big.txt')
       .expect(413)
+    // The limit, not the framework's generic "File too large".
+    expect(tooBig.body.message).toMatch(/^File exceeds \d+MB upload limit$/)
 
     await request(app.getHttpServer())
       .post(`/workspaces/${workspaceId}/knowledge-bases/${kbId}/documents`)

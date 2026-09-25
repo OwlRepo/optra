@@ -119,7 +119,7 @@ test('a file that is not CSV, XLSX or PDF is refused with the reason', async ({ 
   await expect(page.getByText('Only CSV, XLSX, or PDF files are supported')).toBeVisible()
 })
 
-test('a file over the upload limit is refused with 413', async ({ page }) => {
+test('a file over the upload limit is refused with the limit named', async ({ page }) => {
   await openTab(page, 'Purchase Orders')
   await chooseFile(page, 'Upload purchase order', oversized(`big-${state.run}.csv`))
 
@@ -131,6 +131,10 @@ test('a file over the upload limit is refused with 413', async ({ page }) => {
   )
   await dialog.getByRole('button', { name: 'Upload', exact: true }).click()
 
-  expect((await upload).status()).toBe(413)
+  const response = await upload
+  expect(response.status()).toBe(413)
+  expect((await response.json()).message).toBe('File exceeds 1MB upload limit')
   await expect(toast(page, 'Upload failed')).toBeVisible()
+  // What the person actually reads - not the framework's "File too large".
+  await expect(page.getByText('File exceeds 1MB upload limit')).toBeVisible()
 })

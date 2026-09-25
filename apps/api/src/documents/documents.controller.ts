@@ -1,11 +1,8 @@
 import {
-  ArgumentsHost,
   BadRequestException,
   Body,
-  Catch,
   Controller,
   Delete,
-  ExceptionFilter,
   Get,
   HttpCode,
   Param,
@@ -22,7 +19,6 @@ import { FileInterceptor } from '@nestjs/platform-express'
 import type { Response } from 'express'
 import archiver from 'archiver'
 import { extname } from 'path'
-import { MulterError } from 'multer'
 import { Roles } from '../auth/decorators/roles.decorator'
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard'
 import { RolesGuard } from '../auth/guards/roles.guard'
@@ -32,6 +28,7 @@ import { DownloadManyDto } from './dto/download-many.dto'
 import { ListDocumentsQueryDto } from './dto/list-documents-query.dto'
 import { attachmentDisposition } from '../common/http/content-disposition'
 import { DocumentsService } from './documents.service'
+import { UploadExceptionFilter } from '../common/http/upload-exception.filter'
 
 const MAX_UPLOAD_MB = Number(process.env.MAX_UPLOAD_MB ?? 25)
 const MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024
@@ -87,31 +84,6 @@ function fileFilter(
   }
 
   callback(null, true)
-}
-
-@Catch(MulterError, BadRequestException)
-class UploadExceptionFilter implements ExceptionFilter {
-  catch(exception: MulterError | BadRequestException, host: ArgumentsHost) {
-    const response = host.switchToHttp().getResponse<Response>()
-
-    if (exception instanceof MulterError && exception.code === 'LIMIT_FILE_SIZE') {
-      response.status(413).json({
-        statusCode: 413,
-        message: `File exceeds ${MAX_UPLOAD_MB}MB upload limit`,
-      })
-      return
-    }
-
-    if (exception instanceof BadRequestException) {
-      response.status(400).json({
-        statusCode: 400,
-        message: exception.message,
-      })
-      return
-    }
-
-    throw exception
-  }
 }
 
 @Controller('workspaces/:workspaceId/knowledge-bases/:kbId/documents')
