@@ -55,15 +55,34 @@ describe('DatasetsService', () => {
   it('removes the stored file when the dataset row cannot be written', async () => {
     const { workspace } = await seedWorkspaceFixture(`${prefix}insert-fail@example.com`, 'Datasets Spec Insert Fail')
     storage.save.mockResolvedValue(undefined)
+    storage.delete.mockResolvedValue(undefined)
     const file = {
       originalname: `${'x'.repeat(501)}.csv`,
       mimetype: 'text/csv',
       buffer: Buffer.from('a,b\n1,2'),
     } as Express.Multer.File
 
-    await expect(service.upload(workspace.id, file)).rejects.toThrow()
+    // The insert's own error (name over 500 characters), not whatever the
+    // cleanup path happens to throw.
+    await expect(service.upload(workspace.id, file)).rejects.toThrow(/too long/)
 
     expect(storage.save).toHaveBeenCalledTimes(1)
+    expect(storage.delete).toHaveBeenCalledWith(storage.save.mock.calls[0][0])
+    expect(profiling.queueDataset).not.toHaveBeenCalled()
+  })
+
+  it('error: still reports the insert failure when removing the orphan also fails', async () => {
+    const { workspace } = await seedWorkspaceFixture(`${prefix}insert-fail-2@example.com`, 'Datasets Spec Insert Fail 2')
+    storage.save.mockResolvedValue(undefined)
+    storage.delete.mockRejectedValueOnce(new Error('storage unavailable'))
+    const file = {
+      originalname: `${'y'.repeat(501)}.csv`,
+      mimetype: 'text/csv',
+      buffer: Buffer.from('a,b\n1,2'),
+    } as Express.Multer.File
+
+    await expect(service.upload(workspace.id, file)).rejects.toThrow(/too long/)
+
     expect(storage.delete).toHaveBeenCalledWith(storage.save.mock.calls[0][0])
     expect(profiling.queueDataset).not.toHaveBeenCalled()
   })

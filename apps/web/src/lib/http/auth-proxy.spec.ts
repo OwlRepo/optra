@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { proxyJson, proxyRaw } from './auth-proxy'
+import { proxyJson, proxyMultipart, proxyRaw } from './auth-proxy'
 
 function makeRequest(url: string, init?: Omit<RequestInit, 'signal'>) {
   return new NextRequest(url, {
@@ -72,6 +72,43 @@ describe('proxyJson', () => {
         body: JSON.stringify({ name: 'Alpha' }),
       }),
     )
+  })
+})
+
+// Every proxied call carries the visitor address, so the API's rate limits
+// count each visitor rather than the web server (client-ip.ts).
+describe('visitor address forwarding', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  const proxies = [
+    ['proxyJson', (req: NextRequest) => proxyJson(req, '/workspaces/ws-1', { method: 'GET' })],
+    ['proxyRaw', (req: NextRequest) => proxyRaw(req, '/workspaces/ws-1/file', { method: 'GET' })],
+    ['proxyMultipart', (req: NextRequest) => proxyMultipart(req, '/workspaces/ws-1/upload')],
+  ] as const
+
+  function requestFor(name: string, headers: Record<string, string>) {
+    if (name !== 'proxyMultipart') return makeRequest('http://localhost:3000/api/x', { headers })
+    const form = new FormData()
+    form.append('file', new Blob(['a']), 'a.txt')
+    return makeRequest('http://localhost:3000/api/x', { method: 'POST', body: form, headers })
+  }
+
+  it.each(proxies)('happy: %s forwards the visitor address', async (name, call) => {
+    const fetchMock = vi.spyOn(global, 'fetch').mockResolvedValue(new Response('{}', { status: 200 }))
+
+    await call(requestFor(name, { 'x-forwarded-for': '203.0.113.7' }))
+
+    expect(fetchMock.mock.calls[0][1]?.headers).toMatchObject({ 'X-Forwarded-For': '203.0.113.7' })
+  })
+
+  it.each(proxies)('edge: %s forwards no address when the request has none', async (name, call) => {
+    const fetchMock = vi.spyOn(global, 'fetch').mockResolvedValue(new Response('{}', { status: 200 }))
+
+    await call(requestFor(name, {}))
+
+    expect(fetchMock.mock.calls[0][1]?.headers).not.toHaveProperty('X-Forwarded-For')
   })
 })
 

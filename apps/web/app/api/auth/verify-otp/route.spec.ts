@@ -15,6 +15,24 @@ describe('POST /api/auth/verify-otp proxy', () => {
     vi.unstubAllGlobals()
   })
 
+  it('happy: forwards the visitor address so the API limits each visitor separately', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(mockBackendResponse(401, { message: 'Invalid code' }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await POST(
+      new NextRequest('http://localhost:3000/api/auth/verify-otp', {
+        method: 'POST',
+        headers: { 'x-forwarded-for': '2001:db8::1' },
+        body: JSON.stringify({ email: 'a@example.com', code: '123456' }),
+      }),
+    )
+
+    expect(fetchMock.mock.calls[0][1].headers).toEqual({
+      'Content-Type': 'application/json',
+      'X-Forwarded-For': '2001:db8::1',
+    })
+  })
+
   it('forwards the Set-Cookie header from the backend back to the browser', async () => {
     vi.stubGlobal(
       'fetch',

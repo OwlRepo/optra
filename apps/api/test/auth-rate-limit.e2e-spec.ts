@@ -1,7 +1,6 @@
-import { INestApplication, ValidationPipe } from '@nestjs/common'
+import { INestApplication } from '@nestjs/common'
 import type { NestExpressApplication } from '@nestjs/platform-express'
 import { Test } from '@nestjs/testing'
-import cookieParser from 'cookie-parser'
 import { eq, like } from 'drizzle-orm'
 import request from 'supertest'
 import { db, otps, pool, refreshTokens, users } from '@repo/db'
@@ -23,18 +22,23 @@ async function fireSequentially(
   return statuses
 }
 
+// Booted through configureApp with TRUST_PROXY unset - the production
+// bootstrap, not a hand-built app - so the spoofing test below proves the real
+// wiring keeps trust off, not just Express's default.
 describe('Auth rate limiting (e2e)', () => {
-  let app: INestApplication
+  let app: NestExpressApplication
+  const originalTrustProxy = process.env.TRUST_PROXY
 
   beforeAll(async () => {
+    delete process.env.TRUST_PROXY
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile()
-    app = moduleRef.createNestApplication()
-    app.use(cookieParser())
-    app.useGlobalPipes(new ValidationPipe({ whitelist: true }))
+    app = moduleRef.createNestApplication<NestExpressApplication>()
+    configureApp(app)
     await app.init()
   })
 
   afterAll(async () => {
+    if (originalTrustProxy !== undefined) process.env.TRUST_PROXY = originalTrustProxy
     const testUsers = await db.select({ id: users.id }).from(users).where(like(users.email, 'rate-limit-%'))
     for (const u of testUsers) {
       await db.delete(refreshTokens).where(eq(refreshTokens.userId, u.id))

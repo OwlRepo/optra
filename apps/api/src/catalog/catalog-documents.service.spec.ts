@@ -123,7 +123,8 @@ describe('CatalogDocumentsService', () => {
       buffer: Buffer.from('sku\nA'),
     } as Express.Multer.File
 
-    await expect(service.upload(workspace.id, vendor.id, file)).rejects.toThrow()
+    // The insert's own error (name over 500 characters), not any error.
+    await expect(service.upload(workspace.id, vendor.id, file)).rejects.toThrow(/too long/)
 
     expect(storage.save).toHaveBeenCalledTimes(1)
     expect(storage.delete).toHaveBeenCalledWith(storage.save.mock.calls[0][0])

@@ -135,15 +135,34 @@ describe('DocumentsService', () => {
   it('upload removes the stored file when the document row cannot be written', async () => {
     const mine = await seedWorkspaceFixture(`${prefix}insert-fail@example.com`, 'Documents Spec WS Insert Fail')
     storage.save.mockResolvedValue(undefined)
+    storage.delete.mockResolvedValue(undefined)
     const file = {
       originalname: `${'x'.repeat(501)}.txt`,
       mimetype: 'text/plain',
       buffer: Buffer.from('hello'),
     } as Express.Multer.File
 
-    await expect(service.upload(mine.workspace.id, mine.knowledgeBase.id, file)).rejects.toThrow()
+    // The insert's own error (title over 500 characters), not whatever the
+    // cleanup path happens to throw.
+    await expect(service.upload(mine.workspace.id, mine.knowledgeBase.id, file)).rejects.toThrow(/too long/)
 
     expect(storage.save).toHaveBeenCalledTimes(1)
+    expect(storage.delete).toHaveBeenCalledWith(storage.save.mock.calls[0][0])
+    expect(ingest.queueDocument).not.toHaveBeenCalled()
+  })
+
+  it('error: upload still reports the insert failure when removing the orphan also fails', async () => {
+    const mine = await seedWorkspaceFixture(`${prefix}insert-fail-2@example.com`, 'Documents Spec WS Insert Fail 2')
+    storage.save.mockResolvedValue(undefined)
+    storage.delete.mockRejectedValueOnce(new Error('storage unavailable'))
+    const file = {
+      originalname: `${'y'.repeat(501)}.txt`,
+      mimetype: 'text/plain',
+      buffer: Buffer.from('hello'),
+    } as Express.Multer.File
+
+    await expect(service.upload(mine.workspace.id, mine.knowledgeBase.id, file)).rejects.toThrow(/too long/)
+
     expect(storage.delete).toHaveBeenCalledWith(storage.save.mock.calls[0][0])
     expect(ingest.queueDocument).not.toHaveBeenCalled()
   })
