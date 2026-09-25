@@ -54,6 +54,7 @@ jobs:
         run: |
           sh scripts/check-test-layers.spec.sh
           sh scripts/check-test-layers.sh "$BASE_SHA" HEAD
+          sh scripts/check-prod-env.spec.sh
 
       # .nvmrc pins 22: Node 25 cannot load duckdb's native binding.
       - uses: actions/setup-node@v4
@@ -231,6 +232,10 @@ jobs:
             fi
             git merge --ff-only origin/main
             echo "checked out $(git rev-parse --short HEAD)"
+
+            # Before the backup and before any build: a .env that cannot work
+            # stops the deploy here, with nothing changed.
+            sh scripts/check-prod-env.sh .env .env.example
 
             # A rollback point for THIS deploy, taken before anything is
             # recreated. The daily off-box backup is a separate workflow with a
