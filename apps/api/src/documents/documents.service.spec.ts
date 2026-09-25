@@ -129,6 +129,25 @@ describe('DocumentsService', () => {
     expect(ingest.queueDocument).toHaveBeenCalledWith(saved.id)
   })
 
+  // A stored file whose row could not be written is an orphan nothing points
+  // at. A title over the column's 500 characters is a real way for the insert
+  // to fail - a client can send any filename.
+  it('upload removes the stored file when the document row cannot be written', async () => {
+    const mine = await seedWorkspaceFixture(`${prefix}insert-fail@example.com`, 'Documents Spec WS Insert Fail')
+    storage.save.mockResolvedValue(undefined)
+    const file = {
+      originalname: `${'x'.repeat(501)}.txt`,
+      mimetype: 'text/plain',
+      buffer: Buffer.from('hello'),
+    } as Express.Multer.File
+
+    await expect(service.upload(mine.workspace.id, mine.knowledgeBase.id, file)).rejects.toThrow()
+
+    expect(storage.save).toHaveBeenCalledTimes(1)
+    expect(storage.delete).toHaveBeenCalledWith(storage.save.mock.calls[0][0])
+    expect(ingest.queueDocument).not.toHaveBeenCalled()
+  })
+
   it('upload rejects when the knowledge base is not in the workspace', async () => {
     const mine = await seedWorkspaceFixture(`${prefix}mine@example.com`, 'Documents Spec WS Mine')
     const other = await seedWorkspaceFixture(`${prefix}other@example.com`, 'Documents Spec WS Other')

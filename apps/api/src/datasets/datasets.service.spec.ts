@@ -52,6 +52,22 @@ describe('DatasetsService', () => {
     await pool.end()
   })
 
+  it('removes the stored file when the dataset row cannot be written', async () => {
+    const { workspace } = await seedWorkspaceFixture(`${prefix}insert-fail@example.com`, 'Datasets Spec Insert Fail')
+    storage.save.mockResolvedValue(undefined)
+    const file = {
+      originalname: `${'x'.repeat(501)}.csv`,
+      mimetype: 'text/csv',
+      buffer: Buffer.from('a,b\n1,2'),
+    } as Express.Multer.File
+
+    await expect(service.upload(workspace.id, file)).rejects.toThrow()
+
+    expect(storage.save).toHaveBeenCalledTimes(1)
+    expect(storage.delete).toHaveBeenCalledWith(storage.save.mock.calls[0][0])
+    expect(profiling.queueDataset).not.toHaveBeenCalled()
+  })
+
   it('uploads a dataset, saves it to storage, and enqueues profiling', async () => {
     const { workspace } = await seedWorkspaceFixture(`${prefix}upload@example.com`, 'Datasets Spec Upload')
     storage.save.mockResolvedValue(undefined)

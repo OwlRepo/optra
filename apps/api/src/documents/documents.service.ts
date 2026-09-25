@@ -24,16 +24,30 @@ export class DocumentsService {
     const storageKey = `${workspaceId}/${kbId}/${randomUUID()}-${file.originalname}`
     await this.storage.save(storageKey, file.buffer, file.mimetype)
 
-    const [document] = await db
-      .insert(documents)
-      .values({
-        workspaceId,
-        knowledgeBaseId: kbId,
-        title: file.originalname,
-        storageKey,
-        status: 'pending',
+    let document: typeof documents.$inferSelect
+    try {
+      [document] = await db
+        .insert(documents)
+        .values({
+          workspaceId,
+          knowledgeBaseId: kbId,
+          title: file.originalname,
+          storageKey,
+          status: 'pending',
+        })
+        .returning()
+    } catch (error) {
+      // The object is stored and nothing points at it; remove it rather than
+      // leave an orphan (the cleanup procurement uploads already do).
+      await this.storage.delete(storageKey).catch((cleanupError: unknown) => {
+        this.logger.warn(
+          `Could not remove orphaned document object after a failed insert: ${
+            cleanupError instanceof Error ? cleanupError.message : String(cleanupError)
+          }`,
+        )
       })
-      .returning()
+      throw error
+    }
 
     try {
       await this.ingest.queueDocument(document.id)

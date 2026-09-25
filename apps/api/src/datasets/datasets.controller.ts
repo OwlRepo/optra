@@ -7,6 +7,7 @@ import {
   ExceptionFilter,
   Get,
   Param,
+  ParseUUIDPipe,
   Post,
   UploadedFile,
   UseFilters,
@@ -98,7 +99,7 @@ export class DatasetsController {
   @Delete(':datasetId')
   @UseGuards(JwtAuthGuard, WorkspaceMemberGuard, RolesGuard)
   @Roles('owner', 'admin')
-  remove(@Param('workspaceId') workspaceId: string, @Param('datasetId') datasetId: string) {
+  remove(@Param('workspaceId') workspaceId: string, @Param('datasetId', ParseUUIDPipe) datasetId: string) {
     return this.datasetsService.remove(workspaceId, datasetId)
   }
 }
