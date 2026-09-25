@@ -66,7 +66,7 @@ A layer that genuinely cannot observe the change is skipped with a trailer on th
 
 Confirmed from `apps/api/package.json` as of 2026-06-28:
 
-- `bun run test` — Jest unit tests (`apps/api/src/**/*.spec.ts`)
+- `bun run test` — Jest unit tests (`apps/api/src/**/*.spec.ts`). Since 2026-09-26 they run on their own database, `optra_unit`, recreated from the migrations by Jest's `globalSetup` (`apps/api/test/unit-global-setup.ts`, via `apps/e2e/scripts/prepare-db.ts`) and in `TZ=UTC`; they never touch the dev database `optra`. Base connection from `DATABASE_URL`, overridable with `UNIT_DATABASE_URL`. No per-suite cleanup is needed.
 - `bun run test:watch` — Jest unit tests, watch mode
 - `bun run test:cov` — Jest unit tests with coverage report
 - `bun run test:e2e` — Jest e2e tests (`apps/api/test/**/*.e2e-spec.ts`, 15 suites), boots a real `AppModule` instance and hits it with Supertest. In CI and for a clean local run, on its own database: `bun apps/e2e/scripts/prepare-db.ts optra_e2e && DATABASE_URL=postgresql://postgres:postgres@localhost:54322/optra_e2e bun run test:e2e`. No suite reaches a real model (verified 2026-09-25 with OpenAI pointed at an unreachable address).

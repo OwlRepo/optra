@@ -381,3 +381,12 @@ Three smaller lessons from building the harness, each of which cost a red run:
 - `next start` "works" under `output: 'standalone'` with a warning, and running the standalone `server.js` in place resolves `next` through whatever stale copy is in `apps/web/node_modules`. Stage it the way the Dockerfile does, or the test server is not the production server.
 
 And one rule the owner made standing: every change now ships with its tests for each layer it touches, enforced per commit in CI (`scripts/check-test-layers.sh`). The guard's first real use was on this branch - it stopped a lint-only commit until it said why it needed no test, which is the point: a skip is allowed, a silent one is not.
+
+## 2026-09-26 — A test that queues answers for "whoever asks first"
+*Learning Contract: the plan's design is the prediction; the diff is below. No live prediction solicited.*
+
+**Predicted (from the approved plan):** the two flaky suites shared one cause - a dev database full of other people's rows - and a fresh database per run would end both.
+
+**Actual:** to be filled at handoff with what the soak showed.
+
+**Why different:** to be filled at handoff.
