@@ -1,0 +1,22 @@
+{
+  "name": "@repo/e2e",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "test:e2e": "playwright test",
+    "test:smoke": "playwright test -c playwright.prod.config.ts",
+    "type-check": "tsc --noEmit",
+    "lint": "eslint \"**/*.ts\""
+  },
+  "devDependencies": {
+    "@aws-sdk/client-s3": "^3.883.0",
+    "@playwright/test": "^1.63.0",
+    "@types/bcrypt": "^6.0.0",
+    "@types/pg": "^8.11.0",
+    "bcrypt": "^6.0.0",
+    "dotenv": "^16.4.0",
+    "ioredis": "^5.11.1",
+    "pg": "^8.11.0",
+    "typescript": "^5.3.3"
+  }
+}

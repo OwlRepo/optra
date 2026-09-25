@@ -27,6 +27,11 @@ build
 /apps/*/coverage
 /packages/*/coverage
 .DS_Store
+# Browser e2e output and staged servers: never part of an image.
+/apps/e2e/playwright-report
+/apps/e2e/test-results
+/apps/e2e/.auth
+/apps/e2e/.web-standalone
 *.swp
 *.swo
 *.tsbuildinfo
