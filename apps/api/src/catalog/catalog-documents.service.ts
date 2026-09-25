@@ -4,14 +4,12 @@ import { and, desc, eq } from 'drizzle-orm'
 import { catalogItems, catalogs, db, vendors } from '@repo/db'
 import { StorageService } from '../storage/storage.service'
 import { readOrNotFound } from '../storage/storage.errors'
+import { SERVABLE_PHOTO_TYPES, mediaTypeOf } from './catalog-photo-types'
 import { CatalogParseService } from './catalog-parse.service'
 
-// Raster types only, and an allowlist rather than "serve whatever we stored".
-// CatalogImageService accepts any remote `image/*`, which includes
-// `image/svg+xml` — and an SVG can carry script, so echoing the stored type
-// back verbatim would turn a mislabelled file into stored XSS. These render in
-// an <img> and cannot execute.
-const SERVABLE_PHOTO_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'image/avif'])
+// Raster types only (catalog-photo-types.ts). Still checked when serving, not
+// only when storing: objects stored before the fetcher applied the same list,
+// or written by any future path, must not be echoed back as SVG.
 
 const EXTENSION_CONTENT_TYPES: Record<string, string> = {
   '.png': 'image/png',
@@ -26,7 +24,7 @@ const EXTENSION_CONTENT_TYPES: Record<string, string> = {
 // extension only when the object carries no type (older keys predate `save()`
 // recording one).
 function resolvePhotoContentType(storageKey: string, storedContentType: string | null): string {
-  const stored = storedContentType?.split(';')[0].trim().toLowerCase()
+  const stored = mediaTypeOf(storedContentType)
 
   if (stored) {
     if (!SERVABLE_PHOTO_TYPES.has(stored)) {
