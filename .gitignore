@@ -71,3 +71,10 @@ scripts/seed/.image-cache/
 # Nested git repository dropped into the worktree - not part of this project.
 # Staging it would record a gitlink, not files. Excluded rather than committed.
 autonomous-engineering-md-package/
+
+# Browser e2e (apps/e2e): reports, traces, saved sessions, staged web server
+apps/e2e/playwright-report/
+apps/e2e/playwright-report-smoke/
+apps/e2e/test-results/
+apps/e2e/.auth/
+apps/e2e/.web-standalone/

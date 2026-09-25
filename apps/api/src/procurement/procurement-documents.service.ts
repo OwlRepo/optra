@@ -12,6 +12,7 @@ import {
   vendors,
 } from '@repo/db'
 import { StorageService } from '../storage/storage.service'
+import { readOrNotFound } from '../storage/storage.errors'
 import { ProcurementDocKind, ProcurementParseService } from './procurement-parse.service'
 import { assertUnreachable, docLabel } from './procurement-kind'
 
@@ -291,7 +292,11 @@ export class ProcurementDocumentsService {
       throw new NotFoundException(`${docLabel(kind)} has no stored file`)
     }
 
-    const buffer = await this.storage.getBuffer(doc.storageKey)
+    const buffer = await readOrNotFound(
+      this.storage.getBuffer(doc.storageKey),
+      `${docLabel(kind)} file is missing`,
+      this.logger,
+    )
     return { name: doc.name, buffer }
   }
 

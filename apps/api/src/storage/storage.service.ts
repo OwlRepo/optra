@@ -15,6 +15,7 @@ import { tmpdir } from 'os'
 import { randomUUID } from 'crypto'
 import { pipeline } from 'stream/promises'
 import { Readable } from 'stream'
+import { StorageObjectNotFoundError } from './storage.errors'
 
 @Injectable()
 export class StorageService implements OnModuleInit {
@@ -48,12 +49,7 @@ export class StorageService implements OnModuleInit {
   }
 
   async getBuffer(key: string): Promise<Buffer> {
-    const response = await this.getClient().send(
-      new GetObjectCommand({
-        Bucket: this.getBucket(),
-        Key: key,
-      }),
-    )
+    const response = await this.fetchObject(key)
 
     if (!response.Body) {
       throw new Error(`No object body returned for ${key}`)
@@ -75,12 +71,7 @@ export class StorageService implements OnModuleInit {
    * its existing callers are untouched.
    */
   async getObject(key: string): Promise<{ buffer: Buffer; contentType: string | null }> {
-    const response = await this.getClient().send(
-      new GetObjectCommand({
-        Bucket: this.getBucket(),
-        Key: key,
-      }),
-    )
+    const response = await this.fetchObject(key)
 
     if (!response.Body) {
       throw new Error(`No object body returned for ${key}`)
@@ -95,12 +86,7 @@ export class StorageService implements OnModuleInit {
   }
 
   async getToTempFile(key: string): Promise<string> {
-    const response = await this.getClient().send(
-      new GetObjectCommand({
-        Bucket: this.getBucket(),
-        Key: key,
-      }),
-    )
+    const response = await this.fetchObject(key)
 
     if (!response.Body) {
       throw new Error(`No object body returned for ${key}`)
@@ -168,6 +154,31 @@ export class StorageService implements OnModuleInit {
     })
 
     return this.client
+  }
+
+  /**
+   * The one GetObject every reader goes through, so "the key is not there" is
+   * classified in exactly one place. Anything else - a missing bucket, a
+   * refused credential, a dead network - is rethrown untouched: those are
+   * faults to retry or page on, not a file someone deleted.
+   */
+  private async fetchObject(key: string) {
+    try {
+      return await this.getClient().send(new GetObjectCommand({ Bucket: this.getBucket(), Key: key }))
+    } catch (error) {
+      if (this.isMissingObjectError(error)) throw new StorageObjectNotFoundError(key, error)
+      throw error
+    }
+  }
+
+  private isMissingObjectError(error: unknown): boolean {
+    if (!error || typeof error !== 'object') return false
+    const candidate = error as { name?: string; Code?: string }
+    const code = candidate.name ?? candidate.Code
+    // Missing-object codes only. Any other 404 - a missing bucket, a wrong
+    // endpoint, a proxy's error page - is a configuration fault: it must stay
+    // a 500 and a retryable job failure, never "the stored file is missing".
+    return code === 'NoSuchKey' || code === 'NotFound'
   }
 
   private getBucket(): string {

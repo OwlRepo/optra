@@ -52,6 +52,39 @@ describe('middleware', () => {
     expect(cookies).toContain('mnemra_at=new-access-token')
   })
 
+  // The silent refresh every signed-in visitor goes through. Without the
+  // visitor address, every refresh lands in the web server's one bucket and
+  // people start being logged out once it fills.
+  it('happy: the silent refresh forwards the visitor address', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(mockBackendResponse(true, { accessToken: 'new-access-token' }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await middleware(
+      new NextRequest('http://localhost:3000/dashboard', {
+        headers: { Cookie: 'mnemra_rt=old-rt-value', 'x-forwarded-for': '203.0.113.7' },
+      }),
+    )
+
+    expect(fetchMock.mock.calls[0][0]).toContain('/auth/refresh')
+    expect(fetchMock.mock.calls[0][1].headers).toEqual({
+      Cookie: 'mnemra_rt=old-rt-value',
+      'X-Forwarded-For': '203.0.113.7',
+    })
+  })
+
+  it('edge: the silent refresh forwards nothing when the address is not an IP', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(mockBackendResponse(true, { accessToken: 'new-access-token' }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await middleware(
+      new NextRequest('http://localhost:3000/dashboard', {
+        headers: { Cookie: 'mnemra_rt=old-rt-value', 'x-forwarded-for': 'not-an-ip' },
+      }),
+    )
+
+    expect(fetchMock.mock.calls[0][1].headers).toEqual({ Cookie: 'mnemra_rt=old-rt-value' })
+  })
+
   it('redirects to /login when refresh returns a non-ok status', async () => {
     vi.stubGlobal(
       'fetch',

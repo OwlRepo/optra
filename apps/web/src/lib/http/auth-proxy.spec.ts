@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { proxyJson, proxyRaw } from './auth-proxy'
+import { proxyJson, proxyMultipart, proxyRaw } from './auth-proxy'
 
 function makeRequest(url: string, init?: Omit<RequestInit, 'signal'>) {
   return new NextRequest(url, {
@@ -75,6 +75,43 @@ describe('proxyJson', () => {
   })
 })
 
+// Every proxied call carries the visitor address, so the API's rate limits
+// count each visitor rather than the web server (client-ip.ts).
+describe('visitor address forwarding', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  const proxies = [
+    ['proxyJson', (req: NextRequest) => proxyJson(req, '/workspaces/ws-1', { method: 'GET' })],
+    ['proxyRaw', (req: NextRequest) => proxyRaw(req, '/workspaces/ws-1/file', { method: 'GET' })],
+    ['proxyMultipart', (req: NextRequest) => proxyMultipart(req, '/workspaces/ws-1/upload')],
+  ] as const
+
+  function requestFor(name: string, headers: Record<string, string>) {
+    if (name !== 'proxyMultipart') return makeRequest('http://localhost:3000/api/x', { headers })
+    const form = new FormData()
+    form.append('file', new Blob(['a']), 'a.txt')
+    return makeRequest('http://localhost:3000/api/x', { method: 'POST', body: form, headers })
+  }
+
+  it.each(proxies)('happy: %s forwards the visitor address', async (name, call) => {
+    const fetchMock = vi.spyOn(global, 'fetch').mockResolvedValue(new Response('{}', { status: 200 }))
+
+    await call(requestFor(name, { 'x-forwarded-for': '203.0.113.7' }))
+
+    expect(fetchMock.mock.calls[0][1]?.headers).toMatchObject({ 'X-Forwarded-For': '203.0.113.7' })
+  })
+
+  it.each(proxies)('edge: %s forwards no address when the request has none', async (name, call) => {
+    const fetchMock = vi.spyOn(global, 'fetch').mockResolvedValue(new Response('{}', { status: 200 }))
+
+    await call(requestFor(name, {}))
+
+    expect(fetchMock.mock.calls[0][1]?.headers).not.toHaveProperty('X-Forwarded-For')
+  })
+})
+
 describe('proxyRaw', () => {
   afterEach(() => {
     vi.restoreAllMocks()
@@ -100,6 +137,30 @@ describe('proxyRaw', () => {
 
     expect(response.headers.get('Cache-Control')).toBe('private, max-age=86400')
     expect(response.headers.get('Content-Type')).toBe('image/webp')
+  })
+
+  // The API marks every download nosniff. Dropped here, the browser would get
+  // user-uploaded bytes from our own origin with nothing stopping it sniffing
+  // them as HTML - in production Caddy re-adds it; in local dev nothing does.
+  it('forwards X-Content-Type-Options so downloads stay nosniff through the proxy', async () => {
+    vi.spyOn(global, 'fetch').mockResolvedValue(
+      new Response(Buffer.from('<script>'), {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/octet-stream',
+          'Content-Disposition': 'attachment; filename="page.html"',
+          'X-Content-Type-Options': 'nosniff',
+        },
+      }),
+    )
+
+    const response = await proxyRaw(
+      makeRequest('http://localhost:3000/api/workspaces/ws-1/knowledge-bases/kb-1/documents/doc-1/download'),
+      '/workspaces/ws-1/knowledge-bases/kb-1/documents/doc-1/download',
+      { method: 'GET' },
+    )
+
+    expect(response.headers.get('X-Content-Type-Options')).toBe('nosniff')
   })
 
   it('returns 401 without calling the backend when the auth cookie is missing', async () => {

@@ -21,32 +21,6 @@ import {
 import { COMPARISON_STRATEGY_VERSION, ComparisonService } from './comparison.service'
 import { DuckDbQueryService, SqlExecutionError } from '../structured-query/duckdb-query.service'
 
-async function cleanupFixtures(prefix: string) {
-  const testUsers = await db.select({ id: users.id }).from(users).where(like(users.email, `${prefix}%`))
-  for (const user of testUsers) {
-    const memberships = await db
-      .select({ workspaceId: workspaceMembers.workspaceId })
-      .from(workspaceMembers)
-      .where(eq(workspaceMembers.userId, user.id))
-    for (const membership of memberships) {
-      await db.delete(discrepancyDecisions).where(eq(discrepancyDecisions.workspaceId, membership.workspaceId))
-      await db.delete(discrepancyFlags).where(eq(discrepancyFlags.workspaceId, membership.workspaceId))
-      await db.delete(comparisonRuns).where(eq(comparisonRuns.workspaceId, membership.workspaceId))
-      await db
-        .delete(goodsReceiptLineItems)
-        .where(eq(goodsReceiptLineItems.workspaceId, membership.workspaceId))
-      await db.delete(goodsReceipts).where(eq(goodsReceipts.workspaceId, membership.workspaceId))
-      await db.delete(poLineItems).where(eq(poLineItems.workspaceId, membership.workspaceId))
-      await db.delete(invoiceLineItems).where(eq(invoiceLineItems.workspaceId, membership.workspaceId))
-      await db.delete(purchaseOrders).where(eq(purchaseOrders.workspaceId, membership.workspaceId))
-      await db.delete(invoices).where(eq(invoices.workspaceId, membership.workspaceId))
-      await db.delete(workspaceMembers).where(eq(workspaceMembers.workspaceId, membership.workspaceId))
-      await db.delete(workspaces).where(eq(workspaces.id, membership.workspaceId))
-    }
-  }
-  await db.delete(users).where(like(users.email, `${prefix}%`))
-}
-
 async function seedWorkspace(email: string, name: string) {
   const [user] = await db.insert(users).values({ email, passwordHash: 'x', isVerified: true }).returning()
   const [workspace] = await db.insert(workspaces).values({ name, ownerId: user.id }).returning()
@@ -73,8 +47,10 @@ describe('ComparisonService', () => {
     service = new ComparisonService(new DuckDbQueryService())
   })
 
+  // No per-suite cleanup: unit tests run on a database recreated every run
+  // (test/unit-global-setup.ts). This one issued up to ~2,400 sequential
+  // deletes and exceeded Jest's 5 s hook timeout in CI.
   afterAll(async () => {
-    await cleanupFixtures(prefix)
     await pool.end()
   })
 

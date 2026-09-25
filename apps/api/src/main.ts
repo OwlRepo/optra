@@ -1,19 +1,15 @@
 import { NestFactory } from '@nestjs/core'
-import { ValidationPipe } from '@nestjs/common'
-import cookieParser from 'cookie-parser'
+import type { NestExpressApplication } from '@nestjs/platform-express'
 import { AppModule } from './app.module'
-import { AllExceptionsFilter } from './common/filters/all-exceptions.filter'
+import { configureApp } from './bootstrap'
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule)
-  app.use(cookieParser())
-  app.useGlobalPipes(new ValidationPipe({ whitelist: true }))
-  app.useGlobalFilters(new AllExceptionsFilter())
-  app.enableCors({
-    origin: process.env.WEB_URL || 'http://localhost:3000',
-    credentials: true,
-  })
-  await app.listen(3001)
-  console.log('API running on http://localhost:3001')
+  const app = await NestFactory.create<NestExpressApplication>(AppModule)
+  configureApp(app)
+  // PORT lets the browser e2e suite run a second API beside a dev one; the
+  // Dockerfile healthcheck already reads ${PORT:-3001}.
+  const port = Number(process.env.PORT ?? 3001)
+  await app.listen(port)
+  console.log(`API running on http://localhost:${port}`)
 }
 bootstrap()

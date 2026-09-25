@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { accessCookie, forwardSetCookies } from '../../../../src/lib/http/set-cookie'
+import { clientIpHeaders } from '../../../../src/lib/http/client-ip'
 
 const API_URL = process.env.API_URL || 'http://localhost:3001'
 
@@ -11,6 +12,7 @@ export async function POST(request: NextRequest) {
     headers: {
       'Content-Type': 'application/json',
       ...(rtCookie ? { Cookie: `mnemra_rt=${rtCookie.value}` } : {}),
+      ...clientIpHeaders(request.headers),
     },
   })
 

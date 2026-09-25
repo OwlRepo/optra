@@ -15,6 +15,24 @@ describe('POST /api/auth/register proxy', () => {
     vi.unstubAllGlobals()
   })
 
+  it('happy: forwards the visitor address so the API limits each visitor separately', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(mockBackendResponse(201, { message: 'ok' }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await POST(
+      new NextRequest('http://localhost:3000/api/auth/register', {
+        method: 'POST',
+        headers: { 'x-forwarded-for': '203.0.113.7' },
+        body: JSON.stringify({ email: 'a@example.com', password: 'password123' }),
+      }),
+    )
+
+    expect(fetchMock.mock.calls[0][1].headers).toEqual({
+      'Content-Type': 'application/json',
+      'X-Forwarded-For': '203.0.113.7',
+    })
+  })
+
   it('passes the backend message and status straight through', async () => {
     vi.stubGlobal(
       'fetch',

@@ -11,6 +11,7 @@ import { Catalog, catalogItems, catalogs, db } from '@repo/db'
 import { renderPdfToImages } from '@repo/ai'
 import { isBudgetExceeded } from '../limits/usage.service'
 import { StorageService } from '../storage/storage.service'
+import { StorageObjectNotFoundError } from '../storage/storage.errors'
 import { CatalogExtractionService } from './catalog-extraction.service'
 import { CatalogImageService } from './catalog-image.service'
 import { CATALOG_RECONCILE_JOB_NAME, CatalogParseService } from './catalog-parse.service'
@@ -141,7 +142,11 @@ export class CatalogParseProcessor {
       const message = error instanceof Error ? error.message : String(error)
       const attempt = (job.attemptsMade ?? 0) + 1
       const attempts = job.opts?.attempts ?? 1
-      const permanent = error instanceof CatalogParseInputError || isBudgetExceeded(error)
+      // A missing object is permanent too: a retry cannot bring the file back.
+      const permanent =
+        error instanceof CatalogParseInputError ||
+        isBudgetExceeded(error) ||
+        error instanceof StorageObjectNotFoundError
       this.logger.error(
         `Catalog parse failed for ${id} attempt=${attempt}/${attempts} permanent=${permanent}`,
         error instanceof Error ? error.stack : message,

@@ -15,6 +15,8 @@ COPY packages/types/package.json ./packages/types/
 COPY packages/db/package.json ./packages/db/
 COPY packages/ai/package.json ./packages/ai/
 COPY packages/ui/package.json ./packages/ui/
+# bun install --frozen-lockfile needs every workspace manifest the lockfile names.
+COPY apps/e2e/package.json ./apps/e2e/
 RUN --mount=type=cache,id=optra-bun-web-v1,target=/root/.bun/install/cache,sharing=locked \
     bun install --frozen-lockfile --filter './' --filter '@repo/web' --filter '@repo/ui'
 

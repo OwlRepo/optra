@@ -158,6 +158,34 @@ describe('CatalogParseService', () => {
     )
   })
 
+  // A scrape catalog is owned by CatalogScrapeService.reconcile. The parse
+  // sweeper used to select every stale catalog, find no PARSE job for a
+  // scrape's `catalog-scrape:` job id, and push it into the parse queue.
+  it('regression: reconcile leaves a stale scraped catalog to the scrape reconciler', async () => {
+    const { workspace, vendor } = await seedWorkspaceAndVendor(`${prefix}scrape-owned@example.com`, 'Catalog Scrape Owned')
+    const staleSince = new Date(Date.now() - 60 * 60_000)
+    const [catalog] = await db
+      .insert(catalogs)
+      .values({
+        workspaceId: workspace.id,
+        vendorId: vendor.id,
+        name: 'https://vendor.example.com',
+        sourceKind: 'scrape',
+        status: 'processing',
+        queueJobId: 'catalog-scrape:stale',
+        enqueuedAt: staleSince,
+        processingStartedAt: staleSince,
+      })
+      .returning()
+
+    await service.reconcile()
+
+    expect(queue.add).not.toHaveBeenCalledWith({ id: catalog.id }, expect.anything())
+    const [row] = await db.select().from(catalogs).where(eq(catalogs.id, catalog.id))
+    expect(row.status).toBe('processing')
+    expect(row.lastError).toBeNull()
+  })
+
   it('reconcile leaves a fresh pending row untouched', async () => {
     const { workspace, vendor } = await seedWorkspaceAndVendor(`${prefix}fresh@example.com`, 'Catalog Fresh')
     const [catalog] = await db

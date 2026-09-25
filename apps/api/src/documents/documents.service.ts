@@ -4,6 +4,7 @@ import { and, count, desc, eq, ilike, inArray } from 'drizzle-orm'
 import { buildOffsetResult, db, documents, knowledgeBases, resolveOffsetPage } from '@repo/db'
 import { IngestService } from '../ingest/ingest.service'
 import { StorageService } from '../storage/storage.service'
+import { readOrNotFound } from '../storage/storage.errors'
 import { CacheService } from '../cache/cache.service'
 import { ListDocumentsQueryDto } from './dto/list-documents-query.dto'
 
@@ -23,16 +24,30 @@ export class DocumentsService {
     const storageKey = `${workspaceId}/${kbId}/${randomUUID()}-${file.originalname}`
     await this.storage.save(storageKey, file.buffer, file.mimetype)
 
-    const [document] = await db
-      .insert(documents)
-      .values({
-        workspaceId,
-        knowledgeBaseId: kbId,
-        title: file.originalname,
-        storageKey,
-        status: 'pending',
+    let document: typeof documents.$inferSelect
+    try {
+      [document] = await db
+        .insert(documents)
+        .values({
+          workspaceId,
+          knowledgeBaseId: kbId,
+          title: file.originalname,
+          storageKey,
+          status: 'pending',
+        })
+        .returning()
+    } catch (error) {
+      // The object is stored and nothing points at it; remove it rather than
+      // leave an orphan (the cleanup procurement uploads already do).
+      await this.storage.delete(storageKey).catch((cleanupError: unknown) => {
+        this.logger.warn(
+          `Could not remove orphaned document object after a failed insert: ${
+            cleanupError instanceof Error ? cleanupError.message : String(cleanupError)
+          }`,
+        )
       })
-      .returning()
+      throw error
+    }
 
     try {
       await this.ingest.queueDocument(document.id)
@@ -100,7 +115,7 @@ export class DocumentsService {
   /** Load a single document's stored bytes for download (member-readable). */
   async getDownloadable(workspaceId: string, kbId: string, documentId: string) {
     const doc = await this.findDownloadable(workspaceId, kbId, documentId)
-    const buffer = await this.storage.getBuffer(doc.storageKey)
+    const buffer = await readOrNotFound(this.storage.getBuffer(doc.storageKey), 'Document file is missing', this.logger)
     return { title: doc.title, buffer }
   }
 

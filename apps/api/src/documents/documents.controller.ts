@@ -1,14 +1,12 @@
 import {
-  ArgumentsHost,
   BadRequestException,
   Body,
-  Catch,
   Controller,
   Delete,
-  ExceptionFilter,
   Get,
   HttpCode,
   Param,
+  ParseUUIDPipe,
   Post,
   Query,
   Res,
@@ -21,7 +19,6 @@ import { FileInterceptor } from '@nestjs/platform-express'
 import type { Response } from 'express'
 import archiver from 'archiver'
 import { extname } from 'path'
-import { MulterError } from 'multer'
 import { Roles } from '../auth/decorators/roles.decorator'
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard'
 import { RolesGuard } from '../auth/guards/roles.guard'
@@ -31,6 +28,7 @@ import { DownloadManyDto } from './dto/download-many.dto'
 import { ListDocumentsQueryDto } from './dto/list-documents-query.dto'
 import { attachmentDisposition } from '../common/http/content-disposition'
 import { DocumentsService } from './documents.service'
+import { UploadExceptionFilter } from '../common/http/upload-exception.filter'
 
 const MAX_UPLOAD_MB = Number(process.env.MAX_UPLOAD_MB ?? 25)
 const MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024
@@ -88,31 +86,6 @@ function fileFilter(
   callback(null, true)
 }
 
-@Catch(MulterError, BadRequestException)
-class UploadExceptionFilter implements ExceptionFilter {
-  catch(exception: MulterError | BadRequestException, host: ArgumentsHost) {
-    const response = host.switchToHttp().getResponse<Response>()
-
-    if (exception instanceof MulterError && exception.code === 'LIMIT_FILE_SIZE') {
-      response.status(413).json({
-        statusCode: 413,
-        message: `File exceeds ${MAX_UPLOAD_MB}MB upload limit`,
-      })
-      return
-    }
-
-    if (exception instanceof BadRequestException) {
-      response.status(400).json({
-        statusCode: 400,
-        message: exception.message,
-      })
-      return
-    }
-
-    throw exception
-  }
-}
-
 @Controller('workspaces/:workspaceId/knowledge-bases/:kbId/documents')
 @UseFilters(UploadExceptionFilter)
 export class DocumentsController {
@@ -129,7 +102,7 @@ export class DocumentsController {
   )
   upload(
     @Param('workspaceId') workspaceId: string,
-    @Param('kbId') kbId: string,
+    @Param('kbId', ParseUUIDPipe) kbId: string,
     @UploadedFile() file?: Express.Multer.File,
   ) {
     if (!file) {
@@ -143,7 +116,7 @@ export class DocumentsController {
   @UseGuards(JwtAuthGuard, WorkspaceMemberGuard)
   list(
     @Param('workspaceId') workspaceId: string,
-    @Param('kbId') kbId: string,
+    @Param('kbId', ParseUUIDPipe) kbId: string,
     @Query() query: ListDocumentsQueryDto,
   ) {
     return this.documentsService.listForKnowledgeBase(workspaceId, kbId, query)
@@ -154,7 +127,7 @@ export class DocumentsController {
   @UseGuards(JwtAuthGuard, WorkspaceMemberGuard)
   async downloadMany(
     @Param('workspaceId') workspaceId: string,
-    @Param('kbId') kbId: string,
+    @Param('kbId', ParseUUIDPipe) kbId: string,
     @Body() body: DownloadManyDto,
     @Res() res: Response,
   ) {
@@ -163,6 +136,7 @@ export class DocumentsController {
     res.set({
       'Content-Type': 'application/zip',
       'Content-Disposition': 'attachment; filename="documents.zip"',
+      'X-Content-Type-Options': 'nosniff',
     })
 
     const archive = archiver('zip', { zlib: { level: 9 } })
@@ -190,7 +164,7 @@ export class DocumentsController {
   @Roles('owner', 'admin')
   deleteMany(
     @Param('workspaceId') workspaceId: string,
-    @Param('kbId') kbId: string,
+    @Param('kbId', ParseUUIDPipe) kbId: string,
     @Body() body: DeleteManyDto,
   ) {
     return this.documentsService.removeMany(workspaceId, kbId, body.documentIds)
@@ -200,8 +174,8 @@ export class DocumentsController {
   @UseGuards(JwtAuthGuard, WorkspaceMemberGuard)
   async download(
     @Param('workspaceId') workspaceId: string,
-    @Param('kbId') kbId: string,
-    @Param('documentId') documentId: string,
+    @Param('kbId', ParseUUIDPipe) kbId: string,
+    @Param('documentId', ParseUUIDPipe) documentId: string,
     @Res() res: Response,
   ) {
     const { title, buffer } = await this.documentsService.getDownloadable(workspaceId, kbId, documentId)
@@ -210,6 +184,8 @@ export class DocumentsController {
       'Content-Type': 'application/octet-stream',
       'Content-Disposition': attachmentDisposition(title),
       'Content-Length': String(buffer.length),
+      // Here, not only in docker/Caddyfile: local dev has no Caddy.
+      'X-Content-Type-Options': 'nosniff',
     })
     res.send(buffer)
   }
@@ -220,8 +196,8 @@ export class DocumentsController {
   @Roles('owner', 'admin')
   remove(
     @Param('workspaceId') workspaceId: string,
-    @Param('kbId') kbId: string,
-    @Param('documentId') documentId: string,
+    @Param('kbId', ParseUUIDPipe) kbId: string,
+    @Param('documentId', ParseUUIDPipe) documentId: string,
   ) {
     return this.documentsService.remove(workspaceId, kbId, documentId)
   }

@@ -27,6 +27,7 @@ import {
 } from '@repo/db'
 import { AppModule } from '../src/app.module'
 import { StorageService } from '../src/storage/storage.service'
+import { StorageObjectNotFoundError } from '../src/storage/storage.errors'
 import { ProcurementExtractionService } from '../src/procurement/procurement-extraction.service'
 import { AllExceptionsFilter } from '../src/common/filters/all-exceptions.filter'
 
@@ -192,12 +193,14 @@ describe('Procurement flow (e2e)', () => {
       }),
       getBuffer: jest.fn(async (key: string) => {
         const body = stored.get(key)
-        if (!body) throw new Error(`Missing stored object ${key}`)
+        // What real storage throws now, not a generic Error.
+        if (!body) throw new StorageObjectNotFoundError(key)
         return Buffer.from(body)
       }),
       getToTempFile: jest.fn(async (key: string) => {
         const body = stored.get(key)
-        if (!body) throw new Error(`Missing stored object ${key}`)
+        // What real storage throws now, not a generic Error.
+        if (!body) throw new StorageObjectNotFoundError(key)
         const dir = await mkdtemp(join(tmpdir(), 'procurement-e2e-'))
         const path = join(dir, key.split('/').pop() ?? 'file')
         await writeFile(path, body)
@@ -543,6 +546,19 @@ describe('Procurement flow (e2e)', () => {
       .get(`/workspaces/${workspaceId}/procurement/purchase-orders/not-a-uuid/download`)
       .set('Authorization', `Bearer ${owner.accessToken}`)
       .expect(400)
+
+    // The row says there is a file; storage says there is not. A 404 the UI
+    // can explain - never a 500 that reads as an outage - and the storage key
+    // stays inside the API.
+    storage.getBuffer.mockImplementationOnce(async (key: string) => {
+      throw new StorageObjectNotFoundError(key)
+    })
+    const gone = await request(app.getHttpServer())
+      .get(`/workspaces/${workspaceId}/procurement/purchase-orders/${poUpload.body.id}/download`)
+      .set('Authorization', `Bearer ${owner.accessToken}`)
+      .expect(404)
+    expect(gone.body.message).toBe('Purchase order file is missing')
+    expect(JSON.stringify(gone.body)).not.toContain('/procurement/')
   })
 
   it('uploads PO + invoice as PDF, parses via the extraction seam, and compares identically to CSV', async () => {
@@ -677,6 +693,52 @@ describe('Procurement flow (e2e)', () => {
       .expect(400)
 
     expect(rejected.body.message).toBe('Only CSV, XLSX, or PDF files are supported')
+
+    // Over the size limit: a 413 that names the limit - through the real
+    // FileInterceptor, which is what a unit test of the filter cannot reach.
+    const tooBig = await request(app.getHttpServer())
+      .post(`/workspaces/${workspaceId}/procurement/purchase-orders`)
+      .set('Authorization', `Bearer ${owner.accessToken}`)
+      .field('vendorId', vendorId)
+      .field('poNumber', 'PO-2026-1184')
+      .field('currency', 'USD')
+      .attach('file', Buffer.alloc(26 * 1024 * 1024, 'a'), 'too-big.csv')
+      .expect(413)
+    expect(tooBig.body.message).toMatch(/^File exceeds \d+MB upload limit$/)
+  })
+
+  // B3, end to end on the real queue: a source file that is gone from storage
+  // fails the document on the FIRST attempt with a reason the page can show.
+  // Bull retries a transient failure after a 5s backoff, so reaching `failed`
+  // inside 4s is itself the proof that no retry was needed - the old
+  // behaviour left the row `processing` for three attempts.
+  it('fails a purchase order whose stored file is gone, once, with a reason', async () => {
+    const owner = await seedOwnerWithWorkspace(app, `${prefix}gone-owner@example.com`, 'Procurement Gone')
+    const vendorId = await createVendor(app, owner.workspaceId, owner.accessToken)
+    storage.getToTempFile.mockImplementationOnce(async (key: string) => {
+      throw new StorageObjectNotFoundError(key)
+    })
+
+    const upload = await request(app.getHttpServer())
+      .post(`/workspaces/${owner.workspaceId}/procurement/purchase-orders`)
+      .set('Authorization', `Bearer ${owner.accessToken}`)
+      .field('vendorId', vendorId)
+      .field('poNumber', 'PO-GONE-1')
+      .field('currency', 'USD')
+      .attach('file', Buffer.from('sku,description,qty,unit price\nA1,Widget,10,5.00'), 'gone.csv')
+      .expect(201)
+
+    let row: typeof purchaseOrders.$inferSelect | undefined
+    const deadline = Date.now() + 4_000
+    while (Date.now() < deadline) {
+      [row] = await db.select().from(purchaseOrders).where(eq(purchaseOrders.id, upload.body.id)).limit(1)
+      if (row?.status === 'failed') break
+      await new Promise((resolve) => setTimeout(resolve, 100))
+    }
+
+    expect(row?.status).toBe('failed')
+    expect(row?.lastError).toBe('The stored file is missing. Upload it again.')
+    expect(storage.getToTempFile.mock.calls.filter(([key]) => key === row?.storageKey)).toHaveLength(1)
   })
 
   // S5. Receiving ingest end to end: real Bull queue, real processor, no mocks

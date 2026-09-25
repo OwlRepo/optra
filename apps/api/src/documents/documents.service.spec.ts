@@ -6,6 +6,7 @@ import { DocumentsService } from './documents.service'
 import { CacheService } from '../cache/cache.service'
 import { StorageService } from '../storage/storage.service'
 import { IngestService } from '../ingest/ingest.service'
+import { StorageObjectNotFoundError } from '../storage/storage.errors'
 
 async function cleanupDocumentFixtures(prefix: string) {
   const testUsers = await db
@@ -126,6 +127,44 @@ describe('DocumentsService', () => {
     expect(saved.status).toBe('pending')
     expect(saved.storageKey).toContain('notes.txt')
     expect(ingest.queueDocument).toHaveBeenCalledWith(saved.id)
+  })
+
+  // A stored file whose row could not be written is an orphan nothing points
+  // at. A title over the column's 500 characters is a real way for the insert
+  // to fail - a client can send any filename.
+  it('upload removes the stored file when the document row cannot be written', async () => {
+    const mine = await seedWorkspaceFixture(`${prefix}insert-fail@example.com`, 'Documents Spec WS Insert Fail')
+    storage.save.mockResolvedValue(undefined)
+    storage.delete.mockResolvedValue(undefined)
+    const file = {
+      originalname: `${'x'.repeat(501)}.txt`,
+      mimetype: 'text/plain',
+      buffer: Buffer.from('hello'),
+    } as Express.Multer.File
+
+    // The insert's own error (title over 500 characters), not whatever the
+    // cleanup path happens to throw.
+    await expect(service.upload(mine.workspace.id, mine.knowledgeBase.id, file)).rejects.toThrow(/too long/)
+
+    expect(storage.save).toHaveBeenCalledTimes(1)
+    expect(storage.delete).toHaveBeenCalledWith(storage.save.mock.calls[0][0])
+    expect(ingest.queueDocument).not.toHaveBeenCalled()
+  })
+
+  it('error: upload still reports the insert failure when removing the orphan also fails', async () => {
+    const mine = await seedWorkspaceFixture(`${prefix}insert-fail-2@example.com`, 'Documents Spec WS Insert Fail 2')
+    storage.save.mockResolvedValue(undefined)
+    storage.delete.mockRejectedValueOnce(new Error('storage unavailable'))
+    const file = {
+      originalname: `${'y'.repeat(501)}.txt`,
+      mimetype: 'text/plain',
+      buffer: Buffer.from('hello'),
+    } as Express.Multer.File
+
+    await expect(service.upload(mine.workspace.id, mine.knowledgeBase.id, file)).rejects.toThrow(/too long/)
+
+    expect(storage.delete).toHaveBeenCalledWith(storage.save.mock.calls[0][0])
+    expect(ingest.queueDocument).not.toHaveBeenCalled()
   })
 
   it('upload rejects when the knowledge base is not in the workspace', async () => {
@@ -314,6 +353,31 @@ describe('DocumentsService', () => {
       service.getDownloadable(mine.workspace.id, mine.knowledgeBase.id, otherDoc.id),
     ).rejects.toThrow(NotFoundException)
     expect(storage.getBuffer).not.toHaveBeenCalled()
+  })
+
+  it('getDownloadable answers 404 when the stored file itself is gone, and still fails loudly on an outage', async () => {
+    const mine = await seedWorkspaceFixture(`${prefix}dl-gone@example.com`, 'Documents Spec WS DL Gone')
+    const [doc] = await db
+      .insert(documents)
+      .values({
+        workspaceId: mine.workspace.id,
+        knowledgeBaseId: mine.knowledgeBase.id,
+        title: 'gone.txt',
+        status: 'done',
+        storageKey: `${mine.workspace.id}/${mine.knowledgeBase.id}/gone.txt`,
+      })
+      .returning()
+
+    storage.getBuffer.mockRejectedValueOnce(new StorageObjectNotFoundError(doc.storageKey!))
+    const error = await service
+      .getDownloadable(mine.workspace.id, mine.knowledgeBase.id, doc.id)
+      .catch((e: unknown) => e)
+    expect(error).toBeInstanceOf(NotFoundException)
+    expect((error as Error).message).toBe('Document file is missing')
+
+    const outage = new Error('connect ECONNREFUSED')
+    storage.getBuffer.mockRejectedValueOnce(outage)
+    await expect(service.getDownloadable(mine.workspace.id, mine.knowledgeBase.id, doc.id)).rejects.toBe(outage)
   })
 
   it('getManyDownloadable returns bytes for valid ids and skips missing ones', async () => {

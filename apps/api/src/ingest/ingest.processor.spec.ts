@@ -5,6 +5,7 @@ import { db, chunks, documents, knowledgeBases, pool, users, workspaceMembers, w
 import { IngestProcessor } from './ingest.processor'
 import { CacheService } from '../cache/cache.service'
 import { StorageService } from '../storage/storage.service'
+import { StorageObjectNotFoundError } from '../storage/storage.errors'
 import { EventsService } from '../events/events.service'
 
 const mockLoadDocument = jest.fn()
@@ -196,6 +197,19 @@ describe('IngestProcessor', () => {
       document.id,
       document.title,
     )
+  })
+
+  it('a document whose stored file is gone fails with a reason the user can act on', async () => {
+    const { document } = await seedDocument(`${fixtureEmailPrefix}gone-`)
+    storage.getToTempFile.mockRejectedValue(new StorageObjectNotFoundError(document.storageKey ?? 'k'))
+
+    await expect(
+      processor.handleIngest({ data: { documentId: document.id }, id: 'job-gone' } as any),
+    ).resolves.toBeUndefined()
+
+    const [updated] = await db.select().from(documents).where(eq(documents.id, document.id)).limit(1)
+    expect(updated.status).toBe('failed')
+    expect(updated.lastError).toBe('The stored file is missing. Upload it again.')
   })
 
   it('failure path marks document failed and still cleans temp file', async () => {

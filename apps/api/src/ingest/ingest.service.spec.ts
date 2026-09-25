@@ -148,7 +148,12 @@ describe('IngestService', () => {
       })
       .where(eq(documents.id, staleProcessing.document.id))
 
-    queue.getJob.mockResolvedValueOnce(null).mockResolvedValueOnce(null)
+    // Keyed by job id, never a once-queue: reconcileDocuments() sweeps every
+    // stale document in the database in no fixed order, so a queued `null`
+    // can be spent on a row this test does not own. Foreign rows get a live
+    // job and are left alone.
+    const missingJobs = new Set([`ingest:${stalePending.document.id}`, `ingest:${staleProcessing.document.id}`])
+    queue.getJob.mockImplementation(async (jobId: string) => (missingJobs.has(jobId) ? null : { id: jobId }))
 
     await service.reconcileDocuments()
 
