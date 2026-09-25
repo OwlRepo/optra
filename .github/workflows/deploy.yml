@@ -105,7 +105,8 @@ jobs:
 
       # Unit suites run per workspace rather than through one turbo task: turbo
       # has no `test` task (turbo.json), and a per-workspace step names the
-      # failing package in the run summary.
+      # failing package in the run summary. apps/api's Jest globalSetup
+      # recreates its own database, optra_unit, from this job's DATABASE_URL.
       - name: Unit tests — apps/api
         run: bun run test
         working-directory: apps/api

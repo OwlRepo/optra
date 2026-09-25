@@ -14,3 +14,8 @@ process.env.EMAIL_OTP_ENABLED = 'false'
 // the enqueueing spec times out waiting for status='done' and the thief logs
 // "The specified key does not exist". Per-pid keeps each worker isolated.
 process.env.BULL_PREFIX = `bull-e2e-${process.pid}`
+
+// Timestamps are stored without a zone and Postgres runs in UTC; production
+// runs in UTC. A non-UTC host would read fresh rows as hours old and let the
+// services' stale-job sweeps act on them.
+process.env.TZ = 'UTC'

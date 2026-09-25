@@ -2,16 +2,17 @@
 //
 //   bun apps/e2e/scripts/prepare-db.ts optra_pw     # Playwright
 //   bun apps/e2e/scripts/prepare-db.ts optra_e2e    # apps/api jest e2e (CI)
+//   bun apps/e2e/scripts/prepare-db.ts optra_unit   # apps/api jest unit (globalSetup)
 //
 // Dropped and recreated every time, not merely migrated: the API re-enqueues
 // stale `pending`/`processing` rows on boot, so a database carrying a previous
-// run's rows would hand this run someone else's jobs. Only the two names above
-// are accepted - this script must never be able to drop the dev `optra` DB.
+// run's rows would hand this run someone else's jobs. Only the names above are
+// accepted - this script must never be able to drop the dev `optra` DB.
 import { spawnSync } from 'node:child_process'
 import { join } from 'node:path'
 import { Client } from 'pg'
 
-const ALLOWED = new Set(['optra_pw', 'optra_e2e'])
+const ALLOWED = new Set(['optra_pw', 'optra_e2e', 'optra_unit'])
 const name = process.argv[2]
 
 if (!name || !ALLOWED.has(name)) {

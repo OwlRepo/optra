@@ -59,6 +59,7 @@ export function apiEnv(): Record<string, string> {
   return {
     ...base,
     NODE_ENV: 'test',
+    TZ: 'UTC',
     PORT: String(API_PORT),
     DATABASE_URL,
     REDIS_HOST,
