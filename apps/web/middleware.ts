@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { accessCookie } from './src/lib/http/set-cookie'
+import { clientIpHeaders } from './src/lib/http/client-ip'
 
 const API_URL = process.env.API_URL ?? 'http://localhost:3001'
 
@@ -9,11 +10,12 @@ const API_URL = process.env.API_URL ?? 'http://localhost:3001'
  */
 async function tryRefresh(
   rtValue: string,
+  forwarded: Record<string, string>,
 ): Promise<{ accessToken: string; rtSetCookie: string | null } | null> {
   try {
     const res = await fetch(`${API_URL}/auth/refresh`, {
       method: 'POST',
-      headers: { Cookie: `mnemra_rt=${rtValue}` },
+      headers: { Cookie: `mnemra_rt=${rtValue}`, ...forwarded },
     })
     if (!res.ok) return null
     const data = await res.json()
@@ -36,7 +38,7 @@ export async function middleware(request: NextRequest) {
   // Refresh token present but access token cookie is gone (expired after 15 min).
   // Silently rotate: call backend refresh, update both cookies, let the request through.
   if (!at) {
-    const refreshed = await tryRefresh(rt.value)
+    const refreshed = await tryRefresh(rt.value, clientIpHeaders(request.headers))
     if (!refreshed) {
       // Refresh token itself is expired/revoked → force re-login
       return NextResponse.redirect(new URL('/login', request.url))

@@ -15,6 +15,38 @@ describe('POST /api/auth/login proxy', () => {
     vi.unstubAllGlobals()
   })
 
+  it('edge: sends no X-Forwarded-For when the request carries none', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(mockBackendResponse(401, { message: 'Invalid credentials' }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await POST(
+      new NextRequest('http://localhost:3000/api/auth/login', {
+        method: 'POST',
+        body: JSON.stringify({ email: 'a@example.com', password: 'x' }),
+      }),
+    )
+
+    expect(fetchMock.mock.calls[0][1].headers).toEqual({ 'Content-Type': 'application/json' })
+  })
+
+  it('happy: forwards the visitor address so the API limits each visitor separately', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(mockBackendResponse(401, { message: 'Invalid credentials' }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await POST(
+      new NextRequest('http://localhost:3000/api/auth/login', {
+        method: 'POST',
+        headers: { 'x-forwarded-for': '203.0.113.7' },
+        body: JSON.stringify({ email: 'a@example.com', password: 'x' }),
+      }),
+    )
+
+    expect(fetchMock.mock.calls[0][1].headers).toEqual({
+      'Content-Type': 'application/json',
+      'X-Forwarded-For': '203.0.113.7',
+    })
+  })
+
   it('forwards the Set-Cookie header from the backend back to the browser', async () => {
     vi.stubGlobal(
       'fetch',

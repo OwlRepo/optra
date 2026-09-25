@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getBearer } from '@/lib/http/auth-proxy'
+import { clientIpHeaders } from '@/lib/http/client-ip'
 
 export const runtime = 'nodejs'
 
@@ -65,6 +66,7 @@ export async function POST(
     headers: {
       Authorization: `Bearer ${bearer}`,
       'Content-Type': 'application/json',
+      ...clientIpHeaders(request.headers),
     },
     body: JSON.stringify(payload),
   })

@@ -69,9 +69,13 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY:?OPENAI_API_KEY required}
       LANGSMITH_API_KEY: ${LANGSMITH_API_KEY:-}
       LANGSMITH_PROJECT: ${LANGSMITH_PROJECT:-optra-prod}
+      # One trusted hop: the web app's BFF, which forwards the visitor address
+      # the host Caddy wrote. Never `true` - the API refuses to boot with it.
+      TRUST_PROXY: "1"
+    # `internal` only: the BFF (`web`) is the only thing that talks to the
+    # API, so nothing else can present a forwarded address to it.
     networks:
       - internal
-      - web
     healthcheck:
       test:
         ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://127.0.0.1:3001/health"]

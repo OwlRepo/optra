@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { clientIpHeaders } from './client-ip'
 
 const API_URL = process.env.API_URL || 'http://localhost:3001'
 
@@ -23,6 +24,7 @@ export async function proxyJson(
     headers: {
       Authorization: `Bearer ${bearer}`,
       ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+      ...clientIpHeaders(request.headers),
     },
     body: options.body ? JSON.stringify(options.body) : undefined,
   })
@@ -47,6 +49,7 @@ export async function proxyMultipart(request: NextRequest, backendPath: string) 
     method: 'POST',
     headers: {
       Authorization: `Bearer ${bearer}`,
+      ...clientIpHeaders(request.headers),
     },
     body: form,
   })
@@ -71,6 +74,7 @@ export async function proxyRaw(
     headers: {
       Authorization: `Bearer ${bearer}`,
       ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+      ...clientIpHeaders(request.headers),
     },
     body: options.body ? JSON.stringify(options.body) : undefined,
   })

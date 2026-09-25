@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { accessCookie, forwardSetCookies } from '../../../../src/lib/http/set-cookie'
+import { clientIpHeaders } from '../../../../src/lib/http/client-ip'
 
 const API_URL = process.env.API_URL || 'http://localhost:3001'
 
@@ -8,7 +9,7 @@ export async function POST(request: NextRequest) {
 
   const apiRes = await fetch(`${API_URL}/auth/verify-otp`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...clientIpHeaders(request.headers) },
     body: JSON.stringify(body),
   })
 
