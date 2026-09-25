@@ -99,6 +99,37 @@ describe('CatalogDocumentsService', () => {
     expect(row.lastError).toContain('queue down')
   })
 
+  // Storage first, row second: a row whose file never landed would sit at
+  // `pending` forever with a null key, and nothing ever cleans it up.
+  it('leaves no catalog row behind when the file cannot be stored', async () => {
+    const { workspace, vendor } = await seedWorkspaceAndVendor(`${prefix}save-fail@example.com`, 'Catalog Save Fail')
+    storage.save.mockRejectedValueOnce(new Error('storage down'))
+    const file = { originalname: 'catalog.csv', mimetype: 'text/csv', buffer: Buffer.from('sku\nA') } as Express.Multer.File
+
+    await expect(service.upload(workspace.id, vendor.id, file)).rejects.toThrow('storage down')
+
+    expect(await db.select().from(catalogs).where(eq(catalogs.workspaceId, workspace.id))).toHaveLength(0)
+    expect(parse.queueDoc).not.toHaveBeenCalled()
+  })
+
+  // And the reverse: a stored file whose row could not be written is an
+  // orphan nothing points at. A name over the column's 500 characters is a
+  // real way for the insert to fail - a client can send any filename.
+  it('removes the stored file when the catalog row cannot be written', async () => {
+    const { workspace, vendor } = await seedWorkspaceAndVendor(`${prefix}insert-fail@example.com`, 'Catalog Insert Fail')
+    const file = {
+      originalname: `${'x'.repeat(501)}.csv`,
+      mimetype: 'text/csv',
+      buffer: Buffer.from('sku\nA'),
+    } as Express.Multer.File
+
+    await expect(service.upload(workspace.id, vendor.id, file)).rejects.toThrow()
+
+    expect(storage.save).toHaveBeenCalledTimes(1)
+    expect(storage.delete).toHaveBeenCalledWith(storage.save.mock.calls[0][0])
+    expect(await db.select().from(catalogs).where(eq(catalogs.workspaceId, workspace.id))).toHaveLength(0)
+  })
+
   it('lists catalogs for a vendor newest-first, excluding other vendors', async () => {
     const { workspace, vendor } = await seedWorkspaceAndVendor(`${prefix}list-catalogs@example.com`, 'List Catalogs')
     const other = await seedWorkspaceAndVendor(`${prefix}list-catalogs-other@example.com`, 'List Catalogs Other')

@@ -57,14 +57,39 @@ export class CatalogDocumentsService {
   async upload(workspaceId: string, vendorId: string, file: Express.Multer.File) {
     await this.assertVendorInWorkspace(workspaceId, vendorId)
 
-    const [catalog] = await db
-      .insert(catalogs)
-      .values({ workspaceId, vendorId, name: file.originalname, sourceKind: 'upload', status: 'pending' })
-      .returning()
-
-    const storageKey = `${workspaceId}/catalogs/${catalog.id}/${randomUUID()}-${file.originalname}`
+    // The file is stored BEFORE the row exists, and the row is written with
+    // its key in one insert. Row-first left a `pending` catalog with a null
+    // key behind whenever the save failed, and nothing ever cleaned it up.
+    // The id is minted here so the key can still carry it.
+    const catalogId = randomUUID()
+    const storageKey = `${workspaceId}/catalogs/${catalogId}/${randomUUID()}-${file.originalname}`
     await this.storage.save(storageKey, file.buffer, file.mimetype)
-    await db.update(catalogs).set({ storageKey, updatedAt: new Date() }).where(eq(catalogs.id, catalog.id))
+
+    let catalog: typeof catalogs.$inferSelect
+    try {
+      ;[catalog] = await db
+        .insert(catalogs)
+        .values({
+          id: catalogId,
+          workspaceId,
+          vendorId,
+          name: file.originalname,
+          sourceKind: 'upload',
+          status: 'pending',
+          storageKey,
+        })
+        .returning()
+    } catch (error) {
+      // Nothing points at the object now; remove it rather than orphan it.
+      await this.storage.delete(storageKey).catch((cleanupError: unknown) => {
+        this.logger.warn(
+          `Could not remove orphaned catalog object after a failed insert: ${
+            cleanupError instanceof Error ? cleanupError.message : String(cleanupError)
+          }`,
+        )
+      })
+      throw error
+    }
 
     try {
       await this.parse.queueDoc(catalog.id)
