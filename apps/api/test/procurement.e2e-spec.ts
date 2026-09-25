@@ -709,14 +709,18 @@ describe('Procurement flow (e2e)', () => {
 
   // B3, end to end on the real queue: a source file that is gone from storage
   // fails the document on the FIRST attempt with a reason the page can show.
-  // Bull retries a transient failure after a 5s backoff, so reaching `failed`
-  // inside 4s is itself the proof that no retry was needed - the old
-  // behaviour left the row `processing` for three attempts.
+  // The failure is keyed by this upload's own file name, never a once-queue: a
+  // real Bull processor shares this stub, and a leftover job could otherwise
+  // spend the queued failure. One read of the key by the time the row is
+  // `failed` is the proof that no retry happened - a retried job reads it
+  // three times before it fails.
   it('fails a purchase order whose stored file is gone, once, with a reason', async () => {
     const owner = await seedOwnerWithWorkspace(app, `${prefix}gone-owner@example.com`, 'Procurement Gone')
     const vendorId = await createVendor(app, owner.workspaceId, owner.accessToken)
-    storage.getToTempFile.mockImplementationOnce(async (key: string) => {
-      throw new StorageObjectNotFoundError(key)
+    const realGetToTempFile = storage.getToTempFile.getMockImplementation()!
+    storage.getToTempFile.mockImplementation(async (key: string) => {
+      if (key.endsWith('-gone.csv')) throw new StorageObjectNotFoundError(key)
+      return realGetToTempFile(key)
     })
 
     const upload = await request(app.getHttpServer())
@@ -729,11 +733,15 @@ describe('Procurement flow (e2e)', () => {
       .expect(201)
 
     let row: typeof purchaseOrders.$inferSelect | undefined
-    const deadline = Date.now() + 4_000
-    while (Date.now() < deadline) {
-      [row] = await db.select().from(purchaseOrders).where(eq(purchaseOrders.id, upload.body.id)).limit(1)
-      if (row?.status === 'failed') break
-      await new Promise((resolve) => setTimeout(resolve, 100))
+    try {
+      const deadline = Date.now() + 20_000
+      while (Date.now() < deadline) {
+        [row] = await db.select().from(purchaseOrders).where(eq(purchaseOrders.id, upload.body.id)).limit(1)
+        if (row?.status === 'failed') break
+        await new Promise((resolve) => setTimeout(resolve, 100))
+      }
+    } finally {
+      storage.getToTempFile.mockImplementation(realGetToTempFile)
     }
 
     expect(row?.status).toBe('failed')

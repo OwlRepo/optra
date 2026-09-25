@@ -100,6 +100,7 @@ services:
       target: runner
       args:
         NEXT_PUBLIC_API_URL: https://${DOMAIN}/api
+        WEB_URL: https://${DOMAIN}
     container_name: optra-prod-web
     restart: unless-stopped
     ports:

@@ -36,11 +36,11 @@ Owner decision, 2026-09-25: **every change ships with the tests for each layer i
 
 | If a commit touches | It must also touch |
 |---|---|
-| `apps/api/src/**/*.{service,controller,processor}.ts` | a `*.spec.ts` in the same directory |
+| `apps/api/src/**/*.{service,controller,processor,guard,filter,pipe,interceptor}.ts`, `apps/api/src/common/**`, `apps/web/middleware.ts`, `apps/web/src/lib/http/*` | a `*.spec.ts` in the same directory |
 | `apps/api/src/**/*.controller.ts` | `apps/api/test/*.e2e-spec.ts` |
 | `apps/web/app/**/page.tsx`, `apps/web/app/api/**/route.ts` | `apps/e2e/tests/*.spec.ts` |
 
-A layer that genuinely cannot observe the change is skipped with a trailer on that commit — `Test-Layers-Skip: <reason>` — and the reason is printed in the CI log. A skip is allowed; a silent one is not. `scripts/check-test-layers.spec.sh` proves the guard's 12 verdicts and runs in the same step. Both e2e layers gate `deploy` (`needs: ci`).
+A layer that genuinely cannot observe the change is skipped with a trailer on that commit — `Test-Layers-Skip: <reason>` — and the reason is printed in the CI log. A skip is allowed; a silent one is not. The skip must be a real trailer (the message's final trailer block); a line mid-body does not count. `scripts/check-test-layers.spec.sh` proves the guard's 18 verdicts and runs in the same step. Both e2e layers gate `deploy` (`needs: ci`).
 
 ### The browser harness (`apps/e2e`)
 

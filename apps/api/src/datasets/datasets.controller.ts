@@ -19,9 +19,9 @@ import { RolesGuard } from '../auth/guards/roles.guard'
 import { WorkspaceMemberGuard } from '../auth/guards/workspace-member.guard'
 import { DatasetsService } from './datasets.service'
 import { UploadExceptionFilter } from '../common/http/upload-exception.filter'
+import { maxUploadBytes } from '../common/http/upload-limit'
 
-const MAX_UPLOAD_MB = Number(process.env.MAX_UPLOAD_MB ?? 25)
-const MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024
+const MAX_UPLOAD_BYTES = maxUploadBytes()
 
 // XLSX uploads are converted to CSV during profiling (see
 // DatasetProfilingProcessor) so DuckDbQueryService only ever reads CSV.

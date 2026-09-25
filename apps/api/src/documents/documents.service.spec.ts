@@ -403,6 +403,55 @@ describe('DocumentsService', () => {
     expect(results[0]?.title).toBe('a.txt')
   })
 
+  it('error: getManyDownloadable fails on a storage outage instead of returning a partial zip', async () => {
+    const mine = await seedWorkspaceFixture(`${prefix}dl-many-outage@example.com`, 'Documents Spec WS DL Outage')
+    const [a] = await db
+      .insert(documents)
+      .values({
+        workspaceId: mine.workspace.id,
+        knowledgeBaseId: mine.knowledgeBase.id,
+        title: 'a.txt',
+        status: 'done',
+        storageKey: `${mine.workspace.id}/${mine.knowledgeBase.id}/outage-a.txt`,
+      })
+      .returning()
+    const outage = new Error('B2 unreachable')
+    storage.getBuffer.mockRejectedValueOnce(outage)
+
+    await expect(service.getManyDownloadable(mine.workspace.id, mine.knowledgeBase.id, [a.id])).rejects.toBe(outage)
+  })
+
+  it('edge: getManyDownloadable skips a document whose stored file is gone', async () => {
+    const mine = await seedWorkspaceFixture(`${prefix}dl-many-gone@example.com`, 'Documents Spec WS DL Gone')
+    const [gone] = await db
+      .insert(documents)
+      .values({
+        workspaceId: mine.workspace.id,
+        knowledgeBaseId: mine.knowledgeBase.id,
+        title: 'gone.txt',
+        status: 'done',
+        storageKey: `${mine.workspace.id}/${mine.knowledgeBase.id}/gone.txt`,
+      })
+      .returning()
+    const [kept] = await db
+      .insert(documents)
+      .values({
+        workspaceId: mine.workspace.id,
+        knowledgeBaseId: mine.knowledgeBase.id,
+        title: 'kept.txt',
+        status: 'done',
+        storageKey: `${mine.workspace.id}/${mine.knowledgeBase.id}/kept.txt`,
+      })
+      .returning()
+    storage.getBuffer
+      .mockRejectedValueOnce(new StorageObjectNotFoundError(gone.storageKey!))
+      .mockResolvedValueOnce(Buffer.from('kept-bytes'))
+
+    const results = await service.getManyDownloadable(mine.workspace.id, mine.knowledgeBase.id, [gone.id, kept.id])
+
+    expect(results).toEqual([{ title: 'kept.txt', buffer: Buffer.from('kept-bytes') }])
+  })
+
   it('remove deletes document, cascades chunks, calls storage.delete, and 404s cross-workspace ids', async () => {
     const mine = await seedWorkspaceFixture(`${prefix}remove@example.com`, 'Documents Spec WS Remove')
     const other = await seedWorkspaceFixture(`${prefix}remove-other@example.com`, 'Documents Spec WS Remove Other')

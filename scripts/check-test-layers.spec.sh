@@ -64,8 +64,18 @@ scenario 'BFF route without a browser test fails' 1 'fix: x' \
 scenario 'a stated skip passes and is reported' 0 'chore: rename a local
 
 Test-Layers-Skip: rename only, no behaviour moved' apps/api/src/storage/storage.service.ts
-scenario 'a helper that is not a service/controller/processor is not policed' 0 'refactor: x' \
-    apps/api/src/common/throttle.ts
+scenario 'a skip line in the body, not a trailer, does not count' 1 'chore: x
+
+Test-Layers-Skip: not a trailer
+
+more words after it' apps/api/src/storage/storage.service.ts
+scenario 'a shared API helper without its spec fails' 1 'refactor: x' apps/api/src/common/throttle.ts
+scenario 'a guard without its spec fails' 1 'fix: x' apps/api/src/auth/guards/roles.guard.ts
+scenario 'web middleware without its spec fails' 1 'fix: x' apps/web/middleware.ts
+scenario 'a BFF helper with its spec passes' 0 'fix: x' \
+    apps/web/src/lib/http/client-ip.ts apps/web/src/lib/http/client-ip.spec.ts
+scenario 'a DTO is not policed' 0 'feat: x' apps/api/src/auth/dto/login.dto.ts
+scenario 'a DTO under common/ is not policed either' 0 'feat: x' apps/api/src/common/dto/pagination.dto.ts
 
 echo ""
 echo "$passed passed, $failed failed"

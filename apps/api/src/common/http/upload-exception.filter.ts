@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common'
 import type { Response } from 'express'
 import { MulterError } from 'multer'
+import { maxUploadMb } from './upload-limit'
 
 /**
  * Turns upload failures into the bodies the upload forms show. One filter for
@@ -22,9 +23,9 @@ import { MulterError } from 'multer'
  */
 @Catch(MulterError, BadRequestException, PayloadTooLargeException)
 export class UploadExceptionFilter implements ExceptionFilter {
-  // Read per instance, from the same variable each controller sizes multer
-  // with, so the message can never name a different limit than the one hit.
-  private readonly maxUploadMb = Number(process.env.MAX_UPLOAD_MB ?? 25)
+  // Read per instance, through the same function each controller sizes
+  // multer with (upload-limit.ts).
+  private readonly maxUploadMb = maxUploadMb()
 
   catch(exception: MulterError | BadRequestException | PayloadTooLargeException, host: ArgumentsHost) {
     const response = host.switchToHttp().getResponse<Response>()

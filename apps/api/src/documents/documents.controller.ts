@@ -29,9 +29,9 @@ import { ListDocumentsQueryDto } from './dto/list-documents-query.dto'
 import { attachmentDisposition } from '../common/http/content-disposition'
 import { DocumentsService } from './documents.service'
 import { UploadExceptionFilter } from '../common/http/upload-exception.filter'
+import { maxUploadBytes } from '../common/http/upload-limit'
 
-const MAX_UPLOAD_MB = Number(process.env.MAX_UPLOAD_MB ?? 25)
-const MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024
+const MAX_UPLOAD_BYTES = maxUploadBytes()
 const SUPPORTED_EXTENSIONS = new Set([
   '.txt',
   '.md',

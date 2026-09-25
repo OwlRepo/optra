@@ -4,7 +4,7 @@ import { and, count, desc, eq, ilike, inArray } from 'drizzle-orm'
 import { buildOffsetResult, db, documents, knowledgeBases, resolveOffsetPage } from '@repo/db'
 import { IngestService } from '../ingest/ingest.service'
 import { StorageService } from '../storage/storage.service'
-import { readOrNotFound } from '../storage/storage.errors'
+import { StorageObjectNotFoundError, readOrNotFound } from '../storage/storage.errors'
 import { CacheService } from '../cache/cache.service'
 import { ListDocumentsQueryDto } from './dto/list-documents-query.dto'
 
@@ -123,12 +123,17 @@ export class DocumentsService {
   async getManyDownloadable(workspaceId: string, kbId: string, documentIds: string[]) {
     const results: { title: string; buffer: Buffer }[] = []
     for (const documentId of documentIds) {
-      const doc = await this.findDownloadable(workspaceId, kbId, documentId).catch(() => null)
+      // A document that is not there (or not this workspace's) and a stored
+      // file that is gone are skipped. Anything else - the database or the
+      // object store down - is an outage, and a partial zip would hide it.
+      const doc = await this.findDownloadable(workspaceId, kbId, documentId).catch((error: unknown) => {
+        if (error instanceof NotFoundException) return null
+        throw error
+      })
       if (!doc) continue
       const buffer = await this.storage.getBuffer(doc.storageKey).catch((error: unknown) => {
-        this.logger.warn(
-          `Skipping download for ${documentId}: ${error instanceof Error ? error.message : String(error)}`,
-        )
+        if (!(error instanceof StorageObjectNotFoundError)) throw error
+        this.logger.warn(`Skipping download for ${documentId}: the stored file is missing`)
         return null
       })
       if (buffer) {

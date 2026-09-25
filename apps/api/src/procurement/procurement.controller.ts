@@ -35,9 +35,9 @@ import type { ProcurementDocKind } from './procurement-parse.service'
 import { ProcurementDocumentsService } from './procurement-documents.service'
 import { pdfExtractionEnabled } from './procurement-feature-flags'
 import { UploadExceptionFilter } from '../common/http/upload-exception.filter'
+import { maxUploadBytes } from '../common/http/upload-limit'
 
-const MAX_UPLOAD_MB = Number(process.env.MAX_UPLOAD_MB ?? 25)
-const MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024
+const MAX_UPLOAD_BYTES = maxUploadBytes()
 
 // Mirrors DatasetsController exactly (datasets.controller.ts): same
 // extension/mime allow-list, same size limit, same 413/400 exception
