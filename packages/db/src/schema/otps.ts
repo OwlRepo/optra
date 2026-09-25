@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar, timestamp } from 'drizzle-orm/pg-core'
+import { pgTable, uuid, varchar, timestamp, integer } from 'drizzle-orm/pg-core'
 import { users } from './users'
 
 export const otps = pgTable('otps', {
@@ -7,6 +7,9 @@ export const otps = pgTable('otps', {
   code: varchar('code', { length: 6 }).notNull(),
   expiresAt: timestamp('expires_at').notNull(),
   usedAt: timestamp('used_at'),
+  // Wrong guesses at this code. At 5 it stops being accepted, from any
+  // address (AuthService.verifyOtp); a new one comes from /auth/resend-otp.
+  failedAttempts: integer('failed_attempts').default(0).notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 })
 
