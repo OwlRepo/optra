@@ -719,7 +719,7 @@ describe('Procurement flow (e2e)', () => {
     let row: typeof purchaseOrders.$inferSelect | undefined
     const deadline = Date.now() + 4_000
     while (Date.now() < deadline) {
-      ;[row] = await db.select().from(purchaseOrders).where(eq(purchaseOrders.id, upload.body.id)).limit(1)
+      [row] = await db.select().from(purchaseOrders).where(eq(purchaseOrders.id, upload.body.id)).limit(1)
       if (row?.status === 'failed') break
       await new Promise((resolve) => setTimeout(resolve, 100))
     }

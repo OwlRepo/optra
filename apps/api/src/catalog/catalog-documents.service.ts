@@ -67,7 +67,7 @@ export class CatalogDocumentsService {
 
     let catalog: typeof catalogs.$inferSelect
     try {
-      ;[catalog] = await db
+      [catalog] = await db
         .insert(catalogs)
         .values({
           id: catalogId,
