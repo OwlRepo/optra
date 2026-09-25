@@ -34,30 +34,6 @@ services:
       timeout: 3s
       retries: 5
 
-  seaweedfs:
-    image: chrislusf/seaweedfs
-    container_name: optra-prod-seaweedfs
-    restart: unless-stopped
-    command: server -s3 -s3.config=/etc/seaweedfs/s3.json -dir=/data
-    volumes:
-      - seaweedfs_data:/data
-      - ./docker/seaweedfs/s3.prod.json:/etc/seaweedfs/s3.json:ro
-    networks:
-      - internal
-    healthcheck:
-      test:
-        [
-          "CMD",
-          "wget",
-          "-q",
-          "--spider",
-          "http://127.0.0.1:9333/cluster/status",
-        ]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
-
   api:
     build:
       context: .
@@ -83,12 +59,11 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-optra}
       REDIS_HOST: redis
       REDIS_PORT: 6379
-      # From .env, never hard-coded. Production objects live in Backblaze B2;
-      # this line used to pin http://seaweedfs:8333, and because `environment:`
-      # beats `env_file:`, it silently overrode the B2 endpoint in .env while
-      # the bucket, keys and path-style still came from .env - so the SDK asked
-      # for optra-prod-objects.seaweedfs. `:?` makes a missing value fail the
-      # deploy at `compose up` instead of at the first upload.
+      # From .env, never hard-coded. Production objects live in Backblaze B2
+      # and there is no object store in this stack. This line used to pin
+      # http://seaweedfs:8333, and because `environment:` beats `env_file:`, it
+      # silently overrode the B2 endpoint in .env. `:?` makes a missing value
+      # fail the deploy at `compose up` instead of at the first upload.
       S3_ENDPOINT: ${S3_ENDPOINT:?S3_ENDPOINT required}
       WEB_URL: https://${DOMAIN}
       OPENAI_API_KEY: ${OPENAI_API_KEY:?OPENAI_API_KEY required}
@@ -108,8 +83,6 @@ services:
       postgres:
         condition: service_healthy
       redis:
-        condition: service_healthy
-      seaweedfs:
         condition: service_healthy
 
   web:
@@ -177,6 +150,5 @@ networks:
 volumes:
   postgres_data:
   redis_data:
-  seaweedfs_data:
   caddy_data:
   caddy_config:

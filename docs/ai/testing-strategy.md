@@ -257,9 +257,9 @@ For everything else infra-shaped, the pragmatic verification checklist is:
    `bunx turbo run build --filter=@repo/web... --dry=json` includes only `@repo/web` + `@repo/ui`;
    `bunx turbo run build --filter=@repo/api... --dry=json` includes only `@repo/api` + `@repo/ai` + `@repo/db`.
 2. Shell/config checks must pass:
-   `sh -n docker/api-dev-entrypoint.sh docker/web-dev-entrypoint.sh scripts/deploy.sh scripts/deploy-remote.sh scripts/ensure-seaweedfs-s3-config.sh`,
+   `sh -n docker/api-dev-entrypoint.sh docker/web-dev-entrypoint.sh scripts/deploy.sh scripts/deploy-remote.sh scripts/backup.sh`,
    `docker compose config --quiet`, and
-   `POSTGRES_PASSWORD=postgres DOMAIN=localhost OPENAI_API_KEY=test docker compose -f docker-compose.prod.yml config --quiet`.
+   `POSTGRES_PASSWORD=postgres DOMAIN=localhost OPENAI_API_KEY=test S3_ENDPOINT=https://example.invalid docker compose -f docker-compose.prod.yml config --quiet` (prod compose requires `S3_ENDPOINT` since 2026-09-25).
 3. `docker compose build api web` (dev) and
    `POSTGRES_PASSWORD=postgres DOMAIN=localhost OPENAI_API_KEY=test docker compose -f docker-compose.prod.yml build api web` (prod)
    both succeed with no errors — catches Dockerfile syntax errors, missing COPY paths, lockfile

@@ -115,7 +115,7 @@ OPENAI_API_KEY=sk-your-production-key     # Production OpenAI key
 LANGSMITH_API_KEY=ls__your-key            # Optional
 ```
 
-`scripts/ensure-seaweedfs-s3-config.sh` creates the SeaweedFS prod credentials file from `S3_ACCESS_KEY`/`S3_SECRET_KEY` during deploy, so keep those `.env` values real and non-placeholder.
+Production object storage is Backblaze B2, not SeaweedFS: set `S3_ENDPOINT`, `S3_REGION`, `S3_BUCKET`, `S3_FORCE_PATH_STYLE=false` and a bucket-scoped `S3_ACCESS_KEY`/`S3_SECRET_KEY` in `.env`. `S3_ENDPOINT` is required — `docker compose` refuses to start without it.
 
 ### 4. Deploy
 
@@ -155,7 +155,7 @@ nano .env  # Fill in values
 
 `.github/workflows/deploy.yml` deploys automatically on every push to `main` (or via manual `workflow_dispatch`). It SSHes into the VPS, pulls latest, takes a **verified** Postgres backup via `scripts/backup.sh --reason=deploy`, rebuilds `api`/`web`, brings the stack up, and runs internal API/Web/S3 checks before declaring success. The backup is a rollback point for that deploy: it is a `pg_dump -Fc` archive that the script proves parses *and* restores into a throwaway database before the deploy continues, so a dump truncated half-way fails the deploy rather than sitting on disk looking healthy.
 
-This assumes the deploy directory already has a working checkout with `.env` in place (i.e. you've already done Option A or B once). If `docker/seaweedfs/s3.prod.json` is missing, the workflow creates it from `S3_ACCESS_KEY`/`S3_SECRET_KEY` in `.env`. Set `COMPOSE_PROFILES=public` only when Optra's bundled Caddy should own host ports `80`/`443`; otherwise the workflow skips the public HTTPS smoke and leaves ingress to an external host proxy.
+This assumes the deploy directory already has a working checkout with `.env` in place (i.e. you've already done Option A or B once). Set `COMPOSE_PROFILES=public` only when Optra's bundled Caddy should own host ports `80`/`443`; otherwise the workflow skips the public HTTPS smoke and leaves ingress to an external host proxy.
 
 Configure these **GitHub Secrets** on the repo (`Settings → Secrets and variables → Actions`):
 | Secret | Value |
@@ -204,7 +204,6 @@ Should show:
 
 - ✅ postgres (healthy)
 - ✅ redis (healthy)
-- ✅ seaweedfs (healthy)
 - ✅ api (healthy)
 - ✅ web (healthy)
 - ✅ caddy (running) only when `COMPOSE_PROFILES=public`
@@ -440,7 +439,7 @@ docker stats
 
 - [ ] Strong `POSTGRES_PASSWORD` in `.env`
 - [ ] `.env` is in `.gitignore` (never committed)
-- [ ] `docker/seaweedfs/s3.prod.json` is in `.gitignore` (never committed)
+- [ ] B2 application keys are bucket-scoped, never the master key
 - [ ] Firewall configured (`22`, plus `80`/`443` only for the public ingress that owns them)
 - [ ] SSH key authentication enabled (disable password auth)
 - [ ] Regular database backups scheduled
@@ -495,8 +494,8 @@ Internet
    ┌──────────────┐
    │ PostgreSQL   │
    │ Redis        │
-   │ SeaweedFS    │
    └──────────────┘
+          apps/api ──▶ Backblaze B2 (objects: optra-prod-objects; backups: optra-prod-backups)
 ```
 
 All app services run in the Docker network. API/Web healthchecks and the S3 round-trip run on every deploy. SSL is owned by either an external host proxy or, when explicitly enabled, bundled Caddy.

@@ -174,8 +174,6 @@ jobs:
             git merge --ff-only origin/main
             echo "checked out $(git rev-parse --short HEAD)"
 
-            sh scripts/ensure-seaweedfs-s3-config.sh
-
             # A rollback point for THIS deploy, taken before anything is
             # recreated. The daily off-box backup is a separate workflow with a
             # different purpose; this one exists so a bad migration can be undone.
@@ -210,7 +208,7 @@ jobs:
             done
             if [ "$api_ok" -ne 1 ]; then
               echo "api health check failed"
-              docker compose -f docker-compose.prod.yml logs --tail=120 api web postgres seaweedfs
+              docker compose -f docker-compose.prod.yml logs --tail=120 api web postgres
               exit 1
             fi
 
@@ -223,9 +221,9 @@ jobs:
             if [ "$web_ok" -ne 1 ]; then
               echo "web health check failed"
               if [ "$public_ingress_enabled" -eq 1 ]; then
-                docker compose -f docker-compose.prod.yml logs --tail=120 api web postgres seaweedfs caddy
+                docker compose -f docker-compose.prod.yml logs --tail=120 api web postgres caddy
               else
-                docker compose -f docker-compose.prod.yml logs --tail=120 api web postgres seaweedfs
+                docker compose -f docker-compose.prod.yml logs --tail=120 api web postgres
               fi
               exit 1
             fi

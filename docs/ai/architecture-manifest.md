@@ -149,17 +149,22 @@ Priority 1-3 jobs (ingest/scrape/ticket-extraction) each persist queue linkage (
 
 ### Object Storage
 
-SeaweedFS is the current object storage backend for local development and production planning.
+Two S3 implementations, one code path (`StorageService` is S3-compatible; only `S3_*` env differs):
 
-- Local S3 endpoint: `http://localhost:8333`
-- Local filer UI: `http://localhost:8888`
-- Local master UI: `http://localhost:9333`
-- Bucket name: `mnemra-documents`
+- **Production — Backblaze B2** (since 2026-09-25): private bucket `optra-prod-objects`,
+  endpoint `https://s3.us-east-005.backblazeb2.com`, virtual-hosted addressing
+  (`S3_FORCE_PATH_STYLE=false`), bucket-scoped key. All `S3_*` values come from the VPS `.env`;
+  `docker-compose.prod.yml` takes `S3_ENDPOINT` as `${S3_ENDPOINT:?}` and runs no object store.
+  Bytes still flow through the API (no presigned URLs), keeping the download security headers.
+- **Development and CI — SeaweedFS**: S3 on `http://localhost:8433`, bucket `optra-documents`,
+  credentials from `docker/seaweedfs/s3.json`. Kept so CI round-trips real bytes with no secrets.
 
-SeaweedFS uses S3-compatible auth from env (`S3_*`) plus an identities JSON file mounted into the container.
-Production deploys generate that identity JSON from `.env`, keep it readable by the SeaweedFS
-container user, and force-recreate containers so changed credentials are reloaded before API/Web
-health and S3 round-trip checks pass.
+### Backups
+
+`scripts/backup.sh` — `pg_dump -Fc`, `pg_restore --list`, a real restore into a throwaway
+database with a table-count floor, 7 local copies, upload to B2 `optra-prod-backups`. Runs before
+every deploy (`deploy.yml`) and daily (`backup.yml`). Objects are not in the dumps; they are already
+off-box in B2. Restore: `docs/ops/restore.md`.
 
 ### Storage Service
 

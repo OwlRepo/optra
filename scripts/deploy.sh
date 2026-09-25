@@ -38,8 +38,6 @@ if [ -z "$OPENAI_API_KEY" ]; then
     exit 1
 fi
 
-sh scripts/ensure-seaweedfs-s3-config.sh
-
 public_ingress_enabled=0
 case ",$COMPOSE_PROFILES_VALUE," in
     *",public,"*)
@@ -67,7 +65,7 @@ for i in $(seq 1 15); do
 done
 if [ "$api_ok" -ne 1 ]; then
     echo "❌ api health check failed"
-    docker compose -f docker-compose.prod.yml logs --tail=120 api web postgres seaweedfs
+    docker compose -f docker-compose.prod.yml logs --tail=120 api web postgres
     exit 1
 fi
 
@@ -82,9 +80,9 @@ done
 if [ "$web_ok" -ne 1 ]; then
     echo "❌ web health check failed"
     if [ "$public_ingress_enabled" -eq 1 ]; then
-        docker compose -f docker-compose.prod.yml logs --tail=120 api web postgres seaweedfs caddy
+        docker compose -f docker-compose.prod.yml logs --tail=120 api web postgres caddy
     else
-        docker compose -f docker-compose.prod.yml logs --tail=120 api web postgres seaweedfs
+        docker compose -f docker-compose.prod.yml logs --tail=120 api web postgres
     fi
     exit 1
 fi

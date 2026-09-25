@@ -17,6 +17,9 @@ out
 .env.production
 .env.production.local
 .env.prod
+# Production no longer runs SeaweedFS (B2 since 2026-09-25), but the VPS
+# checkout still holds this generated file. Keep it ignored: the deploy stashes
+# any untracked file, and an un-ignored one would be stashed on every deploy.
 docker/seaweedfs/s3.prod.json
 
 # Debug
