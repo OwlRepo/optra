@@ -387,6 +387,6 @@ And one rule the owner made standing: every change now ships with its tests for 
 
 **Predicted (from the approved plan):** the two flaky suites shared one cause - a dev database full of other people's rows - and a fresh database per run would end both.
 
-**Actual:** to be filled at handoff with what the soak showed.
+**Actual:** the soak ran 5 of 5 full runs green (api unit, api e2e, web unit, Playwright) and CI passed 3 of 3 - but the 7,000-row CSV volume test crossed Jest's 5 s default on the 4-vCPU CI runner (1.5 s alone, 2.9 s in a full local run), and a pre-merge review found two cleanup specs that passed with any error. The hypothesis was not falsified: no ingest reconcile failure recurred on the fresh database.
 
-**Why different:** to be filled at handoff.
+**Why different:** isolating the database removed the order dependence it predicted, but it could not surface a test that was slow only on smaller hardware, or one whose assertion could not fail. Those needed a slower machine and a reviewer, not a cleaner bench.
