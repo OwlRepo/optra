@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test'
 import { closeDb, photoKeysOfCatalog, storageKeyOf } from '../support/db'
 import { objectExists } from '../support/s3'
 import { loadState, storageStateFor, type SeedState } from '../support/state'
-import { bff, chooseFile, fixture, toast, waitForRow, wrongType } from '../support/ui'
+import { bff, chooseFile, fixture, toast, waitForRow, wrongType, rowFor } from '../support/ui'
 
 // A PDF catalog is the only way an item photo reaches storage in this suite:
 // the parser renders each page to PNG, stores it, and the (stubbed) vision
@@ -43,7 +43,7 @@ test('a PDF catalog parses into items whose photos render from storage', async (
 
   // The vendor page does not poll; a person reloads.
   await page.reload()
-  const row = page.getByRole('row').filter({ hasText: file.name })
+  const row = rowFor(page, file.name)
   await expect(row.getByText('Ready')).toBeVisible()
   await row.getByRole('button', { name: 'View items' }).click()
 

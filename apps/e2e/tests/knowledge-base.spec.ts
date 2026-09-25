@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test'
 import { closeDb, rowExists, storageKeyOf } from '../support/db'
 import { objectExists } from '../support/s3'
 import { loadState, storageStateFor, type SeedState } from '../support/state'
-import { bff, download, fixture, toast, waitForRow, type FilePayload } from '../support/ui'
+import { bff, download, fixture, toast, waitForRow, type FilePayload, rowFor } from '../support/ui'
 
 // Knowledge-base documents are the one storage path with the whole lifecycle
 // in the UI: upload, ingest, single and bulk download, delete. Ingest embeds
@@ -39,7 +39,7 @@ test('a document uploads, is ingested, and downloads byte-for-byte', async ({ pa
   const key = await storageKeyOf('documents', document.id)
   expect(await objectExists(key!)).toBe(true)
 
-  const row = page.getByRole('row').filter({ hasText: file.name })
+  const row = rowFor(page, file.name)
   await expect(row.getByText('done')).toBeVisible()
   const got = await download(page, () => row.getByRole('button', { name: `Download ${file.name}` }).click())
   expect(got.filename).toBe(file.name)
@@ -91,7 +91,7 @@ test('deleting a document removes its row and its stored file', async ({ page })
   await page.getByRole('button', { name: `Delete ${file.name}` }).click()
   await page.getByRole('dialog').getByRole('button', { name: 'Delete document' }).click()
   await expect(toast(page, 'Document deleted')).toBeVisible()
-  await expect(page.getByRole('row').filter({ hasText: file.name })).toHaveCount(0)
+  await expect(rowFor(page, file.name)).toHaveCount(0)
 
   expect(await rowExists('documents', document.id)).toBe(false)
   expect(await objectExists(key!), 'the object left storage with the row').toBe(false)

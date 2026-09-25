@@ -114,6 +114,16 @@ export async function waitForRow<T extends { name?: string; title?: string; stat
   return found!
 }
 
+/**
+ * The table row for one named file, matched on the EXACT name. Not
+ * `filter({ hasText })`: that is a substring match, and `po-<run>.csv` is a
+ * substring of `access-po-<run>.csv` - which only collided in CI, where the run
+ * id is the same for every spec.
+ */
+export function rowFor(page: Page, name: string) {
+  return page.getByRole('row').filter({ has: page.getByText(name, { exact: true }) })
+}
+
 export function toast(page: Page, title: string) {
   return page.getByText(title, { exact: true })
 }

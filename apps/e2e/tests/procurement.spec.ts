@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test'
 import { closeDb, storageKeyOf, type StoredTable } from '../support/db'
 import { objectExists } from '../support/s3'
 import { loadState, storageStateFor, type SeedState } from '../support/state'
-import { chooseFile, download, fixture, oversized, toast, waitForRow, wrongType, type FilePayload } from '../support/ui'
+import { chooseFile, download, fixture, oversized, toast, waitForRow, wrongType, type FilePayload, rowFor } from '../support/ui'
 
 // The three procurement documents, each driven the way an owner does it:
 // pick a file, fill the header, upload, wait for the parser, download the
@@ -48,7 +48,7 @@ async function expectParsedStoredAndDownloadable(page: Page, kind: Kind, file: F
   expect(key, 'the row records where its file lives').toBeTruthy()
   expect(await objectExists(key!), 'the object is really in storage').toBe(true)
 
-  const tableRow = page.getByRole('row').filter({ hasText: file.name })
+  const tableRow = rowFor(page, file.name)
   await expect(tableRow.getByText('Ready')).toBeVisible()
 
   const got = await download(page, () =>
