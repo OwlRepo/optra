@@ -1,7 +1,7 @@
 /** @vitest-environment jsdom */
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { changePassword, getCurrentUser, logout } from './auth'
+import { changePassword, getCurrentUser, logout, resendOtp } from './auth'
 import { isLoggedIn, markLoggedIn } from '@/lib/auth'
 
 describe('logout', () => {
@@ -73,6 +73,23 @@ describe('changePassword', () => {
         method: 'POST',
         body: JSON.stringify({ currentPassword: 'old-pass', newPassword: 'new-password-123' }),
       }),
+    )
+  })
+})
+
+describe('resendOtp', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('happy: asks the BFF for a new code for the email', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ message: 'sent' }) })
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(resendOtp('a@example.com')).resolves.toEqual({ message: 'sent' })
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/auth/resend-otp',
+      expect.objectContaining({ method: 'POST', body: JSON.stringify({ email: 'a@example.com' }) }),
     )
   })
 })
