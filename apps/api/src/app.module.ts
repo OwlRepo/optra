@@ -20,6 +20,7 @@ import { InsightsModule } from './insights/insights.module'
 import { ProcurementModule } from './procurement/procurement.module'
 import { CatalogModule } from './catalog/catalog.module'
 import { HealthController } from './health/health.controller'
+import { defaultThrottleLimit } from './common/throttle'
 
 @Module({
   controllers: [HealthController],
@@ -41,7 +42,7 @@ import { HealthController } from './health/health.controller'
         port: parseInt(process.env.REDIS_PORT || '6379'),
       },
     }),
-    ThrottlerModule.forRoot([{ name: 'default', ttl: 60_000, limit: 60 }]),
+    ThrottlerModule.forRoot([{ name: 'default', ttl: 60_000, limit: defaultThrottleLimit() }]),
     DocumentsModule,
     IngestModule,
     ChatModule,

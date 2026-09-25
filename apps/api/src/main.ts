@@ -13,7 +13,10 @@ async function bootstrap() {
     origin: process.env.WEB_URL || 'http://localhost:3000',
     credentials: true,
   })
-  await app.listen(3001)
-  console.log('API running on http://localhost:3001')
+  // PORT lets the browser e2e suite run a second API beside a dev one; the
+  // Dockerfile healthcheck already reads ${PORT:-3001}.
+  const port = Number(process.env.PORT ?? 3001)
+  await app.listen(port)
+  console.log(`API running on http://localhost:${port}`)
 }
 bootstrap()
