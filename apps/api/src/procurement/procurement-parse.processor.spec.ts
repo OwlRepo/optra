@@ -639,7 +639,10 @@ describe('ProcurementParseProcessor', () => {
     const [updated] = await db.select().from(purchaseOrders).where(eq(purchaseOrders.id, po.id))
     expect(updated.status).toBe('done')
     expect(updated.rowCount).toBe(7000)
-  })
+    // A volume test, not a unit test: 7,000 rows is what crosses the bind-
+    // parameter limit, so it cannot shrink. 1.5 s alone, ~3 s under a full
+    // local run, over the 5 s default on the CI runner. Its own budget only.
+  }, 30_000)
 
   it('skips rows whose mapped fields are all empty', async () => {
     const workspace = await seedWorkspace(`${prefix}po-empty-row@example.com`, prefix)

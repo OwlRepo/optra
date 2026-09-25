@@ -1323,6 +1323,29 @@ Done: the docs diff contains only the blocks above.
 6. **You run the production smoke:** `docs/ops/prod-smoke.md`.
 7. **Graphify gate:** load the graphify skill and run `/graphify . --update` from the repo root after the final edit. Report the graph diff and token counts.
 
+### Amendment 1 (approved 2026-09-26, during Phase 7 step 1)
+
+CI run 2 of 3 failed: `procurement-parse.processor.spec.ts` › "parses a 7,000-row CSV (inserts are chunked under the bind-parameter limit)" exceeded Jest's 5 s default. Measured: 1.5 s alone (n=3, warm local DB), 2.9 s in a full parallel local run (slowest of 678, 2.4× the next), >5 s on the 4-vCPU CI runner. It is a deterministic volume test, not a race; 7,000 rows is what crosses the Postgres bind-parameter limit, so it cannot shrink. Owner decision: an explicit per-test timeout on that one test only.
+
+`apps/api/src/procurement/procurement-parse.processor.spec.ts`
+
+Old:
+```ts
+    expect(updated.status).toBe('done')
+    expect(updated.rowCount).toBe(7000)
+  })
+```
+New:
+```ts
+    expect(updated.status).toBe('done')
+    expect(updated.rowCount).toBe(7000)
+    // A volume test, not a unit test: 7,000 rows is what crosses the bind-
+    // parameter limit, so it cannot shrink. 1.5 s alone, ~3 s under a full
+    // local run, over the 5 s default on the CI runner. Its own budget only.
+  }, 30_000)
+```
+The three-run CI check restarts on the commit carrying this change.
+
 ### Validation and acceptance
 
 **Test Matrix**
