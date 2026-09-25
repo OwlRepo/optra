@@ -377,10 +377,22 @@ For bug reports, RCA first, no implementation steps yet. Required sections: Issu
 
 Strict TDD, no exceptions — this is confirmed production software. Write the failing test first, confirm it fails, implement until it passes. Every touched file needs unit coverage; user-facing or cross-layer flows also need e2e coverage. Missing tooling is not a reason to skip coverage — set it up first. Implementation isn't complete until its tests exist and pass.
 
+**Three test layers — required for every change, owner decision 2026-09-25.** Every change ships with the tests for each layer it touches, written first:
+
+| Layer | Where | Required when the change touches |
+|---|---|---|
+| **Unit** | `*.spec.ts` beside the code (Jest in `apps/api`, Vitest elsewhere) | any service, controller, processor, helper, component or BFF route |
+| **API e2e** | `apps/api/test/*.e2e-spec.ts` (real Nest app, real Postgres + Redis/Bull) | any API route: its status codes, guards, pipes, filters, and what it writes |
+| **Browser e2e** | `apps/e2e/tests/*.spec.ts` (Playwright: real browser → Next.js BFF → API → Postgres/Redis/SeaweedFS) | any page or BFF route, and any flow a person clicks through |
+
+Cover the happy path **and** the error paths a user can hit: wrong input, too large, not a member, another workspace's id, the thing gone. A layer is skipped only when the change genuinely cannot be observed there — and then the commit says so with a `Test-Layers-Skip: <reason>` trailer. **This is enforced:** `scripts/check-test-layers.sh` runs first in CI and fails a push whose commits change a service/controller/processor without a sibling spec, a controller without an API e2e change, or a page/BFF route without a Playwright change. Both e2e layers gate deploy. Full detail: `docs/ai/testing-strategy.md` → *Required test layers*.
+
 **Verified test/verification commands (from real package scripts — never invent others):**
 - Root: `bun run lint`, `bun run type-check`, `bun run build`, `bun run dev` (turbo)
   - **`bun run lint` correction 2026-08-18:** this entry was previously ASPIRATIONAL, not verified — it had never once run to completion. `apps/api`'s script invoked `eslint`, which was declared nowhere and installed nowhere (exit 127), and `apps/web`'s `next lint` had no config so it dropped into an interactive setup prompt and exited 1. There was no ESLint dependency and no config file anywhere in the monorepo, and 4 of 6 packages had no `lint` script at all. Now genuinely verified: ESLint 8 + `@typescript-eslint` + `eslint-config-next` as root devDependencies, a shared `.eslintrc.base.json` extended by `apps/api` and all four `packages/*`, `next/core-web-vitals` for `apps/web`, and a `lint` script in all 6 packages. `bun run lint` passes 6/6.
-- `apps/api`: `bun run test` (jest), `bun run test:watch`, `bun run test:cov`, `bun run test:e2e` (14 e2e suites in `apps/api/test/`)
+- `apps/api`: `bun run test` (jest), `bun run test:watch`, `bun run test:cov`, `bun run test:e2e` (15 e2e suites in `apps/api/test/`; run on a fresh database: `bun apps/e2e/scripts/prepare-db.ts optra_e2e`, then `DATABASE_URL=…/optra_e2e bun run test:e2e`)
+- `apps/e2e` (Playwright): `bun run test:e2e` (browser suite against the local stack — needs `docker compose up -d --wait postgres redis seaweedfs` and built apps), `bun run test:smoke` (production smoke, by hand — `docs/ops/prod-smoke.md`); root `bun run e2e` builds api+web then runs the browser suite
+- Test-layer guard: `sh scripts/check-test-layers.sh <base-sha>` and its self-test `sh scripts/check-test-layers.spec.sh`
 - `apps/web`: `bun run test` (vitest), `bun run test:watch`
 - `packages/db`: `bun run test` (vitest), `bun run db:generate`, `bun run db:migrate`, `bun run db:push`, `bun run db:studio`
 - `packages/ai`: `bun run test` (vitest)
@@ -480,6 +492,7 @@ Before calling anything done:
 - API and DB/schema changes documented, or explicitly marked "none required."
 - Verification commands confirmed from package scripts or repo docs (never assumed).
 - Required unit/e2e tests listed and passing, TDD order.
+- **Unit + API e2e + Playwright written for every layer the change touches** (happy and error paths), or a `Test-Layers-Skip: <reason>` trailer on the commit. `sh scripts/check-test-layers.sh origin/main` passes locally before pushing.
 - Matching `docs/ai/*` entries updated.
 - New/moved significant symbols reflected in `docs/ai/file-index/repository-map.md`.
 - If this task matched the Learning Contract trigger (new pattern/library/design decision): prediction was captured BEFORE implementation and `learnings.md` was updated after. If it was skipped, the skip was stated explicitly with which existing pattern it matched — not silently bypassed.

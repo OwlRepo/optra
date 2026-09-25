@@ -115,6 +115,16 @@ State behavior preservation explicitly.
 
 Include verification commands verified from package scripts or repo docs.
 
+**Test layers (mandatory — see `docs/ai/testing-strategy.md` → Required test layers).** For each layer, name the spec files and the cases (happy + error), or state why the change cannot be observed there:
+
+| Layer | Spec file(s) | Cases (happy / error) | Or: why not applicable |
+|---|---|---|---|
+| Unit | | | |
+| API e2e (`apps/api/test`) | | | |
+| Browser e2e (`apps/e2e/tests`) | | | |
+
+A layer marked not applicable becomes a `Test-Layers-Skip: <reason>` trailer on the commit, or CI's test-layer guard fails the push.
+
 Include manual QA flow.
 
 Consult `docs/ai/testing-strategy.md` for task size.

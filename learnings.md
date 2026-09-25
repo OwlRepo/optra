@@ -365,3 +365,19 @@ One duplication accepted on purpose: `agreedPriceAt` in the history service repe
 **Why different:** the plan reasoned from one source of each fact — ".env is the config", "Write Only means write only" — when each fact actually had two sources with a precedence rule between them. **When a value can be set in more than one place, "I set it" is not evidence; only reading the effective value is.** The deploy's S3 round-trip caught the first because it runs inside the real container; nothing caught the second except testing the capability itself. The endpoint is now `${S3_ENDPOINT:?}`, so there is one source and a missing value fails at `compose up`.
 
 One gap left open deliberately, and written down in three places: the backup key still carries `deleteFiles` until it is re-created with the CLI (`b2 key create --bucket optra-prod-backups <name> writeFiles`), because the console cannot express that key.
+
+## 2026-09-25 — Proving storage end to end: three test layers, and the tests that tested nothing
+*Learning Contract: the plan's design is the prediction; the diff is below. No live prediction solicited.*
+
+**Predicted (from the approved plan):** a Playwright suite over every storage path would find the defects the plan had already mapped from reading the code - missing object → 500, a catalog row written before its file, orphans on failed inserts, nosniff dropped by the BFF, SVGs stored that the photo route refuses - and fixing them would be a matter of writing each failing test first.
+
+**Actual:** it found those, and one more that no amount of reading had: every upload route answered an oversized file with the framework's "File too large" instead of "File exceeds NMB upload limit". Four controllers each carried an `UploadExceptionFilter` catching `MulterError`, and none had ever fired - `FileInterceptor` converts that error into a `PayloadTooLargeException` before a filter can see it. The procurement filter even had a unit test, and it passed, because it handed the filter a raw `MulterError`: a shape the real pipeline never produces.
+
+**Why different:** the plan's inventory came from reading code, and the code was locally correct - each filter did exactly what it said for the input it named. What was wrong was the input. **A unit test proves a function against the inputs you give it; only a test through the real pipeline proves which inputs actually arrive.** That is the whole argument for the three layers, in one bug: the unit layer was green, the API e2e layer (real `FileInterceptor`) went red immediately, and the browser layer showed the wrong words to a person.
+
+Three smaller lessons from building the harness, each of which cost a red run:
+- `page.request` is not the browser. Playwright's request client will not send a `Secure` cookie over plain http, while Chrome does on loopback - so polling through it saw 401s the product never sees. Polling from *inside* the page (`fetch` in `page.evaluate`) keeps the test honest by construction.
+- `filter({ hasText })` is a substring match. `po-<run>.csv` sits inside `access-po-<run>.csv`, and it only collided in CI, where every spec shares one run id. Locally the ids differed and the bug hid. Match on exact cell text.
+- `next start` "works" under `output: 'standalone'` with a warning, and running the standalone `server.js` in place resolves `next` through whatever stale copy is in `apps/web/node_modules`. Stage it the way the Dockerfile does, or the test server is not the production server.
+
+And one rule the owner made standing: every change now ships with its tests for each layer it touches, enforced per commit in CI (`scripts/check-test-layers.sh`). The guard's first real use was on this branch - it stopped a lint-only commit until it said why it needed no test, which is the point: a skip is allowed, a silent one is not.

@@ -172,10 +172,26 @@ off-box in B2. Restore: `docs/ops/restore.md`.
 - `ensureBucket()` on module init
 - `save(key, body, contentType?)`
 - `getBuffer(key)` for exact-byte API downloads
+- `getObject(key)` for bytes plus the Content-Type they were stored with (catalog photos)
 - `getToTempFile(key)` for downstream loader/ingest steps
 - `delete(key)`
 
+Every reader classifies a missing key once (`fetchObject`) and throws `StorageObjectNotFoundError`
+(`storage/storage.errors.ts`, constant key-free message). Download services wrap reads in
+`readOrNotFound()` so a gone object is a 404 with a reason; parse processors treat it as permanent.
+Bucket and credential faults are rethrown untouched (still 500, still retried).
+
 Slice 3A added infra + storage abstraction + schema groundwork. Upload and ingest behavior arrived in Slice 3B. Slice 1 workspace UX added `getBuffer()` so document download endpoints can return stored bytes without invoking the ingest loader path.
+
+## Test Layers
+
+Three layers, all required for the layers a change touches (`docs/ai/testing-strategy.md` →
+*Required test layers*), enforced per commit by `scripts/check-test-layers.sh` in CI:
+unit specs beside the code; API e2e in `apps/api/test` (real `AppModule`, own database
+`optra_e2e`); browser e2e in `apps/e2e` (Playwright → production Next.js server → production
+API → Postgres `optra_pw`, Redis, SeaweedFS bucket `optra-pw`, OpenAI stub). Both e2e layers
+gate deploy. `apps/e2e` is a workspace like any other, so both Dockerfiles copy its
+`package.json` before `bun install --frozen-lockfile`.
 
 ## Verification Commands
 
