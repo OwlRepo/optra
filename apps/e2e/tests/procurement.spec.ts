@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test'
 import { closeDb, storageKeyOf, type StoredTable } from '../support/db'
 import { objectExists } from '../support/s3'
 import { loadState, storageStateFor, type SeedState } from '../support/state'
-import { chooseFile, download, fixture, oversized, toast, waitForRow, wrongType, type FilePayload, rowFor } from '../support/ui'
+import { bff, chooseFile, download, fixture, oversized, toast, waitForRow, wrongType, type FilePayload, rowFor } from '../support/ui'
 
 // The three procurement documents, each driven the way an owner does it:
 // pick a file, fill the header, upload, wait for the parser, download the
@@ -56,6 +56,10 @@ async function expectParsedStoredAndDownloadable(page: Page, kind: Kind, file: F
   )
   expect(got.filename).toBe(file.name)
   expect(got.bytes.equals(file.buffer), 'downloaded bytes equal the uploaded bytes').toBe(true)
+
+  const raw = await bff(page, `${listUrl(kind)}/${row.id}/download`)
+  expect(raw.headers['content-type']).toBe('application/octet-stream')
+  expect(raw.headers['x-content-type-options'], 'nosniff survives the BFF').toBe('nosniff')
   return row.id
 }
 

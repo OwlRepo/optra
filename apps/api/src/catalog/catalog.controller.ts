@@ -231,6 +231,8 @@ export class CatalogController {
       'Content-Type': contentType,
       'Content-Length': String(buffer.length),
       'Cache-Control': 'private, max-age=86400',
+      // Served inline, so the browser must take the raster type as given.
+      'X-Content-Type-Options': 'nosniff',
     })
     res.send(buffer)
   }

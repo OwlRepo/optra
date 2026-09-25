@@ -273,6 +273,7 @@ describe('Documents flow (e2e)', () => {
       .set('Authorization', `Bearer ${member.accessToken}`)
       .expect(200)
     expect(singleDownload.headers['content-disposition']).toBe('attachment; filename="test.txt"')
+    expect(singleDownload.headers['x-content-type-options']).toBe('nosniff')
     expect(singleDownload.body.toString()).toBe('seaweed test doc')
 
     // The row says there is a file; storage says there is not: a 404 with a
@@ -305,6 +306,7 @@ describe('Documents flow (e2e)', () => {
       .expect(200)
     expect(bulkDownload.headers['content-type']).toContain('application/zip')
     expect(bulkDownload.headers['content-disposition']).toBe('attachment; filename="documents.zip"')
+    expect(bulkDownload.headers['x-content-type-options']).toBe('nosniff')
     expect(bulkDownload.body.subarray(0, 2).toString()).toBe('PK')
 
     const outsiderKbRes = await request(app.getHttpServer())

@@ -58,6 +58,8 @@ test('a PDF catalog parses into items whose photos render from storage', async (
   expect(photo.status).toBe(200)
   expect(photo.headers['content-type']).toBe('image/png')
   expect(photo.headers['cache-control']).toContain('private')
+  // The one route serving stored bytes inline: the browser must not sniff it.
+  expect(photo.headers['x-content-type-options']).toBe('nosniff')
 })
 
 test('a catalog file of the wrong type is refused with the reason', async ({ page }) => {

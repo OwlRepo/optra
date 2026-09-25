@@ -79,8 +79,19 @@ export async function proxyRaw(
   // Without it the catalog photo route's `private, max-age=86400`
   // (catalog.controller.ts) was dropped here, so every <img> refetched the
   // bytes through this proxy on each render.
+  //
+  // X-Content-Type-Options likewise: the API marks every stored-file response
+  // nosniff, and these bytes are user uploads served from our own origin.
+  // Dropped here, only Caddy stood between them and content sniffing - and
+  // Caddy is not in front of local dev, or of anything that bypasses it.
   const headers = new Headers()
-  for (const name of ['Content-Type', 'Content-Disposition', 'Content-Length', 'Cache-Control']) {
+  for (const name of [
+    'Content-Type',
+    'Content-Disposition',
+    'Content-Length',
+    'Cache-Control',
+    'X-Content-Type-Options',
+  ]) {
     const value = response.headers.get(name)
     if (value) {
       headers.set(name, value)

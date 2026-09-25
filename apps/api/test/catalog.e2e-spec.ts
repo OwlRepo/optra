@@ -221,6 +221,7 @@ describe('Catalog flow (e2e)', () => {
       .set('Authorization', `Bearer ${owner.accessToken}`)
       .expect(200)
     expect(photo.headers['content-type']).toBe('image/png')
+    expect(photo.headers['x-content-type-options']).toBe('nosniff')
     await storage.delete(photoKey)
     const gonePhoto = await request(app.getHttpServer())
       .get(photoUrl)

@@ -38,6 +38,9 @@ describe('DocumentsController downloads', () => {
       expect.objectContaining({
         'Content-Type': 'application/octet-stream',
         'Content-Disposition': 'attachment; filename="report.txt"',
+        // Set here, not left to Caddy: local dev has no Caddy, and the BFF
+        // forwards what the API sends.
+        'X-Content-Type-Options': 'nosniff',
       }),
     )
     expect(res.send).toHaveBeenCalledWith(Buffer.from('hello'))
@@ -67,7 +70,7 @@ describe('DocumentsController downloads', () => {
 
     expect(service.getManyDownloadable).toHaveBeenCalledWith('ws', 'kb', ['a', 'b'])
     expect(res.set).toHaveBeenCalledWith(
-      expect.objectContaining({ 'Content-Type': 'application/zip' }),
+      expect.objectContaining({ 'Content-Type': 'application/zip', 'X-Content-Type-Options': 'nosniff' }),
     )
     const out = Buffer.concat(chunks)
     expect(out.length).toBeGreaterThan(0)

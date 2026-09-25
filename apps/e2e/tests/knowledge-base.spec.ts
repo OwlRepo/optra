@@ -78,6 +78,8 @@ test('an HTML document downloads as an inert attachment, never inline', async ({
   expect(response.status).toBe(200)
   expect(response.headers['content-type']).toBe('application/octet-stream')
   expect(response.headers['content-disposition']).toBe(`attachment; filename="${file.name}"`)
+  // Through the BFF, with no Caddy in front: the proxy must carry it.
+  expect(response.headers['x-content-type-options']).toBe('nosniff')
   expect(response.body).toBe(file.buffer.toString('utf8'))
 })
 

@@ -164,6 +164,7 @@ export class DocumentsController {
     res.set({
       'Content-Type': 'application/zip',
       'Content-Disposition': 'attachment; filename="documents.zip"',
+      'X-Content-Type-Options': 'nosniff',
     })
 
     const archive = archiver('zip', { zlib: { level: 9 } })
@@ -211,6 +212,8 @@ export class DocumentsController {
       'Content-Type': 'application/octet-stream',
       'Content-Disposition': attachmentDisposition(title),
       'Content-Length': String(buffer.length),
+      // Here, not only in docker/Caddyfile: local dev has no Caddy.
+      'X-Content-Type-Options': 'nosniff',
     })
     res.send(buffer)
   }

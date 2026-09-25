@@ -102,6 +102,30 @@ describe('proxyRaw', () => {
     expect(response.headers.get('Content-Type')).toBe('image/webp')
   })
 
+  // The API marks every download nosniff. Dropped here, the browser would get
+  // user-uploaded bytes from our own origin with nothing stopping it sniffing
+  // them as HTML - in production Caddy re-adds it; in local dev nothing does.
+  it('forwards X-Content-Type-Options so downloads stay nosniff through the proxy', async () => {
+    vi.spyOn(global, 'fetch').mockResolvedValue(
+      new Response(Buffer.from('<script>'), {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/octet-stream',
+          'Content-Disposition': 'attachment; filename="page.html"',
+          'X-Content-Type-Options': 'nosniff',
+        },
+      }),
+    )
+
+    const response = await proxyRaw(
+      makeRequest('http://localhost:3000/api/workspaces/ws-1/knowledge-bases/kb-1/documents/doc-1/download'),
+      '/workspaces/ws-1/knowledge-bases/kb-1/documents/doc-1/download',
+      { method: 'GET' },
+    )
+
+    expect(response.headers.get('X-Content-Type-Options')).toBe('nosniff')
+  })
+
   it('returns 401 without calling the backend when the auth cookie is missing', async () => {
     const fetchMock = vi.spyOn(global, 'fetch')
 
