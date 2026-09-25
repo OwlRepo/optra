@@ -8,7 +8,7 @@ GUARD="$(cd "$(dirname "$0")" && pwd)/check-prod-env.sh"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
-printf 'JWT_SECRET=example-secret\nOPENAI_API_KEY=sk-example\n' > "$WORK/example"
+printf 'JWT_SECRET=example-secret\nOPENAI_API_KEY=sk-example\n# POSTGRES_PASSWORD=example-password\n' > "$WORK/example"
 GOOD='DOMAIN=optra.tyvera.app
 S3_ENDPOINT=https://s3.us-east-005.backblazeb2.com
 POSTGRES_PASSWORD=real-password
@@ -34,9 +34,12 @@ case_ 'error: a DOMAIN with a scheme is refused' 1 "$(printf '%s\n' "$GOOD" | se
 case_ 'error: an http S3 endpoint is refused' 1 "$(printf '%s\n' "$GOOD" | sed 's|^S3_ENDPOINT=.*|S3_ENDPOINT=http://seaweedfs:8333|')"
 case_ 'error: a placeholder JWT secret is refused' 1 "$(printf '%s\n' "$GOOD" | sed 's/^JWT_SECRET=.*/JWT_SECRET=example-secret/')"
 case_ 'error: an empty POSTGRES_PASSWORD is refused' 1 "$(printf '%s\n' "$GOOD" | sed 's/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=/')"
-case_ 'error: TRUST_PROXY=true is refused' 1 "$(printf '%s\nTRUST_PROXY=true' "$GOOD")"
-case_ 'edge: TRUST_PROXY unset is fine' 0 "$GOOD"
-case_ 'happy: a complete production .env passes' 0 "$(printf '%s\nTRUST_PROXY=1' "$GOOD")"
+case_ 'error: a placeholder repeated later in the file is refused (compose uses the last one)' 1 "$(printf '%s\nJWT_SECRET=example-secret' "$GOOD")"
+case_ 'error: a quoted placeholder is refused' 1 "$(printf '%s\n' "$GOOD" | sed 's/^JWT_SECRET=.*/JWT_SECRET="example-secret"/')"
+case_ 'error: a placeholder commented out in .env.example is still refused' 1 "$(printf '%s\n' "$GOOD" | sed 's/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=example-password/')"
+case_ 'error: the test-only THROTTLE_DEFAULT_LIMIT is refused' 1 "$(printf '%s\nTHROTTLE_DEFAULT_LIMIT=100000' "$GOOD")"
+case_ 'edge: a quoted real value passes' 0 "$(printf '%s\n' "$GOOD" | sed 's/^JWT_SECRET=.*/JWT_SECRET="real-secret"/')"
+case_ 'happy: a complete production .env passes' 0 "$GOOD"
 
 echo ""
 echo "$passed passed, $failed failed"

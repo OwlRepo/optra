@@ -233,7 +233,7 @@ Production publishes `web` on `127.0.0.1:3300` only (for the host's Caddy) and n
 
 **Visitor addresses and rate limits.** The host Caddy writes each visitor's address into `X-Forwarded-For` (replacing anything the visitor sent); the web app forwards exactly that one value; the API trusts it from one hop because `docker-compose.prod.yml` sets `TRUST_PROXY: "1"`. Never set it to `true` (the API refuses to boot). If a CDN is ever put in front of the domain, configure `trusted_proxies` in Caddy for it, or every CDN edge becomes one shared bucket.
 
-**Deploys check `.env` first.** `scripts/check-prod-env.sh` runs before the backup and the build: `DOMAIN` must be the hostname (e.g. `optra.tyvera.app`), `S3_ENDPOINT` https, the secrets non-empty and not `.env.example` placeholders.
+**Deploys check `.env` first.** `scripts/check-prod-env.sh` runs before the backup and the build: `DOMAIN` must be the hostname (e.g. `optra.tyvera.app`), `S3_ENDPOINT` https, the secrets non-empty and not `.env.example` placeholders (the last assignment of a key is the one checked, as compose uses it; quotes are ignored), and the test-only `THROTTLE_DEFAULT_LIMIT` absent. `TRUST_PROXY` and the API's `PORT` are pinned in `docker-compose.prod.yml`, so `.env` cannot change them.
 
 **Test SSL when bundled Caddy is enabled:**
 

@@ -56,6 +56,10 @@ services:
       - .env
     environment:
       NODE_ENV: production
+      # Pinned: the API reads PORT (apps/api/src/main.ts), and a PORT added to
+      # the shared .env would otherwise move it off the port API_URL and the
+      # healthcheck use.
+      PORT: "3001"
       DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-optra}
       REDIS_HOST: redis
       REDIS_PORT: 6379

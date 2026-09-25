@@ -11,8 +11,19 @@ ENV_FILE="${1:-.env}"
 EXAMPLE_FILE="${2:-.env.example}"
 problems=0
 
+# The LAST assignment wins - that is the one compose's env_file uses - with one
+# pair of surrounding quotes removed.
+unquote() {
+    tr -d '\r' | sed -e 's/^"\(.*\)"$/\1/' -e "s/^'\(.*\)'\$/\1/"
+}
+
 value_of() {
-    grep -m1 "^$1=" "$2" 2>/dev/null | cut -d= -f2- | tr -d '\r' || true
+    { grep "^$1=" "$2" 2>/dev/null || true; } | tail -n 1 | cut -d= -f2- | unquote
+}
+
+# .env.example also documents placeholders as comments (`# KEY=value`).
+example_of() {
+    { grep -E "^(# ?)?$1=" "$2" 2>/dev/null || true; } | tail -n 1 | cut -d= -f2- | unquote
 }
 
 fail() {
@@ -38,7 +49,7 @@ fi
 
 for key in POSTGRES_PASSWORD OPENAI_API_KEY JWT_SECRET; do
     actual="$(value_of "$key" "$ENV_FILE")"
-    example="$(value_of "$key" "$EXAMPLE_FILE")"
+    example="$(example_of "$key" "$EXAMPLE_FILE")"
     if [ -z "$actual" ]; then
         fail "$key is empty"
     elif [ -n "$example" ] && [ "$actual" = "$example" ]; then
@@ -46,10 +57,14 @@ for key in POSTGRES_PASSWORD OPENAI_API_KEY JWT_SECRET; do
     fi
 done
 
-trust="$(value_of TRUST_PROXY "$ENV_FILE")"
-if [ -n "$trust" ] && ! printf '%s' "$trust" | grep -Eq '^[1-9][0-9]*$'; then
-    fail "TRUST_PROXY, if set, must be a positive hop count"
+# A test-only knob (apps/e2e sets it to 100000). env_file carries it into the
+# API, where it would lift the global per-visitor limit.
+if grep -q '^THROTTLE_DEFAULT_LIMIT=' "$ENV_FILE"; then
+    fail "THROTTLE_DEFAULT_LIMIT is for tests only - remove it"
 fi
+
+# TRUST_PROXY is not checked here: docker-compose.prod.yml pins it to "1"
+# under `environment:`, which beats anything in this file.
 
 if [ "$problems" -gt 0 ]; then
     echo "check-prod-env: $problems problem(s) - nothing was built or restarted"
