@@ -23,7 +23,7 @@ TODO: Fill after repository analysis. Do not treat as verified. (Auth rows below
 | Path | Purpose | Domain | Risk | Notes |
 | ---- | ------- | ------ | ---- | ----- |
 | `apps/api/src/auth/auth.service.ts` | Core auth logic: register/verifyOtp/login/refresh/logout/changePassword, email normalization, bcrypt hashing, JWT + refresh token issuance | Auth | Deep | Tested in `auth.service.spec.ts`; `changePassword()` added 2026-07-04 |
-| `apps/api/src/auth/auth-limits.service.ts` | `AuthLimitsService` — per-account Redis counters: `assertLoginAllowed` / `recordLoginFailure` / `clearLoginFailures` (20 failures/hour), `takeOtpResend` (3/hour); hashed keys, fail-open | Auth / Limits | Deep | Added 2026-09-25. |
+| `apps/api/src/auth/auth-limits.service.ts` | `AuthLimitsService` — per-account Redis counters: `takeLoginAttempt` (counted before bcrypt; the 21st in an hour is refused) / `clearLoginFailures` (on success), `takeOtpResend` (3/hour); atomic MULTI, hashed keys, fail-open | Auth / Limits | Deep | Added 2026-09-25. |
 | `apps/api/src/common/client-bucket.ts` | `clientBucket(ip)` — the throttler tracker: IPv4 as is, IPv6 per /64, IPv4-mapped unwrapped | Limits | Deep | Added 2026-09-25. Wired in `app.module.ts` `ThrottlerModule.forRoot` `getTracker`. |
 | `apps/web/app/api/auth/resend-otp/route.ts` | BFF proxy for `POST /auth/resend-otp`, forwarding the visitor address | Auth / BFF | Deep | Added 2026-09-25. |
 | `apps/api/src/auth/auth.controller.ts` | HTTP routes for `/auth/*`, sets/clears the `mnemra_rt` httpOnly cookie | Auth | Deep | Tested in `test/auth.e2e-spec.ts` and `test/change-password.e2e-spec.ts`; `POST /auth/change-password` added 2026-07-04 |

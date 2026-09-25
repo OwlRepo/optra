@@ -83,6 +83,16 @@ describe('Per-account auth limits (e2e)', () => {
     expect(locked.body.message).toBe('Too many sign-in attempts for this account. Try again later.')
   })
 
+  // Sent all at once: each attempt is counted before the password is checked,
+  // so requests in flight together cannot all slip under the cap.
+  it('error: twenty-five sign-ins sent at once cannot beat the cap', async () => {
+    const email = `${prefix}burst@example.com`
+    const responses = await Promise.all(
+      Array.from({ length: 25 }, () => post('/auth/login', { email, password: 'wrong-password' })),
+    )
+    expect(responses.filter((res) => res.status === 429)).toHaveLength(5)
+  })
+
   it('error: failures on an email with no account are counted the same way', async () => {
     const email = `${prefix}nobody@example.com`
     for (let i = 0; i < 20; i++) await post('/auth/login', { email, password: 'wrong-password' }).expect(401)

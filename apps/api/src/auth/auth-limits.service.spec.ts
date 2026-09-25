@@ -17,12 +17,12 @@ function fakeRedis() {
 }
 
 describe('AuthLimitsService', () => {
-  it('error: refuses sign-in once the account has used its failures', async () => {
-    const { redis } = fakeRedis()
-    redis.get.mockResolvedValue(String(MAX_LOGIN_FAILURES))
+  it('error: refuses the sign-in attempt that goes over the limit', async () => {
+    const { redis, chain } = fakeRedis()
+    chain.exec.mockResolvedValue([[null, 'OK'], [null, MAX_LOGIN_FAILURES + 1]])
     const service = new AuthLimitsService(redis as unknown as Redis)
 
-    const error = await service.assertLoginAllowed('a@example.com').catch((caught: unknown) => caught)
+    const error = await service.takeLoginAttempt('a@example.com').catch((caught: unknown) => caught)
 
     expect(error).toBeInstanceOf(HttpException)
     expect((error as HttpException).getStatus()).toBe(429)
@@ -39,12 +39,12 @@ describe('AuthLimitsService', () => {
 
   it('edge: fails open when Redis is unreachable', async () => {
     const { redis, chain } = fakeRedis()
-    redis.get.mockRejectedValue(new Error('ECONNREFUSED'))
+    redis.del.mockRejectedValue(new Error('ECONNREFUSED'))
     chain.exec.mockRejectedValue(new Error('ECONNREFUSED'))
     const service = new AuthLimitsService(redis as unknown as Redis)
 
-    await expect(service.assertLoginAllowed('a@example.com')).resolves.toBeUndefined()
-    await expect(service.recordLoginFailure('a@example.com')).resolves.toBeUndefined()
+    await expect(service.takeLoginAttempt('a@example.com')).resolves.toBeUndefined()
+    await expect(service.clearLoginFailures('a@example.com')).resolves.toBeUndefined()
     await expect(service.takeOtpResend('a@example.com')).resolves.toBe(true)
   })
 
@@ -53,7 +53,7 @@ describe('AuthLimitsService', () => {
     chain.exec.mockResolvedValue([[null, 'OK'], [null, 1]])
     const service = new AuthLimitsService(redis as unknown as Redis)
 
-    await service.recordLoginFailure('a@example.com')
+    await service.takeLoginAttempt('a@example.com')
 
     const key = chain.set.mock.calls[0][0] as string
     expect(key).toMatch(/^auth:login-failures:[0-9a-f]{64}$/)
@@ -62,12 +62,12 @@ describe('AuthLimitsService', () => {
     expect(chain.incr).toHaveBeenCalledWith(key)
   })
 
-  it('happy: allows sign-in below the limit and clears the count on success', async () => {
-    const { redis } = fakeRedis()
-    redis.get.mockResolvedValue(String(MAX_LOGIN_FAILURES - 1))
+  it('happy: allows the attempt that reaches the limit, and clears the count on success', async () => {
+    const { redis, chain } = fakeRedis()
+    chain.exec.mockResolvedValue([[null, 'OK'], [null, MAX_LOGIN_FAILURES]])
     const service = new AuthLimitsService(redis as unknown as Redis)
 
-    await expect(service.assertLoginAllowed('a@example.com')).resolves.toBeUndefined()
+    await expect(service.takeLoginAttempt('a@example.com')).resolves.toBeUndefined()
     await service.clearLoginFailures('a@example.com')
     expect(redis.del).toHaveBeenCalledWith(expect.stringMatching(/^auth:login-failures:[0-9a-f]{64}$/))
   })

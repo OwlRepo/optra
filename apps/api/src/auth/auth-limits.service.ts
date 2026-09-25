@@ -25,28 +25,26 @@ export class AuthLimitsService {
 
   constructor(@Inject('REDIS_CLIENT') private readonly redis: Redis) {}
 
-  /** Refuses before any password work once the account has used its failures. */
-  async assertLoginAllowed(email: string): Promise<void> {
-    let failures: number
+  /**
+   * Counts this sign-in attempt, BEFORE any password work, and refuses it once
+   * the account is over its limit. Counting first is what makes the cap hold
+   * for attempts sent at the same time: a read-then-count check lets every
+   * request in flight during bcrypt slip under it. A correct sign-in clears
+   * the count, so only failures accumulate.
+   */
+  async takeLoginAttempt(email: string): Promise<void> {
+    let attempts: number
     try {
-      failures = Number(await this.redis.get(this.loginKey(email))) || 0
+      attempts = await this.bump(this.loginKey(email), LOGIN_FAILURE_WINDOW_SECONDS)
     } catch (error) {
-      this.warn('read sign-in failures', error)
+      this.warn('count a sign-in attempt', error)
       return
     }
-    if (failures >= MAX_LOGIN_FAILURES) {
+    if (attempts > MAX_LOGIN_FAILURES) {
       throw new HttpException(
         'Too many sign-in attempts for this account. Try again later.',
         HttpStatus.TOO_MANY_REQUESTS,
       )
-    }
-  }
-
-  async recordLoginFailure(email: string): Promise<void> {
-    try {
-      await this.bump(this.loginKey(email), LOGIN_FAILURE_WINDOW_SECONDS)
-    } catch (error) {
-      this.warn('record a sign-in failure', error)
     }
   }
 
