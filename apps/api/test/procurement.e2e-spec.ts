@@ -695,6 +695,40 @@ describe('Procurement flow (e2e)', () => {
     expect(rejected.body.message).toBe('Only CSV, XLSX, or PDF files are supported')
   })
 
+  // B3, end to end on the real queue: a source file that is gone from storage
+  // fails the document on the FIRST attempt with a reason the page can show.
+  // Bull retries a transient failure after a 5s backoff, so reaching `failed`
+  // inside 4s is itself the proof that no retry was needed - the old
+  // behaviour left the row `processing` for three attempts.
+  it('fails a purchase order whose stored file is gone, once, with a reason', async () => {
+    const owner = await seedOwnerWithWorkspace(app, `${prefix}gone-owner@example.com`, 'Procurement Gone')
+    const vendorId = await createVendor(app, owner.workspaceId, owner.accessToken)
+    storage.getToTempFile.mockImplementationOnce(async (key: string) => {
+      throw new StorageObjectNotFoundError(key)
+    })
+
+    const upload = await request(app.getHttpServer())
+      .post(`/workspaces/${owner.workspaceId}/procurement/purchase-orders`)
+      .set('Authorization', `Bearer ${owner.accessToken}`)
+      .field('vendorId', vendorId)
+      .field('poNumber', 'PO-GONE-1')
+      .field('currency', 'USD')
+      .attach('file', Buffer.from('sku,description,qty,unit price\nA1,Widget,10,5.00'), 'gone.csv')
+      .expect(201)
+
+    let row: typeof purchaseOrders.$inferSelect | undefined
+    const deadline = Date.now() + 4_000
+    while (Date.now() < deadline) {
+      ;[row] = await db.select().from(purchaseOrders).where(eq(purchaseOrders.id, upload.body.id)).limit(1)
+      if (row?.status === 'failed') break
+      await new Promise((resolve) => setTimeout(resolve, 100))
+    }
+
+    expect(row?.status).toBe('failed')
+    expect(row?.lastError).toBe('The stored file is missing. Upload it again.')
+    expect(storage.getToTempFile.mock.calls.filter(([key]) => key === row?.storageKey)).toHaveLength(1)
+  })
+
   // S5. Receiving ingest end to end: real Bull queue, real processor, no mocks
   // on the parse path — same posture as the PO/invoice flows above.
   describe('goods receipts (S5)', () => {

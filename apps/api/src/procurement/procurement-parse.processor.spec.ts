@@ -24,6 +24,7 @@ import { ProcurementExtractionService } from './procurement-extraction.service'
 import { ProcurementParseService } from './procurement-parse.service'
 import { ProcurementCompareService } from './procurement-compare.service'
 import { StorageService } from '../storage/storage.service'
+import { StorageObjectNotFoundError } from '../storage/storage.errors'
 
 // Bull job shape the processor reads: attemptsMade counts prior failed attempts,
 // opts.attempts is the configured total. Missing opts means a single attempt.
@@ -548,6 +549,27 @@ describe('ProcurementParseProcessor', () => {
     const [row] = await db.select().from(purchaseOrders).where(eq(purchaseOrders.id, po.id))
     expect(row.status).toBe('failed')
     expect(row.lastError).toMatch(/^Parsing failed\. Reference: [0-9a-f]{8}$/)
+  })
+
+  // A file that is not in storage will not be there on a retry either. Fail
+  // once, with a reason the page can show - not three retries and a reference
+  // number that explains nothing.
+  it('fails a document whose stored file is gone at once, with a client-safe reason, without retrying', async () => {
+    const workspace = await seedWorkspace(`${prefix}po-gone@example.com`, prefix)
+    const key = `k/${randomUUID()}`
+    const [po] = await db
+      .insert(purchaseOrders)
+      .values({ workspaceId: workspace.id, name: 'po.csv', storageKey: key, status: 'pending' })
+      .returning()
+    storage.getToTempFile.mockRejectedValue(new StorageObjectNotFoundError(key))
+
+    await expect(
+      processor.handleParse(job('job-gone', { kind: 'purchase_order', id: po.id }, 0, 3)),
+    ).resolves.toBeUndefined()
+
+    const [row] = await db.select().from(purchaseOrders).where(eq(purchaseOrders.id, po.id))
+    expect(row.status).toBe('failed')
+    expect(row.lastError).toBe('The stored file is missing. Upload it again.')
   })
 
   it('fails a document problem immediately without asking Bull to retry', async () => {

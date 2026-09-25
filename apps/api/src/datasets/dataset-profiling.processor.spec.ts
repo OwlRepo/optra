@@ -7,6 +7,7 @@ import * as XLSX from 'xlsx'
 import { datasets, db, pool, users, workspaceMembers, workspaces } from '@repo/db'
 import { DatasetProfilingProcessor } from './dataset-profiling.processor'
 import { StorageService } from '../storage/storage.service'
+import { StorageObjectNotFoundError } from '../storage/storage.errors'
 
 const mockEmbedQuery = jest.fn()
 
@@ -150,6 +151,17 @@ describe('DatasetProfilingProcessor', () => {
     const [updated] = await db.select().from(datasets).where(eq(datasets.id, dataset.id))
     expect(updated.status).toBe('failed')
     expect(updated.lastError).toContain('storageKey')
+  })
+
+  it('a dataset whose stored file is gone fails with a reason the user can act on', async () => {
+    const dataset = await seedDataset('product,revenue\nWidget,1000')
+    storage.getToTempFile.mockRejectedValue(new StorageObjectNotFoundError(dataset.storageKey ?? 'k'))
+
+    await processor.handleProfiling({ id: 'job-gone', data: { datasetId: dataset.id } } as any)
+
+    const [updated] = await db.select().from(datasets).where(eq(datasets.id, dataset.id))
+    expect(updated.status).toBe('failed')
+    expect(updated.lastError).toBe('The stored file is missing. Upload it again.')
   })
 
   it('converts an XLSX upload to CSV, profiles it, and overwrites storage with the converted CSV', async () => {
