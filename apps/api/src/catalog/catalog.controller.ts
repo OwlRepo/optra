@@ -35,9 +35,9 @@ import { ListCatalogMatchesQueryDto } from './dto/list-catalog-matches-query.dto
 import { ScrapeCatalogDto } from './dto/scrape-catalog.dto'
 import { VendorsService } from './vendors.service'
 import { UploadExceptionFilter } from '../common/http/upload-exception.filter'
+import { maxUploadBytes } from '../common/http/upload-limit'
 
-const MAX_UPLOAD_MB = Number(process.env.MAX_UPLOAD_MB ?? 25)
-const MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024
+const MAX_UPLOAD_BYTES = maxUploadBytes()
 
 const SUPPORTED_EXTENSIONS = new Set(['.pdf', '.csv', '.xlsx'])
 const SUPPORTED_MIME_TYPES = new Set([
