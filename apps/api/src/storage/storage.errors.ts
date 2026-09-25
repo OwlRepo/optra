@@ -1,3 +1,5 @@
+import { Logger, NotFoundException } from '@nestjs/common'
+
 /**
  * The object a row points at is not in storage. Thrown by every StorageService
  * reader in place of the SDK's NoSuchKey / NotFound / 404, so callers can tell
@@ -20,5 +22,23 @@ export class StorageObjectNotFoundError extends Error {
     super('The stored file is missing. Upload it again.')
     this.name = 'StorageObjectNotFoundError'
     this.cause = cause
+  }
+}
+
+/**
+ * Awaits a storage read on behalf of a download route, turning "the object is
+ * gone" into a 404 with a message the UI can show. The key goes to the log,
+ * never to the client. Every other failure is rethrown unchanged, so an
+ * outage still surfaces as a 500 rather than masquerading as a missing file.
+ */
+export async function readOrNotFound<T>(read: Promise<T>, message: string, logger: Logger): Promise<T> {
+  try {
+    return await read
+  } catch (error) {
+    if (error instanceof StorageObjectNotFoundError) {
+      logger.warn(`${message}: object ${error.key} is not in storage`)
+      throw new NotFoundException(message)
+    }
+    throw error
   }
 }

@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { closeDb, photoKeysOfWorkspace, storageKeyOf } from '../support/db'
+import { closeDb, photoKeysOfCatalog, storageKeyOf } from '../support/db'
 import { objectExists } from '../support/s3'
 import { loadState, storageStateFor, type SeedState } from '../support/state'
 import { bff, chooseFile, fixture, toast, waitForRow, wrongType } from '../support/ui'
@@ -37,7 +37,7 @@ test('a PDF catalog parses into items whose photos render from storage', async (
   )
   const key = await storageKeyOf('catalogs', catalog.id)
   expect(await objectExists(key!), 'the uploaded PDF is in storage').toBe(true)
-  const photos = await photoKeysOfWorkspace(state.ownerA.workspaceId)
+  const photos = await photoKeysOfCatalog(catalog.id)
   expect(photos.length, 'the parser stored a page image for the items').toBeGreaterThan(0)
   expect(await objectExists(photos[0].key)).toBe(true)
 

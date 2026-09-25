@@ -3,6 +3,7 @@ import { BadRequestException, Injectable, Logger, NotFoundException } from '@nes
 import { and, desc, eq } from 'drizzle-orm'
 import { catalogItems, catalogs, db, vendors } from '@repo/db'
 import { StorageService } from '../storage/storage.service'
+import { readOrNotFound } from '../storage/storage.errors'
 import { CatalogParseService } from './catalog-parse.service'
 
 // Raster types only, and an allowlist rather than "serve whatever we stored".
@@ -130,7 +131,11 @@ export class CatalogDocumentsService {
       throw new NotFoundException('Catalog item has no photo')
     }
 
-    const { buffer, contentType } = await this.storage.getObject(item.photoStorageKey)
+    const { buffer, contentType } = await readOrNotFound(
+      this.storage.getObject(item.photoStorageKey),
+      'Catalog item photo is missing',
+      this.logger,
+    )
     return { buffer, contentType: resolvePhotoContentType(item.photoStorageKey, contentType) }
   }
 

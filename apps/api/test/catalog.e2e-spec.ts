@@ -23,6 +23,7 @@ import {
 } from '@repo/db'
 import { AppModule } from '../src/app.module'
 import { StorageService } from '../src/storage/storage.service'
+import { StorageObjectNotFoundError } from '../src/storage/storage.errors'
 import { CatalogExtractionService } from '../src/catalog/catalog-extraction.service'
 import { CatalogImageService } from '../src/catalog/catalog-image.service'
 
@@ -83,7 +84,13 @@ async function waitForCatalogDone(id: string, timeoutMs = 15_000): Promise<void>
 
 describe('Catalog flow (e2e)', () => {
   let app: INestApplication
-  let storage: { save: jest.Mock; getBuffer: jest.Mock; getToTempFile: jest.Mock; delete: jest.Mock }
+  let storage: {
+    save: jest.Mock
+    getBuffer: jest.Mock
+    getObject: jest.Mock
+    getToTempFile: jest.Mock
+    delete: jest.Mock
+  }
   const prefix = `e2e-catalog-${Date.now()}-`
   const password = 'password123'
   const originalCatalogEnabled = process.env.CATALOG_ENABLED
@@ -97,12 +104,19 @@ describe('Catalog flow (e2e)', () => {
       }),
       getBuffer: jest.fn(async (key: string) => {
         const body = stored.get(key)
-        if (!body) throw new Error(`Missing stored object ${key}`)
+        // What real storage throws now, not a generic Error.
+        if (!body) throw new StorageObjectNotFoundError(key)
         return Buffer.from(body)
+      }),
+      getObject: jest.fn(async (key: string) => {
+        const body = stored.get(key)
+        if (!body) throw new StorageObjectNotFoundError(key)
+        return { buffer: Buffer.from(body), contentType: null }
       }),
       getToTempFile: jest.fn(async (key: string) => {
         const body = stored.get(key)
-        if (!body) throw new Error(`Missing stored object ${key}`)
+        // What real storage throws now, not a generic Error.
+        if (!body) throw new StorageObjectNotFoundError(key)
         const dir = await mkdtemp(join(tmpdir(), 'catalog-e2e-'))
         const path = join(dir, key.split('/').pop() ?? 'file')
         await writeFile(path, body)
@@ -195,6 +209,24 @@ describe('Catalog flow (e2e)', () => {
     expect(itemsRes.body).toHaveLength(2)
     expect(itemsRes.body[0].photoStorageKey).toBeTruthy()
     expect(itemsRes.body[0].sourcePageNumber).toBeNull()
+
+    // The photo route end to end: bytes present -> served as a raster image;
+    // bytes gone -> a 404 the UI can show, not a 500. The fetcher is stubbed,
+    // so the object is written here the way the real one writes it.
+    const photoKey = itemsRes.body[0].photoStorageKey as string
+    const photoUrl = `/workspaces/${workspaceId}/catalog-items/${itemsRes.body[0].id}/photo`
+    await storage.save(photoKey, Buffer.from('\x89PNG fake'), 'image/png')
+    const photo = await request(app.getHttpServer())
+      .get(photoUrl)
+      .set('Authorization', `Bearer ${owner.accessToken}`)
+      .expect(200)
+    expect(photo.headers['content-type']).toBe('image/png')
+    await storage.delete(photoKey)
+    const gonePhoto = await request(app.getHttpServer())
+      .get(photoUrl)
+      .set('Authorization', `Bearer ${owner.accessToken}`)
+      .expect(404)
+    expect(gonePhoto.body.message).toBe('Catalog item photo is missing')
 
     const [po] = await db.insert(purchaseOrders).values({ workspaceId, name: 'po.csv', status: 'done' }).returning()
     const [poLineItem] = await db

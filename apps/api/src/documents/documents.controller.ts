@@ -9,6 +9,7 @@ import {
   Get,
   HttpCode,
   Param,
+  ParseUUIDPipe,
   Post,
   Query,
   Res,
@@ -129,7 +130,7 @@ export class DocumentsController {
   )
   upload(
     @Param('workspaceId') workspaceId: string,
-    @Param('kbId') kbId: string,
+    @Param('kbId', ParseUUIDPipe) kbId: string,
     @UploadedFile() file?: Express.Multer.File,
   ) {
     if (!file) {
@@ -143,7 +144,7 @@ export class DocumentsController {
   @UseGuards(JwtAuthGuard, WorkspaceMemberGuard)
   list(
     @Param('workspaceId') workspaceId: string,
-    @Param('kbId') kbId: string,
+    @Param('kbId', ParseUUIDPipe) kbId: string,
     @Query() query: ListDocumentsQueryDto,
   ) {
     return this.documentsService.listForKnowledgeBase(workspaceId, kbId, query)
@@ -154,7 +155,7 @@ export class DocumentsController {
   @UseGuards(JwtAuthGuard, WorkspaceMemberGuard)
   async downloadMany(
     @Param('workspaceId') workspaceId: string,
-    @Param('kbId') kbId: string,
+    @Param('kbId', ParseUUIDPipe) kbId: string,
     @Body() body: DownloadManyDto,
     @Res() res: Response,
   ) {
@@ -190,7 +191,7 @@ export class DocumentsController {
   @Roles('owner', 'admin')
   deleteMany(
     @Param('workspaceId') workspaceId: string,
-    @Param('kbId') kbId: string,
+    @Param('kbId', ParseUUIDPipe) kbId: string,
     @Body() body: DeleteManyDto,
   ) {
     return this.documentsService.removeMany(workspaceId, kbId, body.documentIds)
@@ -200,8 +201,8 @@ export class DocumentsController {
   @UseGuards(JwtAuthGuard, WorkspaceMemberGuard)
   async download(
     @Param('workspaceId') workspaceId: string,
-    @Param('kbId') kbId: string,
-    @Param('documentId') documentId: string,
+    @Param('kbId', ParseUUIDPipe) kbId: string,
+    @Param('documentId', ParseUUIDPipe) documentId: string,
     @Res() res: Response,
   ) {
     const { title, buffer } = await this.documentsService.getDownloadable(workspaceId, kbId, documentId)
@@ -220,8 +221,8 @@ export class DocumentsController {
   @Roles('owner', 'admin')
   remove(
     @Param('workspaceId') workspaceId: string,
-    @Param('kbId') kbId: string,
-    @Param('documentId') documentId: string,
+    @Param('kbId', ParseUUIDPipe) kbId: string,
+    @Param('documentId', ParseUUIDPipe) documentId: string,
   ) {
     return this.documentsService.remove(workspaceId, kbId, documentId)
   }

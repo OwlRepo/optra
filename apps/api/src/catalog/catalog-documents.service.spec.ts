@@ -2,6 +2,8 @@ import { eq, like } from 'drizzle-orm'
 import { catalogItems, catalogs, db, pool, users, vendors, workspaceMembers, workspaces } from '@repo/db'
 import { CatalogDocumentsService } from './catalog-documents.service'
 import { StorageService } from '../storage/storage.service'
+import { StorageObjectNotFoundError } from '../storage/storage.errors'
+import { NotFoundException } from '@nestjs/common'
 import { CatalogParseService } from './catalog-parse.service'
 
 async function cleanupFixtures(prefix: string) {
@@ -197,6 +199,19 @@ describe('CatalogDocumentsService', () => {
       const { item } = await seedItemWithPhoto(`${prefix}photo-iso-other@example.com`, 'Photo Iso Other', 'k/p.png')
 
       await expect(service.getItemPhoto(mine.workspace.id, item.id)).rejects.toThrow('Catalog item not found')
+    })
+
+    it('answers 404 when the photo object itself is gone, and still fails loudly on an outage', async () => {
+      const { workspace, item } = await seedItemWithPhoto(`${prefix}photo-gone@example.com`, 'Photo Gone', 'k/gone.png')
+
+      storage.getObject.mockRejectedValueOnce(new StorageObjectNotFoundError('k/gone.png'))
+      const error = await service.getItemPhoto(workspace.id, item.id).catch((e: unknown) => e)
+      expect(error).toBeInstanceOf(NotFoundException)
+      expect((error as Error).message).toBe('Catalog item photo is missing')
+
+      const outage = new Error('connect ECONNREFUSED')
+      storage.getObject.mockRejectedValueOnce(outage)
+      await expect(service.getItemPhoto(workspace.id, item.id)).rejects.toBe(outage)
     })
   })
 })

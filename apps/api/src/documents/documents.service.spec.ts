@@ -6,6 +6,7 @@ import { DocumentsService } from './documents.service'
 import { CacheService } from '../cache/cache.service'
 import { StorageService } from '../storage/storage.service'
 import { IngestService } from '../ingest/ingest.service'
+import { StorageObjectNotFoundError } from '../storage/storage.errors'
 
 async function cleanupDocumentFixtures(prefix: string) {
   const testUsers = await db
@@ -314,6 +315,31 @@ describe('DocumentsService', () => {
       service.getDownloadable(mine.workspace.id, mine.knowledgeBase.id, otherDoc.id),
     ).rejects.toThrow(NotFoundException)
     expect(storage.getBuffer).not.toHaveBeenCalled()
+  })
+
+  it('getDownloadable answers 404 when the stored file itself is gone, and still fails loudly on an outage', async () => {
+    const mine = await seedWorkspaceFixture(`${prefix}dl-gone@example.com`, 'Documents Spec WS DL Gone')
+    const [doc] = await db
+      .insert(documents)
+      .values({
+        workspaceId: mine.workspace.id,
+        knowledgeBaseId: mine.knowledgeBase.id,
+        title: 'gone.txt',
+        status: 'done',
+        storageKey: `${mine.workspace.id}/${mine.knowledgeBase.id}/gone.txt`,
+      })
+      .returning()
+
+    storage.getBuffer.mockRejectedValueOnce(new StorageObjectNotFoundError(doc.storageKey!))
+    const error = await service
+      .getDownloadable(mine.workspace.id, mine.knowledgeBase.id, doc.id)
+      .catch((e: unknown) => e)
+    expect(error).toBeInstanceOf(NotFoundException)
+    expect((error as Error).message).toBe('Document file is missing')
+
+    const outage = new Error('connect ECONNREFUSED')
+    storage.getBuffer.mockRejectedValueOnce(outage)
+    await expect(service.getDownloadable(mine.workspace.id, mine.knowledgeBase.id, doc.id)).rejects.toBe(outage)
   })
 
   it('getManyDownloadable returns bytes for valid ids and skips missing ones', async () => {

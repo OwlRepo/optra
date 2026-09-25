@@ -1,7 +1,8 @@
 import { expect, test, type Browser, type Page } from '@playwright/test'
-import { closeDb, photoKeysOfWorkspace } from '../support/db'
+import { closeDb } from '../support/db'
+import { uploadCatalogWithPhoto, uploadKnowledgeBaseDocument, uploadPurchaseOrder } from '../support/flows'
 import { loadState, storageStateFor, type Role, type SeedState } from '../support/state'
-import { bff, chooseFile, fixture, toast, waitForRow } from '../support/ui'
+import { bff } from '../support/ui'
 
 // Workspace isolation on every route that serves stored bytes. Owner A creates
 // one of each; then owner B - who owns a different workspace - and member A -
@@ -24,48 +25,9 @@ async function pageAs(browser: Browser, role: Role): Promise<Page> {
 test.beforeAll(async ({ browser }) => {
   state = loadState()
   const page = await pageAs(browser, 'ownerA')
-  const ws = state.ownerA.workspaceId
-
-  const po = fixture('po.csv', `access-po-${state.run}.csv`)
-  await page.goto(`/workspaces/${ws}/procurement`)
-  await chooseFile(page, 'Upload purchase order', po)
-  const dialog = page.getByRole('dialog')
-  await dialog.locator('#po-vendor').selectOption(state.ownerA.vendorId)
-  await dialog.locator('#po-number').fill(`PO-ACCESS-${state.run}`)
-  await dialog.getByRole('button', { name: 'Upload', exact: true }).click()
-  await expect(toast(page, 'Purchase order uploaded')).toBeVisible()
-  ids.purchaseOrder = (
-    await waitForRow<{ id: string; name: string; status: string }>(
-      page,
-      `/api/workspaces/${ws}/procurement/purchase-orders`,
-      (row) => row.name === po.name,
-      'done',
-    )
-  ).id
-
-  const note = fixture('kb-note.md', `access-${state.run}.md`)
-  await page.goto(`/workspaces/${ws}/knowledge-bases/${state.ownerA.knowledgeBaseId}`)
-  await page.getByLabel('Upload document').setInputFiles(note)
-  ids.document = (
-    await waitForRow<{ id: string; title: string; status: string }>(
-      page,
-      `/api/workspaces/${ws}/knowledge-bases/${state.ownerA.knowledgeBaseId}/documents?pageSize=100`,
-      (row) => row.title === note.name,
-      'done',
-    )
-  ).id
-
-  const catalog = fixture('catalog.pdf', `access-catalog-${state.run}.pdf`)
-  await page.goto(`/workspaces/${ws}/vendors/${state.ownerA.vendorId}`)
-  await chooseFile(page, 'Upload catalog', catalog)
-  await waitForRow<{ name: string; status: string }>(
-    page,
-    `/api/workspaces/${ws}/vendors/${state.ownerA.vendorId}/catalogs`,
-    (row) => row.name === catalog.name,
-    'done',
-  )
-  ids.catalogItem = (await photoKeysOfWorkspace(ws))[0].id
-
+  ids.purchaseOrder = await uploadPurchaseOrder(page, state.ownerA, `access-po-${state.run}.csv`)
+  ids.document = await uploadKnowledgeBaseDocument(page, state.ownerA, `access-${state.run}.md`)
+  ids.catalogItem = (await uploadCatalogWithPhoto(page, state.ownerA, `access-catalog-${state.run}.pdf`)).itemId
   await page.context().close()
 })
 test.afterAll(closeDb)

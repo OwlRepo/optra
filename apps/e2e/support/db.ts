@@ -104,11 +104,12 @@ export async function rowExists(table: StoredTable, id: string): Promise<boolean
   return (rowCount ?? 0) > 0
 }
 
-export async function photoKeysOfWorkspace(workspaceId: string): Promise<{ id: string; key: string }[]> {
+export async function photoKeysOfCatalog(catalogId: string): Promise<{ id: string; key: string }[]> {
   const { rows } = await db().query<{ id: string; photo_storage_key: string }>(
     `select id, photo_storage_key from catalog_items
-      where workspace_id = $1 and photo_storage_key is not null`,
-    [workspaceId],
+      where catalog_id = $1 and photo_storage_key is not null
+      order by line_number`,
+    [catalogId],
   )
   return rows.map((row) => ({ id: row.id, key: row.photo_storage_key }))
 }
