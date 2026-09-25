@@ -173,11 +173,12 @@ export class StorageService implements OnModuleInit {
 
   private isMissingObjectError(error: unknown): boolean {
     if (!error || typeof error !== 'object') return false
-    const candidate = error as { name?: string; Code?: string; $metadata?: { httpStatusCode?: number } }
+    const candidate = error as { name?: string; Code?: string }
     const code = candidate.name ?? candidate.Code
-    // A missing bucket is also a 404, and it is a configuration fault.
-    if (code === 'NoSuchBucket') return false
-    return code === 'NoSuchKey' || code === 'NotFound' || candidate.$metadata?.httpStatusCode === 404
+    // Missing-object codes only. Any other 404 - a missing bucket, a wrong
+    // endpoint, a proxy's error page - is a configuration fault: it must stay
+    // a 500 and a retryable job failure, never "the stored file is missing".
+    return code === 'NoSuchKey' || code === 'NotFound'
   }
 
   private getBucket(): string {

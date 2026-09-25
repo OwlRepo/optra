@@ -112,7 +112,6 @@ describe('StorageService missing-object classification', () => {
   it.each([
     ['NoSuchKey', { name: 'NoSuchKey', $metadata: { httpStatusCode: 404 } }],
     ['NotFound', { name: 'NotFound', $metadata: { httpStatusCode: 404 } }],
-    ['a bare 404', { name: 'UnknownError', $metadata: { httpStatusCode: 404 } }],
   ])('maps %s to StorageObjectNotFoundError', async (_label, sdkError) => {
     await expect(serviceRejectingWith(sdkError).getBuffer('k')).rejects.toBeInstanceOf(
       StorageObjectNotFoundError,
@@ -127,6 +126,9 @@ describe('StorageService missing-object classification', () => {
 
   it.each([
     ['NoSuchBucket', { name: 'NoSuchBucket', $metadata: { httpStatusCode: 404 } }],
+    // A 404 with no missing-object code is a wrong endpoint or a proxy's error
+    // page: a configuration fault, retryable, never "your file is gone".
+    ['a bare 404', { name: 'UnknownError', $metadata: { httpStatusCode: 404 } }],
     ['AccessDenied', { name: 'AccessDenied', $metadata: { httpStatusCode: 403 } }],
     ['a network failure', new Error('connect ECONNREFUSED')],
   ])('leaves %s untouched', async (_label, sdkError) => {
