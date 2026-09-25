@@ -15,6 +15,7 @@ import type { Request, Response } from 'express'
 import { AuthService } from './auth.service'
 import { RegisterDto } from './dto/register.dto'
 import { VerifyOtpDto } from './dto/verify-otp.dto'
+import { ResendOtpDto } from './dto/resend-otp.dto'
 import { LoginDto } from './dto/login.dto'
 import { ChangePasswordDto } from './dto/change-password.dto'
 import { CurrentUser, type CurrentUserContext } from './decorators/current-user.decorator'
@@ -43,6 +44,15 @@ export class AuthController {
     const { accessToken, refreshToken } = await this.authService.verifyOtp(dto)
     this.setRtCookie(res, refreshToken)
     return { accessToken }
+  }
+
+  // Always the same 200 answer (AuthService.resendOtp). Limited per address
+  // here, per email in AuthLimitsService.
+  @Post('resend-otp')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 3, ttl: TEN_MINUTES_MS } })
+  resendOtp(@Body() dto: ResendOtpDto) {
+    return this.authService.resendOtp(dto)
   }
 
   @Post('login')

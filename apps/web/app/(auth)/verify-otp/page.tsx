@@ -8,7 +8,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { Button, Card, Input, PageShell, StatusBanner } from '@repo/ui'
 import { BrandMark } from '@/components/brand-mark'
-import { verifyOtp } from '@/lib/api/auth'
+import { resendOtp, verifyOtp } from '@/lib/api/auth'
 import { markLoggedIn } from '@/lib/auth'
 
 const schema = z.object({
@@ -25,6 +25,8 @@ export default function VerifyOtpPage() {
   const searchParams = useSearchParams()
   const email = searchParams.get('email') ?? ''
   const [serverError, setServerError] = useState<string | null>(null)
+  const [resendNotice, setResendNotice] = useState<string | null>(null)
+  const [isResending, setIsResending] = useState(false)
 
   const {
     register,
@@ -44,6 +46,23 @@ export default function VerifyOtpPage() {
         ? String((err as { message: unknown }).message)
         : 'Verification failed'
       setServerError(message)
+    }
+  }
+
+  const onResend = async () => {
+    setServerError(null)
+    setResendNotice(null)
+    setIsResending(true)
+    try {
+      const { message } = await resendOtp(email)
+      setResendNotice(message)
+    } catch (err: unknown) {
+      const message = err && typeof err === 'object' && 'message' in err
+        ? String((err as { message: unknown }).message)
+        : 'Could not send a new code'
+      setServerError(message)
+    } finally {
+      setIsResending(false)
     }
   }
 
@@ -81,11 +100,23 @@ export default function VerifyOtpPage() {
           </div>
 
           {serverError ? <StatusBanner variant="error" title={serverError} /> : null}
+          {resendNotice ? <StatusBanner variant="success" title={resendNotice} /> : null}
 
           <Button type="submit" className="w-full" size="lg" isLoading={isSubmitting} loadingText="Verifying">
             Verify email
           </Button>
         </form>
+
+        <Button
+          type="button"
+          variant="ghost"
+          className="w-full"
+          isLoading={isResending}
+          loadingText="Sending"
+          onClick={onResend}
+        >
+          Send a new code
+        </Button>
       </Card>
     </PageShell>
   )

@@ -390,3 +390,12 @@ And one rule the owner made standing: every change now ships with its tests for 
 **Actual:** the soak ran 5 of 5 full runs green (api unit, api e2e, web unit, Playwright) and CI passed 3 of 3 - but the 7,000-row CSV volume test crossed Jest's 5 s default on the 4-vCPU CI runner (1.5 s alone, 2.9 s in a full local run), and a pre-merge review found two cleanup specs that passed with any error. The hypothesis was not falsified: no ingest reconcile failure recurred on the fresh database.
 
 **Why different:** isolating the database removed the order dependence it predicted, but it could not surface a test that was slow only on smaller hardware, or one whose assertion could not fail. Those needed a slower machine and a reviewer, not a cleaner bench.
+
+## 2026-09-25 — A lock on each flat, not only the front door
+*Learning Contract: the plan's design is the prediction; the diff is below. No live prediction solicited.*
+
+**Predicted (from the approved plan):** per-account counters in Redis plus an attempt count on each code would close guessing from many addresses without touching the per-address limits, and no existing test would need to change.
+
+**Actual:** no existing test changed and every layer went green - but the first version read the count, checked the credential, then counted, in both places. The pre-merge review showed that requests in flight together all pass such a check: every sign-in arriving during bcrypt slipped under the 20-failure cap, and parallel code guesses were each compared despite the 5-guess limit. Both now count the attempt first (Redis INCR; a single UPDATE whose row lock re-checks the limit), proven by a 25-at-once sign-in test and a 10-at-once guess test.
+
+**Why different:** a limit enforced as read-then-write only holds for requests that arrive one after another, which is exactly what an attacker does not do. The sequential tests could not see it; only thinking about concurrency (and a test that fires in parallel) could.
