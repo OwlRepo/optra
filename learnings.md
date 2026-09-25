@@ -396,6 +396,6 @@ And one rule the owner made standing: every change now ships with its tests for 
 
 **Predicted (from the approved plan):** per-account counters in Redis plus an attempt count on each code would close guessing from many addresses without touching the per-address limits, and no existing test would need to change.
 
-**Actual:** to be filled at handoff.
+**Actual:** no existing test changed and every layer went green - but the first version read the count, checked the credential, then counted, in both places. The pre-merge review showed that requests in flight together all pass such a check: every sign-in arriving during bcrypt slipped under the 20-failure cap, and parallel code guesses were each compared despite the 5-guess limit. Both now count the attempt first (Redis INCR; a single UPDATE whose row lock re-checks the limit), proven by a 25-at-once sign-in test and a 10-at-once guess test.
 
-**Why different:** to be filled at handoff.
+**Why different:** a limit enforced as read-then-write only holds for requests that arrive one after another, which is exactly what an attacker does not do. The sequential tests could not see it; only thinking about concurrency (and a test that fires in parallel) could.
