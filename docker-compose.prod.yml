@@ -101,6 +101,8 @@ services:
       args:
         NEXT_PUBLIC_API_URL: https://${DOMAIN}/api
         WEB_URL: https://${DOMAIN}
+        NEXT_PUBLIC_UMAMI_SCRIPT_URL: https://analytics.${DOMAIN}/script.js
+        NEXT_PUBLIC_UMAMI_WEBSITE_ID: ${UMAMI_WEBSITE_ID:-}
     container_name: optra-prod-web
     restart: unless-stopped
     ports:
@@ -116,6 +118,8 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY:?OPENAI_API_KEY required}
       LANGSMITH_API_KEY: ${LANGSMITH_API_KEY:-}
       LANGSMITH_PROJECT: ${LANGSMITH_PROJECT:-optra-prod}
+      NEXT_PUBLIC_UMAMI_SCRIPT_URL: https://analytics.${DOMAIN}/script.js
+      NEXT_PUBLIC_UMAMI_WEBSITE_ID: ${UMAMI_WEBSITE_ID:-}
     networks:
       - internal
       - web
@@ -124,6 +128,39 @@ services:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:3000/"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+
+  umami:
+    # See docker-compose.yml for the digest-pin rationale — same image, same
+    # digest, kept identical across dev/prod on purpose.
+    image: ghcr.io/umami-software/umami@sha256:85909afc45bdcda1917394594a087421fdbb05610fded0fa9f6fb861abb2f367
+    container_name: optra-prod-umami
+    init: true
+    restart: unless-stopped
+    # 127.0.0.1 only, same as `web` above: this VPS's actual public routing is
+    # a VPS-level Caddy (`/etc/caddy/Caddyfile`, outside this repo) sending
+    # subdomains to 127.0.0.1:<port> — see docs/ai/risk-register.md "Shared-VPS
+    # deploy". The bundled `optra-prod-caddy` container below is disabled here
+    # (`COMPOSE_PROFILES` must not include `public`); this published port is
+    # what makes Umami reachable in the deployment that's actually running.
+    ports:
+      - "127.0.0.1:3302:3000"
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/umami
+      DATABASE_TYPE: postgresql
+      APP_SECRET: ${UMAMI_APP_SECRET:?UMAMI_APP_SECRET required}
+      TWO_FACTOR_ENCRYPTION_KEY: ${UMAMI_TWO_FACTOR_KEY:?UMAMI_TWO_FACTOR_KEY required}
+    networks:
+      - internal
+      - web
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://127.0.0.1:3000/api/heartbeat"]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -148,6 +185,8 @@ services:
       - web
     depends_on:
       web:
+        condition: service_healthy
+      umami:
         condition: service_healthy
 
 networks:
