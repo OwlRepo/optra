@@ -1,0 +1,53 @@
+name: Daily backup
+
+# Separate from deploy.yml on purpose. The backup inside a deploy is a rollback
+# point for THAT deploy; this one exists so the database is protected on days
+# when nothing ships — which, for a project that is not under active
+# development, is most days.
+#
+# GitHub disables scheduled workflows in repositories with no activity for 60
+# days, and does so quietly. If backups stop arriving, check that first.
+on:
+  schedule:
+    # 03:17 UTC. Not on the hour: GitHub's scheduler queues heavily at :00 and
+    # runs are delayed by many minutes when they pile up there.
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+
+jobs:
+  backup:
+    name: Database backup
+    runs-on: ubuntu-latest
+    environment: VPS_PROD
+    timeout-minutes: 20
+    # Its own group, never shared with deploy-production. A backup queueing
+    # behind a deploy is correct; a backup cancelled by one is not.
+    concurrency:
+      group: backup-production
+      cancel-in-progress: false
+    steps:
+      - name: Back up over SSH
+        uses: appleboy/ssh-action@v1.0.3
+        # The B2 credentials are named here and forwarded by `envs:` below, so
+        # they arrive as real environment variables on the box. They are never
+        # interpolated into `script:`, where they would be echoed into the run
+        # log the first time anyone enabled debug logging.
+        env:
+          BACKUP_S3_BUCKET: ${{ secrets.BACKUP_S3_BUCKET }}
+          BACKUP_S3_ENDPOINT: ${{ secrets.BACKUP_S3_ENDPOINT }}
+          BACKUP_S3_ACCESS_KEY: ${{ secrets.BACKUP_S3_ACCESS_KEY }}
+          BACKUP_S3_SECRET_KEY: ${{ secrets.BACKUP_S3_SECRET_KEY }}
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT }}
+          command_timeout: 15m
+          envs: BACKUP_S3_BUCKET,BACKUP_S3_ENDPOINT,BACKUP_S3_ACCESS_KEY,BACKUP_S3_SECRET_KEY
+          script: |
+            set -eu
+            cd /home/deploy/apps/optra
+            # --reason=scheduled fails if the database is unreachable, rather
+            # than reporting a healthy backup of nothing. A red run here is the
+            # entire alerting story — there is no dead-man's switch.
+            sh scripts/backup.sh --reason=scheduled

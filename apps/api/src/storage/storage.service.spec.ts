@@ -3,9 +3,10 @@ import { readFile } from 'fs/promises'
 import { unlinkSync } from 'fs'
 import { resolve } from 'path'
 import { config as loadEnv } from 'dotenv'
-import { ConfigModule } from '@nestjs/config'
+import { ConfigModule, ConfigService } from '@nestjs/config'
 import { Test } from '@nestjs/testing'
 import { StorageService } from './storage.service'
+import { StorageObjectNotFoundError } from './storage.errors'
 
 // This is a REAL integration test: it round-trips bytes through the configured
 // S3-compatible endpoint (SeaweedFS locally), so it is gated on S3_ENDPOINT and
@@ -62,5 +63,76 @@ describeStorage('StorageService', () => {
 
   it('ensureBucket is idempotent', async () => {
     await expect(service.onModuleInit()).resolves.toBeUndefined()
+  })
+
+  it('getObject returns the Content-Type the object was saved with', async () => {
+    const key = `spec/${randomUUID()}.png`
+    await service.save(key, Buffer.from('png-ish'), 'image/png')
+
+    await expect(service.getObject(key)).resolves.toEqual({
+      buffer: Buffer.from('png-ish'),
+      contentType: 'image/png',
+    })
+
+    await service.delete(key)
+  })
+
+  // A real S3 answer for a key that is not there. Every reader must turn it
+  // into one named error the callers can branch on - and never leak the key,
+  // because procurement copies an error's message into the client-visible
+  // `lastError`.
+  it.each(['getBuffer', 'getObject', 'getToTempFile'] as const)(
+    '%s rejects a missing key with StorageObjectNotFoundError, key kept off the message',
+    async (method) => {
+      const key = `spec/missing-${randomUUID()}.txt`
+
+      const error = await service[method](key).catch((caught: unknown) => caught)
+
+      expect(error).toBeInstanceOf(StorageObjectNotFoundError)
+      expect((error as StorageObjectNotFoundError).key).toBe(key)
+      expect((error as Error).message).not.toContain(key)
+      expect((error as Error).message).not.toContain('spec/')
+    },
+  )
+})
+
+// The same classification, pinned without an object store, so it runs in
+// every environment. The S3 SDK reports a missing object in more than one
+// shape depending on the implementation; a missing BUCKET is a configuration
+// fault and must stay a 500, so it is deliberately not treated as "missing
+// object" even though it is also a 404.
+describe('StorageService missing-object classification', () => {
+  function serviceRejectingWith(error: unknown): StorageService {
+    const config = { get: (key: string) => ({ S3_BUCKET: 'bucket' })[key] } as unknown as ConfigService
+    const service = new StorageService(config)
+    ;(service as unknown as { client: unknown }).client = { send: jest.fn().mockRejectedValue(error) }
+    return service
+  }
+
+  it.each([
+    ['NoSuchKey', { name: 'NoSuchKey', $metadata: { httpStatusCode: 404 } }],
+    ['NotFound', { name: 'NotFound', $metadata: { httpStatusCode: 404 } }],
+  ])('maps %s to StorageObjectNotFoundError', async (_label, sdkError) => {
+    await expect(serviceRejectingWith(sdkError).getBuffer('k')).rejects.toBeInstanceOf(
+      StorageObjectNotFoundError,
+    )
+  })
+
+  it('keeps the SDK error as the cause', async () => {
+    const sdkError = { name: 'NoSuchKey', $metadata: { httpStatusCode: 404 } }
+    const error = await serviceRejectingWith(sdkError).getObject('k').catch((caught: unknown) => caught)
+    expect((error as Error & { cause?: unknown }).cause).toBe(sdkError)
+  })
+
+  it.each([
+    ['NoSuchBucket', { name: 'NoSuchBucket', $metadata: { httpStatusCode: 404 } }],
+    // A 404 with no missing-object code is a wrong endpoint or a proxy's error
+    // page: a configuration fault, retryable, never "your file is gone".
+    ['a bare 404', { name: 'UnknownError', $metadata: { httpStatusCode: 404 } }],
+    ['AccessDenied', { name: 'AccessDenied', $metadata: { httpStatusCode: 403 } }],
+    ['a network failure', new Error('connect ECONNREFUSED')],
+  ])('leaves %s untouched', async (_label, sdkError) => {
+    const error = await serviceRejectingWith(sdkError).getToTempFile('k').catch((caught: unknown) => caught)
+    expect(error).toBe(sdkError)
   })
 })

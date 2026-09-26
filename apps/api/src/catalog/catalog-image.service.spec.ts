@@ -66,6 +66,31 @@ describe('CatalogImageService', () => {
     expect(storage.save).not.toHaveBeenCalled()
   })
 
+  // The photo route refuses to serve anything but a raster image (an SVG can
+  // carry script). Storing one here only produced an item whose photo 400s on
+  // every render - so the fetcher applies the same allowlist and stores nothing.
+  it.each(['image/svg+xml', 'image/x-icon', 'image/tiff'])(
+    'returns null and stores nothing for %s, which the photo route would refuse to serve',
+    async (contentType) => {
+      fetchMock.mockResolvedValue(fakeResponse({ ok: true, contentType, chunks: [new Uint8Array([1])] }))
+
+      const result = await service.fetchAndStore('ws-1', 'cat-1', 'https://vendor.example.com/logo')
+
+      expect(result).toBeNull()
+      expect(storage.save).not.toHaveBeenCalled()
+    },
+  )
+
+  it('accepts a raster type sent with parameters, and stores the bare media type', async () => {
+    const bytes = new Uint8Array([0xff, 0xd8])
+    fetchMock.mockResolvedValue(fakeResponse({ ok: true, contentType: 'IMAGE/JPEG; charset=binary', chunks: [bytes] }))
+
+    const key = await service.fetchAndStore('ws-1', 'cat-1', 'https://vendor.example.com/photo')
+
+    expect(key).toMatch(/\/images\/[0-9a-f-]+\.jpeg$/)
+    expect(storage.save).toHaveBeenCalledWith(key, Buffer.from(bytes), 'image/jpeg')
+  })
+
   it('returns null when the body exceeds the size cap', async () => {
     process.env.CATALOG_IMAGE_MAX_BYTES = '10'
     fetchMock.mockResolvedValue(

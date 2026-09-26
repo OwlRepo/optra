@@ -2,7 +2,7 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common'
 import { InjectQueue } from '@nestjs/bull'
 import { Job, Queue } from 'bull'
 import { db, catalogs } from '@repo/db'
-import { eq, or } from 'drizzle-orm'
+import { and, eq, or } from 'drizzle-orm'
 
 const PENDING_CATALOG_STALE_MS = 2 * 60_000
 const PROCESSING_CATALOG_STALE_MS = 30 * 60_000
@@ -94,10 +94,14 @@ export class CatalogParseService implements OnModuleInit {
   }
 
   async reconcile(now = new Date()) {
+    // Uploaded catalogs only: scraped ones are owned by
+    // CatalogScrapeService.reconcile, and have no parse job to find.
     const rows = await db
       .select()
       .from(catalogs)
-      .where(or(eq(catalogs.status, 'pending'), eq(catalogs.status, 'processing')))
+      .where(
+        and(eq(catalogs.sourceKind, 'upload'), or(eq(catalogs.status, 'pending'), eq(catalogs.status, 'processing'))),
+      )
     await this.reconcileRows(rows, now)
   }
 

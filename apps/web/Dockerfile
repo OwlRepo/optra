@@ -15,6 +15,8 @@ COPY packages/types/package.json ./packages/types/
 COPY packages/db/package.json ./packages/db/
 COPY packages/ai/package.json ./packages/ai/
 COPY packages/ui/package.json ./packages/ui/
+# bun install --frozen-lockfile needs every workspace manifest the lockfile names.
+COPY apps/e2e/package.json ./apps/e2e/
 RUN --mount=type=cache,id=optra-bun-web-v1,target=/root/.bun/install/cache,sharing=locked \
     bun install --frozen-lockfile --filter './' --filter '@repo/web' --filter '@repo/ui'
 
@@ -40,14 +42,21 @@ ENTRYPOINT ["sh", "/app/docker/web-dev-entrypoint.sh"]
 # --- prod target: build, then stage standalone output ---
 FROM base AS prod
 # NEXT_PUBLIC_* must be present at BUILD time — Next inlines it into the client bundle.
-# Passed via build.args in docker-compose.prod.yml (web.build.args.NEXT_PUBLIC_API_URL).
+# WEB_URL too: sitemap.xml, robots.txt and the landing page's canonical and
+# share metadata are rendered once, at build, from it. Both are passed via
+# build.args in docker-compose.prod.yml.
 ARG NEXT_PUBLIC_API_URL
+ARG WEB_URL
+# Without it those pages fall back to https://optra.example.com; refuse to
+# build a production image that would advertise the placeholder.
+RUN test -n "$WEB_URL" || { echo "WEB_URL build arg is required for the production web image" >&2; exit 1; }
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+ENV WEB_URL=${WEB_URL}
 RUN --mount=type=cache,id=optra-turbo-web-v1,target=/app/.turbo,sharing=locked \
     bunx turbo run build --filter=@repo/web...
 

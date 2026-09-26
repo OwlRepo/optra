@@ -28,9 +28,9 @@ the result, and the relevant loading / empty / error / responsive states. Use a
 screenshot only when the reviewer asks for one.
 
 How to produce it: walk the flow in the Browser pane against the dev stack
-(`docs/ai/dev-environment.md`) and record it. The repo has no browser e2e runner
-(no Playwright), so the recording is manual. Adding one is a new dependency and
-needs approval.
+(`docs/ai/dev-environment.md`) and record it. The Playwright suite
+(`apps/e2e`, run in CI) proves the flow works; the recording shows a reviewer
+what it looks like, so it stays manual.
 
 GitHub has no CLI or API for attaching a video to a PR body; it is drag-and-drop
 in the web UI only. Hand the file to the user to attach. If the PR is opened

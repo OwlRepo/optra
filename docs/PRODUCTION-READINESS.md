@@ -33,7 +33,7 @@
 
 | # | Item | Current state | Action | Sev | Blocks |
 |---|------|---------------|--------|-----|--------|
-| C1 | **Backups** | *(Corrected 2026-09-20: a per-deploy Postgres `pg_dump` exists (`.github/workflows/deploy.yml:61-69`). It is on the same disk, skipped if postgres is down, and not restore-tested. SeaweedFS still has no backup.)* ~~None for Postgres (pgvector) or SeaweedFS.~~ | Automated Postgres dumps + SeaweedFS volume backups; test restore. | 🔴 | Prod |
+| C1 | **Backups** | *(Corrected 2026-09-20: a per-deploy Postgres `pg_dump` exists (`.github/workflows/deploy.yml:61-69`). It is on the same disk, skipped if postgres is down, and not restore-tested. SeaweedFS still has no backup.)* ~~None for Postgres (pgvector) or SeaweedFS.~~ | Automated Postgres dumps + SeaweedFS volume backups; test restore. **Done 2026-09-25 (B22):** `scripts/backup.sh` restore-verifies every dump, runs per deploy and daily, uploads to B2; objects moved to B2 so no volume backup is needed. See `docs/ops/restore.md`. | ✅ | Prod |
 | C2 | **Health checks** | ✅ Updated 2026-07-08 (stale row — endpoint has existed since 2026-07-04). `GET /health` (`apps/api/src/health/health.controller.ts`) is live, dependency-free (deliberately not DB/Redis/S3-backed so it never false-fails a startup race), and is what Docker `HEALTHCHECK` directives and `.github/workflows/deploy.yml`'s healthcheck-poll actually consume today. | Consider a second, deeper `/health/ready` (DB + Redis + S3 ping) for readiness-vs-liveness distinction if a future orchestrator needs it — not needed for the current single-VPS Docker Compose deploy. | ✅ | — |
 | C3 | **Error monitoring** | None. | Sentry (or similar) for API + web; alerting. | 🟠 | Prod |
 | C4 | **Worker separation** | Bull `ingest-queue`/`scrape-queue` processors run IN the API process → ingest/crawl compete with chat latency. | Run a separate worker process/container for queues; scale independently. | 🟠 | Prod (load) |
@@ -96,7 +96,7 @@ Dependency pin note:
 
 **Updated 2026-07-08** — the original sequencing below assumed F1/C7/A1/A2/B1/B2/C2 were still open; all seven are now ✅ (see rows above), so the pre-demo gate is already cleared. Remaining pre-launch blockers, current as of this pass:
 
-**Before real production launch (blockers):** C1 (backups — still genuinely not built), A4 (strong prod secrets — verify actual rotation, not just that the template exists), + A5–A9/C3–C6 hardening, D1 (RAGAS), ~~F3 (PR-gating CI — the deploy workflow that exists is not a test gate)~~ *(closed 2026-09-20, S0d)*, G1/G2 (PII/encryption), H1 (password reset), then A9 security review.
+**Before real production launch (blockers):** ~~C1 (backups)~~ *(closed 2026-09-25, B22)*, A4 (strong prod secrets — verify actual rotation, not just that the template exists), + A5–A9/C3–C6 hardening, D1 (RAGAS), ~~F3 (PR-gating CI — the deploy workflow that exists is not a test gate)~~ *(closed 2026-09-20, S0d)*, G1/G2 (PII/encryption), H1 (password reset), then A9 security review.
 
 **Quality upgrades (post-launch):** Stage 3 LangGraph (D3), D2 feedback loop, F7b RAGAS-dependent coverage dashboard half (`docs/ai/planning/v2-features.md`), the 🟢 items.
 

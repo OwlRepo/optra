@@ -1,0 +1,17 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { clientIpHeaders } from '../../../../src/lib/http/client-ip'
+
+const API_URL = process.env.API_URL || 'http://localhost:3001'
+
+export async function POST(request: NextRequest) {
+  const body = await request.json()
+
+  const apiRes = await fetch(`${API_URL}/auth/resend-otp`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...clientIpHeaders(request.headers) },
+    body: JSON.stringify(body),
+  })
+
+  const data = await apiRes.json()
+  return NextResponse.json(data, { status: apiRes.status })
+}

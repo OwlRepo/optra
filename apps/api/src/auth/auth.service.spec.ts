@@ -1,6 +1,7 @@
 import {
   ConflictException,
   ForbiddenException,
+  HttpException,
   InternalServerErrorException,
   UnauthorizedException,
 } from '@nestjs/common'
@@ -8,10 +9,20 @@ import { Test } from '@nestjs/testing'
 import { JwtModule } from '@nestjs/jwt'
 import { ConfigModule } from '@nestjs/config'
 import { createHash } from 'crypto'
-import { and, eq } from 'drizzle-orm'
+import { and, desc, eq } from 'drizzle-orm'
 import { db, otps, pool, refreshTokens, users, workspaceMembers, workspaces } from '@repo/db'
 import { AuthService } from './auth.service'
+import { AuthLimitsService } from './auth-limits.service'
 import { NotificationsService } from '../notifications/notifications.service'
+
+// Per-account counters are Redis state with their own spec
+// (auth-limits.service.spec.ts); here only the calls AuthService makes matter.
+const limits = {
+  takeLoginAttempt: jest.fn().mockResolvedValue(undefined),
+  clearLoginFailures: jest.fn().mockResolvedValue(undefined),
+  takeOtpResend: jest.fn().mockResolvedValue(true),
+}
+const notifications = { sendOtp: jest.fn().mockResolvedValue(undefined) }
 
 async function cleanupUser(email: string) {
   const [user] = await db.select({ id: users.id }).from(users).where(eq(users.email, email.toLowerCase())).limit(1)
@@ -40,12 +51,13 @@ describe('AuthService', () => {
       ],
       providers: [
         AuthService,
+        { provide: AuthLimitsService, useValue: limits },
         // Stubbed, not the real NotificationsService: these tests exercise auth
         // business logic (DB state, tokens, guards), not email delivery — that has
         // its own coverage in notifications.service.spec.ts and the dedicated
         // "email send failure" block below. Using the real service here would make
         // every test in this file depend on a live Resend account/domain.
-        { provide: NotificationsService, useValue: { sendOtp: jest.fn().mockResolvedValue(undefined) } },
+        { provide: NotificationsService, useValue: notifications },
       ],
     }).compile()
 
@@ -101,6 +113,7 @@ describe('AuthService', () => {
         ],
         providers: [
           AuthService,
+          { provide: AuthLimitsService, useValue: limits },
           {
             provide: NotificationsService,
             useValue: {
@@ -221,6 +234,165 @@ describe('AuthService', () => {
       const result = await service.login({ email: email.toUpperCase(), password })
       expect(result.accessToken).toBeDefined()
       expect(result.refreshToken).toBeDefined()
+    })
+
+    it('error: a locked account is refused before the password is checked', async () => {
+      limits.clearLoginFailures.mockClear()
+      limits.takeLoginAttempt.mockRejectedValueOnce(new HttpException('locked', 429))
+
+      await expect(service.login({ email, password })).rejects.toMatchObject({ status: 429 })
+      expect(limits.clearLoginFailures).not.toHaveBeenCalled()
+    })
+
+    it('error: a wrong password is counted against the account and not cleared', async () => {
+      limits.takeLoginAttempt.mockClear()
+      limits.clearLoginFailures.mockClear()
+      await expect(service.login({ email, password: 'totally-wrong' })).rejects.toThrow(UnauthorizedException)
+      expect(limits.takeLoginAttempt).toHaveBeenCalledWith(email)
+      expect(limits.clearLoginFailures).not.toHaveBeenCalled()
+    })
+
+    it('edge: an email with no account is counted the same way', async () => {
+      limits.takeLoginAttempt.mockClear()
+      await expect(
+        service.login({ email: 'svc-login-ghost@example.com', password }),
+      ).rejects.toThrow(UnauthorizedException)
+      expect(limits.takeLoginAttempt).toHaveBeenCalledWith('svc-login-ghost@example.com')
+    })
+
+    it('happy: a correct password clears the account count', async () => {
+      limits.clearLoginFailures.mockClear()
+      await service.login({ email, password })
+      expect(limits.clearLoginFailures).toHaveBeenCalledWith(email)
+    })
+  })
+
+  describe('verifyOtp attempt limit', () => {
+    const email = `svc-verify-burn-${Date.now()}@example.com`
+
+    beforeAll(async () => {
+      await service.register({ email, password: 'password123' })
+    })
+
+    afterAll(() => cleanupUser(email))
+
+    it('error: the fifth wrong code burns the code for good', async () => {
+      const [user] = await db.select().from(users).where(eq(users.email, email)).limit(1)
+      const [otp] = await db.select().from(otps).where(eq(otps.userId, user.id)).limit(1)
+      const wrong = otp.code === '111111' ? '222222' : '111111'
+
+      for (let i = 0; i < 4; i++) {
+        await expect(service.verifyOtp({ email, code: wrong })).rejects.toThrow('Invalid or expired code')
+      }
+      await expect(service.verifyOtp({ email, code: wrong })).rejects.toThrow('Too many wrong codes. Request a new code.')
+      await expect(service.verifyOtp({ email, code: otp.code })).rejects.toThrow('Invalid or expired code')
+
+      const [burned] = await db.select().from(otps).where(eq(otps.id, otp.id)).limit(1)
+      expect(burned.failedAttempts).toBe(5)
+      expect(burned.usedAt).toBeNull()
+    })
+
+    it('error: an unknown email gets the same answer as a wrong code', async () => {
+      await expect(
+        service.verifyOtp({ email: 'svc-verify-ghost@example.com', code: '123456' }),
+      ).rejects.toThrow('Invalid or expired code')
+    })
+
+    it('error: ten wrong codes sent at once use up the five attempts and no more', async () => {
+      const burstEmail = `svc-verify-burst-${Date.now()}@example.com`
+      await service.register({ email: burstEmail, password: 'password123' })
+      try {
+        const [user] = await db.select().from(users).where(eq(users.email, burstEmail)).limit(1)
+        const [otp] = await db.select().from(otps).where(eq(otps.userId, user.id)).limit(1)
+        const wrong = otp.code === '111111' ? '222222' : '111111'
+
+        const results = await Promise.allSettled(
+          Array.from({ length: 10 }, () => service.verifyOtp({ email: burstEmail, code: wrong })),
+        )
+
+        expect(results.every((result) => result.status === 'rejected')).toBe(true)
+        const [after] = await db.select().from(otps).where(eq(otps.id, otp.id)).limit(1)
+        expect(after.failedAttempts).toBe(5)
+      } finally {
+        await cleanupUser(burstEmail)
+      }
+    })
+  })
+
+  describe('verifyOtp on a verified account', () => {
+    const email = `svc-verify-twice-${Date.now()}@example.com`
+
+    afterAll(() => cleanupUser(email))
+
+    it('regression: a verified account is refused, and no second workspace is created', async () => {
+      await service.register({ email, password: 'password123' })
+      const [user] = await db.select().from(users).where(eq(users.email, email)).limit(1)
+      const [otp] = await db.select().from(otps).where(eq(otps.userId, user.id)).limit(1)
+      await service.verifyOtp({ email, code: otp.code })
+      await db.insert(otps).values({ userId: user.id, code: '123456', expiresAt: new Date(Date.now() + 600_000) })
+
+      await expect(service.verifyOtp({ email, code: '123456' })).rejects.toThrow('Invalid or expired code')
+
+      const owned = await db.select().from(workspaces).where(eq(workspaces.ownerId, user.id))
+      expect(owned).toHaveLength(1)
+    })
+  })
+
+  describe('resendOtp', () => {
+    const email = `svc-resend-${Date.now()}@example.com`
+    const answer = 'If that account is waiting for verification, a new code is on its way.'
+
+    beforeAll(async () => {
+      await service.register({ email, password: 'password123' })
+    })
+
+    afterAll(() => cleanupUser(email))
+
+    it('edge: an unknown email gets the same answer and nothing is sent', async () => {
+      notifications.sendOtp.mockClear()
+      await expect(service.resendOtp({ email: 'svc-resend-ghost@example.com' })).resolves.toEqual({ message: answer })
+      expect(notifications.sendOtp).not.toHaveBeenCalled()
+    })
+
+    it('edge: over the resend budget gets the same answer and no new code', async () => {
+      const [user] = await db.select().from(users).where(eq(users.email, email)).limit(1)
+      const before = await db.select().from(otps).where(eq(otps.userId, user.id))
+      limits.takeOtpResend.mockResolvedValueOnce(false)
+
+      await expect(service.resendOtp({ email })).resolves.toEqual({ message: answer })
+
+      expect(await db.select().from(otps).where(eq(otps.userId, user.id))).toHaveLength(before.length)
+    })
+
+    it('error: a failed email send keeps the old code live and the new one dead', async () => {
+      const failEmail = `svc-resend-fail-${Date.now()}@example.com`
+      await service.register({ email: failEmail, password: 'password123' })
+      try {
+        const [user] = await db.select().from(users).where(eq(users.email, failEmail)).limit(1)
+        notifications.sendOtp.mockRejectedValueOnce(new InternalServerErrorException('Failed to send verification email'))
+
+        await expect(service.resendOtp({ email: failEmail })).rejects.toThrow(InternalServerErrorException)
+
+        const codes = await db.select().from(otps).where(eq(otps.userId, user.id)).orderBy(desc(otps.createdAt))
+        expect(codes).toHaveLength(2)
+        expect(codes[0].expiresAt.getTime()).toBeLessThanOrEqual(Date.now())
+        expect(codes[1].expiresAt.getTime()).toBeGreaterThan(Date.now())
+      } finally {
+        await cleanupUser(failEmail)
+      }
+    })
+
+    it('happy: expires the old code, stores a new one and sends it', async () => {
+      const [user] = await db.select().from(users).where(eq(users.email, email)).limit(1)
+      notifications.sendOtp.mockClear()
+
+      await expect(service.resendOtp({ email: email.toUpperCase() })).resolves.toEqual({ message: answer })
+
+      const codes = await db.select().from(otps).where(eq(otps.userId, user.id)).orderBy(desc(otps.createdAt))
+      expect(codes).toHaveLength(2)
+      expect(codes[1].expiresAt.getTime()).toBeLessThanOrEqual(Date.now())
+      expect(codes[0].code).toMatch(/^\d{6}$/)
+      expect(notifications.sendOtp).toHaveBeenCalledWith(email, codes[0].code)
     })
   })
 

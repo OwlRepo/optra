@@ -1,0 +1,5 @@
+{
+  "root": true,
+  "extends": ["../../.eslintrc.base.json"],
+  "ignorePatterns": ["node_modules", "playwright-report", "test-results", ".auth", ".eslintrc.json"]
+}

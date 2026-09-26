@@ -69,13 +69,15 @@ below.
 | unit | `scripts/seed/**/*.test.ts` | Vitest (root) | yes |
 | script tests | `scripts/**/*.test.mjs` | `node --test` (root, `bun run test:scripts`) | yes |
 | e2e | `apps/api/test/**/*.e2e-spec.ts` | Jest e2e config (`apps/api`) | no (needs the full stack) |
+| browser e2e | `apps/e2e/tests/**/*.spec.ts` | Playwright (`apps/e2e`) | no (needs the full stack) |
 | migration tests | `packages/db/src/**/*.spec.ts` or an api e2e spec | as above | per kind |
 
 `scripts/ci/tdd-runner.mjs` reads Jest's `--json` and Vitest's
 `--reporter=json` reports (`parseJsonReport`) and `node --test` TAP output
 (`parseTapFailures`). UI (`.tsx`) changes are held to the same rule as logic:
-they need a runnable Vitest spec. There is no browser e2e runner (no
-Playwright) in the repo, so no change is required to add an e2e spec.
+they need a runnable Vitest spec. Browser e2e specs (`apps/e2e/tests/*.spec.ts`,
+Playwright) are required by "Required test layers" below; like API e2e they need
+the full stack, so they are never a RED proof.
 
 ### Enforcement
 
@@ -111,14 +113,45 @@ Known limits:
 
 ---
 
+## Required test layers
+
+Owner decision, 2026-09-25: **every change ships with the tests for each layer it touches, written first.** Not "if available" — the layers exist, and CI enforces the pairing.
+
+| Layer | Where | Runs against | Required when the change touches |
+|---|---|---|---|
+| Unit | `*.spec.ts` beside the code | mocks at the module boundary (Jest `apps/api`, Vitest elsewhere) | any service, controller, processor, helper, component, BFF route |
+| API e2e | `apps/api/test/*.e2e-spec.ts` | real `AppModule` + Supertest, real Postgres (`optra_e2e`) and Redis/Bull; storage and model calls stubbed per suite | any API route: status codes, guards, pipes, filters, what it writes, what a Bull job does with it |
+| Browser e2e | `apps/e2e/tests/*.spec.ts` | Playwright: real Chromium → production Next.js server → production API → Postgres (`optra_pw`), Redis, SeaweedFS (`optra-pw` bucket), OpenAI stub | any page or BFF route, and any flow a person clicks through |
+
+**What "covered" means:** the happy path **and** the error paths a user can actually hit — wrong type, too large, not a member (403), another workspace's id (404, never 403), a malformed id (400), no session (401), and "the thing is gone" (a missing stored object is a 404 with a reason, never a 500).
+
+**Enforcement.** `scripts/check-test-layers.sh` runs first in the CI `ci` job, per commit:
+
+| If a commit touches | It must also touch |
+|---|---|
+| `apps/api/src/**/*.{service,controller,processor,guard,filter,pipe,interceptor}.ts`, `apps/api/src/common/**`, `apps/web/middleware.ts`, `apps/web/src/lib/http/*` | a `*.spec.ts` in the same directory |
+| `apps/api/src/**/*.controller.ts` | `apps/api/test/*.e2e-spec.ts` |
+| `apps/web/app/**/page.tsx`, `apps/web/app/api/**/route.ts` | `apps/e2e/tests/*.spec.ts` |
+
+A layer that genuinely cannot observe the change is skipped with a trailer on that commit — `Test-Layers-Skip: <reason>` — and the reason is printed in the CI log. A skip is allowed; a silent one is not. The skip must be a real trailer (the message's final trailer block); a line mid-body does not count. `scripts/check-test-layers.spec.sh` proves the guard's 18 verdicts and runs in the same step. Both e2e layers gate `deploy` (`needs: ci`).
+
+### The browser harness (`apps/e2e`)
+
+- **Run locally:** `docker compose up -d --wait postgres redis seaweedfs`, `bunx turbo run build --filter=@repo/api --filter=@repo/web`, then `cd apps/e2e && bun run test:e2e` (one spec: `bunx playwright test tests/procurement.spec.ts`). Root `bun run e2e` does the build and the run. First time: `bunx playwright install chromium`.
+- **Servers** (`playwright.config.ts` `webServer`, all production entry points): the OpenAI stub on :4010 (`stubs/openai-stub.ts` — embeddings, catalog extraction; any other route 404s so a new model call fails loudly), the API as `node dist/main` on :3101, the web app as its standalone server on :3100 (`scripts/start-web.sh`, staged exactly as `apps/web/Dockerfile` stages it).
+- **State:** `scripts/prepare-db.ts optra_pw` drops and recreates the database every run (it refuses any name but `optra_pw`/`optra_e2e`); `tests/auth.setup.ts` empties bucket `optra-pw`, seeds owner A, owner B, member A and an unverified user in SQL, and signs each in once through the real form — specs reuse the saved sessions (three logins per run, under the 10/10-min limit).
+- **API env** is `.env.example` plus explicit overrides (`support/env.ts`), never a developer's `.env`. `THROTTLE_DEFAULT_LIMIT` is raised for this API only.
+- **Gotchas learned building it:** poll with `bff()`/`waitForRow()` (in-page `fetch`), not `page.request` — Playwright's request client will not send the BFF's `Secure` cookie over http; match table rows with `rowFor(page, name)`, never `filter({ hasText })` (substring — `po-x.csv` is inside `access-po-x.csv`); read state in `beforeAll`, not at import (files are collected before `setup` runs); a spec that deletes objects works in workspace B so it cannot pull files from under a parallel spec.
+- **Production smoke:** `apps/e2e/playwright.prod.config.ts` + `smoke/`, by hand after a deploy — `docs/ops/prod-smoke.md`.
+
 ## Verification By Task Size
 
 | Task Size | Minimum Verification                                                   | Extra Verification                                            | Manual QA           | Notes                                          |
 | --------- | ---------------------------------------------------------------------- | ------------------------------------------------------------- | ------------------- | ---------------------------------------------- |
 | Tiny      | targeted read-through or formatting check                              | none                                                          | visual/read-through | no behavior change                             |
 | Express   | targeted type/lint/test if available                                   | related test if available                                     | focused flow        | single-layer change                            |
-| Standard  | verified type/lint/test/build commands if available + related tests    | regression test when relevant                                 | affected workflow   | FE-BE or multi-file changes                    |
-| Deep      | verified type/lint/test/build commands if available + regression tests | migration/payment/job/webhook/permission checks when relevant | full critical flow  | billing/payments/auth/jobs/schema/transactions |
+| Standard  | type/lint + unit + API e2e + Playwright for every layer touched       | regression test when relevant                                 | affected workflow   | FE-BE or multi-file changes                    |
+| Deep      | type/lint + unit + API e2e + Playwright for every layer touched, error paths included | migration/payment/job/webhook/permission checks when relevant | full critical flow  | billing/payments/auth/jobs/schema/transactions |
 
 ---
 
@@ -126,10 +159,10 @@ Known limits:
 
 Confirmed from `apps/api/package.json` as of 2026-06-28:
 
-- `bun run test` — Jest unit tests (`apps/api/src/**/*.spec.ts`)
+- `bun run test` — Jest unit tests (`apps/api/src/**/*.spec.ts`). Since 2026-09-26 they run on their own database, `optra_unit`, recreated from the migrations by Jest's `globalSetup` (`apps/api/test/unit-global-setup.ts`, via `apps/e2e/scripts/prepare-db.ts`) and in `TZ=UTC`; they never touch the dev database `optra`. Base connection from `DATABASE_URL`, overridable with `UNIT_DATABASE_URL`. No per-suite cleanup is needed.
 - `bun run test:watch` — Jest unit tests, watch mode
 - `bun run test:cov` — Jest unit tests with coverage report
-- `bun run test:e2e` — Jest e2e tests (`apps/api/test/**/*.e2e-spec.ts`), boots a real `AppModule` instance and hits it with Supertest
+- `bun run test:e2e` — Jest e2e tests (`apps/api/test/**/*.e2e-spec.ts`, 15 suites), boots a real `AppModule` instance and hits it with Supertest. In CI and for a clean local run, on its own database: `bun apps/e2e/scripts/prepare-db.ts optra_e2e && DATABASE_URL=postgresql://postgres:postgres@localhost:54322/optra_e2e bun run test:e2e`. No suite reaches a real model (verified 2026-09-25 with OpenAI pointed at an unreachable address).
 - `bun run type-check` — `tsc --noEmit`
 
 Storage integration note as of 2026-06-30 (CONTEXT DRIFT fix 2026-07-09 — port renamed with the Optra rebrand, see `risk-register.md`'s PO ↔ Invoice Comparison note):
@@ -348,9 +381,9 @@ For everything else infra-shaped, the pragmatic verification checklist is:
    `bunx turbo run build --filter=@repo/web... --dry=json` includes only `@repo/web` + `@repo/ui`;
    `bunx turbo run build --filter=@repo/api... --dry=json` includes only `@repo/api` + `@repo/ai` + `@repo/db`.
 2. Shell/config checks must pass:
-   `sh -n docker/api-dev-entrypoint.sh docker/web-dev-entrypoint.sh scripts/deploy.sh scripts/deploy-remote.sh scripts/ensure-seaweedfs-s3-config.sh`,
+   `sh -n docker/api-dev-entrypoint.sh docker/web-dev-entrypoint.sh scripts/deploy.sh scripts/deploy-remote.sh scripts/backup.sh`,
    `docker compose config --quiet`, and
-   `POSTGRES_PASSWORD=postgres DOMAIN=localhost OPENAI_API_KEY=test docker compose -f docker-compose.prod.yml config --quiet`.
+   `POSTGRES_PASSWORD=postgres DOMAIN=localhost OPENAI_API_KEY=test S3_ENDPOINT=https://example.invalid docker compose -f docker-compose.prod.yml config --quiet` (prod compose requires `S3_ENDPOINT` since 2026-09-25).
 3. `docker compose build api web` (dev) and
    `POSTGRES_PASSWORD=postgres DOMAIN=localhost OPENAI_API_KEY=test docker compose -f docker-compose.prod.yml build api web` (prod)
    both succeed with no errors — catches Dockerfile syntax errors, missing COPY paths, lockfile

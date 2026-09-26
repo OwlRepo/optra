@@ -13,6 +13,7 @@
     "type-check": "turbo type-check",
     "db:seed": "bun run scripts/seed/index.ts",
     "db:seed:test": "bunx vitest run scripts/seed",
+    "e2e": "turbo run build --filter=@repo/api --filter=@repo/web && bun run --cwd apps/e2e test:e2e",
     "docker:dev:up": "docker compose up -d",
     "docker:dev:build": "docker compose -f docker-compose.yml build",
     "docker:dev:down": "docker compose down",

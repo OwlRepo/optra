@@ -95,7 +95,7 @@ cd /opt/optra
 ./scripts/deploy.sh
 ```
 
-**Automatically on push to `main`:** see `.github/workflows/deploy.yml` — requires the deploy dir to already have `.env` in place, plus `VPS_HOST`/`VPS_USER`/`VPS_SSH_KEY`/`VPS_PORT` configured as GitHub Secrets. If `docker/seaweedfs/s3.prod.json` is missing, the deploy creates it from `S3_ACCESS_KEY`/`S3_SECRET_KEY` in `.env`. The smoke test reads `DOMAIN` from `.env`, so no domain secret is needed.
+**Automatically on push to `main`:** see `.github/workflows/deploy.yml` — requires the deploy dir to already have `.env` in place, plus `VPS_HOST`/`VPS_USER`/`VPS_SSH_KEY`/`VPS_PORT` configured as GitHub Secrets. Object storage is Backblaze B2, configured by the `S3_*` values in that `.env`. The smoke test reads `DOMAIN` from `.env`, so no domain secret is needed.
 
 ### What Happens
 
@@ -114,7 +114,6 @@ docker compose -f docker-compose.prod.yml ps
 # Should show:
 # - postgres (healthy)
 # - redis (healthy)
-# - seaweedfs (healthy)
 # - api (healthy)
 # - web (healthy)
 # - caddy (running)
@@ -241,9 +240,10 @@ Local development:
 - `S3_BUCKET=optra-documents`
 - credentials come from `docker/seaweedfs/s3.json`
 
-Production:
-- `S3_ENDPOINT=http://seaweedfs:8333`
-- prod must have real `S3_ACCESS_KEY`/`S3_SECRET_KEY` in `.env`; `scripts/ensure-seaweedfs-s3-config.sh` creates `docker/seaweedfs/s3.prod.json` from those values when missing
+Production (Backblaze B2, since 2026-09-25):
+- `S3_ENDPOINT=https://s3.us-east-005.backblazeb2.com`, `S3_REGION=us-east-005`, `S3_BUCKET=optra-prod-objects`, `S3_FORCE_PATH_STYLE=false`, plus a bucket-scoped `S3_ACCESS_KEY`/`S3_SECRET_KEY` — all in the VPS `.env`
+- `docker-compose.prod.yml` takes `S3_ENDPOINT` from `.env` (`${S3_ENDPOINT:?}`) and never hard-codes it: `environment:` overrides `env_file:`, so a pinned value there silently wins over `.env`
+- prod runs no object store; SeaweedFS is development and CI only
 
 ---
 
@@ -398,9 +398,9 @@ docker compose -f docker-compose.prod.yml up -d
 
 ## CI/CD Integration
 
-`.github/workflows/deploy.yml` deploys automatically on push to `main` (or manual `workflow_dispatch`). It SSHes into the VPS, backs up Postgres using the container's `POSTGRES_USER`/`POSTGRES_DB`, rebuilds `api`/`web`, brings the stack up with `docker compose -f docker-compose.prod.yml up -d --remove-orphans`, polls `GET /health` and the web root inside the `api`/`web` containers, then fetches the public site and fails the deploy if it finds dev-mode artifacts (HMR client scripts, `.next/dev`, `localhost:*`, or `127.0.0.1`) in the served HTML — a guard against accidentally shipping a dev build. Production does not publish `api`/`web` ports to the host; Caddy is the public ingress.
+`.github/workflows/deploy.yml` deploys automatically on push to `main` (or manual `workflow_dispatch`). It SSHes into the VPS, backs up Postgres via `scripts/backup.sh --reason=deploy` (using the container's own `POSTGRES_USER`/`POSTGRES_DB`, so credentials never pass through the workflow), rebuilds `api`/`web`, brings the stack up with `docker compose -f docker-compose.prod.yml up -d --remove-orphans`, polls `GET /health` and the web root inside the `api`/`web` containers, then fetches the public site and fails the deploy if it finds dev-mode artifacts (HMR client scripts, `.next/dev`, `localhost:*`, or `127.0.0.1`) in the served HTML — a guard against accidentally shipping a dev build. Production does not publish `api`/`web` ports to the host; Caddy is the public ingress.
 
-It assumes the deploy dir already has a working checkout with `.env` in place. If `docker/seaweedfs/s3.prod.json` is missing, the workflow generates it from `S3_ACCESS_KEY`/`S3_SECRET_KEY` in `.env`. The smoke test reads `DOMAIN` from `.env`.
+It assumes the deploy dir already has a working checkout with `.env` in place. Object storage is Backblaze B2, configured by the `S3_*` values in that `.env`. The smoke test reads `DOMAIN` from `.env`.
 
 **Required GitHub Secrets** (`Settings → Secrets and variables → Actions`):
 - `VPS_HOST` — server IP or hostname

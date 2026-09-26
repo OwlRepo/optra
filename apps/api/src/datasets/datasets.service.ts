@@ -18,15 +18,29 @@ export class DatasetsService {
     const storageKey = `${workspaceId}/datasets/${randomUUID()}-${file.originalname}`
     await this.storage.save(storageKey, file.buffer, file.mimetype)
 
-    const [dataset] = await db
-      .insert(datasets)
-      .values({
-        workspaceId,
-        name: file.originalname,
-        storageKey,
-        status: 'pending',
+    let dataset: typeof datasets.$inferSelect
+    try {
+      [dataset] = await db
+        .insert(datasets)
+        .values({
+          workspaceId,
+          name: file.originalname,
+          storageKey,
+          status: 'pending',
+        })
+        .returning()
+    } catch (error) {
+      // The object is stored and nothing points at it; remove it rather than
+      // leave an orphan (the cleanup procurement uploads already do).
+      await this.storage.delete(storageKey).catch((cleanupError: unknown) => {
+        this.logger.warn(
+          `Could not remove orphaned dataset object after a failed insert: ${
+            cleanupError instanceof Error ? cleanupError.message : String(cleanupError)
+          }`,
+        )
       })
-      .returning()
+      throw error
+    }
 
     try {
       await this.profiling.queueDataset(dataset.id)

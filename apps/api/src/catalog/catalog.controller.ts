@@ -1,10 +1,7 @@
 import {
-  ArgumentsHost,
   BadRequestException,
   Body,
-  Catch,
   Controller,
-  ExceptionFilter,
   Get,
   Param,
   ParseUUIDPipe,
@@ -20,7 +17,6 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express'
 import type { Response } from 'express'
 import { extname } from 'path'
-import { MulterError } from 'multer'
 import { CurrentUser, CurrentUserContext } from '../auth/decorators/current-user.decorator'
 import { Roles } from '../auth/decorators/roles.decorator'
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard'
@@ -38,9 +34,10 @@ import { CreateVendorDto } from './dto/create-vendor.dto'
 import { ListCatalogMatchesQueryDto } from './dto/list-catalog-matches-query.dto'
 import { ScrapeCatalogDto } from './dto/scrape-catalog.dto'
 import { VendorsService } from './vendors.service'
+import { UploadExceptionFilter } from '../common/http/upload-exception.filter'
+import { maxUploadBytes } from '../common/http/upload-limit'
 
-const MAX_UPLOAD_MB = Number(process.env.MAX_UPLOAD_MB ?? 25)
-const MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024
+const MAX_UPLOAD_BYTES = maxUploadBytes()
 
 const SUPPORTED_EXTENSIONS = new Set(['.pdf', '.csv', '.xlsx'])
 const SUPPORTED_MIME_TYPES = new Set([
@@ -78,25 +75,6 @@ function fileFilter(
   }
 
   callback(null, true)
-}
-
-@Catch(MulterError, BadRequestException)
-class UploadExceptionFilter implements ExceptionFilter {
-  catch(exception: MulterError | BadRequestException, host: ArgumentsHost) {
-    const response = host.switchToHttp().getResponse<Response>()
-
-    if (exception instanceof MulterError && exception.code === 'LIMIT_FILE_SIZE') {
-      response.status(413).json({ statusCode: 413, message: `File exceeds ${MAX_UPLOAD_MB}MB upload limit` })
-      return
-    }
-
-    if (exception instanceof BadRequestException) {
-      response.status(400).json({ statusCode: 400, message: exception.message })
-      return
-    }
-
-    throw exception
-  }
 }
 
 @Controller('workspaces/:workspaceId')
@@ -231,6 +209,8 @@ export class CatalogController {
       'Content-Type': contentType,
       'Content-Length': String(buffer.length),
       'Cache-Control': 'private, max-age=86400',
+      // Served inline, so the browser must take the raster type as given.
+      'X-Content-Type-Options': 'nosniff',
     })
     res.send(buffer)
   }

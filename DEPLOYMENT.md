@@ -115,7 +115,7 @@ OPENAI_API_KEY=sk-your-production-key     # Production OpenAI key
 LANGSMITH_API_KEY=ls__your-key            # Optional
 ```
 
-`scripts/ensure-seaweedfs-s3-config.sh` creates the SeaweedFS prod credentials file from `S3_ACCESS_KEY`/`S3_SECRET_KEY` during deploy, so keep those `.env` values real and non-placeholder.
+Production object storage is Backblaze B2, not SeaweedFS: set `S3_ENDPOINT`, `S3_REGION`, `S3_BUCKET`, `S3_FORCE_PATH_STYLE=false` and a bucket-scoped `S3_ACCESS_KEY`/`S3_SECRET_KEY` in `.env`. `S3_ENDPOINT` is required — `docker compose` refuses to start without it.
 
 ### 4. Deploy
 
@@ -153,9 +153,9 @@ nano .env  # Fill in values
 
 **Option C: Automatic deploy via GitHub Actions**
 
-`.github/workflows/deploy.yml` deploys automatically on every push to `main` (or via manual `workflow_dispatch`). It SSHes into the VPS, pulls latest, backs up Postgres, rebuilds `api`/`web`, brings the stack up, and runs internal API/Web/S3 checks before declaring success.
+`.github/workflows/deploy.yml` deploys automatically on every push to `main` (or via manual `workflow_dispatch`). It SSHes into the VPS, pulls latest, takes a **verified** Postgres backup via `scripts/backup.sh --reason=deploy`, rebuilds `api`/`web`, brings the stack up, and runs internal API/Web/S3 checks before declaring success. The backup is a rollback point for that deploy: it is a `pg_dump -Fc` archive that the script proves parses *and* restores into a throwaway database before the deploy continues, so a dump truncated half-way fails the deploy rather than sitting on disk looking healthy.
 
-This assumes the deploy directory already has a working checkout with `.env` in place (i.e. you've already done Option A or B once). If `docker/seaweedfs/s3.prod.json` is missing, the workflow creates it from `S3_ACCESS_KEY`/`S3_SECRET_KEY` in `.env`. Set `COMPOSE_PROFILES=public` only when Optra's bundled Caddy should own host ports `80`/`443`; otherwise the workflow skips the public HTTPS smoke and leaves ingress to an external host proxy.
+This assumes the deploy directory already has a working checkout with `.env` in place (i.e. you've already done Option A or B once). Set `COMPOSE_PROFILES=public` only when Optra's bundled Caddy should own host ports `80`/`443`; otherwise the workflow skips the public HTTPS smoke and leaves ingress to an external host proxy.
 
 Configure these **GitHub Secrets** on the repo (`Settings → Secrets and variables → Actions`):
 | Secret | Value |
@@ -164,6 +164,32 @@ Configure these **GitHub Secrets** on the repo (`Settings → Secrets and variab
 | `VPS_USER` | SSH user (e.g. `deploy`) |
 | `VPS_SSH_KEY` | Private key with access to that user |
 | `VPS_PORT` | SSH port (usually `22`) |
+
+For the daily off-box backup (`.github/workflows/backup.yml`), four more. Leave them
+unset and backups still run — the script warns on every run that every copy is on the
+VPS disk, and exits 0:
+
+| Secret | Value |
+|---|---|
+| `BACKUP_S3_BUCKET` | Backblaze B2 bucket for database dumps, e.g. `optra-prod-backups` |
+| `BACKUP_S3_ENDPOINT` | B2 S3 endpoint, e.g. `https://s3.us-west-004.backblazeb2.com` |
+| `BACKUP_S3_ACCESS_KEY` | keyID of a write-only application key scoped to that bucket |
+| `BACKUP_S3_SECRET_KEY` | applicationKey for the same key |
+
+The backup key is deliberately write-only, so the server cannot **read** backup history —
+useful, because a copy an attacker can read is a copy they can exfiltrate. Retention is a
+B2 lifecycle rule; nothing on the box ever issues a delete.
+
+**It cannot, however, stop a delete.** B2's "Write Only" access type removes read, not
+delete: a key created that way in the web console still carries `deleteFiles` (verified
+2026-09-25 — the key uploaded, was denied on list, and then successfully deleted a test
+object). A compromised VPS could therefore destroy backup history. Closing that properly
+needs one of:
+
+- `b2 key create --bucket optra-prod-backups <name> writeFiles` via the B2 CLI, which
+  allows exact capabilities where the web console does not; or
+- Object Lock on the bucket, which makes objects immutable regardless of key — but B2
+  only allows enabling it at bucket creation, so it means a new bucket.
 
 ### 5. Verify Deployment
 
@@ -178,7 +204,6 @@ Should show:
 
 - ✅ postgres (healthy)
 - ✅ redis (healthy)
-- ✅ seaweedfs (healthy)
 - ✅ api (healthy)
 - ✅ web (healthy)
 - ✅ caddy (running) only when `COMPOSE_PROFILES=public`
@@ -204,7 +229,11 @@ docker compose -f docker-compose.prod.yml exec -T web \
   wget -q -O /dev/null http://127.0.0.1:3000/
 ```
 
-Production does not publish the `api` or `web` ports on the host. The bundled Caddy service is opt-in via `COMPOSE_PROFILES=public`; leave it unset on a shared VPS where another service already owns ports `80`/`443`.
+Production publishes `web` on `127.0.0.1:3300` only (for the host's Caddy) and never publishes `api`; the API sits on the `internal` network alone, reachable only from `web`. The bundled Caddy service is opt-in via `COMPOSE_PROFILES=public`; leave it unset on a shared VPS where another service already owns ports `80`/`443`.
+
+**Visitor addresses and rate limits.** The host Caddy writes each visitor's address into `X-Forwarded-For` (replacing anything the visitor sent); the web app forwards exactly that one value; the API trusts it from one hop because `docker-compose.prod.yml` sets `TRUST_PROXY: "1"`. Never set it to `true` (the API refuses to boot). If a CDN is ever put in front of the domain, configure `trusted_proxies` in Caddy for it, or every CDN edge becomes one shared bucket.
+
+**Deploys check `.env` first.** `scripts/check-prod-env.sh` runs before the backup and the build: `DOMAIN` must be the hostname (e.g. `optra.tyvera.app`), `S3_ENDPOINT` https, the secrets non-empty and not `.env.example` placeholders (the last assignment of a key is the one checked, as compose uses it; quotes are ignored), and the test-only `THROTTLE_DEFAULT_LIMIT` absent. `TRUST_PROXY` and the API's `PORT` are pinned in `docker-compose.prod.yml`, so `.env` cannot change them.
 
 **Test SSL when bundled Caddy is enabled:**
 
@@ -270,15 +299,44 @@ docker compose -f docker-compose.prod.yml exec -T postgres \
   sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB"' > backup_$(date +%Y%m%d_%H%M%S).sql
 ```
 
-The GitHub Actions deploy workflow also takes an automatic backup before every deploy, stored in `/home/deploy/apps/optra-backups/`, retained 14 days.
+Two automatic backups run without you:
 
-### Restore Database
+- **Before every deploy** (`deploy.yml` → `scripts/backup.sh --reason=deploy`) — a
+  rollback point for that deploy.
+- **Daily at 03:17 UTC** (`backup.yml` → `scripts/backup.sh --reason=scheduled`) — so
+  the database is protected on days when nothing ships.
+
+Both write `pg_dump -Fc` archives to `/home/deploy/apps/optra-backups/`, keep the newest
+7 locally, and upload off-box to B2 when the secrets above are set. Neither trusts the
+dump: each proves the archive parses with `pg_restore --list`, then restores it into a
+throwaway database and counts the tables before reporting success. A dump truncated
+half-way fails the run instead of sitting on disk looking healthy.
+
+Run one by hand at any time:
 
 ```bash
 # On server
-docker compose -f docker-compose.prod.yml exec -T postgres \
-  sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"' < backup.sql
+cd /home/deploy/apps/optra && sh scripts/backup.sh --reason=scheduled
 ```
+
+### Restore Database
+
+**See [`docs/ops/restore.md`](./docs/ops/restore.md)** — it covers choosing the right
+dump, restoring into a scratch database and checking it before swapping it in, and what
+to do when the whole server is gone.
+
+The short version, because the old snippet here was wrong once the dumps changed format:
+they are `pg_dump -Fc` archives, so `psql <` cannot read them.
+
+```bash
+# On server
+docker compose -f docker-compose.prod.yml cp backup.dump postgres:/tmp/restore.dump
+docker compose -f docker-compose.prod.yml exec -T postgres \
+  sh -c 'pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" --clean /tmp/restore.dump'
+```
+
+Restoring straight over the live database like that destroys the evidence of whatever
+went wrong. The runbook's scratch-database route is the one to use under pressure.
 
 ### View Logs
 
@@ -385,7 +443,7 @@ docker stats
 
 - [ ] Strong `POSTGRES_PASSWORD` in `.env`
 - [ ] `.env` is in `.gitignore` (never committed)
-- [ ] `docker/seaweedfs/s3.prod.json` is in `.gitignore` (never committed)
+- [ ] B2 application keys are bucket-scoped, never the master key
 - [ ] Firewall configured (`22`, plus `80`/`443` only for the public ingress that owns them)
 - [ ] SSH key authentication enabled (disable password auth)
 - [ ] Regular database backups scheduled
@@ -440,8 +498,8 @@ Internet
    ┌──────────────┐
    │ PostgreSQL   │
    │ Redis        │
-   │ SeaweedFS    │
    └──────────────┘
+          apps/api ──▶ Backblaze B2 (objects: optra-prod-objects; backups: optra-prod-backups)
 ```
 
 All app services run in the Docker network. API/Web healthchecks and the S3 round-trip run on every deploy. SSL is owned by either an external host proxy or, when explicitly enabled, bundled Caddy.

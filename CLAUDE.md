@@ -192,6 +192,30 @@ Verified against the files cited:
 - **gstack `check-gstack.sh`** still gates Skill calls
   (`.claude/settings.json`).
 
+## Three test layers
+
+Owner decision 2026-09-25: every change ships with the tests for each layer it
+touches, written first.
+
+| Layer | Where | Required when the change touches |
+|---|---|---|
+| **Unit** | `*.spec.ts` beside the code (Jest in `apps/api`, Vitest elsewhere) | any service, controller, processor, guard, filter, helper, component or BFF route |
+| **API e2e** | `apps/api/test/*.e2e-spec.ts` (real Nest app, real Postgres + Redis/Bull) | any API route: its status codes, guards, pipes, filters, and what it writes |
+| **Browser e2e** | `apps/e2e/tests/*.spec.ts` (Playwright: real browser → Next.js BFF → API → Postgres/Redis/SeaweedFS) | any page or BFF route, and any flow a person clicks through |
+
+Cover the happy path **and** the error paths a user can hit: wrong input, too
+large, not a member, another workspace's id, the thing gone. A layer is skipped
+only when the change genuinely cannot be observed there, and then the commit
+says so with a `Test-Layers-Skip: <reason>` trailer (one line, in the message's
+final paragraph). **Enforced:** `scripts/check-test-layers.sh` runs first in CI
+and fails a push whose commits change a service/controller/processor/guard/
+filter/pipe/interceptor, a shared helper under `apps/api/src/common/`, the web
+middleware or a BFF helper without a sibling spec, a controller without an API
+e2e change, or a page/BFF route without a Playwright change. Both e2e layers
+gate deploy. This complements the TDD gate above: that one proves the tests
+fail first, this one proves every layer has them. Detail:
+`docs/ai/testing-strategy.md` → *Required test layers*.
+
 ## Verified commands
 
 From real `package.json` scripts; never invent others. Each package runs its own
@@ -205,8 +229,21 @@ tests (no root `test` script, no turbo `test` task).
 - Root workflow tooling: `bun run tdd:red`, `bun run tdd:gate`,
   `bun run test:scripts`, `bun run agents:generate`, `bun run agents:lint`;
   `prepare` sets `core.hooksPath` on install.
-- `apps/api`: `bun run test` (Jest), `bun run test:watch`, `bun run test:cov`,
-  `bun run test:e2e` (Jest e2e in `apps/api/test/`; not part of the CI gate).
+- `apps/api`: `bun run test` (Jest; runs on its own `optra_unit` database
+  recreated each run, in UTC — never the dev DB), `bun run test:watch`,
+  `bun run test:cov`, `bun run test:e2e` (16 Jest e2e suites in `apps/api/test/`,
+  part of the CI gate; locally on a fresh database:
+  `bun apps/e2e/scripts/prepare-db.ts optra_e2e`, then
+  `DATABASE_URL=…/optra_e2e bun run test:e2e`).
+- `apps/e2e` (Playwright, part of the CI gate): `bun run test:e2e` (browser
+  suite against the local stack — needs
+  `docker compose up -d --wait postgres redis seaweedfs` and built apps),
+  `bun run test:smoke` (production smoke, by hand — `docs/ops/prod-smoke.md`);
+  root `bun run e2e` builds api+web then runs the browser suite.
+- Guards: `sh scripts/check-test-layers.sh <base-sha>` (self-test
+  `sh scripts/check-test-layers.spec.sh`); `sh scripts/check-prod-env.sh`
+  (self-test `sh scripts/check-prod-env.spec.sh`; the deploy runs it before
+  backup and build).
 - `apps/web`, `packages/ai`, `packages/db`, `packages/ui`: `bun run test`
   (Vitest); `apps/web` also `bun run test:watch`.
 - `packages/db`: `bun run db:generate`, `bun run db:migrate`, `bun run db:push`

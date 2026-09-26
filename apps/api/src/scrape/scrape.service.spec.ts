@@ -424,7 +424,9 @@ describe('ScrapeService', () => {
       })
       .returning()
 
-    queue.getJob.mockResolvedValueOnce(null)
+    // Keyed by job id, never a once-queue: reconcileRuns() sweeps every stale
+    // run in the database in no fixed order. Foreign runs get a live job.
+    queue.getJob.mockImplementation(async (jobId: string) => (jobId === 'scrape:stale-run' ? null : { id: jobId }))
 
     await service.reconcileRuns()
 

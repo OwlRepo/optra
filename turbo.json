@@ -24,7 +24,8 @@
         "LANGSMITH_API_KEY",
         "LANGSMITH_PROJECT",
         "NEXT_PUBLIC_API_URL",
-        "NODE_ENV"
+        "NODE_ENV",
+        "WEB_URL"
       ]
     },
     "dev": {

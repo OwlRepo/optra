@@ -20,6 +20,8 @@ import { InsightsModule } from './insights/insights.module'
 import { ProcurementModule } from './procurement/procurement.module'
 import { CatalogModule } from './catalog/catalog.module'
 import { HealthController } from './health/health.controller'
+import { defaultThrottleLimit } from './common/throttle'
+import { clientBucket } from './common/client-bucket'
 
 @Module({
   controllers: [HealthController],
@@ -41,7 +43,12 @@ import { HealthController } from './health/health.controller'
         port: parseInt(process.env.REDIS_PORT || '6379'),
       },
     }),
-    ThrottlerModule.forRoot([{ name: 'default', ttl: 60_000, limit: 60 }]),
+    ThrottlerModule.forRoot({
+      throttlers: [{ name: 'default', ttl: 60_000, limit: defaultThrottleLimit() }],
+      // IPv6 counted per /64, not per address (common/client-bucket.ts).
+      getTracker: (req) => clientBucket(req.ip),
+      errorMessage: 'Too many requests. Please wait a few minutes and try again.',
+    }),
     DocumentsModule,
     IngestModule,
     ChatModule,

@@ -2,6 +2,8 @@ import { eq, like } from 'drizzle-orm'
 import { catalogItems, catalogs, db, pool, users, vendors, workspaceMembers, workspaces } from '@repo/db'
 import { CatalogDocumentsService } from './catalog-documents.service'
 import { StorageService } from '../storage/storage.service'
+import { StorageObjectNotFoundError } from '../storage/storage.errors'
+import { NotFoundException } from '@nestjs/common'
 import { CatalogParseService } from './catalog-parse.service'
 
 async function cleanupFixtures(prefix: string) {
@@ -95,6 +97,38 @@ describe('CatalogDocumentsService', () => {
     const [row] = await db.select().from(catalogs).where(eq(catalogs.workspaceId, workspace.id))
     expect(row.status).toBe('failed')
     expect(row.lastError).toContain('queue down')
+  })
+
+  // Storage first, row second: a row whose file never landed would sit at
+  // `pending` forever with a null key, and nothing ever cleans it up.
+  it('leaves no catalog row behind when the file cannot be stored', async () => {
+    const { workspace, vendor } = await seedWorkspaceAndVendor(`${prefix}save-fail@example.com`, 'Catalog Save Fail')
+    storage.save.mockRejectedValueOnce(new Error('storage down'))
+    const file = { originalname: 'catalog.csv', mimetype: 'text/csv', buffer: Buffer.from('sku\nA') } as Express.Multer.File
+
+    await expect(service.upload(workspace.id, vendor.id, file)).rejects.toThrow('storage down')
+
+    expect(await db.select().from(catalogs).where(eq(catalogs.workspaceId, workspace.id))).toHaveLength(0)
+    expect(parse.queueDoc).not.toHaveBeenCalled()
+  })
+
+  // And the reverse: a stored file whose row could not be written is an
+  // orphan nothing points at. A name over the column's 500 characters is a
+  // real way for the insert to fail - a client can send any filename.
+  it('removes the stored file when the catalog row cannot be written', async () => {
+    const { workspace, vendor } = await seedWorkspaceAndVendor(`${prefix}insert-fail@example.com`, 'Catalog Insert Fail')
+    const file = {
+      originalname: `${'x'.repeat(501)}.csv`,
+      mimetype: 'text/csv',
+      buffer: Buffer.from('sku\nA'),
+    } as Express.Multer.File
+
+    // The insert's own error (name over 500 characters), not any error.
+    await expect(service.upload(workspace.id, vendor.id, file)).rejects.toThrow(/too long/)
+
+    expect(storage.save).toHaveBeenCalledTimes(1)
+    expect(storage.delete).toHaveBeenCalledWith(storage.save.mock.calls[0][0])
+    expect(await db.select().from(catalogs).where(eq(catalogs.workspaceId, workspace.id))).toHaveLength(0)
   })
 
   it('lists catalogs for a vendor newest-first, excluding other vendors', async () => {
@@ -197,6 +231,19 @@ describe('CatalogDocumentsService', () => {
       const { item } = await seedItemWithPhoto(`${prefix}photo-iso-other@example.com`, 'Photo Iso Other', 'k/p.png')
 
       await expect(service.getItemPhoto(mine.workspace.id, item.id)).rejects.toThrow('Catalog item not found')
+    })
+
+    it('answers 404 when the photo object itself is gone, and still fails loudly on an outage', async () => {
+      const { workspace, item } = await seedItemWithPhoto(`${prefix}photo-gone@example.com`, 'Photo Gone', 'k/gone.png')
+
+      storage.getObject.mockRejectedValueOnce(new StorageObjectNotFoundError('k/gone.png'))
+      const error = await service.getItemPhoto(workspace.id, item.id).catch((e: unknown) => e)
+      expect(error).toBeInstanceOf(NotFoundException)
+      expect((error as Error).message).toBe('Catalog item photo is missing')
+
+      const outage = new Error('connect ECONNREFUSED')
+      storage.getObject.mockRejectedValueOnce(outage)
+      await expect(service.getItemPhoto(workspace.id, item.id)).rejects.toBe(outage)
     })
   })
 })

@@ -21,6 +21,7 @@ import {
 import { AppModule } from '../src/app.module'
 import { IngestService } from '../src/ingest/ingest.service'
 import { StorageService } from '../src/storage/storage.service'
+import { StorageObjectNotFoundError } from '../src/storage/storage.errors'
 
 function binaryParser(res: NodeJS.ReadableStream, callback: (error: Error | null, body?: Buffer) => void) {
   const chunks: Buffer[] = []
@@ -104,14 +105,16 @@ describe('Documents flow (e2e)', () => {
       getBuffer: jest.fn(async (key: string) => {
         const body = stored.get(key)
         if (!body) {
-          throw new Error(`Missing stored object ${key}`)
+          // What real storage throws now, not a generic Error.
+          throw new StorageObjectNotFoundError(key)
         }
         return Buffer.from(body)
       }),
       getToTempFile: jest.fn(async (key: string) => {
         const body = stored.get(key)
         if (!body) {
-          throw new Error(`Missing stored object ${key}`)
+          // What real storage throws now, not a generic Error.
+          throw new StorageObjectNotFoundError(key)
         }
 
         const dir = await mkdtemp(join(tmpdir(), 'docs-e2e-'))
@@ -270,7 +273,29 @@ describe('Documents flow (e2e)', () => {
       .set('Authorization', `Bearer ${member.accessToken}`)
       .expect(200)
     expect(singleDownload.headers['content-disposition']).toBe('attachment; filename="test.txt"')
+    expect(singleDownload.headers['x-content-type-options']).toBe('nosniff')
     expect(singleDownload.body.toString()).toBe('seaweed test doc')
+
+    // The row says there is a file; storage says there is not: a 404 with a
+    // message the UI can show, never a 500.
+    storage.getBuffer.mockImplementationOnce(async (key: string) => {
+      throw new StorageObjectNotFoundError(key)
+    })
+    const gone = await request(app.getHttpServer())
+      .get(`/workspaces/${ownerWorkspaceId}/knowledge-bases/${kbId}/documents/${uploadRes.body.id}/download`)
+      .set('Authorization', `Bearer ${member.accessToken}`)
+      .expect(404)
+    expect(gone.body.message).toBe('Document file is missing')
+
+    // A malformed id is a client error, not a uuid-cast failure in Postgres.
+    await request(app.getHttpServer())
+      .get(`/workspaces/${ownerWorkspaceId}/knowledge-bases/${kbId}/documents/not-a-uuid/download`)
+      .set('Authorization', `Bearer ${member.accessToken}`)
+      .expect(400)
+    await request(app.getHttpServer())
+      .get(`/workspaces/${ownerWorkspaceId}/knowledge-bases/not-a-uuid/documents/${uploadRes.body.id}/download`)
+      .set('Authorization', `Bearer ${member.accessToken}`)
+      .expect(400)
 
     const bulkDownload = await request(app.getHttpServer())
       .post(`/workspaces/${ownerWorkspaceId}/knowledge-bases/${kbId}/documents/download`)
@@ -281,6 +306,7 @@ describe('Documents flow (e2e)', () => {
       .expect(200)
     expect(bulkDownload.headers['content-type']).toContain('application/zip')
     expect(bulkDownload.headers['content-disposition']).toBe('attachment; filename="documents.zip"')
+    expect(bulkDownload.headers['x-content-type-options']).toBe('nosniff')
     expect(bulkDownload.body.subarray(0, 2).toString()).toBe('PK')
 
     const outsiderKbRes = await request(app.getHttpServer())
@@ -349,11 +375,13 @@ describe('Documents flow (e2e)', () => {
       .expect(201)
     const kbId = kbRes.body.id as string
 
-    await request(app.getHttpServer())
+    const tooBig = await request(app.getHttpServer())
       .post(`/workspaces/${workspaceId}/knowledge-bases/${kbId}/documents`)
       .set('Authorization', `Bearer ${owner.accessToken}`)
       .attach('file', Buffer.alloc(26 * 1024 * 1024, 'a'), 'too-big.txt')
       .expect(413)
+    // The limit, not the framework's generic "File too large".
+    expect(tooBig.body.message).toMatch(/^File exceeds \d+MB upload limit$/)
 
     await request(app.getHttpServer())
       .post(`/workspaces/${workspaceId}/knowledge-bases/${kbId}/documents`)

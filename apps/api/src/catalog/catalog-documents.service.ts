@@ -3,14 +3,9 @@ import { BadRequestException, Injectable, Logger, NotFoundException } from '@nes
 import { and, desc, eq } from 'drizzle-orm'
 import { catalogItems, catalogs, db, vendors } from '@repo/db'
 import { StorageService } from '../storage/storage.service'
+import { readOrNotFound } from '../storage/storage.errors'
+import { SERVABLE_PHOTO_TYPES, mediaTypeOf } from './catalog-photo-types'
 import { CatalogParseService } from './catalog-parse.service'
-
-// Raster types only, and an allowlist rather than "serve whatever we stored".
-// CatalogImageService accepts any remote `image/*`, which includes
-// `image/svg+xml` — and an SVG can carry script, so echoing the stored type
-// back verbatim would turn a mislabelled file into stored XSS. These render in
-// an <img> and cannot execute.
-const SERVABLE_PHOTO_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'image/avif'])
 
 const EXTENSION_CONTENT_TYPES: Record<string, string> = {
   '.png': 'image/png',
@@ -25,9 +20,12 @@ const EXTENSION_CONTENT_TYPES: Record<string, string> = {
 // extension only when the object carries no type (older keys predate `save()`
 // recording one).
 function resolvePhotoContentType(storageKey: string, storedContentType: string | null): string {
-  const stored = storedContentType?.split(';')[0].trim().toLowerCase()
+  const stored = mediaTypeOf(storedContentType)
 
   if (stored) {
+    // Raster types only (catalog-photo-types.ts). Still checked when serving,
+    // not only when storing: objects stored before the fetcher applied the
+    // same list, or written by any future path, must not be echoed back as SVG.
     if (!SERVABLE_PHOTO_TYPES.has(stored)) {
       throw new BadRequestException('Unsupported image type')
     }
@@ -56,14 +54,39 @@ export class CatalogDocumentsService {
   async upload(workspaceId: string, vendorId: string, file: Express.Multer.File) {
     await this.assertVendorInWorkspace(workspaceId, vendorId)
 
-    const [catalog] = await db
-      .insert(catalogs)
-      .values({ workspaceId, vendorId, name: file.originalname, sourceKind: 'upload', status: 'pending' })
-      .returning()
-
-    const storageKey = `${workspaceId}/catalogs/${catalog.id}/${randomUUID()}-${file.originalname}`
+    // The file is stored BEFORE the row exists, and the row is written with
+    // its key in one insert. Row-first left a `pending` catalog with a null
+    // key behind whenever the save failed, and nothing ever cleaned it up.
+    // The id is minted here so the key can still carry it.
+    const catalogId = randomUUID()
+    const storageKey = `${workspaceId}/catalogs/${catalogId}/${randomUUID()}-${file.originalname}`
     await this.storage.save(storageKey, file.buffer, file.mimetype)
-    await db.update(catalogs).set({ storageKey, updatedAt: new Date() }).where(eq(catalogs.id, catalog.id))
+
+    let catalog: typeof catalogs.$inferSelect
+    try {
+      [catalog] = await db
+        .insert(catalogs)
+        .values({
+          id: catalogId,
+          workspaceId,
+          vendorId,
+          name: file.originalname,
+          sourceKind: 'upload',
+          status: 'pending',
+          storageKey,
+        })
+        .returning()
+    } catch (error) {
+      // Nothing points at the object now; remove it rather than orphan it.
+      await this.storage.delete(storageKey).catch((cleanupError: unknown) => {
+        this.logger.warn(
+          `Could not remove orphaned catalog object after a failed insert: ${
+            cleanupError instanceof Error ? cleanupError.message : String(cleanupError)
+          }`,
+        )
+      })
+      throw error
+    }
 
     try {
       await this.parse.queueDoc(catalog.id)
@@ -130,7 +153,11 @@ export class CatalogDocumentsService {
       throw new NotFoundException('Catalog item has no photo')
     }
 
-    const { buffer, contentType } = await this.storage.getObject(item.photoStorageKey)
+    const { buffer, contentType } = await readOrNotFound(
+      this.storage.getObject(item.photoStorageKey),
+      'Catalog item photo is missing',
+      this.logger,
+    )
     return { buffer, contentType: resolvePhotoContentType(item.photoStorageKey, contentType) }
   }
 

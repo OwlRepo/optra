@@ -79,8 +79,13 @@ transaction/idempotency rules and related APIs/jobs. Missing contract →
 
 ## Testing Strategy Lookup
 
-After sizing, consult `docs/ai/testing-strategy.md` for the minimum and extra
-verification and the manual QA for that size, plus its "Strict TDD" rules.
+After classifying task size, consult `docs/ai/testing-strategy.md` to determine:
+
+- minimum verification
+- extra verification
+- manual QA requirements
+- its "Strict TDD" rules (failing test first, proven by `bun run tdd:red` and CI's `bun run tdd:gate`)
+- **which of the three required test layers the change touches** (unit / API e2e / Playwright browser e2e) — `docs/ai/testing-strategy.md` → *Required test layers*. Every plan names the spec files per layer, or the reason a layer does not apply; CI's `scripts/check-test-layers.sh` enforces the pairing.
 
 ## Risk Register Lookup
 

@@ -20,7 +20,8 @@ jobs:
   ci:
     name: Quality gate
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # 45, not 30: the gate now includes API e2e and the Playwright suite.
+    timeout-minutes: 45
     # A superseded push should stop burning a runner; nothing outside the runner
     # has changed when CI is cancelled.
     concurrency:
@@ -39,12 +40,24 @@ jobs:
       S3_BUCKET: optra-documents
       S3_FORCE_PATH_STYLE: 'true'
     steps:
-      # Full history: the TDD gate diffs the PR against its merge-base with the
-      # base branch and checks that base out in a throwaway worktree. A shallow
-      # clone has neither.
+      # Full history: the test-layer guard below reads every commit in the
+      # push, and the TDD gate diffs the PR against its merge-base with the base
+      # branch and checks that base out in a throwaway worktree. A shallow clone
+      # has neither.
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      # First, because it is the cheapest failure: code that arrives without
+      # the tests for the layers it touches. See scripts/check-test-layers.sh.
+      # SHAs are passed as env, never interpolated into the script.
+      - name: Tests required for every layer touched
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          sh scripts/check-test-layers.spec.sh
+          sh scripts/check-test-layers.sh "$BASE_SHA" HEAD
+          sh scripts/check-prod-env.spec.sh
 
       # .nvmrc pins 22: Node 25 cannot load duckdb's native binding.
       - uses: actions/setup-node@v4
@@ -119,7 +132,8 @@ jobs:
 
       # Unit suites run per workspace rather than through one turbo task: turbo
       # has no `test` task (turbo.json), and a per-workspace step names the
-      # failing package in the run summary.
+      # failing package in the run summary. apps/api's Jest globalSetup
+      # recreates its own database, optra_unit, from this job's DATABASE_URL.
       - name: Unit tests — apps/api
         run: bun run test
         working-directory: apps/api
@@ -143,9 +157,52 @@ jobs:
       - name: Unit tests — seed data
         run: bun run db:seed:test
 
-      # apps/api e2e is deliberately NOT in the gate yet: it resolves @repo/* to
-      # packages/*/dist, so it needs a build step first, and it shares one
-      # database with the unit suites. Adding it is its own slice.
+      # Both e2e layers gate deploy. Each gets its own database, dropped and
+      # recreated from nothing: the API re-enqueues stale pending/processing
+      # rows on boot, so a database shared with another suite hands it that
+      # suite's leftovers. prepare-db.ts refuses any name but optra_e2e/optra_pw.
+      - name: Prepare API e2e database
+        run: bun apps/e2e/scripts/prepare-db.ts optra_e2e
+
+      # Resolves @repo/* from packages/*/dist - built above. No suite reaches a
+      # real model: they pass with OpenAI pointed at an unreachable address.
+      - name: E2E — apps/api
+        run: bun run test:e2e
+        working-directory: apps/api
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:54322/optra_e2e
+
+      # Playwright runs the production entry points (`node dist/main`, the
+      # standalone web server), so both apps are built first.
+      - name: Build api and web
+        run: bunx turbo run build --filter=@repo/api --filter=@repo/web
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+
+      - name: Install Chromium
+        run: bunx playwright install --with-deps chromium
+        working-directory: apps/e2e
+
+      # Starts its own OpenAI stub, API (optra_pw, bucket optra-pw) and web
+      # server; see apps/e2e/playwright.config.ts.
+      - name: E2E — Playwright
+        run: bun run test:e2e
+        working-directory: apps/e2e
+
+      - name: Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            apps/e2e/playwright-report
+            apps/e2e/test-results
+          retention-days: 7
+          if-no-files-found: ignore
 
       - name: Service logs on failure
         if: failure()
@@ -202,21 +259,23 @@ jobs:
             git merge --ff-only origin/main
             echo "checked out $(git rev-parse --short HEAD)"
 
-            sh scripts/ensure-seaweedfs-s3-config.sh
+            # Before the backup and before any build: a .env that cannot work
+            # stops the deploy here, with nothing changed.
+            sh scripts/check-prod-env.sh .env .env.example
 
-            mkdir -p /home/deploy/apps/optra-backups
-            postgres_container_id="$(docker compose -f docker-compose.prod.yml ps -q postgres || true)"
-
-            if [ -n "$postgres_container_id" ]; then
-              backup_file=/home/deploy/apps/optra-backups/optra-$(date +%F-%H%M%S).sql
-              echo "creating PostgreSQL backup: $backup_file"
-              docker compose -f docker-compose.prod.yml exec -T postgres \
-                sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB"' > "$backup_file"
-              test -s "$backup_file"
-              find /home/deploy/apps/optra-backups -type f -name 'optra-*.sql' -mtime +14 -delete
-            else
-              echo "skipping backup: postgres container not running yet"
-            fi
+            # A rollback point for THIS deploy, taken before anything is
+            # recreated. The daily off-box backup is a separate workflow with a
+            # different purpose; this one exists so a bad migration can be undone.
+            #
+            # The logic moved to scripts/backup.sh because these eleven lines
+            # could not be exercised without a production deploy — so nothing
+            # ever had, and the verification was `test -s`, which passes on a
+            # dump truncated half-way. The script now proves the archive parses
+            # and actually restores before the deploy continues.
+            #
+            # `--reason=deploy` tolerates a missing postgres container, because
+            # a first-ever deploy has none. The scheduled run refuses to.
+            sh scripts/backup.sh --reason=deploy
 
             echo "building images"
             docker compose -f docker-compose.prod.yml build api
@@ -238,7 +297,7 @@ jobs:
             done
             if [ "$api_ok" -ne 1 ]; then
               echo "api health check failed"
-              docker compose -f docker-compose.prod.yml logs --tail=120 api web postgres seaweedfs
+              docker compose -f docker-compose.prod.yml logs --tail=120 api web postgres
               exit 1
             fi
 
@@ -251,9 +310,9 @@ jobs:
             if [ "$web_ok" -ne 1 ]; then
               echo "web health check failed"
               if [ "$public_ingress_enabled" -eq 1 ]; then
-                docker compose -f docker-compose.prod.yml logs --tail=120 api web postgres seaweedfs caddy
+                docker compose -f docker-compose.prod.yml logs --tail=120 api web postgres caddy
               else
-                docker compose -f docker-compose.prod.yml logs --tail=120 api web postgres seaweedfs
+                docker compose -f docker-compose.prod.yml logs --tail=120 api web postgres
               fi
               exit 1
             fi

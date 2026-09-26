@@ -8,6 +8,7 @@ import * as XLSX from 'xlsx'
 import { catalogItems, catalogs, db, pool, users, vendors, workspaceMembers, workspaces } from '@repo/db'
 import { CatalogParseProcessor } from './catalog-parse.processor'
 import { CatalogExtractionService } from './catalog-extraction.service'
+import { StorageObjectNotFoundError } from '../storage/storage.errors'
 import { CatalogImageService } from './catalog-image.service'
 import { CatalogParseService } from './catalog-parse.service'
 import { StorageService } from '../storage/storage.service'
@@ -228,6 +229,20 @@ describe('CatalogParseProcessor', () => {
 
     const [row] = await db.select().from(catalogs).where(eq(catalogs.id, catalog.id))
     expect(row.status).toBe('failed')
+  })
+
+  it('fails a catalog whose stored file is gone at once, with a client-safe reason, without retrying', async () => {
+    const { workspace, vendor } = await seedWorkspaceAndVendor(`${prefix}gone@example.com`, 'Catalog Gone')
+    const catalog = await seedCatalog(workspace.id, vendor.id, 'catalog.csv', 'sku,description\nA1,Widget')
+    storage.getToTempFile.mockRejectedValue(new StorageObjectNotFoundError('k/gone.csv'))
+
+    await expect(
+      processor.handleParse({ id: 'job-gone', data: { id: catalog.id }, attemptsMade: 0, opts: { attempts: 3 } } as any),
+    ).resolves.toBeUndefined()
+
+    const [row] = await db.select().from(catalogs).where(eq(catalogs.id, catalog.id))
+    expect(row.status).toBe('failed')
+    expect(row.lastError).toBe('The stored file is missing. Upload it again.')
   })
 
   it('fails an unreadable PDF catalog immediately without asking Bull to retry', async () => {

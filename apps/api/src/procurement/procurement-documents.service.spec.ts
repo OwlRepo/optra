@@ -1,4 +1,6 @@
+import { NotFoundException } from '@nestjs/common'
 import { eq, like } from 'drizzle-orm'
+import { StorageObjectNotFoundError } from '../storage/storage.errors'
 import {
   comparisonRunGoodsReceipts,
   comparisonRuns,
@@ -308,6 +310,35 @@ describe('ProcurementDocumentsService', () => {
         'Purchase order has no stored file',
       )
       expect(storage.getBuffer).not.toHaveBeenCalled()
+    })
+
+    // The row says there is a file and storage says there is not - deleted by
+    // hand, lost with a bucket, never copied across. That is a 404 the UI can
+    // explain, not a 500 that reads as an outage.
+    it('answers 404 when the stored file itself is gone', async () => {
+      const workspace = await seedWorkspace(`${prefix}dl-gone@example.com`, 'Download Gone')
+      const [po] = await db
+        .insert(purchaseOrders)
+        .values({ workspaceId: workspace.id, name: 'gone.csv', status: 'done', storageKey: 'k/gone.csv' })
+        .returning()
+      storage.getBuffer.mockRejectedValueOnce(new StorageObjectNotFoundError('k/gone.csv'))
+
+      const error = await service.getDownloadable(workspace.id, 'purchase_order', po.id).catch((e: unknown) => e)
+
+      expect(error).toBeInstanceOf(NotFoundException)
+      expect((error as Error).message).toBe('Purchase order file is missing')
+    })
+
+    it('still fails loudly when storage itself is unreachable', async () => {
+      const workspace = await seedWorkspace(`${prefix}dl-down@example.com`, 'Download Down')
+      const [po] = await db
+        .insert(purchaseOrders)
+        .values({ workspaceId: workspace.id, name: 'down.csv', status: 'done', storageKey: 'k/down.csv' })
+        .returning()
+      const outage = new Error('connect ECONNREFUSED')
+      storage.getBuffer.mockRejectedValueOnce(outage)
+
+      await expect(service.getDownloadable(workspace.id, 'purchase_order', po.id)).rejects.toBe(outage)
     })
   })
 

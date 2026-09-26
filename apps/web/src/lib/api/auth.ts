@@ -15,6 +15,13 @@ export async function verifyOtp(email: string, code: string) {
   })
 }
 
+export async function resendOtp(email: string): Promise<{ message: string }> {
+  return apiFetch('/api/auth/resend-otp', {
+    method: 'POST',
+    body: JSON.stringify({ email }),
+  })
+}
+
 export async function login(email: string, password: string) {
   return apiFetch('/api/auth/login', {
     method: 'POST',

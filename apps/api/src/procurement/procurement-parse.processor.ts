@@ -16,6 +16,7 @@ import {
 import { db, goodsReceiptLineItems, goodsReceipts, invoiceLineItems, invoices, poLineItems, purchaseOrders } from '@repo/db'
 import { isBudgetExceeded } from '../limits/usage.service'
 import { StorageService } from '../storage/storage.service'
+import { StorageObjectNotFoundError } from '../storage/storage.errors'
 import { isEmptyLineItem, mapRowToLineItem, receivedQuantity, validateLineItem } from './column-mapping'
 import { pdfExtractionEnabled } from './procurement-feature-flags'
 import { ProcurementDocKind, ProcurementParseService, RECONCILE_JOB_NAME } from './procurement-parse.service'
@@ -59,8 +60,9 @@ export class ProcurementParseInputError extends Error {
   }
 }
 
-// Document problems fail immediately. Everything else (storage, database,
-// network, model timeout or malformed model output) is treated as transient
+// Document problems fail immediately - and so does a source file that is gone
+// from storage. Everything else (storage outages, database, network, model
+// timeout or malformed model output) is treated as transient
 // and handed back to Bull, which retries with backoff.
 function isPermanentParseError(error: unknown): boolean {
   return (
@@ -69,7 +71,10 @@ function isPermanentParseError(error: unknown): boolean {
     isBudgetExceeded(error) ||
     error instanceof ProcurementExtractionUnsupportedError ||
     error instanceof ProcurementExtractionEmptyError ||
-    error instanceof ProcurementExtractionRefusalError
+    error instanceof ProcurementExtractionRefusalError ||
+    // The file is not in storage; a retry will not put it there. Its message
+    // is constant and key-free, so it is safe to show as lastError.
+    error instanceof StorageObjectNotFoundError
   )
 }
 

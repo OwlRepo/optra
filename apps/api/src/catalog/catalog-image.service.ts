@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto'
 import { Injectable, Logger } from '@nestjs/common'
 import { assertPublicUrl } from '@repo/ai'
 import { StorageService } from '../storage/storage.service'
+import { SERVABLE_PHOTO_TYPES, mediaTypeOf } from './catalog-photo-types'
 
 const IMAGE_FETCH_TIMEOUT_MS = 20_000
 
@@ -32,15 +33,17 @@ export class CatalogImageService {
         throw new Error(`Image fetch failed: HTTP ${response.status}`)
       }
 
-      const contentType = response.headers.get('content-type') ?? ''
-      if (!contentType.startsWith('image/')) {
-        throw new Error(`Unsupported content-type for image: ${contentType || '(none)'}`)
+      // The same allowlist the photo route serves from: storing an SVG only
+      // produced an item whose photo was refused on every render.
+      const mediaType = mediaTypeOf(response.headers.get('content-type'))
+      if (!SERVABLE_PHOTO_TYPES.has(mediaType)) {
+        throw new Error(`Unsupported content-type for image: ${mediaType || '(none)'}`)
       }
 
       const buffer = await this.readWithSizeCap(response, maxImageBytes())
-      const extension = contentType.split('/')[1]?.split(';')[0] ?? 'bin'
+      const extension = mediaType.split('/')[1]
       const key = `${workspaceId}/catalogs/${catalogId}/images/${randomUUID()}.${extension}`
-      await this.storage.save(key, buffer, contentType)
+      await this.storage.save(key, buffer, mediaType)
 
       return key
     } catch (error) {

@@ -541,7 +541,7 @@ Every row is a FACT with a `path:line`, except where it is marked **STATIC-ONLY*
 | | • There is no root `test` script or turbo `test` task. | | |
 | | • PDF e2e tests depend on the developer's root `.env`: `packages/db/src/db/index.ts:6` loads `../../.env`, and `jest-e2e.setup.ts` sets only `EMAIL_OTP_ENABLED` and `BULL_PREFIX`. | | |
 | | • Procurement e2e has 4 tests (`procurement.e2e-spec.ts:191,289,334,371`). None covers role refusal, 413, XLSX over HTTP, the disabled PDF gate, cross-workspace dismiss, or re-compare. | | |
-| B22 | **Backups are weak.** The only backup is the per-deploy `pg_dump`. It sits on the same VPS disk, is skipped when postgres is down, is kept 14 days, and has no restore test (`deploy.yml:61-69`). There is no SeaweedFS object backup. | cited | §9 (DEFER WITH REASON) |
+| B22 | **Backups are weak.** The only backup is the per-deploy `pg_dump`. It sits on the same VPS disk, is skipped when postgres is down, is kept 14 days, and has no restore test (`deploy.yml:61-69`). There is no SeaweedFS object backup. | cited | ✅ **done 2026-09-25** — Closed 2026-09-25. `scripts/backup.sh` dumps (`pg_dump -Fc`), proves the archive parses (`pg_restore --list`), restores it into a throwaway `optra_verify_<ts>` database and asserts a table floor, keeps 7 locally, and uploads to the private B2 bucket `optra-prod-backups`. It runs before every deploy and daily at 03:17 UTC (`.github/workflows/backup.yml`). Objects moved off the VPS to B2 (`optra-prod-objects`), so there is no object store left to back up. Restore procedure: `docs/ops/restore.md`. **Not covered:** no alerting beyond a failed Actions run; daily granularity, no point-in-time recovery; and until the backup key is re-created with `writeFiles` only (`b2 key create --bucket optra-prod-backups <name> writeFiles`), the VPS can still delete backups, because B2's console "Write Only" keeps `deleteFiles`. |
 
 **Also recorded (lower impact, fixed opportunistically inside the owning slice):**
 - Stale comments:
@@ -1134,7 +1134,7 @@ Before production scale, evaluate worker separation. All 15 `@Processor` classes
   - Apply the migration to a disposable copy of the dev DB, from the current head.
   - Run the full API unit and e2e suites.
   - Record the backup path produced by `deploy.yml:62-67` for the deploy that will carry it.
-- **Rollback is forward-fix plus flag-off.** There are no down migrations (`packages/db/scripts/migrate.ts`). The last resort is to restore the pre-deploy `pg_dump` (B22). That dump is on the same host and is skipped if postgres is down, so check that it exists before pushing.
+- **Rollback is forward-fix plus flag-off.** There are no down migrations (`packages/db/scripts/migrate.ts`). The last resort is to restore the pre-deploy `pg_dump` (B22). Since 2026-09-25 that dump is restore-verified before the deploy continues and also exists in B2; follow `docs/ops/restore.md`.
 - **Processors run in the API process.** New queues run in the same process as the 15 existing `@Processor` classes. Set explicit `concurrency` for any LLM-calling queue. Today only `catalog-scrape` sets it.
 
 ## 7. Verification strategy
@@ -1331,7 +1331,7 @@ The allowed values are `IMPLEMENT NOW`, `DEFER WITH REASON`, `ACCEPT AS-IS WITH 
 | Configuration inventory, Redis port contract, production env validation | IMPLEMENT NOW (inventory/ports) · DEFER WITH REASON (env profiles) | S0e fixes the ports. The 33 undocumented keys (Appendix A §19.9) get documented in S0e. Env-profile validation is deferred: `scripts/verify-env.sh` covers the prod-critical subset, and there are no external users. |
 | DB/Redis/S3/model test prerequisites | IMPLEMENT NOW | §7.7, S0e |
 | CI quality gates and staging | IMPLEMENT NOW (CI) · DEFER WITH REASON (staging) | S0d. Staging is deferred: single-owner portfolio project, and the dark-launch flags (§8.1) stand in for it. |
-| Backup/restore, retention/export/delete, PII processing, incident response | DEFER WITH REASON | No external user data (`CLAUDE.md:39`). B22 is recorded. It becomes blocking before any real user data is accepted. |
+| Backup/restore, retention/export/delete, PII processing, incident response | Backup/restore **DONE 2026-09-25 (B22)**; the rest DEFER WITH REASON | Backups are scheduled, restore-verified and off-box (see B22). Retention/export/delete, PII processing and incident response stay deferred: no external user data (`CLAUDE.md:39`). They become blocking before any real user data is accepted. |
 | Deployment runtime, Node/Bun compatibility, compiled worker behavior, graceful shutdown | IMPLEMENT NOW (B11 check) · DEFER WITH REASON (worker split, graceful shutdown) | S0e reproduces B11. The worker split waits on that result. |
 | P1 control spine (canonical model, receiving, vendor/link, price, UOM, runs, states, provenance, decisions, orchestration, calibration, events, API/BFF) | IMPLEMENT NOW | S1–S8. Versioned price in S9. |
 | P1 review surface (intake, link suggestions, queue, drawer, raw vs normalized, decisions, pagination, a11y/mobile, browser tests) | IMPLEMENT NOW (S7) · DEFER WITH REASON (browser suite) | No Playwright/Cypress exists. Add it after S7 stabilizes (rev 3 §6 Phase 2 note). |
@@ -1364,7 +1364,7 @@ The allowed values are `IMPLEMENT NOW`, `DEFER WITH REASON`, `ACCEPT AS-IS WITH 
 | Messaging and offline | DEFER WITH REASON |
 | API and tenancy | Every slice (S0a sets the pattern) |
 | Web product | S7 |
-| Data and operations | §6.7, S0d, S0e. Restore drill is deferred (B22). |
+| Data and operations | §6.7, S0d, S0e, B22 (backups verified by a real restore on every run; runbook `docs/ops/restore.md`). |
 | Verification | §7 and per-slice tests |
 
 ### 9.3 Documentation drift fixed in rev 4
