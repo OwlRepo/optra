@@ -51,10 +51,22 @@ jobs:
       # First, because it is the cheapest failure: code that arrives without
       # the tests for the layers it touches. See scripts/check-test-layers.sh.
       # SHAs are passed as env, never interpolated into the script.
+      #
+      # Which commits: a push to main checks what the push added (event.before
+      # to HEAD). A branch or PR checks only its own commits, from where it
+      # meets main. Not pull_request.base.sha or event.before: once a branch
+      # merges main in, those ranges contain main's commits too, re-judged
+      # under whatever the guard's rules are today.
       - name: Tests required for every layer touched
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          TARGET_BRANCH: ${{ github.base_ref || 'main' }}
         run: |
+          if [ "$GITHUB_EVENT_NAME" = push ] && [ "$GITHUB_REF_NAME" = main ]; then
+            BASE_SHA="$PUSH_BEFORE"
+          else
+            BASE_SHA="$(git merge-base HEAD "origin/$TARGET_BRANCH")"
+          fi
           sh scripts/check-test-layers.spec.sh
           sh scripts/check-test-layers.sh "$BASE_SHA" HEAD
           sh scripts/check-prod-env.spec.sh
