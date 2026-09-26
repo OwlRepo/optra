@@ -21,6 +21,7 @@ from typing import Any
 
 from graphify.analyze import god_nodes, surprising_connections, suggest_questions
 from graphify.build import build_from_json
+from graphify.cache import file_hash
 from graphify.cluster import cluster, score_all
 from graphify.cli import _stamped_manifest_files
 from graphify.detect import detect, save_manifest
@@ -90,24 +91,41 @@ def exclude_output_tree(detection: dict[str, Any], out: Path) -> dict[str, Any]:
     return detection
 
 
-def semantic_cache(out: Path) -> tuple[list[dict], list[dict], list[dict], Path]:
+def semantic_cache(
+    root: Path, out: Path, semantic_sources: set[str]
+) -> tuple[list[dict], list[dict], list[dict], list[str]]:
+    """Load one live semantic cache entry per corpus document.
+
+    Entries are keyed by graphify's content hash (``file_hash``) inside
+    per-prompt ``p{fingerprint}/`` namespaces. Loading a whole namespace replays
+    stale extractions of edited docs and misses docs cached under another
+    prompt, so each document resolves to the entry for its CURRENT hash, taking
+    the most recently written one when several prompts produced it.
+    """
     namespaces = [path for path in (out / "cache" / "semantic").glob("*") if path.is_dir()]
     if not namespaces:
         raise RuntimeError("No Graphify semantic cache found. Run /graphify first.")
 
-    namespace = max(
-        namespaces,
-        key=lambda path: (len(list(path.glob("*.json"))), path.stat().st_mtime),
-    )
     nodes: list[dict] = []
     edges: list[dict] = []
     hyperedges: list[dict] = []
-    for cache_file in sorted(namespace.glob("*.json")):
-        data = json.loads(cache_file.read_text(encoding="utf-8"))
+    used: set[str] = set()
+    missing: list[str] = []
+    for source in sorted(semantic_sources):
+        digest = file_hash(root / source, root)
+        entries = [ns / f"{digest}.json" for ns in namespaces if (ns / f"{digest}.json").is_file()]
+        if not entries:
+            missing.append(source)
+            continue
+        entry = max(entries, key=lambda path: (path.stat().st_mtime, path.parent.name))
+        data = json.loads(entry.read_text(encoding="utf-8"))
         nodes.extend(data.get("nodes", []))
         edges.extend(data.get("edges", []))
         hyperedges.extend(data.get("hyperedges", []))
-    return nodes, edges, hyperedges, namespace
+        used.add(entry.parent.name)
+    if missing:
+        raise RuntimeError(f"Semantic cache misses {len(missing)} files: {missing}")
+    return nodes, edges, hyperedges, sorted(used)
 
 
 def merge_nodes(*groups: list[dict]) -> list[dict]:
@@ -336,12 +354,15 @@ def main() -> None:
         code_files.extend(collect_files(path) if path.is_dir() else [path])
     ast = extract(code_files, cache_root=root, parallel=args.parallel)
 
-    semantic_nodes, semantic_edges, hyperedges, cache_namespace = semantic_cache(out)
     expected_semantic = {
         normalize_source(root, source)
         for category in ("document", "paper", "image")
         for source in detection.get("files", {}).get(category, [])
     }
+    expected_semantic.discard(None)
+    semantic_nodes, semantic_edges, hyperedges, cache_namespaces = semantic_cache(
+        root, out, expected_semantic
+    )
     covered_semantic = {
         normalize_source(root, node.get("source_file"))
         for node in semantic_nodes
@@ -400,7 +421,7 @@ def main() -> None:
     )
     report = report.replace(
         "- Token cost: 0 input · 0 output",
-        "- Token cost: unavailable (Codex worker usage was not exposed; zero placeholders excluded)",
+        "- Token cost: none for this rebuild (it replays cached extractions; per-run semantic tokens are in graphify-out/cost.json)",
     )
     report = re.sub(
         r"(- Large corpus: )\d+( files)",
@@ -429,7 +450,7 @@ def main() -> None:
         "unresolved_reference_placeholders": len(unresolved),
         "raw_edges": len(edges),
         "interactive_edges": graph.number_of_edges(),
-        "semantic_cache_namespace": cache_namespace.name,
+        "semantic_cache_namespaces": cache_namespaces,
     }
     out.joinpath("graph.json").write_text(
         json.dumps(graph_data, indent=2, ensure_ascii=False), encoding="utf-8"

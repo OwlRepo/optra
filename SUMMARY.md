@@ -1,3 +1,5 @@
+> **Historical scaffold snapshot — not maintained.** Commands, ports and stack below predate the current repo. Current facts: `CLAUDE.md`, `DOCKER.md`, `DEPLOYMENT.md`, `docs/ai/dev-environment.md`.
+
 # Setup Complete ✓
 
 ## What Was Created

@@ -1,6 +1,15 @@
-# Mnemra
+# Optra
 
-SaaS platform for knowledge management and retrieval with RAG.
+Multi-tenant procurement SaaS. Buyers connect their own vendor catalogs, purchase
+orders and invoices; Optra matches every PO line against the catalog entry
+(price, quantity and product photo) and flags discrepancies before payment, with
+a citation behind every verdict. It is built on a multi-tenant RAG core that
+also powers grounded chat over a workspace's own documents, AI ticket extraction
+and web-source crawling.
+
+Personal portfolio project, built and deployed to production standards
+(multi-tenant workspaces, JWT + OTP auth, rate limits and token budgets, CI/CD to
+a live VPS with backups). There are no external customers and no billing.
 
 ## Structure
 
@@ -8,6 +17,7 @@ SaaS platform for knowledge management and retrieval with RAG.
 apps/
   web/          Next.js 14 frontend
   api/          NestJS backend
+  e2e/          Playwright browser end-to-end suite
 packages/
   ai/           RAG logic (LangChain)
   db/           Drizzle ORM + schema
@@ -20,7 +30,7 @@ packages/
 ### Local Development
 ```bash
 cp .env.example .env    # Configure environment
-bun run docker:dev:up   # Start the full stack (postgres/redis/seaweedfs/api/web)
+bun run docker:dev:up   # Start the full stack (postgres/redis/seaweedfs/api/web/umami)
 ```
 Everything runs in Docker with bind-mounted source — edit any file in `apps/` or `packages/` and it hot-reloads, no rebuild needed. Migrations run automatically on container start.
 
@@ -65,3 +75,6 @@ Automatic deploy on push to `main` is also available via `.github/workflows/depl
 - Drizzle ORM, PostgreSQL, pgvector
 - Tailwind v4, shadcn/ui
 - Vercel AI SDK, OpenAI
+- Bull on Redis, SeaweedFS (S3-compatible), DuckDB
+- Jest, Vitest, Playwright
+- Umami (self-hosted analytics, in both compose files)

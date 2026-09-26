@@ -2,21 +2,21 @@
 
 ## Coverage
 
-- Detected source files: 752
-- Source files represented by graph nodes: 752
-- Semantic files represented: 39
-- Raw extracted relationships retained: 9853
-- Interactive unique endpoint-pair edges: 9577
-- Collapsed edge groups preserved in ledger: 187
-- Zero-symbol files materialized as artifacts: 31
-- Unresolved endpoint IDs materialized as placeholders: 226
+- Detected source files: 1023
+- Source files represented by graph nodes: 1023
+- Semantic files represented: 126
+- Raw extracted relationships retained: 15182
+- Interactive unique endpoint-pair edges: 14846
+- Collapsed edge groups preserved in ledger: 239
+- Zero-symbol files materialized as artifacts: 44
+- Unresolved endpoint IDs materialized as placeholders: 263
 
 ## Integrity
 
 - Missing endpoint edges: 0
 - Dangling endpoint edges: 0
 - Self-loop edges: 0
-- Undirected collapsed variants: 224
+- Undirected collapsed variants: 287
 
 Parallel variants are retained in `collapsed-edge-variants.json`; the interactive graph remains an undirected simple graph.
 
@@ -25,7 +25,6 @@ Parallel variants are retained in `collapsed-edge-variants.json`; the interactiv
 - `.claude/launch.json`
 - `.claude/settings.example.json`
 - `.claude/settings.json`
-- `.claude/settings.local.json`
 - `apps/api/test/jest-e2e.json`
 - `docker/seaweedfs/s3.json`
 - `packages/db/drizzle/meta/0000_snapshot.json`
@@ -50,9 +49,23 @@ Parallel variants are retained in `collapsed-edge-variants.json`; the interactiv
 - `packages/db/drizzle/meta/0019_snapshot.json`
 - `packages/db/drizzle/meta/0020_snapshot.json`
 - `packages/db/drizzle/meta/0021_snapshot.json`
+- `packages/db/drizzle/meta/0022_snapshot.json`
+- `packages/db/drizzle/meta/0023_snapshot.json`
+- `packages/db/drizzle/meta/0024_snapshot.json`
+- `packages/db/drizzle/meta/0025_snapshot.json`
+- `packages/db/drizzle/meta/0026_snapshot.json`
+- `packages/db/drizzle/meta/0027_snapshot.json`
+- `packages/db/drizzle/meta/0028_snapshot.json`
+- `packages/db/drizzle/meta/0029_snapshot.json`
+- `packages/db/drizzle/meta/0030_snapshot.json`
+- `packages/db/drizzle/meta/0031_snapshot.json`
+- `packages/db/drizzle/meta/0032_snapshot.json`
+- `packages/db/drizzle/meta/0033_snapshot.json`
+- `packages/db/drizzle/meta/0034_snapshot.json`
 - `packages/db/drizzle/meta/_journal.json`
 - `scripts/eval/eval-dataset.json`
 - `scripts/eval/extraction-eval-dataset.json`
+- `scripts/seed/embeddings-cache.json`
 
 ## Excluded External Symlinks
 

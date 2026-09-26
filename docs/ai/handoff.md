@@ -45,22 +45,29 @@ Optra has one deployed environment. No dev or stg branch or environment exists
 
 1. One task branch → ONE PR into `main`.
 2. The PR runs the `ci` job ("Quality gate") of `.github/workflows/deploy.yml`:
-   type-check, lint, every unit suite, plus the PR-only TDD gate, script tests
-   and agent-definition lint.
+   the test-layer guard (`scripts/check-test-layers.spec.sh`,
+   `scripts/check-test-layers.sh`) and `scripts/check-prod-env.spec.sh` first,
+   then the PR-only TDD gate, script tests, agent-definition lint, type-check,
+   lint, every unit suite, API e2e (`apps/api` `bun run test:e2e`) and the
+   Playwright suite (`apps/e2e` `bun run test:e2e`).
 3. Merge with **"Create a merge commit"**, which is how history lands here
    (`Merge pull request #…` commits in `git log`). Do not squash a branch that
    has stacked slices built on it: squashing rewrites the history the child
    branches share, and their PRs then show the parent's whole diff again.
 4. The push to `main` runs `ci` again and then `deploy` (`needs: ci`), which
-   SSHes to the VPS, takes a `pg_dump` backup, rebuilds and restarts the compose
-   stack, and runs the health checks. The API container applies pending
-   migrations on start (`apps/api/Dockerfile` `CMD`).
+   SSHes to the VPS and runs, in order: `scripts/check-prod-env.sh .env
+   .env.example`; `scripts/backup.sh --reason=deploy` (dumps the `optra`
+   database, and `umami` when it exists, and proves each dump restores before
+   continuing); `build api` and `build web`; `up -d --remove-orphans
+   --force-recreate`; api and web health checks; a production S3 round trip;
+   and, only with `COMPOSE_PROFILES=public`, a public HTTPS smoke. The API
+   container applies pending migrations on start (`apps/api/Dockerfile` `CMD`).
 
 Traps (from `docs/ai/risk-register.md` "CI Quality Gate"): the workflow ignores
 pushes and PRs that only change `**/*.md` or `docs/**`, so a docs-only merge
 does not redeploy (use `workflow_dispatch`), and a docs-only PR shows no checks
-at all. `apps/api` e2e is not part of the gate; run it locally when an endpoint
-flow changed.
+at all. Both e2e layers (`apps/api` API e2e and `apps/e2e` Playwright) are CI
+steps that gate deploy, so a red e2e run blocks the release.
 
 ### Stacked slices
 
@@ -108,9 +115,11 @@ A task is not complete until ALL of these hold:
 - No PR created or merged without the user's explicit instruction.
 - Docs and learning sync done (section above), including the `learnings.md`
   entry when the task introduced something new.
-- Graphify: `/graphify . --update` ran after the final indexed edit (and again
-  after any corpus-changing rebase or edit), and its graph diff and semantic
-  token evidence were reviewed. A skipped or failed refresh blocks completion.
+- Graphify: `/graphify . --update`, then `scripts/graphify-complete.py`, ran
+  after the final indexed edit (and again after any corpus-changing rebase or
+  edit), per `docs/ai/planning.md` "Closeout refresh"; its coverage pass check
+  held, and its graph diff and semantic token evidence were reviewed. A
+  skipped or failed refresh blocks completion.
 - If a PR exists: its checks are green, verified with `gh pr checks <number>`,
   never assumed. Whether GitHub branch protection is enforced on `main` is
   UNVERIFIED, so assume a red PR can still be merged; checking by hand is part
@@ -128,7 +137,9 @@ A task is not complete until ALL of these hold:
   lint, build, e2e, `tdd:red` output). Never claim a check that did not run.
 - Graphify evidence: exact command/mode, changed-file count, graph diff,
   semantic input/output tokens (actual, or a labelled bounded estimate and its
-  method), and any integrity warning.
+  method), the coverage check (`graphify-out/COVERAGE_REPORT.md` detected ==
+  represented source files, 0 missing/dangling endpoint edges,
+  `graph.json` has `coverage`), and any integrity warning.
 - Review findings: resolved, and remaining risks.
 - Git state: worktree path, local branch, remote branch, target base, latest
   commit SHA, commits created, reconcile status.

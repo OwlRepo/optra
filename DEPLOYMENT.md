@@ -14,7 +14,7 @@ cp .env.example .env    # Configure environment
 bun run docker:dev:up   # Start the full stack, build images on first run
 ```
 
-Everything — Postgres, Redis, SeaweedFS, the API, and the web app — runs in Docker. Migrations run automatically from the API container on start. No separate `bun install`, manual migration, or `bun run dev` steps needed.
+Everything — Postgres, Redis, SeaweedFS, the API, the web app and Umami analytics — runs in Docker. Migrations run automatically from the API container on start. No separate `bun install`, manual migration, or `bun run dev` steps needed.
 
 **Apps running:**
 
@@ -23,6 +23,7 @@ Everything — Postgres, Redis, SeaweedFS, the API, and the web app — runs in 
 - 🐘 Postgres: localhost:54322 (mapped to avoid conflicts)
 - 🔴 Redis: localhost:6380
 - 📦 SeaweedFS: localhost:8433 (S3), localhost:8988 (filer), localhost:9433 (master)
+- 📊 Umami analytics: http://localhost:3302 (`OPTRA_UMAMI_PORT`; own `umami` database on the same Postgres)
 
 **Hot reload:** Edit any file in `apps/` or `packages/` → changes reflect within a few seconds (bind-mounted source, polling-based file watch, no image rebuild needed)
 
@@ -62,13 +63,17 @@ sh get-docker.sh
 # Install Docker Compose
 apt install docker-compose-plugin -y
 
-# Create app directory
-mkdir -p /opt/optra
-chown -R $USER:$USER /opt/optra
+# Create app directory. The GitHub Actions deploy and the daily backup both
+# run from /home/deploy/apps/optra (.github/workflows/deploy.yml, backup.yml;
+# scripts/backup.sh writes to /home/deploy/apps/optra-backups). The manual
+# scripts/deploy-remote.sh still defaults to /opt/optra (APP_DIR, line 13) -
+# pick one directory per server and do not mix the two.
+mkdir -p /home/deploy/apps/optra
 
 # Create non-root user (optional but recommended)
 adduser deploy
 usermod -aG docker deploy
+chown -R deploy:deploy /home/deploy/apps
 ```
 
 ### 2. Domain Setup (Squarespace)
@@ -84,6 +89,11 @@ usermod -aG docker deploy
 4. Add **CNAME Record** (optional, for www):
    - Host: `www`
    - Value: `your-domain.com`
+   - TTL: 3600
+5. Add an **A Record** for the Umami analytics dashboard (`analytics.{$DOMAIN}` in
+   `docker/Caddyfile`; the web build loads `https://analytics.${DOMAIN}/script.js`):
+   - Host: `analytics`
+   - Value: `YOUR_HETZNER_IP`
    - TTL: 3600
 
 **Wait for DNS propagation** (5-60 minutes)
@@ -113,7 +123,12 @@ DOMAIN=your-domain.com                    # Your Squarespace domain
 POSTGRES_PASSWORD=STRONG_RANDOM_PASSWORD  # Generate strong password
 OPENAI_API_KEY=sk-your-production-key     # Production OpenAI key
 LANGSMITH_API_KEY=ls__your-key            # Optional
+UMAMI_APP_SECRET=RANDOM_SECRET            # Required: `openssl rand -hex 32`
+UMAMI_TWO_FACTOR_KEY=RANDOM_HEX           # Required: `openssl rand -hex 32`
+UMAMI_WEBSITE_ID=                         # Optional: set after creating the site in Umami
 ```
+
+`UMAMI_APP_SECRET` and `UMAMI_TWO_FACTOR_KEY` use `:?` in `docker-compose.prod.yml`, so `docker compose` refuses to start without them. `scripts/check-prod-env.sh` does not check them. Leave `UMAMI_WEBSITE_ID` empty and the web app renders no tracking script; it is baked in at build time, so setting it later needs a web rebuild (the next deploy does one).
 
 Production object storage is Backblaze B2, not SeaweedFS: set `S3_ENDPOINT`, `S3_REGION`, `S3_BUCKET`, `S3_FORCE_PATH_STYLE=false` and a bucket-scoped `S3_ACCESS_KEY`/`S3_SECRET_KEY` in `.env`. `S3_ENDPOINT` is required — `docker compose` refuses to start without it.
 
@@ -137,8 +152,8 @@ This will:
 **Option B: Deploy on server directly**
 
 ```bash
-# On server
-cd /opt/optra
+# On server (use the same directory the GitHub Actions deploy uses)
+cd /home/deploy/apps/optra
 
 # Clone repo or upload code
 git clone YOUR_REPO .
@@ -155,7 +170,7 @@ nano .env  # Fill in values
 
 `.github/workflows/deploy.yml` deploys automatically on every push to `main` (or via manual `workflow_dispatch`). It SSHes into the VPS, pulls latest, takes a **verified** Postgres backup via `scripts/backup.sh --reason=deploy`, rebuilds `api`/`web`, brings the stack up, and runs internal API/Web/S3 checks before declaring success. The backup is a rollback point for that deploy: it is a `pg_dump -Fc` archive that the script proves parses *and* restores into a throwaway database before the deploy continues, so a dump truncated half-way fails the deploy rather than sitting on disk looking healthy.
 
-This assumes the deploy directory already has a working checkout with `.env` in place (i.e. you've already done Option A or B once). Set `COMPOSE_PROFILES=public` only when Optra's bundled Caddy should own host ports `80`/`443`; otherwise the workflow skips the public HTTPS smoke and leaves ingress to an external host proxy.
+This assumes `/home/deploy/apps/optra` (hard-coded in `deploy.yml` and `backup.yml`) already has a git checkout of this repo with `.env` in place. The workflow runs `git fetch`/`git merge --ff-only`, so an rsync copy from Option A (which excludes `.git` and targets `/opt/optra` by default) does not qualify; use Option B in `/home/deploy/apps/optra` once. Each run checks `.env` with `scripts/check-prod-env.sh` before the backup, and recreates the stack with `up -d --remove-orphans --force-recreate`. Set `COMPOSE_PROFILES=public` only when Optra's bundled Caddy should own host ports `80`/`443`; otherwise the workflow skips the public HTTPS smoke and leaves ingress to an external host proxy.
 
 Configure these **GitHub Secrets** on the repo (`Settings → Secrets and variables → Actions`):
 | Secret | Value |
@@ -206,6 +221,7 @@ Should show:
 - ✅ redis (healthy)
 - ✅ api (healthy)
 - ✅ web (healthy)
+- ✅ umami (healthy; healthcheck `GET /api/heartbeat`)
 - ✅ caddy (running) only when `COMPOSE_PROFILES=public`
 
 **Check logs:**
@@ -229,7 +245,7 @@ docker compose -f docker-compose.prod.yml exec -T web \
   wget -q -O /dev/null http://127.0.0.1:3000/
 ```
 
-Production publishes `web` on `127.0.0.1:3300` only (for the host's Caddy) and never publishes `api`; the API sits on the `internal` network alone, reachable only from `web`. The bundled Caddy service is opt-in via `COMPOSE_PROFILES=public`; leave it unset on a shared VPS where another service already owns ports `80`/`443`.
+Production publishes `web` on `127.0.0.1:3300` and `umami` on `127.0.0.1:3302` only (loopback, for the host's Caddy) and never publishes `api`; the API sits on the `internal` network alone, reachable only from `web`. The bundled Caddy service is opt-in via `COMPOSE_PROFILES=public`; leave it unset on a shared VPS where another service already owns ports `80`/`443`. On such a VPS the host-level Caddy needs two blocks: `DOMAIN` → `127.0.0.1:3300` and `analytics.DOMAIN` → `127.0.0.1:3302`. Umami's dashboard ships with the default login `admin`/`umami`; change it immediately after first boot (`docker/Caddyfile`).
 
 **Visitor addresses and rate limits.** The host Caddy writes each visitor's address into `X-Forwarded-For` (replacing anything the visitor sent); the web app forwards exactly that one value; the API trusts it from one hop because `docker-compose.prod.yml` sets `TRUST_PROXY: "1"`. Never set it to `true` (the API refuses to boot). If a CDN is ever put in front of the domain, configure `trusted_proxies` in Caddy for it, or every CDN edge becomes one shared bucket.
 
@@ -274,7 +290,7 @@ docker compose -f docker-compose.prod.yml logs caddy | grep -i certificate
 ./scripts/deploy-remote.sh deploy@YOUR_SERVER_IP
 
 # Or on server
-cd /opt/optra
+cd /home/deploy/apps/optra   # /opt/optra if you deployed with deploy-remote.sh
 git pull  # or re-sync code
 ./scripts/deploy.sh
 
@@ -307,10 +323,18 @@ Two automatic backups run without you:
   the database is protected on days when nothing ships.
 
 Both write `pg_dump -Fc` archives to `/home/deploy/apps/optra-backups/`, keep the newest
-7 locally, and upload off-box to B2 when the secrets above are set. Neither trusts the
-dump: each proves the archive parses with `pg_restore --list`, then restores it into a
-throwaway database and counts the tables before reporting success. A dump truncated
+7 locally (`BACKUP_KEEP`), and upload off-box to B2 when the secrets above are set. Only
+`backup.yml` forwards those secrets, so the pre-deploy dump stays on the VPS disk unless
+the server's own shell environment sets them. Neither
+trusts the dump: each proves the archive parses with `pg_restore --list`, then restores it
+into a throwaway database and counts the tables before reporting success. A dump truncated
 half-way fails the run instead of sitting on disk looking healthy.
+
+The Umami database gets the same treatment in the same run, when it exists: an
+`umami-<timestamp>.dump` next to `optra-<timestamp>.dump`, restored into its own
+`umami_verify_*` database against its own floor (`UMAMI_MIN_TABLES=5`, since its schema is
+much smaller than the 20-table `MIN_TABLES` floor for `optra`), uploaded to B2 alongside
+it, and pruned to 7 by its own loop. A missing `umami` database is skipped, not failed.
 
 Run one by hand at any time:
 
@@ -476,6 +500,7 @@ ufw status
 │ PostgreSQL  :5432  (54322 on host)            │
 │ Redis       :6379                             │
 │ SeaweedFS   :8333/:8888/:9333                 │
+│ Umami       :3000  (3302 on host)             │
 └──────────────────────────┘
 ```
 
@@ -490,15 +515,17 @@ Internet
 │  Caddy is optional │  COMPOSE_PROFILES=public
 └────────────────────┘
    │
-   └──▶ apps/web      :3000  (healthchecked; serves UI + /api/* proxy routes)
-          │
-          └──▶ apps/api      :3001  (healthchecked; internal only)
+   ├──▶ DOMAIN            → apps/web  :3000  (127.0.0.1:3300; healthchecked; serves UI + /api/* proxy routes)
+   │      │
+   │      └──▶ apps/api      :3001  (healthchecked; internal only)
+   │
+   └──▶ analytics.DOMAIN  → umami     :3000  (127.0.0.1:3302; healthchecked /api/heartbeat)
           │
           ▼
-   ┌──────────────┐
-   │ PostgreSQL   │
-   │ Redis        │
-   └──────────────┘
+   ┌───────────────────────────────┐
+   │ PostgreSQL (optra + umami DB) │
+   │ Redis                         │
+   └───────────────────────────────┘
           apps/api ──▶ Backblaze B2 (objects: optra-prod-objects; backups: optra-prod-backups)
 ```
 

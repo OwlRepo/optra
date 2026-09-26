@@ -17,7 +17,7 @@ Claude Code only; Codex is retired in this repo, so nothing is generated under
 | `04-ui-ux-designer` | UX and copy review against `DESIGN.md` "Calm Utility" tokens | review findings only |
 | `05-code-reviewer` | Diff review | review findings only |
 | `06-security-auditor` | Workspace isolation, JWT/OTP, rate limits and token budgets, secrets, SSRF, upload handling | review findings only |
-| `07-test-engineer` | RED round (Jest / Vitest specs, `bun run tdd:red`) and post-implementation test review | test files only (`*.spec.ts(x)`, `apps/api/test/*.e2e-spec.ts`, `scripts/seed/__tests__/*`); no `ownedGlobs`, because it writes inside the implementers' globs only in Round 1b, when it runs alone |
+| `07-test-engineer` | RED round (Jest / Vitest / Playwright specs, `bun run tdd:red`) and post-implementation test review | test files only (`*.spec.ts(x)`, `apps/api/test/*.e2e-spec.ts`, `scripts/seed/__tests__/*`, `apps/e2e/tests/**`, `apps/e2e/support/**`). `ownedGlobs`: `apps/e2e/tests/**`, `apps/e2e/support/**` (the Playwright suite, which no implementer owns); spec files inside the implementers' globs it writes only in Round 1b, when it runs alone |
 | `08-accessibility-auditor` | Keyboard, focus, labels, contrast on changed UI | review findings only |
 | `09-nestjs-backend-dev` | NestJS modules, services, guards, Bull processors, `packages/ai` chains, shared types | `apps/api/src/**`, `packages/ai/src/**`, `packages/types/src/**` |
 
@@ -48,11 +48,14 @@ during Round 2. To stop concurrent writes to one file:
    run on the server.
 4. If the frontend needs a contract change, it asks the orchestrator, which
    re-issues the contract lock and has the backend persona change the type.
-5. Files outside these globs (`apps/web/middleware.ts`, `apps/api/test/**`,
+5. **test-engineer** owns `apps/e2e/tests/**` and `apps/e2e/support/**`, the
+   Playwright browser suite. Spec files beside source inside the implementers'
+   globs it writes only in Round 1b, when it runs alone.
+6. Files outside these globs (`apps/web/middleware.ts`, `apps/api/test/**`,
    `scripts/**`, Docker and workflow files) are assigned to exactly one persona
    in the spec, or handled by the orchestrator before Round 2. Never a mid-round
    ownership exception.
-6. A spec that would have both implementers touch the same file is defective.
+7. A spec that would have both implementers touch the same file is defective.
    Split it or give the file to one owner before dispatch. The orchestrator
    catches this at contract lock, not after both report done.
 

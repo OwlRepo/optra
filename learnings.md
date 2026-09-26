@@ -404,3 +404,12 @@ And one rule the owner made standing: every change now ships with its tests for 
 **Actual:** no existing test changed and every layer went green - but the first version read the count, checked the credential, then counted, in both places. The pre-merge review showed that requests in flight together all pass such a check: every sign-in arriving during bcrypt slipped under the 20-failure cap, and parallel code guesses were each compared despite the 5-guess limit. Both now count the attempt first (Redis INCR; a single UPDATE whose row lock re-checks the limit), proven by a 25-at-once sign-in test and a 10-at-once guess test.
 
 **Why different:** a limit enforced as read-then-write only holds for requests that arrive one after another, which is exactly what an attacker does not do. The sequential tests could not see it; only thinking about concurrency (and a test that fires in parallel) could.
+
+## 2026-09-26 — Graphify completer: resolve semantic cache by live content hash
+*Learning Contract: the plan's design is the prediction; the diff is below. No live prediction solicited.*
+
+**Predicted (from the approved plan):** completer reaches full semantic coverage with no duplicate doc nodes.
+
+**Actual:** graphify's semantic cache is keyed by content hash inside per-prompt `p{fingerprint}/` namespaces, and the skill never prunes it. The old `semantic_cache()` picked one namespace and loaded every entry in it, so it replayed stale drafts of edited docs (82 entries for 77 docs) and missed docs cached only under an older prompt. The fix resolves exactly one entry per doc: hash the file as it is now with `graphify.cache.file_hash`, look that hash up in every namespace, take the newest (`scripts/graphify-complete.py` `semantic_cache`), and fail loudly naming any doc with no entry. Separately, `/graphify . --update` on its own rewrites `graph.json` without the completer's `coverage` block, so the completer must run after it.
+
+**Why different:** a content-addressed cache looks self-cleaning, but only a lookup by the *current* hash benefits from that; enumerating a directory treats every historical draft as live. **A cache keyed by content is only as fresh as the key you ask it for.**

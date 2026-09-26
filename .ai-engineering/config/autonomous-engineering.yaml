@@ -40,6 +40,7 @@ project:
   apps:
     - apps/web
     - apps/api
+    - apps/e2e
   packages:
     - packages/ai
     - packages/db
@@ -55,12 +56,15 @@ validation_commands:
     - bun run tdd:gate
     - bun run test:scripts
     - bun run agents:lint
+    - sh scripts/check-test-layers.sh <base-sha>
   apps/api:
     - bun run test
     - bun run test:cov
     - bun run test:e2e
   apps/web:
     - bun run test
+  apps/e2e:
+    - bun run test:e2e
   packages/db:
     - bun run test
   packages/ai:
