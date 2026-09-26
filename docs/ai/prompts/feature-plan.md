@@ -1,5 +1,10 @@
 # Feature Planning Template
 
+> Purpose: plan a new capability or an enhancement end to end.
+> When to use: intent `NEW_FEATURE` or `ENHANCEMENT` (`docs/ai/task-router.md`).
+> Source of truth: this is a MAP of the process. The real code, contracts and tests win.
+> Deterministic implementation rule: read `docs/ai/planning.md` and `docs/ai/plan-template.md` first (flow node `L`) and expand this plan per their rules. Every path, symbol, operation, dependency, test, acceptance mapping and regression risk is explicit, and every code change is a literal old/new block (`docs/ai/plan-template.md` "Deterministic implementation rule").
+
 For new features, do not use RCA.
 
 Use Feature Discovery.
@@ -10,7 +15,7 @@ No source edits during planning. Implementation begins only after approval.
 
 ## Plan Contract
 
-Follow the Plan Contract in `CLAUDE.md`.
+Follow the Plan Contract in `docs/ai/plan-template.md` ("Plan Contract by task size", "Blast-radius rule").
 
 Two layers required for Standard/Deep:
 
@@ -73,6 +78,8 @@ Answer:
 - Where do they live?
 
 Verify from source code.
+
+Search with Graphify first (`/graphify query|path|explain` against `graphify-out/graph.json`), then `docs/ai/file-index/repository-map.md`, then `grep` as a fallback; name the graphify query that failed if grep was needed. Reuse candidates to check before proposing anything new: existing NestJS services, guards and DTOs in `apps/api/src/<domain>/`, `packages/ai` chains, shared types in `packages/types/src/`, `@repo/ui` components, and BFF helpers in `apps/web/src/lib/api/`.
 
 Consult `docs/ai/module-ownership-map.md` for domain.
 
@@ -166,6 +173,8 @@ Consider deployment ordering.
 
 ### 11. Verification & Testing Plan
 
+Tests first. Phase 1 of the plan is RED: the Test Matrix (`docs/ai/plan-template.md`) with exact spec files and cases titled and ordered `error:` > `edge:` > `regression:` > `happy:`, covering workspace isolation and, for LLM paths, the rate-limit / token-budget behaviour. Run `bun run tdd:red` and paste the failing output (`docs/ai/testing-strategy.md` "Strict TDD").
+
 Include verification commands verified from package scripts or repo docs.
 
 **Test layers (mandatory — see `docs/ai/testing-strategy.md` → Required test layers).** For each layer, name the spec files and the cases (happy + error), or state why the change cannot be observed there:
@@ -195,7 +204,7 @@ For Tiny/Express tasks, state `Low risk. No special rollback required.` if appli
 
 ### 13. Approval Gate
 
-Present the plan and wait for approval before implementing (Standard/Deep).
+Present the plan and wait for approval before implementing (Standard/Deep). Record the approval in `.claude/.plan-ack` only after it is given (flow node `R`).
 
 For Deep tasks, implementation starts only after explicit human approval of the plan.
 
@@ -249,7 +258,7 @@ No source edits during planning. Implementation begins only after approval.
 
 ## Implementation Start
 
-After approval, Claude implements directly in the same thread — one step at a time, strict TDD, explaining each step.
+After approval, execution follows `AGENTS.md` from node `S`: read `docs/ai/execution.md`, create the task worktree, then run the rounds in `docs/ai/agent-orchestration.md` (db-architect if schema changes, contract lock, RED, backend + frontend, verify, QA fan-out). Phases continue automatically while the model/reasoning pair is unchanged.
 
 For Deep tasks:
 

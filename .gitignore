@@ -62,8 +62,10 @@ apps/*/src/**/*.js.map
 .gstack/
 
 # Claude Code hook acknowledgment files (per-turn state, never committed)
-.claude/.predict-verify-ack
 .claude/.plan-ack
+
+# Per-task git worktrees (scripts/new-task-worktree.sh)
+.claude/worktrees/
 
 # Seeder stock-image byte cache (re-downloadable from Pexels)
 scripts/seed/.image-cache/

@@ -212,3 +212,15 @@ Root: `bun run lint` (turbo). Historically flagged broken in `docs/PRODUCTION-RE
 ### Build
 
 Root: `bun run build` (turbo, respects the per-app dependency graphs noted under Project Shape above). Docker: `docker compose build api web` (dev) / `docker compose -f docker-compose.prod.yml build api web` (prod) are the pre-flight dry-run before trusting a live deploy — see `docs/ai/testing-strategy.md`'s Infrastructure/Docker/Deployment Verification section for the full operational checklist (this is Deep-task infra verification, not a Jest command).
+
+## AI Workflow Tooling
+
+Added 2026-09-23 (`docs/plans/infra-ai-workflow-port.md`). Not part of either deployable app; it governs how changes are made.
+
+- **Rules:** `AGENTS.md` (always-on core, imported by `CLAUDE.md` via `@AGENTS.md`) → phase docs in `docs/ai/` loaded at their flow node (`task-router.md`, `planning.md` + `plan-template.md`, `execution.md`, `handoff.md`, `pr-evidence.md`). `.ai-engineering/` adds roles, lifecycle states (`core/task-lifecycle.md`, `core/task-state-machine.md`) and the `activation: PILOT_FROZEN` config.
+- **Personas:** `agents/src/*.agent.mjs` (+ `agents/src/prompts/`) → `scripts/generate-agent-defs.mjs` → `.claude/agents/*.md`. `bun run agents:generate` writes, `bun run agents:lint` checks drift, orphans and `ownedGlobs` conflicts.
+- **TDD enforcement:** `scripts/ci/tdd-lib.mjs` (shared pure logic) used by `scripts/ci/tdd-red.mjs` (local RED marker in `<git-dir>/tdd-red.json`), `scripts/ci/tdd-gate.mjs` (PR gate) and `scripts/hooks/tdd-red-guard.mjs` (Claude PreToolUse hook); `scripts/ci/tdd-runner.mjs` runs Jest/Vitest/`node --test` and parses JSON reports; `scripts/ci/test-repo.mjs` builds scratch repos for the tooling's own tests.
+- **Hooks:** `.claude/settings.json` PreToolUse: `check-gstack.sh` (Skill), `check-plan-gate.sh` (Edit/Write/MultiEdit), `tdd-red-guard.mjs` (Edit/Write/MultiEdit/NotebookEdit/Bash). Git: `scripts/git-hooks/pre-commit` via `core.hooksPath` (root `prepare` script).
+- **Worktrees:** `scripts/new-task-worktree.sh <type> <short-name> [<base-ref>]` → `.claude/worktrees/` (gitignored), branch `<type>/no-ticket-<short-name>`.
+- **CI:** three extra steps in the `ci` job of `.github/workflows/deploy.yml` (TDD gate on PRs only, script tests, agent-definition lint); the `deploy` job is unchanged.
+- **Graphify:** committed graph in `graphify-out/`; `scripts/graphify-complete.py` completes it, `scripts/graphify/ci_workflows.py` adds `.github/workflows/*.yml` nodes.

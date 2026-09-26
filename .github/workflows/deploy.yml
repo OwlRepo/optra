@@ -40,7 +40,10 @@ jobs:
       S3_BUCKET: optra-documents
       S3_FORCE_PATH_STYLE: 'true'
     steps:
-      # Full history: the test-layer guard below reads every commit in the push.
+      # Full history: the test-layer guard below reads every commit in the
+      # push, and the TDD gate diffs the PR against its merge-base with the base
+      # branch and checks that base out in a throwaway worktree. A shallow clone
+      # has neither.
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -48,10 +51,22 @@ jobs:
       # First, because it is the cheapest failure: code that arrives without
       # the tests for the layers it touches. See scripts/check-test-layers.sh.
       # SHAs are passed as env, never interpolated into the script.
+      #
+      # Which commits: a push to main checks what the push added (event.before
+      # to HEAD). A branch or PR checks only its own commits, from where it
+      # meets main. Not pull_request.base.sha or event.before: once a branch
+      # merges main in, those ranges contain main's commits too, re-judged
+      # under whatever the guard's rules are today.
       - name: Tests required for every layer touched
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          TARGET_BRANCH: ${{ github.base_ref || 'main' }}
         run: |
+          if [ "$GITHUB_EVENT_NAME" = push ] && [ "$GITHUB_REF_NAME" = main ]; then
+            BASE_SHA="$PUSH_BEFORE"
+          else
+            BASE_SHA="$(git merge-base HEAD "origin/$TARGET_BRANCH")"
+          fi
           sh scripts/check-test-layers.spec.sh
           sh scripts/check-test-layers.sh "$BASE_SHA" HEAD
           sh scripts/check-prod-env.spec.sh
@@ -97,6 +112,29 @@ jobs:
       # it does not produce them either.
       - name: Build typed workspace packages
         run: bunx turbo run build --filter=@repo/db --filter=@repo/ai
+
+      # Failing test first, proven by the tools rather than trusted: the PR's
+      # changed tests must fail against the merge-base code (RED) and new test
+      # titles must carry error:/edge:/regression:/happy:. PR-only because a push
+      # has no base to diff against; it runs after the services and migrations
+      # above because the base run executes real suites. Rules:
+      # docs/ai/testing-strategy.md "Strict TDD". Exit 2 = could not evaluate.
+      - name: TDD gate
+        if: github.event_name == 'pull_request'
+        env:
+          TDD_GATE_BASE: origin/${{ github.base_ref }}
+          TDD_GATE_HEAD_REF: ${{ github.head_ref }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: bun run tdd:gate
+
+      # The TDD tooling and the persona generator test themselves (node --test).
+      - name: Script tests
+        run: bun run test:scripts
+
+      # .claude/agents/*.md is generated from agents/src; drift, orphans and
+      # ownedGlobs conflicts fail here. Runs in under a second.
+      - name: Agent definitions lint
+        run: bun run agents:lint
 
       - name: Type-check
         run: bun run type-check

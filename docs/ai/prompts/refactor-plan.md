@@ -1,12 +1,17 @@
 # Refactor Planning Template
 
+> Purpose: restructure code without changing behaviour.
+> When to use: intent `REFACTOR` (`docs/ai/task-router.md`).
+> Source of truth: this is a MAP of the process. The real code and tests win.
+> Deterministic implementation rule: read `docs/ai/planning.md` and `docs/ai/plan-template.md` first (flow node `L`) and expand this plan per their rules. Every path, symbol, operation, dependency, test, acceptance mapping and regression risk is explicit, and every code change is a literal old/new block (`docs/ai/plan-template.md` "Deterministic implementation rule").
+
 For refactors, preserve behavior unless user explicitly approved behavior change.
 
 No source edits during planning. Implementation begins only after approval.
 
 ## Plan Contract
 
-Follow the Plan Contract in `CLAUDE.md`.
+Follow the Plan Contract in `docs/ai/plan-template.md` ("Plan Contract by task size", "Blast-radius rule").
 
 Two layers required for Standard/Deep:
 
@@ -60,7 +65,7 @@ Restate refactor request from user input.
 
 Document current behavior to preserve.
 
-Verified from source code.
+Verified from source code. Find every caller and consumer with Graphify first (`/graphify query|path|explain`), then `docs/ai/file-index/repository-map.md`, then `grep` as a fallback.
 
 Include:
 
@@ -113,6 +118,8 @@ State behavior preservation explicitly.
 
 ### 6. Verification & Testing Plan
 
+Characterization tests first: pin the current behaviour with tests titled `error:` > `edge:` > `regression:` > `happy:` BEFORE the refactor, so a green suite afterwards proves nothing changed. These tests pass on today's code, so the RED step uses `bun run tdd:red -- --waiver "refactor: <reason>"` and the PR carries `TDD-Waiver: refactor <reason>`; the CI gate then requires the tests to pass on the base as well (`docs/ai/testing-strategy.md` "Strict TDD").
+
 Include verification commands verified from package scripts or repo docs.
 
 **Test layers (mandatory — see `docs/ai/testing-strategy.md` → Required test layers).** For each layer, name the spec files and the cases (happy + error), or state why the change cannot be observed there:
@@ -144,7 +151,7 @@ For Tiny/Express tasks, state `Low risk. No special rollback required.` if appli
 
 ### 8. Approval Gate
 
-Present the plan and wait for approval before implementing (Standard/Deep).
+Present the plan and wait for approval before implementing (Standard/Deep). Record the approval in `.claude/.plan-ack` only after it is given (flow node `R`).
 
 For Deep tasks, implementation starts only after explicit human approval of the plan.
 
@@ -188,7 +195,7 @@ If refactor changes API contract, DB contract, or public behavior:
 
 ## Implementation Start
 
-After approval, Claude implements directly in the same thread — one step at a time, strict TDD, explaining each step.
+After approval, execution follows `AGENTS.md` from node `S`: read `docs/ai/execution.md`, create the task worktree, land the characterization tests first, then refactor in small reversible steps. Phases continue automatically while the model/reasoning pair is unchanged.
 
 For Deep tasks:
 

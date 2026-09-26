@@ -1,8 +1,19 @@
 # AI Workflow Entry Point
 
+> Purpose: the front door to the `docs/ai/*` tree: what this repo is and how these docs fit together.
+> Load rule: read first when you land in the repo and need orientation.
+> Source of truth: every file here is a MAP, never proof. Real code, tests, types, schemas, migrations and routes are the truth. If a map conflicts with code, code wins.
+
+Optra is a multi-tenant procurement SaaS (PO / invoice / catalog matching with
+cited verdicts) on a multi-tenant RAG core, built as a portfolio project to
+production standards. Project facts, the real stack and the invariants are in
+`CLAUDE.md`; the always-on workflow (Canonical Task Flow, core principles, stop
+conditions, agent routing) is in `AGENTS.md`, which `CLAUDE.md` imports. Do not
+restate them here; read them.
+
 ## Developer Workflow
 
-Developer provides raw task details:
+The developer pastes raw task details in any form:
 
 ```txt
 Handle this task:
@@ -10,27 +21,20 @@ Handle this task:
 [paste details]
 ```
 
-Claude routes, investigates, plans, implements, and validates — single agent, one thread.
+The session routes it through `docs/ai/task-router.md` (flow node `B`) and
+follows the `AGENTS.md` flow from there. The developer never names a lane.
 
-For Standard/Deep tasks, Claude presents the plan and waits for approval:
+- Tiny / Express: implemented after classification.
+- Standard: implemented after the plan is approved.
+- Deep: RCA or discovery is approved first, then the plan.
 
-```txt
-Approved. Implement.
-```
-
-Claude then implements one step at a time, tests first (strict TDD), explaining each step.
-
-Tiny/Express tasks may be implemented directly after classification.
-
-Standard/Deep plans follow the Plan Contract in `CLAUDE.md`: two layers (short human summary with Risk Matrix + Backward Compatibility Matrix, then deterministic execution spec anchored by symbols and code blocks).
-
-Two PreToolUse hooks gate source edits: `check-plan-gate.sh` (Plan Contract recorded) and `check-predict-verify.sh` (Learning Contract recorded).
-
-After implementation, follow the SDLC Stage Map in `CLAUDE.md` (QA → review → ship → canary → release docs → retro via gstack skills).
-
-Developer does not need to name internal lanes.
-
-Claude auto-routes through `docs/ai/task-router.md`.
+Once a plan is approved, phases run automatically while the model and
+reasoning pair stays the same (flow node `U`). Two things gate source edits
+mechanically: `.claude/hooks/check-plan-gate.sh` (the plan state is recorded in
+`.claude/.plan-ack`) and `scripts/hooks/tdd-red-guard.mjs` (a valid RED from
+`bun run tdd:red` exists). After implementation, the SDLC Stage Map in
+`CLAUDE.md` suggests the next gstack skill (QA → review → PR → canary → release
+docs → retro).
 
 ## Context Engineering
 
@@ -70,20 +74,30 @@ If required contract is missing, mark `UNMAPPED CONTRACT`.
 
 Do not convert unverified contract assumptions into implementation steps.
 
-## Load Order
+## Context Order
 
-Before analysis:
+Load in this order for a code-changing task:
 
-1. `docs/ai/task-router.md` - task classification and template routing
-2. `docs/ai/architecture-manifest.md` - architecture map
-3. `docs/ai/module-ownership-map.md` - business/domain ownership map
-4. `docs/ai/contracts/api-contracts.md` - FE-BE contract map
-5. `docs/ai/contracts/db-contracts.md` - DB/model invariant map
-6. `docs/ai/testing-strategy.md` - verification strategy map
-7. `docs/ai/risk-register.md` - high-risk area map
-8. `docs/ai/file-index/repository-map.md` - repository map
-9. related test suites
-10. target source files
+1. `AGENTS.md`: workflow core (Canonical Task Flow, core principles, stop conditions).
+2. `docs/ai/task-router.md`: classify intent, size, domain and risk; skill mapping.
+3. `docs/ai/architecture-manifest.md`: system shape.
+4. `docs/ai/module-ownership-map.md`: which areas own the domain you are touching.
+5. `docs/ai/agent-orchestration.md`: before dispatching any persona, and always when a spec touches both backend and frontend.
+6. `docs/ai/contracts/api-contracts.md`: the API surface.
+7. `docs/ai/contracts/db-contracts.md`: tables, invariants, mutation paths.
+8. `docs/ai/testing-strategy.md`: how to test at this size, and the Strict TDD rules.
+9. `docs/ai/risk-register.md`: is this a Deep-by-default area?
+10. Graphify (`/graphify query|path|explain` against `graphify-out/graph.json`), then `docs/ai/file-index/repository-map.md`: exact files and symbols, before any grep.
+11. Related test suites (the `*.spec.ts(x)` next to the source, `apps/api/test/`).
+12. The target source files.
+
+Phase docs load at their flow node, not up front: `docs/ai/planning.md` +
+`docs/ai/plan-template.md` before writing a plan (node `L`);
+`docs/ai/execution.md` before creating the worktree or writing code (node `S`);
+`docs/ai/handoff.md` before declaring done (node `W`); `docs/ai/pr-evidence.md`
+before creating any PR. `docs/ai/dev-environment.md` when a running stack is
+needed; `docs/ai/autonomous-engineering.md` only if structured work orders come
+up (they are disabled). `docs/ai/operating-contract.md` is a pointer page only.
 
 ## Task Router
 

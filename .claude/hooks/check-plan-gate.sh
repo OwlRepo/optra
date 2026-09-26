@@ -3,7 +3,7 @@
 #
 # Blocks Edit/Write/MultiEdit tool calls unless .claude/.plan-ack exists,
 # is fresh, and records the current task's size + plan status. Companion
-# to check-predict-verify.sh (Learning Contract). This does NOT judge plan
+# to scripts/hooks/tdd-red-guard.mjs (Strict TDD). This does NOT judge plan
 # quality — it forces the classification and plan-approval step to be
 # recorded before any code change, instead of silently skipped.
 
@@ -14,7 +14,7 @@ MAX_AGE_SECONDS=14400   # one plan approval covers an implementation session (~4
 INPUT=$(cat)
 TARGET_PATH=$(echo "$INPUT" | grep -o '"file_path"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | sed -E 's/.*"file_path"[[:space:]]*:[[:space:]]*"([^"]*)".*/\1/')
 
-# Same exemptions as check-predict-verify.sh — docs/config/markdown are not gated.
+# Docs, config and markdown are not gated.
 case "$TARGET_PATH" in
   *docs/ai/*|*learnings.md|*CLAUDE.md|*.claude/*|*README*|*.md)
     echo '{}'

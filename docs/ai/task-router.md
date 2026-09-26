@@ -1,94 +1,81 @@
 # Task Router
 
-Claude must classify raw user requests.
+> Purpose: turn any incoming request into an intent, a workflow, a task size, a domain and a risk level, and name the prompt doc and skill to use.
+> Load rule: run this first on every task (flow node `B` in `AGENTS.md`), before touching code.
+> Source of truth: this is a MAP. Real code and `docs/ai/risk-register.md` decide what is actually risky. If a map conflicts with code, code wins.
 
-Raw task details may include:
+Requests arrive in any form: plain English, a bug report, a feature request, a
+refactor request, a QA report, a GitHub issue, an error log or stack trace, a
+screenshot description, a production incident note, test failure output, a code
+review comment. The user never has to name a lane.
 
-- plain English request
-- bug report
-- feature request
-- refactor request
-- QA report
-- issue tracker ticket
-- GitHub issue
-- Jira ticket
-- Linear ticket
-- error log
-- stack trace
-- screenshot description
-- user complaint
-- production incident note
-- test failure output
-- code review comment
-- support report
+## Routing Table
 
-Claude must not require user to name a lane.
+Intent enums: `BUG_FIX` · `ENHANCEMENT` · `NEW_FEATURE` · `REFACTOR` ·
+`PERFORMANCE` · `INFRASTRUCTURE` · `DOCUMENTATION`. Classify each task exactly
+once. Sizes are Tiny / Express / Standard / Deep ("Task Size Rules" below); the
+plan-gate hook reads them, so no other size vocabulary is used here.
 
-## Classification Table
+| Intent | Workflow | Prompt doc | Skill |
+|---|---|---|---|
+| `BUG_FIX` — bug, error, regression, crash, failing test, broken or unexpected behaviour, production incident, QA failure | Bug RCA, then Bug Plan | `docs/ai/prompts/bugfix-rca.md` (RCA first, NO code until approved), then `docs/ai/prompts/bugfix-plan.md` | `/investigate` |
+| `ENHANCEMENT` — change to existing behaviour | Feature Plan | `docs/ai/prompts/feature-plan.md` | `ecc:plan` |
+| `NEW_FEATURE` — new capability, UI, API or workflow | Feature Plan | `docs/ai/prompts/feature-plan.md` | `ecc:feature-dev` |
+| `REFACTOR` — cleanup, rename, restructure, no intended behaviour change | Refactor Plan | `docs/ai/prompts/refactor-plan.md` | — |
+| `PERFORMANCE` | Performance Plan | none; "Required analysis" below | — |
+| `INFRASTRUCTURE` — Docker, compose, Dockerfile, CI/CD, VPS, deploy scripts, AI workflow tooling | Infra Plan, Deep by default | none; "Required analysis" below, plus the operational checklist in `docs/ai/testing-strategy.md` "Infrastructure / Docker / Deployment Verification" | — |
+| `DOCUMENTATION` | Docs change | none; "Required analysis" below | `ecc:update-docs` |
+| Question / explanation / review / discovery | Read-only | none; evidence-backed findings, no plan, no file changes | `/review` or `ecc:code-review` for diffs; `/graphify query` for codebase questions |
+| QA | QA | — | `/qa` (fixes), `/qa-only` (report), `ecc:test-coverage` |
 
-| Input Intent                                                                                                                          | Internal Workflow | Template                           |
-| ------------------------------------------------------------------------------------------------------------------------------------- | ----------------- | ---------------------------------- |
-| Bug, error, regression, crash, failing test, broken behavior, unexpected behavior, production incident, QA failure, support complaint | Bug RCA           | `docs/ai/prompts/bugfix-rca.md`    |
-| Approved RCA, request for fix plan, request to generate implementation plan after RCA                                                 | Bug Plan          | `docs/ai/prompts/bugfix-plan.md`   |
-| New capability, enhancement, new workflow, new UI behavior, new API behavior, product behavior change                                 | Feature Plan      | `docs/ai/prompts/feature-plan.md`  |
-| Cleanup, rename, restructure, internal code quality change, no intended behavior change                                               | Refactor Plan     | `docs/ai/prompts/refactor-plan.md` |
-| Question, explanation, code review, architecture review, discovery only                                                               | Read-only         | No template — evidence-backed findings only, no source edits |
-| Infra, Docker, deployment, CI/CD, VPS, container, compose, Dockerfile, hosting configuration change                                   | Infra Plan        | No dedicated template — treat as Feature Plan discovery depth, but consult `docs/ai/risk-register.md`'s "Production Deployment" row (Deep by default) and `docs/ai/testing-strategy.md`'s operational-verification checklist instead of unit-test-first flow for non-code files |
+Other skills: `/plan-eng-review` (architecture plan review), `/autoplan` (full
+review pipeline). gstack skills use short names (`/investigate`, `/qa`); never
+invent namespaced variants. If a skill fails to load, report the unresolved
+mapping instead of substituting an invented command.
 
-## Ambiguity Rules
+### Required analysis for intents without a prompt doc
 
-If ambiguous, choose safest workflow:
+- `PERFORMANCE`: the measured bottleneck and its evidence, the baseline, the hot
+  path, the proposed optimisation, the expected impact, how it will be
+  measured, regression risks, observability. Never optimise on speculation.
+- `INFRASTRUCTURE`: the current setup (cite `.github/workflows/deploy.yml`,
+  `docker-compose*.yml`, `apps/*/Dockerfile`, `scripts/deploy*.sh` as relevant),
+  the proposed change, compatibility and deploy impact, secrets and config
+  impact, rollback procedure, required validation. Infra files are not guarded
+  source for the TDD hook; application code touched along the way (for example
+  a health controller) still follows TDD.
+- `DOCUMENTATION`: the audience, the current gap, the source-of-truth code or
+  config, the exact documents to change, and any examples that need
+  verification.
 
-- possible bug → Bug RCA
-- possible product behavior addition → Feature Plan
-- possible no-behavior-change cleanup → Refactor Plan
-- possible billing/payments/SMS credits/auth/roles/permissions/automations/jobs/webhooks/migrations/transactions → Deep task
+## Ambiguity Rule
+
+When the intent is unclear, pick the safest lane: possible bug → Bug RCA;
+possible new behaviour → Feature Plan; possible no-behaviour-change → Refactor
+Plan. Anything touching the Deep defaults below is Deep, even when the request
+looks small.
 
 ## Module Ownership Map Lookup
 
-After classifying task intent, consult `docs/ai/module-ownership-map.md` to determine:
-
-- likely domain
-- likely related frontend area
-- likely related backend area
-- likely database/schema area
-- likely tests
-- default risk level
-
-If domain is missing, mark `UNMAPPED DOMAIN`.
-
-If map entry is stale or contradicts source code, mark `CONTEXT DRIFT`.
+After classifying, consult `docs/ai/module-ownership-map.md` for the likely
+domain, frontend area, backend area, database/schema area, tests and default
+risk. Missing domain → `UNMAPPED DOMAIN`. Stale or contradicting code →
+`CONTEXT DRIFT`.
 
 ## API Contract Map Lookup
 
-For FE-BE tasks, consult `docs/ai/contracts/api-contracts.md` to find:
-
-- relevant API endpoints
-- request/response shapes
-- frontend callers
-- backend handlers
-- auth/permission requirements
-- known contract risks
-
-If contract is missing, mark `UNMAPPED CONTRACT`.
-
-If map entry is stale or contradicts source code, mark `CONTRACT DRIFT`.
+For FE-BE tasks, consult `docs/ai/contracts/api-contracts.md` for the endpoints,
+request/response shapes, frontend callers (BFF routes under
+`apps/web/app/api/**` and `apps/web/src/lib/api/`), backend handlers,
+auth/permission requirements and known contract risks. Missing contract →
+`UNMAPPED CONTRACT`. Stale → `CONTRACT DRIFT`.
 
 ## DB Contract Map Lookup
 
-For schema/model/mutation tasks, consult `docs/ai/contracts/db-contracts.md` to find:
-
-- relevant models/tables
-- important fields
-- invariants
-- mutation paths
-- transaction/idempotency rules
-- related APIs/jobs
-- known contract risks
-
-If contract is missing, mark `UNMAPPED CONTRACT`.
-
-If map entry is stale or contradicts source code, mark `CONTRACT DRIFT`.
+For schema, model or mutation tasks, consult `docs/ai/contracts/db-contracts.md`
+for the tables, important fields, invariants, mutation paths,
+transaction/idempotency rules and related APIs/jobs. Missing contract →
+`UNMAPPED CONTRACT`. Stale → `CONTRACT DRIFT`.
 
 ## Testing Strategy Lookup
 
@@ -97,24 +84,22 @@ After classifying task size, consult `docs/ai/testing-strategy.md` to determine:
 - minimum verification
 - extra verification
 - manual QA requirements
+- its "Strict TDD" rules (failing test first, proven by `bun run tdd:red` and CI's `bun run tdd:gate`)
 - **which of the three required test layers the change touches** (unit / API e2e / Playwright browser e2e) — `docs/ai/testing-strategy.md` → *Required test layers*. Every plan names the spec files per layer, or the reason a layer does not apply; CI's `scripts/check-test-layers.sh` enforces the pairing.
 
 ## Risk Register Lookup
 
-After initial classification, consult `docs/ai/risk-register.md`.
-
-If task touches listed high-risk area, default to Deep.
-
-Only downgrade Deep if repository evidence proves task is isolated and low-risk.
-
-If risk area is missing, mark `UNMAPPED RISK`.
+After the first classification, consult `docs/ai/risk-register.md`. If the task
+touches a listed high-risk area, it defaults to Deep. Only downgrade Deep when
+repository evidence proves the task is isolated and low-risk. Missing area →
+`UNMAPPED RISK`.
 
 ## Task Size Rules
 
 ### Tiny
 
 - docs, copy, comments, config, display-only polish
-- no behavior change
+- no behaviour change
 - minimal verification
 
 ### Express
@@ -136,36 +121,42 @@ If risk area is missing, mark `UNMAPPED RISK`.
 
 - high-risk or production-critical workflow
 - requires full RCA/discovery
-- requires plan approval
+- requires approval of that RCA/discovery before a plan is written, then
+  approval of the plan
 - requires regression tests
 - requires manual QA
 - requires rollback notes
 
 ## Deep Defaults
 
-Deep by default:
+Deep by default in Optra:
 
-- billing
-- payments
-- SMS credits
-- plan upgrades
-- auth
-- roles
-- permissions
-- automations
-- jobs
-- webhooks
-- migrations
-- transactions
-- infrastructure / deployment / CI-CD
+- auth: OTP, JWT, refresh tokens, cookies (`apps/api/src/auth/`,
+  `apps/web/middleware.ts`)
+- workspace membership and roles (owner/admin/member), invitations, permissions
+- DB migrations and schema changes (Drizzle, pgvector)
+- Bull job processors (ingest, scrape, ticket extraction, procurement and
+  catalog parsing, insights)
+- RAG pipeline contract changes (`packages/ai` chains, embedding model or
+  dimension)
+- rate limits and token budgets (`apps/api/src/limits/`)
+- S3 storage paths
+- email/OTP delivery (Resend)
+- external integrations (OpenAI, LangSmith)
+- transactions, webhooks, automations
+- deploy/infra (docker-compose, Dockerfiles, GitHub Actions, Caddy, deploy
+  scripts) and AI workflow tooling (hooks, CI TDD gate, persona generator)
+- billing, payments, credits and plan upgrades (none exist today; a task that
+  introduces them is Deep)
 
-Only downgrade Deep if repository evidence proves task is isolated and low-risk.
+Only downgrade Deep when repository evidence proves the task is isolated and
+low-risk.
 
-## Output Classification Block
+## Mandatory Classification Output
 
-Claude must output classification before analysis:
+Emit this block before starting work on any non-trivial task:
 
-```txt
+```
 Task Classification:
 - Intent:
 - Workflow:
@@ -173,42 +164,27 @@ Task Classification:
 - Domain:
 - Risk:
 - Contract Areas:
-- Risk Register Notes:
-- Template Loaded:
-- Context Files Used:
 - Next Action:
 ```
 
-## Template Selection Rule
-
-After classification:
-
-- Bug RCA → load `docs/ai/prompts/bugfix-rca.md`
-- Approved RCA needing plan → load `docs/ai/prompts/bugfix-plan.md`
-- New feature → load `docs/ai/prompts/feature-plan.md`
-- Refactor → load `docs/ai/prompts/refactor-plan.md`
-- Read-only → no template, evidence-backed findings only
+Domain values come from `docs/ai/module-ownership-map.md`; risk values from
+`docs/ai/risk-register.md`. The routed prompt doc may add carry-forward lines
+(Risk Register Notes, Template Loaded). Plans must then satisfy
+`docs/ai/planning.md` using the skeleton in `docs/ai/plan-template.md`.
 
 ## Approval Requirement Rule
 
-For Deep tasks:
+- Tiny / Express: implement after classification (the plan-gate ack records
+  `plan:"not-required"`; Express also states its blast-radius line).
+- Standard: implement after the plan is approved.
+- Deep: RCA or discovery first, then stop for approval (flow node `E`/`G`);
+  then the plan, then stop again for approval (node `R`). Implementation starts
+  only after both.
+- Read-only: evidence-backed findings, no source edits.
 
-- Claude produces RCA/discovery first
-- Claude stops after RCA/discovery
-- Human approval required before plan
-- Human approval required again before implementation
+## Who implements
 
-## Implementation Rule
-
-Claude implements directly in the same thread — no handoff artifact, no second agent.
-
-Standard/Deep plans must follow the Plan Contract in `CLAUDE.md` (two layers, Risk Matrix, Backward Compatibility Matrix, symbol + code-block anchors).
-
-- Tiny/Express: implement after classification
-- Standard: implement after plan approval
-- Deep: implement only after explicit human approval of both RCA/discovery and plan
-
-For read-only tasks:
-
-- evidence-backed findings only
-- no source edits
+The orchestrating session owns the task from routing to validation. For code
+changes it dispatches the persona agents per `AGENTS.md` "Automatic agent
+routing default" and `docs/ai/agent-orchestration.md`, and it still owns the
+plan, the contract lock and the final validation.

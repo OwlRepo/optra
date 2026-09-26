@@ -1,5 +1,7 @@
 # CLAUDE.md — Autonomous Bootstrap Template (reusable master)
 
+> **Not loaded in Optra.** Since 2026-09-23 Optra itself runs the `AGENTS.md` workflow (imported by the root `CLAUDE.md`); this file is kept only as a portable master for other repos, and its single-agent, predict-verify and hook-source sections do not apply here.
+
 > **This is the unfilled master copy.** To reuse on another project: copy this file into that repo's root as `CLAUDE.md`, delete this banner, then say **"Read CLAUDE.md and start project integration."** Discovery fills every `(auto-filled...)` section from that repo's real code. This copy lives in `docs/ai/` purely as the portable source — the filled, operating version for THIS repo is the root `CLAUDE.md`.
 
 Single-agent spec. Claude routes, investigates, plans, implements, and validates in one lane — no second agent, no split-brain, no handoff artifacts. This file is both the operating contract AND the bootstrap source spec.
