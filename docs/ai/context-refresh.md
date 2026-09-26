@@ -31,11 +31,16 @@ Missing areas must be marked `TODO: Fill after repository analysis. Do not treat
 - `docs/ai/testing-strategy.md`
 - `docs/ai/risk-register.md`
 - `docs/ai/file-index/repository-map.md`
+- `CLAUDE.md` (project facts: stack, invariants, verified commands)
+- `DEPLOYMENT.md`
+- `DOCKER.md`
 
 Workflow docs, refreshed when their sources change (verify against
-`package.json` scripts, `.github/workflows/deploy.yml`, `.claude/settings.json`,
-`scripts/ci/`, `scripts/hooks/`, `agents/src/`, `docker-compose*.yml`,
-`.ai-engineering/config/autonomous-engineering.yaml`):
+`package.json` scripts, `.github/workflows/deploy.yml`,
+`.github/workflows/backup.yml`, `.claude/settings.json`, `scripts/ci/`,
+`scripts/hooks/`, `scripts/check-*.sh`, `scripts/backup.sh`, `agents/src/`,
+`docker-compose*.yml`, `docker/Caddyfile`, `apps/*/Dockerfile`,
+`.env.example`, `.ai-engineering/config/autonomous-engineering.yaml`):
 
 - `AGENTS.md` (workflow core; project facts stay in `CLAUDE.md`)
 - `docs/ai/task-router.md`
@@ -97,6 +102,7 @@ When verified source code contradicts context docs:
 8. Mark unknowns as `TODO: Fill after repository analysis. Do not treat as verified.`
 9. Report drift found
 10. Report updates made
+11. Refresh the graph per `docs/ai/planning.md` "Closeout refresh"
 
 ## Output Summary
 

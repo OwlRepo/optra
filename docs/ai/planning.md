@@ -240,16 +240,37 @@ read the file (or `git show`), because the graph does not store literal text.
 ### Closeout refresh
 
 Every implementation plan ends with a Graphify maintenance step. After the last
-edit to any indexed source or doc, and before review, commit and handoff, load
-the graphify skill and run `/graphify . --update` from the repo root. Plain
-`graphify update .` is acceptable only for code-only changes, since that CLI
-shortcut is AST-only; docs need the skill's incremental semantic flow. Repeat
-after any later indexed edit or a rebase that changes indexed files.
+edit to any indexed source or doc, and before review, commit and handoff, run
+the procedure below from the repo root. Repeat it after any later indexed edit
+or a rebase that changes indexed files. This section is the one canonical
+statement of the refresh; other docs link here instead of restating it.
 
-Optra-specific completion: `scripts/graphify-complete.py` finishes the graph
-(explicit nodes for data-only files and unresolved references, plus a ledger of
-collapsed edge variants), and `scripts/graphify/ci_workflows.py` adds nodes and
-edges for `.github/workflows/*.yml`.
+1. `/graphify . --update` (load the graphify skill; incremental, with the
+   semantic pass only on uncached docs). Plain `graphify update .` is AST-only
+   and never refreshes docs, so it does not replace this step.
+2. `$(cat graphify-out/.graphify_python) scripts/graphify-complete.py`. This is
+   a full deterministic rebuild from the AST plus the live semantic cache (one
+   entry per doc, resolved by its current content hash across prompt
+   namespaces). It adds the `scripts/graphify/ci_workflows.py` nodes and edges
+   for `.github/workflows/*.yml`, materializes zero-symbol files and unresolved
+   references as explicit nodes, and rewrites `graphify-out/graph.json` (with a
+   `coverage` block), `GRAPH_REPORT.md`, `COVERAGE_REPORT.md`,
+   `collapsed-edge-variants.json` and `graph.html`. It raises if any doc lacks
+   a live cache entry; rerun step 1, then step 2.
+3. Pass check: in `graphify-out/COVERAGE_REPORT.md`, "Detected source files"
+   equals "Source files represented by graph nodes" and the Integrity counts
+   show 0 missing and 0 dangling endpoint edges; `graphify-out/graph.json` has
+   a top-level `coverage` key. Review the graph diff after step 2, not before.
+4. In a task worktree, `graphify-out/cache/` is gitignored
+   (`graphify-out/.gitignore`). Before step 1, copy it and
+   `graphify-out/.graphify_python` from the primary checkout, and write the
+   worktree's absolute path into `graphify-out/.graphify_root`. After step 2,
+   copy the cache back to the primary checkout, or the next refresh re-bills
+   semantic extraction.
+5. Tooling unit tests (run when `scripts/graphify-complete.py` or
+   `scripts/graphify/` changes):
+   `$(cat graphify-out/.graphify_python) -m unittest discover -s scripts/graphify -p 'test_*.py'`.
+   They are not in CI, because graphify is not installed there.
 
 The task is incomplete if the refresh is skipped or fails, or its graph diff and
 token cost are not reviewed. Output written only by the refresh does not trigger

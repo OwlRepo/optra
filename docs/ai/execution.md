@@ -69,21 +69,27 @@ the contradicted assumption, the evidence and the correction needed.
 
 ## Mandatory Graphify closeout
 
-After the last edit to any indexed source or doc, load the graphify skill and
-run `/graphify . --update` from the repo root, before review, commit and
-handoff. Repeat after a later indexed edit or a rebase that changes indexed
-files. A failed or skipped refresh, or unreviewed graph/token evidence, blocks
-completion. Output written only by the refresh does not trigger another one.
-Command choice and token rules: `docs/ai/planning.md` "Mandatory Graphify
-phase".
+After the last edit to any indexed source or doc, run `/graphify . --update`,
+then `scripts/graphify-complete.py`, from the repo root, before review, commit
+and handoff. Repeat after a later indexed edit or a rebase that changes indexed
+files. A failed or skipped refresh, a failed coverage check, or unreviewed
+graph/token evidence blocks completion. Output written only by the refresh does
+not trigger another one. The exact procedure (worktree cache copy, pass check,
+tooling tests) is `docs/ai/planning.md` "Closeout refresh"; token rules are in
+its parent section "Mandatory Graphify phase".
 
 ## Testing requirements
 
 The runners differ per workspace: Jest in `apps/api` (`*.spec.ts`, and
 `test/*.e2e-spec.ts` for e2e), Vitest in `apps/web`, `packages/ai`,
 `packages/db`, `packages/ui` and `scripts/seed`, and `node --test` for
-`scripts/**/*.test.mjs`. `packages/types` has no runner; `bun run type-check`
-covers it. Full inventory: `docs/ai/testing-strategy.md`.
+`scripts/**/*.test.mjs`, and Playwright in `apps/e2e` (browser e2e).
+`packages/types` has no runner; `bun run type-check` covers it. Every change
+ships the unit, API e2e and browser e2e tests for each layer it touches;
+`sh scripts/check-test-layers.sh <base-sha>` enforces this per commit in CI,
+and a layer that genuinely cannot observe the change is skipped only with a
+`Test-Layers-Skip: <reason>` commit trailer. Full inventory:
+`docs/ai/testing-strategy.md`.
 
 - RED first, always. Write every test in the plan's Test Matrix, titles ordered
   `error:` > `edge:` > `regression:` > `happy:`, run `bun run tdd:red`, see it
@@ -123,7 +129,16 @@ plan defines; the standard set, stated once for every phase:
 - targeted `bun run test` in each touched workspace, then its full suite
 - `bun run type-check` (root)
 - `bun run lint` (root)
-- `bun run test:e2e` in `apps/api` when an endpoint flow changed
+- `bun run test:e2e` in `apps/api` when an API route changed (on a fresh
+  `optra_e2e` database: `bun apps/e2e/scripts/prepare-db.ts optra_e2e`)
+- `bun run test:e2e` in `apps/e2e` (Playwright) when a page, BFF route or
+  clicked-through flow changed; needs
+  `docker compose up -d --wait postgres redis seaweedfs` and built apps
+  (root `bun run e2e` builds api+web, then runs it)
+- `sh scripts/check-test-layers.sh <base-sha>` (every layer touched has its
+  tests; CI runs it first)
+- `sh scripts/check-prod-env.spec.sh` when `scripts/check-prod-env.sh` or
+  `.env.example` changed
 - `bun run db:seed:test` when `scripts/seed/` changed
 - `bun run test:scripts` and `bun run agents:lint` when workflow tooling
   changed

@@ -84,7 +84,8 @@ the full stack, so they are never a RED proof.
 | Where | What | Bypass |
 |---|---|---|
 | Claude session | `.claude/settings.json` PreToolUse hook `scripts/hooks/tdd-red-guard.mjs` (matcher `Edit\|Write\|MultiEdit\|NotebookEdit\|Bash`) blocks edits to guarded source, including Bash writes such as `sed -i`, `>`, `tee`, `cp`/`mv`, until a valid RED marker exists for the current branch | `bun run tdd:red -- --waiver "<reason>"`; the reason must then appear in the PR body as `TDD-Waiver: <reason>` |
-| Every PR (`ci` job, `if: github.event_name == 'pull_request'`) | `bun run tdd:gate` (`scripts/ci/tdd-gate.mjs`): changed logic or UI has at least one runnable test in the PR; changed migrations (`packages/db/drizzle/**`) come with a `packages/db/src/**/*.spec.ts` or `apps/api/test/**/*.e2e-spec.ts`; every new test title has a literal `error:`/`edge:`/`regression:`/`happy:` prefix; in new files no `error:`/`edge:` case is declared after a `happy:` case; a PR that adds `happy:` cases also adds at least one `error:` or `edge:` case; the PR's runnable tests are re-run against the merge-base code and must fail there (a valid RED). `TDD-Waiver: refactor …` flips that last check (the tests must pass on the base); any other `TDD-Waiver:` skips the RED proof. A PR whose head branch is `main` is skipped. Exit 0 = pass, 1 = violation, 2 = could not evaluate. Violations and every waiver applied are written to the job summary | `TDD-Waiver:` and `Migration-Waiver:` lines in the PR body. `E2E-Waiver:` is parsed for compatibility but changes nothing, since no rule requires e2e |
+| Every PR (`ci` job, `if: github.event_name == 'pull_request'`) | `bun run tdd:gate` (`scripts/ci/tdd-gate.mjs`): changed logic or UI has at least one runnable test in the PR; changed migrations (`packages/db/drizzle/**`) come with a `packages/db/src/**/*.spec.ts` or `apps/api/test/**/*.e2e-spec.ts`; every new test title has a literal `error:`/`edge:`/`regression:`/`happy:` prefix; in new files no `error:`/`edge:` case is declared after a `happy:` case; a PR that adds `happy:` cases also adds at least one `error:` or `edge:` case; the PR's runnable tests are re-run against the merge-base code and must fail there (a valid RED). `TDD-Waiver: refactor …` flips that last check (the tests must pass on the base); any other `TDD-Waiver:` skips the RED proof. A PR whose head branch is `main` is skipped. Exit 0 = pass, 1 = violation, 2 = could not evaluate. Violations and every waiver applied are written to the job summary | `TDD-Waiver:` and `Migration-Waiver:` lines in the PR body. `E2E-Waiver:` is parsed for compatibility but changes nothing: `tdd:gate` has no e2e rule. E2E is required per layer by `scripts/check-test-layers.sh` (row below), whose only skip is a `Test-Layers-Skip: <reason>` commit trailer |
+| Every push and PR (first `ci` step) | `sh scripts/check-test-layers.sh <base-sha> HEAD`, after its self-test `scripts/check-test-layers.spec.sh`: every layer a commit touches has its tests ("Required test layers" below) | a `Test-Layers-Skip: <reason>` trailer on that commit |
 | Every push and PR | `bun run test:scripts` (the tooling's own tests) and `bun run agents:lint` | none |
 | Local commit | `scripts/git-hooks/pre-commit`: blocks commits on `main`; runs `agents:lint` when persona files are staged | none |
 
@@ -162,7 +163,7 @@ Confirmed from `apps/api/package.json` as of 2026-06-28:
 - `bun run test` — Jest unit tests (`apps/api/src/**/*.spec.ts`). Since 2026-09-26 they run on their own database, `optra_unit`, recreated from the migrations by Jest's `globalSetup` (`apps/api/test/unit-global-setup.ts`, via `apps/e2e/scripts/prepare-db.ts`) and in `TZ=UTC`; they never touch the dev database `optra`. Base connection from `DATABASE_URL`, overridable with `UNIT_DATABASE_URL`. No per-suite cleanup is needed.
 - `bun run test:watch` — Jest unit tests, watch mode
 - `bun run test:cov` — Jest unit tests with coverage report
-- `bun run test:e2e` — Jest e2e tests (`apps/api/test/**/*.e2e-spec.ts`, 15 suites), boots a real `AppModule` instance and hits it with Supertest. In CI and for a clean local run, on its own database: `bun apps/e2e/scripts/prepare-db.ts optra_e2e && DATABASE_URL=postgresql://postgres:postgres@localhost:54322/optra_e2e bun run test:e2e`. No suite reaches a real model (verified 2026-09-25 with OpenAI pointed at an unreachable address).
+- `bun run test:e2e` — Jest e2e tests (`apps/api/test/**/*.e2e-spec.ts`, 16 suites), boots a real `AppModule` instance and hits it with Supertest. In CI and for a clean local run, on its own database: `bun apps/e2e/scripts/prepare-db.ts optra_e2e && DATABASE_URL=postgresql://postgres:postgres@localhost:54322/optra_e2e bun run test:e2e`. No suite reaches a real model (verified 2026-09-25 with OpenAI pointed at an unreachable address).
 - `bun run type-check` — `tsc --noEmit`
 
 Storage integration note as of 2026-06-30 (CONTEXT DRIFT fix 2026-07-09 — port renamed with the Optra rebrand, see `risk-register.md`'s PO ↔ Invoice Comparison note):
@@ -191,25 +192,35 @@ Host-side setup, as of S0e (2026-09-20) — `cp .env.example .env` is now enough
 4. `bun install`, then `bunx turbo run build --filter=@repo/db --filter=@repo/ai` (e2e resolves
    `@repo/*` to `dist`; so does `tsc --noEmit`).
 
-**Tests run on Node 22; production runs Bun.** `apps/api/Dockerfile:99` says `exec node dist/main`, but
+**Tests run on Node 22; production runs Bun.** `apps/api/Dockerfile:101` says `exec node dist/main`, but
 `oven/bun:1.2.22` symlinks `node` to `bun`, so no suite here exercises the runtime that serves users.
 Verified clean on both as of 2026-09-20 (see `docs/ai/risk-register.md`, Test/Production Runtime Mismatch).
 
 Every suite in the repo, and how to run them (there is no `turbo test` task and no root `test` script — each package runs its own):
 
-| Command | Runner | Count |
+Counts are spec FILES (counted with `find` on 2026-09-26), which change only
+when a file is added or removed. For case counts, run the package's
+`bun run test` (or the listed command) and read its summary; this doc does not
+track them.
+
+| Command | Runner | Spec files |
 |---|---|---|
-| `cd apps/api && bun run test` | Jest, 59 suites | 452 (399 on 2026-08-18; +12 S0a, +27 S0b, +14 S0c on 2026-09-20) |
-| `cd apps/api && bun run test:e2e` | Jest, 14 suites | 40 |
-| `cd apps/web && bun run test` | Vitest 4.1.9 | 511 |
-| `cd packages/ai && bun run test` | Vitest 3.2.6 | 184 (173 on 2026-08-18; +11 S0c on 2026-09-20) |
-| `cd packages/db && bun run test` | Vitest 3.2.6 | 12 |
-| `cd packages/ui && bun run test` | Vitest 4.1.9 | 91 |
-| `bun run db:seed:test` (root) | Vitest, `scripts/seed` | 47 |
+| `cd apps/api && bun run test` | Jest 30 | 72 (`apps/api/src/**/*.spec.ts`) |
+| `cd apps/api && bun run test:e2e` | Jest 30, e2e config | 16 (`apps/api/test/*.e2e-spec.ts`) |
+| `cd apps/web && bun run test` | Vitest 4.1.9 | 135 (`*.spec.ts(x)`) |
+| `cd packages/ai && bun run test` | Vitest 3.2.6 | 25 (`src/**/*.spec.ts`) |
+| `cd packages/db && bun run test` | Vitest 3.2.6 | 1 (`src/**/*.spec.ts`) |
+| `cd packages/ui && bun run test` | Vitest 4.1.9 | 11 |
+| `bun run db:seed:test` (root) | Vitest, `scripts/seed` | 2 (`scripts/seed/__tests__/*.test.ts`) |
+| `cd apps/e2e && bun run test:e2e` (root `bun run e2e` builds first) | Playwright 1.63 | 9 (`apps/e2e/tests/*.spec.ts`) plus the `tests/auth.setup.ts` setup project |
+| `cd apps/e2e && bun run test:smoke` (by hand, after a deploy) | Playwright 1.63, `playwright.prod.config.ts` | 1 (`apps/e2e/smoke/prod.smoke.spec.ts`) |
+| `bun run test:scripts` (root) | `node --test` | 6 (`scripts/**/*.test.mjs`) |
+| `$(cat graphify-out/.graphify_python) -m unittest discover -s scripts/graphify -p 'test_*.py'` (not in CI; graphify is not installed there) | Python `unittest` | 2 (`scripts/graphify/test_*.py`) |
+| `python3 scripts/eval/test_dataset_schema.py`, `python3 scripts/eval/test_extraction_dataset_schema.py` (not in CI) | Python | 2 (`scripts/eval/test_*.py`) |
 
-**1273 tests, zero skipped**, all green on Node 22 as of 2026-08-18. 2026-09-20 (S0a): `apps/api` unit 59/59 suites, 411 tests; e2e 14/14 suites, 40 tests (procurement e2e gained cross-workspace-dismiss and non-UUID assertions) — both green on Node 22 with only `postgres`/`redis`/`seaweedfs` containers up. 2026-09-20 (S0b): unit 59/59 suites, 438 tests; e2e 14/14, 40. 2026-09-20 (S0c): api unit 452, e2e 14/14 (40), packages/ai 25 files / 184. 2026-09-20 (S0d): all six unit suites re-run together in the order the new CI job runs them — api 59/452, web 124/511, ai 25/184, db 1/12, ui 11/91, seed 2/47 = **222 files, 1297 tests, zero skipped**, green on Node 22. 2026-09-20 (S1): api unit 59/472, seed 2/49, e2e 14/40 — comparison runs added 10 cases to `comparison.service.spec.ts` (including the first assertions on `delta` in this repo), 2 to `procurement-documents.service.spec.ts`, 2 to the seed, and an append-only block to the procurement e2e. 2026-09-20 (S2): api unit 59/479, web 125/516, e2e 14/40 — 7 decision cases in `comparison.service.spec.ts`, a new BFF route spec, and role/isolation coverage in the procurement e2e. 2026-09-20 (S3a): api unit 60/499, seed 2/50 — 5 uom-mapping cases (including one pinning that a `Units` header still means quantity), 4 processor provenance cases, and a seed invariant. The hand-written backfill was additionally exercised directly against Postgres with three fixtures: a numeric confidence, a missing key, and a non-numeric string that would have thrown without the `jsonb_typeof` guard. 2026-09-20 (S4): api unit 60/493, web 126/522, e2e 14/40 — a new `content-disposition.spec.ts`, the **first** `procurement.controller.spec.ts` (the download header contract had nothing asserting it), 5 service cases, 2 BFF route specs, 3 page cases, and an e2e byte-for-byte round-trip. Migrations `0022` and `0023` were additionally verified from scratch on a throwaway database, because the CI gate only ever applies migrations to an empty one. `packages/types` has no tests; `scripts/eval` holds two standalone Python scripts outside the bun surface.
+History (dated snapshots, not current counts): **1273 tests, zero skipped**, all green on Node 22 as of 2026-08-18. 2026-09-20 (S0a): `apps/api` unit 59/59 suites, 411 tests; e2e 14/14 suites, 40 tests (procurement e2e gained cross-workspace-dismiss and non-UUID assertions) — both green on Node 22 with only `postgres`/`redis`/`seaweedfs` containers up. 2026-09-20 (S0b): unit 59/59 suites, 438 tests; e2e 14/14, 40. 2026-09-20 (S0c): api unit 452, e2e 14/14 (40), packages/ai 25 files / 184. 2026-09-20 (S0d): all six unit suites re-run together in the order the new CI job runs them — api 59/452, web 124/511, ai 25/184, db 1/12, ui 11/91, seed 2/47 = **222 files, 1297 tests, zero skipped**, green on Node 22. 2026-09-20 (S1): api unit 59/472, seed 2/49, e2e 14/40 — comparison runs added 10 cases to `comparison.service.spec.ts` (including the first assertions on `delta` in this repo), 2 to `procurement-documents.service.spec.ts`, 2 to the seed, and an append-only block to the procurement e2e. 2026-09-20 (S2): api unit 59/479, web 125/516, e2e 14/40 — 7 decision cases in `comparison.service.spec.ts`, a new BFF route spec, and role/isolation coverage in the procurement e2e. 2026-09-20 (S3a): api unit 60/499, seed 2/50 — 5 uom-mapping cases (including one pinning that a `Units` header still means quantity), 4 processor provenance cases, and a seed invariant. The hand-written backfill was additionally exercised directly against Postgres with three fixtures: a numeric confidence, a missing key, and a non-numeric string that would have thrown without the `jsonb_typeof` guard. 2026-09-20 (S4): api unit 60/493, web 126/522, e2e 14/40 — a new `content-disposition.spec.ts`, the **first** `procurement.controller.spec.ts` (the download header contract had nothing asserting it), 5 service cases, 2 BFF route specs, 3 page cases, and an e2e byte-for-byte round-trip. Migrations `0022` and `0023` were additionally verified from scratch on a throwaway database, because the CI gate only ever applies migrations to an empty one. `packages/types` has no tests; `scripts/eval` holds two standalone Python scripts outside the bun surface.
 
-- **No suite is env-skipped any more.** `apps/api/src/storage/storage.service.spec.ts` gates on `S3_ENDPOINT` (it is a real S3 round-trip against SeaweedFS) and had therefore **never executed locally** — the var lives in the root `.env`, but the unit Jest config has no `setupFiles`, so nothing loaded dotenv before collection. The spec now loads the root `.env` itself. Doing it there rather than in the shared Jest config is deliberate: a global load would hand all 58 other unit suites live credentials, notably `EMAIL_OTP_ENABLED`, which the e2e setup deliberately forces off to avoid live Resend calls. The gate is kept so the suite still skips cleanly where no object store exists.
+- **No suite is env-skipped any more.** `apps/api/src/storage/storage.service.spec.ts` gates on `S3_ENDPOINT` (it is a real S3 round-trip against SeaweedFS) and had therefore **never executed locally** — the var lives in the root `.env`, but the unit Jest config has no `setupFiles`, so nothing loaded dotenv before collection. The spec now loads the root `.env` itself. Doing it there rather than in the shared Jest config is deliberate: a global load would hand every other unit suite live credentials, notably `EMAIL_OTP_ENABLED`, which the e2e setup deliberately forces off to avoid live Resend calls. The gate is kept so the suite still skips cleanly where no object store exists.
 - **`packages/ai` concurrency no longer depends on the Node version.** `crawl.ts` used `new Function('specifier','return import(specifier)')` to load ESM-only `p-limit@7` from a CommonJS package. Plain Node runs that fine, but Vitest's module runner supplies no host dynamic-import callback, so 10 `crawlSite` tests failed on Node 22/24 and passed only on Node 25. `p-limit` was removed and replaced by `createLimit` (`packages/ai/src/web/limit.ts`); the suite now passes 173/173 on Node **22, 24 and 25**. The packaging guard in `crawl.spec.ts` was inverted to assert the hack cannot return.
 - **`bun install` can silently corrupt native binaries.** An incremental `bun install` left `node_modules/vite/node_modules/esbuild/bin/esbuild` as a valid arm64 Mach-O that was SIGKILLed on exec (exit 137), with no matching `@esbuild/darwin-arm64@0.28.1` platform package installed. Symptom: `packages/ai`, `packages/db` and `scripts/seed` all died at config load with `The service was stopped: write EPIPE` — which reads like a test failure but is not. `bun install --force` re-extracts and repairs it. Same failure class as the DuckDB binding: a platform-specific package that install did not materialise.
 
@@ -263,9 +274,9 @@ Confirmed from `apps/web/package.json` as of 2026-06-29:
 - `bun run test:watch` — Vitest, watch mode
 
 Brand asset note as of 2026-07-05, updated 2026-07-06 (folded-page mark → bloom mark):
-- `apps/web/src/components/brand-mark.spec.tsx` covers the shared `BrandMark` component (now asserting `data-brand-mark="mnemra-bloom"`) and decorative mode used in already-labelled links.
+- `apps/web/src/components/brand-mark.spec.tsx` covers the shared `BrandMark` component (asserting `data-brand-mark="optra-mark"`, `brand-mark.spec.tsx:12` against `brand-mark.tsx:15`, and the `/optra-mark.svg` source) and decorative mode used in already-labelled links.
 - `apps/web/app/brand-images.spec.ts` covers the source `public/optra-mark.svg` (asserting `<title>Optra aperture mark</title>` / `data-mark="optra-mark"` — verified 2026-08-16 against `brand-images.spec.ts:13-18`; this line previously named the retired `mnemra-mark.svg` bloom mark), `icon.png` favicon dimensions, `favicon.ico` presence, `apple-icon.png`, and `opengraph-image.png` — dimension/format assertions unchanged.
-- `apps/web/app/page.spec.ts`, `apps/web/app/(auth)/*/page.spec.ts`, `apps/web/app/loading.spec.tsx`, and `apps/web/app/chat/loading.spec.tsx` cover that landing, auth, and loading chrome use the shared brand mark (identifier `mnemra-bloom`) instead of the old Sparkles logo.
+- `apps/web/app/page.spec.ts`, `apps/web/app/(auth)/*/page.spec.ts`, `apps/web/app/loading.spec.tsx`, and `apps/web/app/chat/loading.spec.tsx` cover that landing, auth, and loading chrome use the shared brand mark (identifier `optra-mark`) instead of the old Sparkles logo.
 
 Chat UI note as of 2026-06-30:
 - `apps/web/app/api/workspaces/[id]/chat/**/*.spec.ts` covers streaming proxy + history proxies.
@@ -311,7 +322,7 @@ Ticket embedding note as of 2026-07-02:
 - `apps/web/app/workspaces/[id]/chat/page.spec.ts` covers ticket citation rendering without link plus legacy persisted sources with no `sourceType`.
 - `apps/api/test/tickets.e2e-spec.ts` covers PATCH review-save calling the mocked `syncTicketChunk` side effect through the real HTTP path.
 
-*(Superseded 2026-09-20: `packages/db` and `packages/ai` now have test suites; see the per-package table above, 12 and 173 tests.)* ~~`packages/db`/`packages/ai` still have no test commands — only `type-check`/`build`/`lint`.~~ Playwright e2e for `apps/web` is still a known gap — deferred until there's a real multi-page flow worth driving a browser through (Priority 2 web pages).
+*(Superseded 2026-09-20: `packages/db` and `packages/ai` now have test suites; see the per-package table above.)* ~~`packages/db`/`packages/ai` still have no test commands — only `type-check`/`build`/`lint`.~~ *(Superseded 2026-09-25: the Playwright gap is closed. `apps/e2e` drives a real browser through the production web and API builds and is a `ci` step that gates `deploy`; see "The browser harness" above.)*
 Confirmed from `packages/ai/package.json` as of 2026-06-30:
 
 - `bun run test` — Vitest, node environment, crawler coverage at `packages/ai/src/web/crawl.spec.ts`
@@ -383,9 +394,9 @@ For everything else infra-shaped, the pragmatic verification checklist is:
 2. Shell/config checks must pass:
    `sh -n docker/api-dev-entrypoint.sh docker/web-dev-entrypoint.sh scripts/deploy.sh scripts/deploy-remote.sh scripts/backup.sh`,
    `docker compose config --quiet`, and
-   `POSTGRES_PASSWORD=postgres DOMAIN=localhost OPENAI_API_KEY=test S3_ENDPOINT=https://example.invalid docker compose -f docker-compose.prod.yml config --quiet` (prod compose requires `S3_ENDPOINT` since 2026-09-25).
+   `POSTGRES_PASSWORD=postgres DOMAIN=localhost OPENAI_API_KEY=test S3_ENDPOINT=https://example.invalid UMAMI_APP_SECRET=test UMAMI_TWO_FACTOR_KEY=test docker compose -f docker-compose.prod.yml config --quiet` (prod compose requires `S3_ENDPOINT` since 2026-09-25, and `UMAMI_APP_SECRET` / `UMAMI_TWO_FACTOR_KEY` with `:?` since Umami was added; compose interpolates the whole file, so every command needs all of them).
 3. `docker compose build api web` (dev) and
-   `POSTGRES_PASSWORD=postgres DOMAIN=localhost OPENAI_API_KEY=test docker compose -f docker-compose.prod.yml build api web` (prod)
+   `POSTGRES_PASSWORD=postgres DOMAIN=localhost OPENAI_API_KEY=test S3_ENDPOINT=https://example.invalid UMAMI_APP_SECRET=test UMAMI_TWO_FACTOR_KEY=test docker compose -f docker-compose.prod.yml build api web` (prod)
    both succeed with no errors — catches Dockerfile syntax errors, missing COPY paths, lockfile
    mismatches, bad stage targets, and broken filtered workspace installs before ever touching a real VPS.
 4. `docker compose up -d` brings up all services; `docker compose ps` shows every service `healthy`
@@ -404,7 +415,8 @@ For everything else infra-shaped, the pragmatic verification checklist is:
 9. For prod-readiness without a live VPS: the prod config/build commands above are the required
    pre-flight dry run before trusting an actual Hetzner deploy — this catches lockfile/env-file,
    missing-mount-source, stage-target, and app graph class bugs without needing SSH access. Prod
-   `api`/`web` ports are not host-published, so prod smoke checks must use
+   `api` is not host-published; `web` is published only on `127.0.0.1:3300` and `umami` only on
+   `127.0.0.1:3302` (`docker-compose.prod.yml`), so prod smoke checks must use
    `docker compose -f docker-compose.prod.yml exec -T api wget -q -O /dev/null http://127.0.0.1:3001/health`,
    `docker compose -f docker-compose.prod.yml exec -T web wget -q -O /dev/null http://127.0.0.1:3000/`,
    and the deploy-path S3 round-trip Node check inside the `api` container.
@@ -459,15 +471,15 @@ because a silent mistake there produces a broken demo rather than a failure.
 - `bun run db:seed` — seed the local database (real, cached embeddings)
 - `bun run db:seed --no-embeddings` — skip OpenAI; chunks insert with null vectors
 - `bun run db:seed --wipe-only` — remove the demo tenant, insert nothing
-- `bun run db:seed:test` — Vitest over `scripts/seed/__tests__/*` (47 tests)
+- `bun run db:seed:test` — Vitest over `scripts/seed/__tests__/*` (2 spec files; run it for the case count)
 
 Safety: the seeder refuses to run unless the `DATABASE_URL` host is local
 (`localhost`/`127.0.0.1`/`::1`/`postgres`/`optra-db`) — it deletes rows, and
 `SEED_ALLOW_REMOTE=true` is required to override. Deletes are always scoped to
 `DEMO_WORKSPACE_ID`/`DEMO_USER_ID`; there is no TRUNCATE and no wildcard delete.
 
-Redis defaults to `localhost:6380` (the compose host mapping), not the
-`REDIS_PORT=6379` in `.env`, which is only correct inside the container.
+Redis defaults to `localhost:6380` (the compose host mapping), which is also
+`REDIS_PORT=6380` in `.env.example:14`; 6379 is the in-container port.
 Override with `SEED_REDIS_HOST` / `SEED_REDIS_PORT`. The Redis step is
 non-fatal: without it only the Insights topic-gaps panel is empty.
 

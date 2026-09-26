@@ -44,7 +44,7 @@ refer to the Canonical Task Flow in `AGENTS.md`.
 | BUILDING (RED → green) | `T` | `bun run tdd:red` wrote a valid RED marker before any guarded-source edit (or a stated `--waiver`) |
 | BUILDING → REVIEW | `T` → `W` | plan phases done; targeted suites, type-check and lint green |
 | REVIEW → QA | `W` | no unresolved review finding |
-| QA → PR_READY | `W` | QA commands from `docs/ai/execution.md` "QA mode" run and green; Graphify closeout done; docs and `learnings.md` synced |
+| QA → PR_READY | `W` | QA commands from `docs/ai/execution.md` "QA mode" run and green; Graphify closeout done (`docs/ai/planning.md` "Closeout refresh"); docs and `learnings.md` synced |
 | PR_READY → WAITING_APPROVAL | `W` | PR opened only on the user's instruction, with `docs/ai/pr-evidence.md` evidence; `gh pr checks <number>` green |
 | WAITING_APPROVAL → MERGED | — | a human merged it with "Create a merge commit" |
 | MERGED → VERIFIED | — | the `deploy` job for that merge commit succeeded and its health checks passed |

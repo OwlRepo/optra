@@ -137,10 +137,10 @@ Done: <objective, observable completion condition.>
   deployable changes. Infra files follow the operational checklist in
   `docs/ai/testing-strategy.md` "Infrastructure / Docker / Deployment
   Verification".
-- Graphify gate (MANDATORY after every implementation): `/graphify . --update`
-  after the final indexed edit, again after a corpus-changing rebase; report the
-  graph diff and semantic input/output tokens (`docs/ai/planning.md`
-  "Mandatory Graphify phase").
+- Graphify gate (MANDATORY after every implementation): `/graphify . --update`,
+  then `scripts/graphify-complete.py`, after the final indexed edit, again after
+  a corpus-changing rebase; report the coverage check, graph diff and semantic
+  input/output tokens (procedure: `docs/ai/planning.md` "Closeout refresh").
 
 ### Compatibility, docs and scans
 
