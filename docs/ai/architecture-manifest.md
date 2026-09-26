@@ -31,7 +31,7 @@ Next.js 14.2.x App Router, React 18, Tailwind v4, TypeScript. `@repo/ui` (`packa
 - `apps/web/app/page.tsx` — public marketing landing page (Tiny risk, no data fetching).
 - `apps/web/app/(auth)/{login,register,verify-otp}/page.tsx` — auth flow pages.
 - `apps/web/app/workspaces/page.tsx` — workspace list/create picker.
-- `apps/web/app/workspaces/[id]/*` — 9 workspace-scoped pages sharing the `AppShell` sidebar/mobile-nav model: Overview (`page.tsx`), Knowledge Bases (`knowledge-bases/page.tsx` + `[kbId]/page.tsx` for documents/crawl), Members (`members/page.tsx`), Chat (`chat/page.tsx`, the one page using `mobileFullBleed`), Tickets (`tickets/page.tsx`), Datasets (`datasets/page.tsx`, V2), Insights (`insights/page.tsx`, V2 — 3 tabs: freshness flags, FAQ drafts, coverage dashboard), Settings (`settings/page.tsx` — workspace rename, change password, digest settings, card-per-section layout as of 2026-07-08).
+- `apps/web/app/workspaces/[id]/*` — 14 workspace-scoped pages sharing the `AppShell` sidebar/mobile-nav model: Overview (`page.tsx`), Knowledge Bases (`knowledge-bases/page.tsx` + `[kbId]/page.tsx` for documents/crawl), Members (`members/page.tsx`), Chat (`chat/page.tsx`, the one page using `mobileFullBleed`), Tickets (`tickets/page.tsx`), Datasets (`datasets/page.tsx`, V2), Insights (`insights/page.tsx`, V2 — 3 tabs: freshness flags, FAQ drafts, coverage dashboard), Settings (`settings/page.tsx` — workspace rename, change password, digest settings, card-per-section layout as of 2026-07-08), Procurement (`procurement/page.tsx` — PO/invoice/goods-receipt tabs + compare), Discrepancies (`discrepancies/page.tsx`), Vendors (`vendors/page.tsx`), Vendor detail (`vendors/[vendorId]/page.tsx` — catalogs, price history, exception summary), Catalog Matches (`catalog-matches/page.tsx`).
 - `apps/web/app/invite/[token]/page.tsx` — invite acceptance.
 - `apps/web/app/api/**` — same-origin BFF proxy routes, one per backend endpoint family (see API Client below).
 - Full per-file detail: `docs/ai/file-index/repository-map.md`; per-domain ownership: `docs/ai/module-ownership-map.md`.
@@ -46,7 +46,7 @@ No global state library (no Redux/Zustand/Context-based store) — each page own
 
 ### API Client
 
-`apps/web/src/lib/api/client.ts` exports `apiFetch`/`uploadFile` — shared fetch helpers used by every domain's client lib (`auth.ts`, `workspaces.ts`, `documents.ts`, `chat.ts`, `tickets.ts`, `scrape.ts`, `refine.ts`, `insights.ts`, `digest-settings.ts`, etc). As of 2026-07-08, both helpers retry once through `POST /api/auth/refresh` on a 401 (excluding the unauthenticated auth endpoints and the refresh endpoint itself), sharing one in-flight refresh promise across concurrent 401s, so a client-side fetch from an already-open page survives a mid-session access-token expiry instead of forcing a silent logout. Same-origin proxy routes under `apps/web/app/api/**` convert the `mnemra_at` httpOnly cookie into a backend `Authorization: Bearer` header via `apps/web/src/lib/http/auth-proxy.ts` (`proxyJson`/`proxyRaw`) — the proxy never owns auth/RBAC decisions, only credential translation; `apps/api` guards remain the actual enforcement point.
+`apps/web/src/lib/api/client.ts` exports `apiFetch`/`uploadFile` — shared fetch helpers used by every domain's client lib (`auth.ts`, `workspaces.ts`, `documents.ts`, `chat.ts`, `tickets.ts`, `scrape.ts`, `refine.ts`, `insights.ts`, `digest-settings.ts`, etc). As of 2026-07-08, both helpers retry once through `POST /api/auth/refresh` on a 401 (excluding the unauthenticated auth endpoints and the refresh endpoint itself), sharing one in-flight refresh promise across concurrent 401s, so a client-side fetch from an already-open page survives a mid-session access-token expiry instead of forcing a silent logout. Same-origin proxy routes under `apps/web/app/api/**` convert the `mnemra_at` httpOnly cookie into a backend `Authorization: Bearer` header via `apps/web/src/lib/http/auth-proxy.ts` (`getBearer` reads the cookie; `proxyJson`/`proxyMultipart`/`proxyRaw` forward it and spread `clientIpHeaders(request.headers)` from `apps/web/src/lib/http/client-ip.ts`, which `apps/web/middleware.ts:3` also uses) — the proxy never owns auth/RBAC decisions, only credential translation; `apps/api` guards remain the actual enforcement point.
 
 ## Backend
 
@@ -56,7 +56,7 @@ NestJS 10, Bull 4 job queues on Redis, Passport JWT + email OTP (Resend). Node r
 
 ### Key Modules
 
-`auth`, `workspaces`, `knowledge-bases`, `documents`, `ingest`, `chat`, `cache`, `limits`, `refine`, `scrape`, `tickets`, `search`, `events`, `storage`, `health` (Priority 1-3 product surface), plus the V2 batch: `datasets`, `structured-query` (DuckDB text-to-SQL engine), `insights` (freshness detector, auto-FAQ, coverage dashboard, weekly digest — all built on a shared Bull-repeatable-job scheduler substrate first introduced in this batch), plus the Optra Track A batch (2026-07-09/10): `procurement` (PO/invoice upload, PDF+vision extraction, DuckDB discrepancy comparison) and `catalog` (vendor CRUD, catalog upload/scrape, vision-LLM catalog-item matching). Full per-file detail in `docs/ai/file-index/repository-map.md`.
+`auth`, `workspaces`, `knowledge-bases`, `documents`, `ingest`, `chat`, `cache`, `limits`, `refine`, `scrape`, `tickets`, `search`, `events`, `storage`, `notifications`, `health` (Priority 1-3 product surface), plus `common` (shared DTOs, filters, HTTP/upload helpers, throttler tracker and limit, trust-proxy setting) and `bootstrap.ts` (`configureApp`, shared by `main.ts` and e2e), plus the V2 batch: `datasets`, `structured-query` (DuckDB text-to-SQL engine), `insights` (freshness detector, auto-FAQ, coverage dashboard, weekly digest — all built on a shared Bull-repeatable-job scheduler substrate first introduced in this batch), plus the Optra Track A batch (2026-07-09/10): `procurement` (PO/invoice upload, PDF+vision extraction, DuckDB discrepancy comparison) and `catalog` (vendor CRUD, catalog upload/scrape, vision-LLM catalog-item matching). Full per-file detail in `docs/ai/file-index/repository-map.md`.
 
 ### API Routes
 
@@ -64,7 +64,7 @@ Tenant-scoped resources are nested under `/workspaces/:workspaceId/*` and guarde
 
 ### Services
 
-Cross-cutting services worth knowing before touching adjacent code: `CacheService` (`apps/api/src/cache`, exact Redis + semantic pgvector chat-answer cache, workspace+version scoped), `RateLimitService`/`UsageService` (`apps/api/src/limits`, per-user/per-workspace chat rate limits + monthly token budget, both fail-open on Redis errors), `StorageService` (`apps/api/src/storage`, S3-compatible object storage over SeaweedFS locally), `DuckDbQueryService` (`apps/api/src/structured-query`, the untrusted-SQL execution boundary for the V2 datasets/ticket-trends/cross-file-comparison features — see `docs/ai/risk-register.md` "Structured SQL Execution" before touching it), `BackgroundRunsService` (`apps/api/src/insights`, the V2 scheduler substrate's status/lastError anchor for jobs with no natural entity row).
+Cross-cutting services worth knowing before touching adjacent code: `CacheService` (`apps/api/src/cache`, exact Redis + semantic pgvector chat-answer cache, workspace+version scoped), `RateLimitService`/`UsageService` (`apps/api/src/limits`, per-user/per-workspace chat rate limits + monthly token budget, both fail-open on Redis errors), `AuthLimitsService` (`apps/api/src/auth/auth-limits.service.ts:23`, per-account Redis counters: `MAX_LOGIN_FAILURES = 20` per hour, `MAX_OTP_RESENDS = 3` per hour, fail-open), `StorageService` (`apps/api/src/storage`, S3-compatible object storage over SeaweedFS locally), `DuckDbQueryService` (`apps/api/src/structured-query`, the untrusted-SQL execution boundary for the V2 datasets/ticket-trends/cross-file-comparison features — see `docs/ai/risk-register.md` "Structured SQL Execution" before touching it), `BackgroundRunsService` (`apps/api/src/insights`, the V2 scheduler substrate's status/lastError anchor for jobs with no natural entity row).
 
 CONTEXT DRIFT resolved 2026-06-30 for chat path:
 - `apps/api/src/cache/cache.service.ts` adds answer caching in API layer, not `packages/ai`.
@@ -73,7 +73,9 @@ CONTEXT DRIFT resolved 2026-06-30 for chat path:
 
 ### Middleware
 
-TODO: Fill after repository analysis. Do not treat as verified.
+- **API, global:** `ThrottlerGuard` registered as `APP_GUARD` (`apps/api/src/app.module.ts:69`); `ThrottlerModule.forRoot` uses `getTracker: (req) => clientBucket(req.ip)` (`:49`) and `limit: defaultThrottleLimit()` (`THROTTLE_DEFAULT_LIMIT`, default 60 per 60 s); handlers may override with `@Throttle` (the auth routes do).
+- **API, bootstrap:** `configureApp(app)` (`apps/api/src/bootstrap.ts:8-18`) applies `cookieParser()`, a global `ValidationPipe({ whitelist: true })`, the global `AllExceptionsFilter`, CORS for `WEB_URL` with credentials, and `trust proxy` from `trustProxySetting()`. Called by `main.ts` and by e2e suites that need production behaviour.
+- **Web:** `apps/web/middleware.ts` guards `/dashboard/:path*`, `/chat/:path*`, `/workspaces/:path*`, `/invite/:path*` — see Routing above.
 
 ## Database / Schema
 
@@ -83,11 +85,11 @@ Drizzle ORM on PostgreSQL 16 + the `pgvector` extension (0.8.3 installed, hnsw i
 
 ### Key Models
 
-Core product tables: `users`, `otps`, `refresh_tokens`, `workspaces`, `workspace_members`, `invitations`, `knowledge_bases`, `documents`, `chunks` (shared vector store for both document- and ticket-backed embeddings, exactly-one-parent CHECK constraint), `chat_sessions`, `chat_messages`, `chat_cache`, `saved_refined_messages`, `scrape_runs`, `tickets`, `workspace_events`. V2 batch tables (all 2026-07-08): `chat_query_metrics`, `datasets`, `background_runs`, `document_review_flags`, `faq_drafts`, `workspace_digest_settings`. Optra Track A batch: `purchase_orders`, `invoices`, `po_line_items`, `invoice_line_items`, `discrepancy_flags` (A1/A2, migration `0020`); `vendors`, `catalogs`, `catalog_items`, `catalog_matches` (A3, migration `0021`). Every tenant table carries `workspace_id` and every query hand-carries a `WHERE workspace_id = ...` guard — there is no Postgres RLS (see `docs/PRODUCTION-READINESS.md` A7). Full field/invariant/mutation-path table: `docs/ai/contracts/db-contracts.md`.
+Core product tables: `users`, `otps`, `refresh_tokens`, `workspaces`, `workspace_members`, `invitations`, `knowledge_bases`, `documents`, `chunks` (shared vector store for both document- and ticket-backed embeddings, exactly-one-parent CHECK constraint), `chat_sessions`, `chat_messages`, `chat_cache`, `saved_refined_messages`, `scrape_runs`, `tickets`, `workspace_events`. V2 batch tables (all 2026-07-08): `chat_query_metrics`, `datasets`, `background_runs`, `document_review_flags`, `faq_drafts`, `workspace_digest_settings`. Optra Track A batch: `purchase_orders`, `invoices`, `po_line_items`, `invoice_line_items`, `discrepancy_flags` (A1/A2, migration `0020`); `vendors`, `catalogs`, `catalog_items`, `catalog_matches` (A3, migration `0021`); `comparison_runs`, `discrepancy_decisions`, `goods_receipts`, `goods_receipt_line_items`, `comparison_run_goods_receipts`, `vendor_price_terms` (S1–S9, migrations `0022`–`0033`). Every tenant table carries `workspace_id` and every query hand-carries a `WHERE workspace_id = ...` guard — there is no Postgres RLS (see `docs/PRODUCTION-READINESS.md` A7). Full field/invariant/mutation-path table: `docs/ai/contracts/db-contracts.md`.
 
 ### Migrations
 
-`packages/db/drizzle/*`, numbered sequentially `0000`–`0021` as of 2026-07-10. All additive except migration `0016` (F2 ticket trends), which `ALTER`s the hot `tickets` table to add nullable `category`/`resolvedAt`/`assigneeId` columns — the one non-purely-additive change in the set, still non-destructive. `0020`/`0021` (Optra Track A) are purely additive `CREATE TABLE`/`CREATE TYPE` migrations, no `ALTER` on any existing table. Known drizzle-kit quirk: generated `vector(1536)` columns come out quoted (`"vector(1536)"`), which Postgres rejects — hand-fix to unquoted `vector(1536)` before applying (hit in migrations `0014`/`0015`, see `docs/ai/risk-register.md`). After any `packages/db/src/schema/*` change, run `bun run --cwd packages/db build` before API e2e/runtime verification so `@repo/db`'s `dist/*` stays aligned with the schema `apps/api`'s Nest runtime actually resolves.
+`packages/db/drizzle/*`, numbered sequentially `0000`–`0034` (35 migrations) at HEAD. Most are additive (`CREATE TABLE`/`CREATE TYPE`/`ADD COLUMN`/`CREATE INDEX`/`ADD CONSTRAINT`, e.g. `0016` adds nullable `category`/`resolved_at`/`assignee_id` to `tickets`). The non-additive statements are: `0001` `DROP CONSTRAINT` (chunks → documents FK), `0008` `DROP INDEX IF EXISTS "tickets_transcript_hash_idx"`, `0010` `ALTER COLUMN "document_id" DROP NOT NULL` on `chunks`, and the enum extensions `0027`/`0031` (`discrepancy_flag_type`) and `0028` (`workspace_event_type`) via `ALTER TYPE … ADD VALUE IF NOT EXISTS`, which cannot be rolled back by a down migration. Known drizzle-kit quirk: generated `vector(1536)` columns come out quoted (`"vector(1536)"`), which Postgres rejects — hand-fix to unquoted `vector(1536)` before applying (hit in migrations `0014`/`0015`, see `docs/ai/risk-register.md`). After any `packages/db/src/schema/*` change, run `bun run --cwd packages/db build` before API e2e/runtime verification so `@repo/db`'s `dist/*` stays aligned with the schema `apps/api`'s Nest runtime actually resolves.
 
 ## API Contracts
 
@@ -162,7 +164,8 @@ Two S3 implementations, one code path (`StorageService` is S3-compatible; only `
 ### Backups
 
 `scripts/backup.sh` — `pg_dump -Fc`, `pg_restore --list`, a real restore into a throwaway
-database with a table-count floor, 7 local copies, upload to B2 `optra-prod-backups`. Runs before
+database with a table-count floor, 7 local copies, upload to B2 `optra-prod-backups`. When the
+`umami` database exists it is dumped and restore-verified the same way (`UMAMI_MIN_TABLES`, default 5). Runs before
 every deploy (`deploy.yml`) and daily (`backup.yml`). Objects are not in the dumps; they are already
 off-box in B2. Restore: `docs/ops/restore.md`.
 
@@ -182,6 +185,10 @@ Every reader classifies a missing key once (`fetchObject`) and throws `StorageOb
 Bucket and credential faults are rethrown untouched (still 500, still retried).
 
 Slice 3A added infra + storage abstraction + schema groundwork. Upload and ingest behavior arrived in Slice 3B. Slice 1 workspace UX added `getBuffer()` so document download endpoints can return stored bytes without invoking the ingest loader path.
+
+## Analytics
+
+Self-hosted Umami: `umami` service in `docker-compose.yml` (host `${OPTRA_UMAMI_PORT:-3302}`) and `docker-compose.prod.yml` (`127.0.0.1:3302`), own `umami` database on the shared Postgres created by `docker/init-db.sql`; the bundled `docker/Caddyfile` routes `analytics.{$DOMAIN}` → `umami:3000` when `COMPOSE_PROFILES=public`; `apps/web/app/umami-script.ts` gates the tracking `<script>` in `layout.tsx` on `NEXT_PUBLIC_UMAMI_SCRIPT_URL` + `NEXT_PUBLIC_UMAMI_WEBSITE_ID`. Umami's schema is migrated by Umami itself, not Drizzle.
 
 ## Test Layers
 
@@ -207,7 +214,7 @@ Root: `bun run lint` (turbo). Historically flagged broken in `docs/PRODUCTION-RE
 
 ### Test
 
-`apps/api`: `bun run test` (Jest unit), `bun run test:e2e` (Jest e2e, boots a real `AppModule` via Supertest), `bun run test:cov`. `apps/web`: `bun run test` (Vitest, config must stay named `.mts` — see `testing-strategy.md`). `packages/ai`, `packages/db`, `packages/ui` all expose `bun run test` (Vitest, `vitest run`) — CONTEXT DRIFT fixed 2026-07-10: this section previously claimed `packages/db`/`packages/ui` had no test command, only `type-check`/`build`/`lint`; verified against both packages' real `package.json` scripts, both have had a working `vitest run` test script all along. No Playwright/browser e2e exists anywhere in the repo yet (a logged, known gap — see the "Post-Login Redirect Target" and "Client-Side Session Refresh" rows in `docs/ai/risk-register.md`).
+`apps/api`: `bun run test` (Jest unit), `bun run test:e2e` (Jest e2e, boots a real `AppModule` via Supertest), `bun run test:cov`. `apps/web`: `bun run test` (Vitest, config must stay named `.mts` — see `testing-strategy.md`). `packages/ai`, `packages/db`, `packages/ui` all expose `bun run test` (Vitest, `vitest run`) — CONTEXT DRIFT fixed 2026-07-10: this section previously claimed `packages/db`/`packages/ui` had no test command, only `type-check`/`build`/`lint`; verified against both packages' real `package.json` scripts, both have had a working `vitest run` test script all along. Playwright browser e2e lives in `apps/e2e` (`bun run test:e2e`, specs in `apps/e2e/tests/`) and runs in the CI `ci` job after the API e2e suites; `bun run test:smoke` is the by-hand production smoke (`docs/ops/prod-smoke.md`).
 
 ### Build
 
