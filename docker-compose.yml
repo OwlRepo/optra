@@ -106,6 +106,8 @@ services:
     environment:
       NEXT_PUBLIC_API_URL: http://localhost:${OPTRA_API_PORT:-3301}
       API_URL: http://api:3001
+      NEXT_PUBLIC_UMAMI_SCRIPT_URL: http://localhost:${OPTRA_UMAMI_PORT:-3302}/script.js
+      NEXT_PUBLIC_UMAMI_WEBSITE_ID: ${UMAMI_WEBSITE_ID:-}
     volumes:
       - .:/app
       - web_node_modules:/app/node_modules
@@ -114,6 +116,34 @@ services:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:3000/"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  umami:
+    # Pinned by digest, not a floating tag: Umami's own official compose uses
+    # `:latest` (verified against github.com/umami-software/umami's real
+    # docker-compose.yml, 2026-09-26); `postgresql-latest` is the Postgres-
+    # backed equivalent. Digest = postgresql-latest as of 2026-09-26 (Umami
+    # v3.4.0). To pick up a new release: `docker pull
+    # ghcr.io/umami-software/umami:postgresql-latest`, then copy its new digest
+    # (`docker inspect --format '{{index .RepoDigests 0}}' ...`) in here.
+    image: ghcr.io/umami-software/umami@sha256:85909afc45bdcda1917394594a087421fdbb05610fded0fa9f6fb861abb2f367
+    container_name: optra-umami
+    init: true
+    ports:
+      - "${OPTRA_UMAMI_PORT:-3302}:3000"
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/umami
+      DATABASE_TYPE: postgresql
+      APP_SECRET: umami-dev-secret-do-not-use-in-prod
+      TWO_FACTOR_ENCRYPTION_KEY: umami-dev-two-factor-key-do-not-use-in-prod
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://127.0.0.1:3000/api/heartbeat"]
       interval: 10s
       timeout: 5s
       retries: 12

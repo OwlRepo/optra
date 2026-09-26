@@ -52,6 +52,14 @@ DUMP_NAME="optra-${TIMESTAMP}.dump"
 CONTAINER_DUMP="/tmp/${DUMP_NAME}"
 VERIFY_DB="optra_verify_$(date -u +%Y%m%d%H%M%S)"
 
+# Umami (self-hosted analytics) lives in its own database in the same shared
+# Postgres container. Its schema is far smaller than optra's, so it gets its
+# own floor rather than reusing MIN_TABLES.
+UMAMI_DUMP_NAME="umami-${TIMESTAMP}.dump"
+UMAMI_CONTAINER_DUMP="/tmp/${UMAMI_DUMP_NAME}"
+UMAMI_VERIFY_DB="umami_verify_$(date -u +%Y%m%d%H%M%S)"
+UMAMI_MIN_TABLES="${UMAMI_MIN_TABLES:-5}"
+
 compose() {
     docker compose -f "$COMPOSE_FILE" "$@"
 }
@@ -86,6 +94,8 @@ mkdir -p "$BACKUP_DIR"
 cleanup() {
     in_postgres "dropdb -U \"\$POSTGRES_USER\" --if-exists '$VERIFY_DB'" >/dev/null 2>&1 || true
     in_postgres "rm -f '$CONTAINER_DUMP'" >/dev/null 2>&1 || true
+    in_postgres "dropdb -U \"\$POSTGRES_USER\" --if-exists '$UMAMI_VERIFY_DB'" >/dev/null 2>&1 || true
+    in_postgres "rm -f '$UMAMI_CONTAINER_DUMP'" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 
@@ -154,6 +164,57 @@ else
     echo "WARNING: set BACKUP_S3_BUCKET, BACKUP_S3_ENDPOINT, BACKUP_S3_ACCESS_KEY and BACKUP_S3_SECRET_KEY to fix that."
 fi
 
+# --- 6b. Umami database (additive) --------------------------------------------
+# Same dump/verify/restore/upload shape as optra above, appended rather than
+# interleaved so a bug here can never touch the already-proven optra path.
+# `umami` only exists once Umami has actually been added to this environment
+# (docker/init-db.sql only creates it on a fresh volume), so its absence here
+# is expected on an environment that predates this feature, not a failure.
+umami_db_exists="$(in_postgres "psql -U \"\$POSTGRES_USER\" -tAc \"select 1 from pg_database where datname = 'umami'\"" | tr -d '[:space:]')"
+
+if [ "$umami_db_exists" != "1" ]; then
+    echo "umami database does not exist yet - skipping its backup"
+else
+    echo "dumping database to $UMAMI_DUMP_NAME"
+    in_postgres "pg_dump -Fc -U \"\$POSTGRES_USER\" -d umami -f '$UMAMI_CONTAINER_DUMP'"
+
+    echo "verifying archive structure"
+    in_postgres "pg_restore --list '$UMAMI_CONTAINER_DUMP' > /dev/null"
+
+    case "$UMAMI_VERIFY_DB" in
+        umami_verify_*) ;;
+        *) echo "refusing to restore into a database that is not a throwaway" >&2; exit 1 ;;
+    esac
+
+    echo "test-restoring into $UMAMI_VERIFY_DB"
+    in_postgres "createdb -U \"\$POSTGRES_USER\" '$UMAMI_VERIFY_DB'"
+    in_postgres "pg_restore -U \"\$POSTGRES_USER\" -d '$UMAMI_VERIFY_DB' '$UMAMI_CONTAINER_DUMP'" >/dev/null 2>&1 || true
+
+    umami_table_count="$(in_postgres "psql -U \"\$POSTGRES_USER\" -d '$UMAMI_VERIFY_DB' -tAc \"select count(*) from information_schema.tables where table_schema = 'public'\"" | tr -d '[:space:]')"
+
+    if [ -z "$umami_table_count" ] || [ "$umami_table_count" -lt "$UMAMI_MIN_TABLES" ]; then
+        echo "umami restore produced ${umami_table_count:-0} tables, expected at least $UMAMI_MIN_TABLES" >&2
+        exit 1
+    fi
+    echo "restored $umami_table_count tables from the umami backup"
+
+    docker cp "$postgres_container_id:$UMAMI_CONTAINER_DUMP" "$BACKUP_DIR/$UMAMI_DUMP_NAME"
+
+    if [ -n "${BACKUP_S3_BUCKET:-}" ]; then
+        echo "uploading to s3://$BACKUP_S3_BUCKET/$(date -u +%F)/$UMAMI_DUMP_NAME"
+        docker run --rm \
+            -v "$BACKUP_DIR:/backup:ro" \
+            -e AWS_ACCESS_KEY_ID="${BACKUP_S3_ACCESS_KEY:-}" \
+            -e AWS_SECRET_ACCESS_KEY="${BACKUP_S3_SECRET_KEY:-}" \
+            "$AWS_CLI_IMAGE" \
+            s3 cp "/backup/$UMAMI_DUMP_NAME" "s3://$BACKUP_S3_BUCKET/$(date -u +%F)/$UMAMI_DUMP_NAME" \
+            --endpoint-url "${BACKUP_S3_ENDPOINT:?BACKUP_S3_ENDPOINT is required when BACKUP_S3_BUCKET is set}"
+        echo "off-box copy stored"
+    fi
+
+    echo "$UMAMI_DUMP_NAME is $(du -h "$BACKUP_DIR/$UMAMI_DUMP_NAME" | cut -f1)"
+fi
+
 # --- 7. prune local copies ----------------------------------------------------
 # By count, never by age alone. `find -mtime +N` with no floor deletes every
 # backup you have the first time nothing is deployed for N days.
@@ -163,6 +224,14 @@ fi
 # chronological order; and mtime is set by `docker cp`, which makes it a
 # property of when the file was copied rather than when the backup was taken.
 find "$BACKUP_DIR" -maxdepth 1 -name 'optra-*.dump' 2>/dev/null | sort -r | tail -n "+$((BACKUP_KEEP + 1))" | while IFS= read -r stale; do
+    echo "removing old local backup: $(basename "$stale")"
+    rm -f "$stale"
+done
+
+# Same prune, same reasoning, for the umami dumps (kept separate from the loop
+# above so a bug in one prefix's pruning can never touch the other prefix's
+# retention).
+find "$BACKUP_DIR" -maxdepth 1 -name 'umami-*.dump' 2>/dev/null | sort -r | tail -n "+$((BACKUP_KEEP + 1))" | while IFS= read -r stale; do
     echo "removing old local backup: $(basename "$stale")"
     rm -f "$stale"
 done

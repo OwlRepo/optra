@@ -24,3 +24,23 @@
 		format json
 	}
 }
+
+# Umami analytics dashboard. Gated by Umami's own login screen — change the
+# default admin/umami credentials immediately after first boot.
+analytics.{$DOMAIN} {
+	reverse_proxy umami:3000
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "SAMEORIGIN"
+		Referrer-Policy "strict-origin-when-cross-origin"
+	}
+
+	encode gzip
+
+	log {
+		output file /var/log/caddy/analytics-access.log
+		format json
+	}
+}

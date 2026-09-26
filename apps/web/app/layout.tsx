@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next'
 import { DM_Sans, JetBrains_Mono, Outfit } from 'next/font/google'
 import { ToastProvider } from '@repo/ui'
 import '@repo/ui/globals.css'
+import { getUmamiScriptProps } from './umami-script'
 
 const display = Outfit({
   subsets: ['latin'],
@@ -54,6 +55,8 @@ export default function RootLayout({
 }: {
   children: React.ReactNode
 }) {
+  const umami = getUmamiScriptProps()
+
   return (
     <html lang="en" suppressHydrationWarning className={`${display.variable} ${body.variable} ${mono.variable}`}>
       <body className="font-body antialiased selection:bg-primary/15 selection:text-foreground">
@@ -64,6 +67,7 @@ export default function RootLayout({
         <noscript>
           <style>{`[data-inview]{opacity:1 !important;transform:none !important}`}</style>
         </noscript>
+        {umami && <script async src={umami.src} data-website-id={umami.websiteId} />}
         <ToastProvider>{children}</ToastProvider>
       </body>
     </html>
