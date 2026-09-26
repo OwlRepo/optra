@@ -47,6 +47,10 @@ FROM base AS prod
 # build.args in docker-compose.prod.yml.
 ARG NEXT_PUBLIC_API_URL
 ARG WEB_URL
+# Optional: umami renders nothing at runtime if either is empty
+# (getUmamiScriptProps() in apps/web/app/umami-script.ts), so no test -n guard.
+ARG NEXT_PUBLIC_UMAMI_SCRIPT_URL
+ARG NEXT_PUBLIC_UMAMI_WEBSITE_ID
 # Without it those pages fall back to https://optra.example.com; refuse to
 # build a production image that would advertise the placeholder.
 RUN test -n "$WEB_URL" || { echo "WEB_URL build arg is required for the production web image" >&2; exit 1; }
@@ -57,6 +61,8 @@ ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
 ENV WEB_URL=${WEB_URL}
+ENV NEXT_PUBLIC_UMAMI_SCRIPT_URL=${NEXT_PUBLIC_UMAMI_SCRIPT_URL}
+ENV NEXT_PUBLIC_UMAMI_WEBSITE_ID=${NEXT_PUBLIC_UMAMI_WEBSITE_ID}
 RUN --mount=type=cache,id=optra-turbo-web-v1,target=/app/.turbo,sharing=locked \
     bunx turbo run build --filter=@repo/web...
 
