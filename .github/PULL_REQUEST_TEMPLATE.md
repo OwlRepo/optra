@@ -16,7 +16,7 @@
 
 1.
 
-<!-- Technical evidence below, per docs/ai/pr-evidence.md. CI (type-check, lint, unit suites, TDD gate, script tests, agent lint) runs on its own; this section covers what CI cannot see. -->
+<!-- Technical evidence below, per docs/ai/pr-evidence.md. CI (test-layer guard, type-check, lint, unit suites, TDD gate, script tests, agent lint, API e2e, Playwright browser e2e) runs on its own; this section covers what CI cannot see. -->
 
 ## Change Type
 

@@ -3,7 +3,7 @@
 ## Local Development (Hot Reload)
 
 ### Architecture
-Everything runs in **Docker**: Postgres + Redis + SeaweedFS + the API + the web app.
+Everything runs in **Docker**: Postgres + Redis + SeaweedFS + the API + the web app + Umami analytics.
 Source is bind-mounted into the `api`/`web` containers, so edits on your host reach the running dev servers immediately — file-watch uses polling (`CHOKIDAR_USEPOLLING`/`WATCHPACK_POLLING`) so it works reliably across macOS/Windows/Linux.
 
 **No image rebuild needed when you change code** — only when you change a `Dockerfile`, add a dependency, or change `turbo.json`.
@@ -19,6 +19,7 @@ docker compose up -d
 # 1. Build the api/web dev images (first run only, or after a Dockerfile change)
 # 2. Start Postgres + Redis + SeaweedFS, wait for them to be healthy
 # 3. Start api + web containers, which each run migrations then their own dev server
+# 4. Start Umami (analytics) once Postgres is healthy
 ```
 
 **Services:**
@@ -30,6 +31,7 @@ docker compose up -d
 - 🗂️ **SeaweedFS Filer UI**: http://localhost:8988
 - 🌱 **SeaweedFS Master UI**: http://localhost:9433
 - 📦 **Default bucket**: `optra-documents`
+- 📊 **Umami analytics**: http://localhost:3302 (override with `OPTRA_UMAMI_PORT`; own `umami` database, created by `docker/init-db.sql`)
 
 ### Stop Everything
 
@@ -69,13 +71,15 @@ bun run docker:dev:up
 ## Production (Hetzner VPS)
 
 ### Full Containerization
-Everything runs in Docker:
+Everything runs in Docker (`docker-compose.prod.yml` services `postgres`, `redis`, `api`, `web`, `umami`, `caddy`):
 - Next.js app (web)
 - NestJS API (api)
-- PostgreSQL with pgvector
+- PostgreSQL with pgvector (the `optra` database plus Umami's `umami` database)
 - Redis
-- SeaweedFS (S3-compatible object storage)
-- Caddy (reverse proxy + auto SSL)
+- Umami (self-hosted analytics)
+- Caddy (reverse proxy + auto SSL), only with `profiles: ["public"]`, i.e. when `COMPOSE_PROFILES=public`
+
+There is no object store in production: objects live in Backblaze B2 (see "Storage Config" below). SeaweedFS is development and CI only.
 
 ### Deploy
 
@@ -91,9 +95,11 @@ bun run deploy:remote user@your-server-ip
 
 **On server directly:**
 ```bash
-cd /opt/optra
+cd /home/deploy/apps/optra   # the directory the GitHub Actions deploy and backup use
 ./scripts/deploy.sh
 ```
+
+`bun run deploy:remote` (`scripts/deploy-remote.sh`) still rsyncs to `/opt/optra` by default (`APP_DIR`, line 13), while `.github/workflows/deploy.yml`, `.github/workflows/backup.yml` and `scripts/backup.sh` use `/home/deploy/apps/optra`. Pick one directory per server; the CI deploy only works from a git checkout in `/home/deploy/apps/optra`.
 
 **Automatically on push to `main`:** see `.github/workflows/deploy.yml` — requires the deploy dir to already have `.env` in place, plus `VPS_HOST`/`VPS_USER`/`VPS_SSH_KEY`/`VPS_PORT` configured as GitHub Secrets. Object storage is Backblaze B2, configured by the `S3_*` values in that `.env`. The smoke test reads `DOMAIN` from `.env`, so no domain secret is needed.
 
@@ -101,9 +107,9 @@ cd /opt/optra
 
 1. **Build multi-stage Docker images** (optimized, small)
    - Filter workspace deps → use BuildKit cache mounts → build only the needed app graph → copy to minimal runtime
-2. **Start all services** — `api`/`web`/`caddy` wait on real healthchecks before the next one starts
+2. **Start all services** — `api`/`web`/`umami`/`caddy` wait on real healthchecks before the next one starts
 3. **Run database migrations** from the `api` container startup path (`db:migrate`)
-4. **Caddy obtains SSL certificate** (automatic, from Let's Encrypt)
+4. **Caddy obtains SSL certificate** (automatic, from Let's Encrypt) — only when `COMPOSE_PROFILES=public`
 
 ### Services
 
@@ -116,7 +122,8 @@ docker compose -f docker-compose.prod.yml ps
 # - redis (healthy)
 # - api (healthy)
 # - web (healthy)
-# - caddy (running)
+# - umami (healthy)
+# - caddy (running)   only when COMPOSE_PROFILES=public
 ```
 
 ### Logs
@@ -153,7 +160,7 @@ bun run deploy:remote user@your-server-ip
 
 ```bash
 # On server
-cd /opt/optra
+cd /home/deploy/apps/optra   # /opt/optra if you deployed with deploy-remote.sh
 
 # Stop current version
 docker compose -f docker-compose.prod.yml down
@@ -207,31 +214,32 @@ docker build -f apps/api/Dockerfile --target prod -t optra-api:prod .
 
 ### Local Development
 ```
-Host machine (:3300, :3301, :54322, :6380, :8433/:8988/:9433)
+Host machine (:3300, :3301, :3302, :54322, :6380, :8433/:8988/:9433)
     ↓ published ports
-Docker default network (api, web, postgres, redis, seaweedfs — reachable by service name inside the network)
+Docker default network (api, web, umami, postgres, redis, seaweedfs — reachable by service name inside the network)
 ```
 
 ### Production
 ```
 Internet
    │
-Caddy (:80, :443) ← SSL termination
+Caddy (:80, :443) ← SSL termination: VPS-level host Caddy, or bundled caddy with COMPOSE_PROFILES=public
    │
-   └─ web (:3000) ← internal network, serves Next.js UI and same-origin /api/* proxy routes
-          │
-          └─ api (:3001) ← internal network only
+   ├─ web (:3000, host 127.0.0.1:3300) ← serves Next.js UI and same-origin /api/* proxy routes
+   │      │
+   │      └─ api (:3001) ← internal network only, never published
+   │
+   └─ umami (:3000, host 127.0.0.1:3302) ← analytics.DOMAIN
           │
           ├─ postgres (:5432) ← internal only
-          ├─ redis (:6379) ← internal only
-          └─ seaweedfs (:8333, :8888, :9333) ← internal only
+          └─ redis (:6379) ← internal only
 ```
 
 **Networks:**
-- `web`: Caddy ↔ apps (public-facing)
+- `web`: Caddy ↔ web, umami (public-facing)
 - `internal`: apps ↔ database/redis (private)
 
-Database, Redis, and SeaweedFS **not exposed** to internet.
+`web` and `umami` are published on loopback only (`127.0.0.1:3300`, `127.0.0.1:3302`) so the VPS-level Caddy can reach them; nothing binds a public interface except the bundled Caddy when enabled. Database and Redis are **not exposed** to the internet. There is no SeaweedFS in production.
 
 ### Storage Config
 
@@ -378,7 +386,7 @@ services:
 - [x] Secrets in .env (not in images)
 - [x] `api`/`web` have real HEALTHCHECKs; `web`/`caddy` wait on them before starting
 - [ ] Regular image updates (`docker compose pull`)
-- [ ] Database backups automated (GitHub Actions deploy does a pre-deploy backup; no separate schedule yet)
+- [x] Database backups automated (pre-deploy backup in `deploy.yml`, plus daily `.github/workflows/backup.yml` at 03:17 UTC, both via `scripts/backup.sh`, which restore-verifies each dump)
 - [ ] Firewall configured (UFW)
 
 ### Update Base Images
@@ -398,9 +406,9 @@ docker compose -f docker-compose.prod.yml up -d
 
 ## CI/CD Integration
 
-`.github/workflows/deploy.yml` deploys automatically on push to `main` (or manual `workflow_dispatch`). It SSHes into the VPS, backs up Postgres via `scripts/backup.sh --reason=deploy` (using the container's own `POSTGRES_USER`/`POSTGRES_DB`, so credentials never pass through the workflow), rebuilds `api`/`web`, brings the stack up with `docker compose -f docker-compose.prod.yml up -d --remove-orphans`, polls `GET /health` and the web root inside the `api`/`web` containers, then fetches the public site and fails the deploy if it finds dev-mode artifacts (HMR client scripts, `.next/dev`, `localhost:*`, or `127.0.0.1`) in the served HTML — a guard against accidentally shipping a dev build. Production does not publish `api`/`web` ports to the host; Caddy is the public ingress.
+`.github/workflows/deploy.yml` deploys automatically on push to `main` (or manual `workflow_dispatch`). It SSHes into the VPS, fast-forwards `main`, checks `.env` with `scripts/check-prod-env.sh`, backs up Postgres via `scripts/backup.sh --reason=deploy` (using the container's own `POSTGRES_USER`/`POSTGRES_DB`, so credentials never pass through the workflow), rebuilds `api`/`web`, brings the stack up with `docker compose -f docker-compose.prod.yml up -d --remove-orphans --force-recreate`, polls `GET /health` and the web root inside the `api`/`web` containers, and runs a production S3 put/get/delete round trip from the `api` container. Only when `public` is in `COMPOSE_PROFILES` does it also fetch the public site and fail the deploy if it finds dev-mode artifacts (HMR client scripts, `.next/dev`, `localhost:*`, or `127.0.0.1`) in the served HTML — a guard against accidentally shipping a dev build; otherwise it skips that smoke. Production never publishes `api`; `web` and `umami` are published on loopback only (`127.0.0.1:3300`, `127.0.0.1:3302`) for the VPS-level Caddy.
 
-It assumes the deploy dir already has a working checkout with `.env` in place. Object storage is Backblaze B2, configured by the `S3_*` values in that `.env`. The smoke test reads `DOMAIN` from `.env`.
+It assumes `/home/deploy/apps/optra` already has a git checkout with `.env` in place. Object storage is Backblaze B2, configured by the `S3_*` values in that `.env`. The smoke test reads `DOMAIN` from `.env`.
 
 **Required GitHub Secrets** (`Settings → Secrets and variables → Actions`):
 - `VPS_HOST` — server IP or hostname

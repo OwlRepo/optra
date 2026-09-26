@@ -38,6 +38,7 @@ Services and host ports (`docker-compose.yml`, compose project name `optra`):
 | SeaweedFS S3 / filer / master | `optra-seaweedfs` | `8433` → 8333, `8988` → 8888, `9433` → 9333 |
 | API (NestJS, dev target) | `optra-api` | `${OPTRA_API_PORT:-3301}` → 3001 |
 | Web (Next.js, dev target) | `optra-web` | `${OPTRA_WEB_PORT:-3300}` → 3000 |
+| Umami analytics (own `umami` database, created by `docker/init-db.sql`) | `optra-umami` | `${OPTRA_UMAMI_PORT:-3302}` → 3000 |
 
 Container names are fixed, so only one stack can run per machine. Task
 worktrees reuse the stack started from the primary checkout; they do not start
@@ -95,11 +96,21 @@ staged.
 - One VPS runs `docker-compose.prod.yml` (`optra-prod-*` containers) from
   `/home/deploy/apps/optra`.
 - The `deploy` job in `.github/workflows/deploy.yml` runs on every push to
-  `main` after `ci` passes. It SSHes in, fast-forwards `main`, takes a
-  `pg_dump` into `/home/deploy/apps/optra-backups` (14-day retention), rebuilds
-  api and web, recreates the stack, and health-checks both apps.
+  `main` after `ci` passes. It SSHes in, fast-forwards `main`, runs
+  `scripts/check-prod-env.sh` (a bad `.env` stops the deploy before anything
+  changes), then `scripts/backup.sh --reason=deploy`, which dumps the `optra`
+  and `umami` databases into `/home/deploy/apps/optra-backups`, proves each
+  dump parses and restores into a throwaway database, and keeps the newest
+  `BACKUP_KEEP=7` of each. It then rebuilds api and web, recreates the stack
+  (`up -d --remove-orphans --force-recreate`), health-checks both apps and runs
+  a production S3 put/get/delete round trip.
 - The same VPS hosts a separate, unrelated app (`mnemra.tyvera.app`,
   `mnemra-prod-*`, `/home/deploy/apps/mnemra`). Never touch it from this repo
   (`docs/ai/risk-register.md`).
-- Backups are same-disk only and have never been restore-tested
-  (`docs/ai/risk-register.md` "Backup / Restore").
+- A daily off-box backup runs from `.github/workflows/backup.yml` (cron
+  `17 3 * * *`, `scripts/backup.sh --reason=scheduled`), which uploads both
+  dumps to Backblaze B2 when the `BACKUP_S3_*` secrets are set. `deploy.yml`
+  forwards no `BACKUP_S3_*` variables, so the deploy-time copy stays on the VPS
+  disk unless the VPS shell sets them itself.
+  Every run restore-verifies into a throwaway database. Restoring for real
+  follows `docs/ops/restore.md` (`docs/ai/risk-register.md` "Backup / Restore").

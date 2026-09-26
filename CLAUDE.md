@@ -61,8 +61,9 @@ Verified against the files cited:
   `apps/web/middleware.ts`.
 - **`apps/api`:** NestJS 10 REST API (`apps/api/package.json`) with Bull 4 job
   queues on Redis, Passport JWT + email OTP via Resend, S3-compatible storage
-  (SeaweedFS locally, `docker-compose.yml`), DuckDB for sandboxed structured
-  queries. Modules live in `apps/api/src/<domain>/`.
+  (SeaweedFS locally, `docker-compose.yml`; Backblaze B2 in production, with no
+  object-store container in `docker-compose.prod.yml`), DuckDB for sandboxed
+  structured queries. Modules live in `apps/api/src/<domain>/`.
 - **`packages/db`:** Drizzle ORM on PostgreSQL 16 + pgvector
   (`pgvector/pgvector:pg16` in `docker-compose.yml`). Schema in
   `packages/db/src/schema/` (37 tables, 21 enums, counted from
@@ -70,8 +71,14 @@ Verified against the files cited:
   `packages/db/drizzle/`.
 - **`packages/ai`:** LangChain / LangGraph RAG pipeline on OpenAI
   (`packages/ai/package.json`). Chat/answer models are gpt-4-turbo and
-  gpt-4o-mini, embeddings are `text-embedding-3-small` at 1536 dimensions
+  gpt-4o-mini; procurement extraction and catalog matching use gpt-4o
+  (`OPENAI_PROCUREMENT_EXTRACTION_MODEL`, `packages/ai/src/chains/models.ts`).
+  Embeddings are `text-embedding-3-small` at 1536 dimensions
   (`.env.example`, `packages/db/src/schema/chunks.ts`).
+- **Analytics:** self-hosted Umami (`umami` service in `docker-compose.yml` and
+  `docker-compose.prod.yml`, host port 3302) in its own `umami` database on the
+  shared Postgres, created by `docker/init-db.sql` and dumped by
+  `scripts/backup.sh`.
 - **`packages/types`:** shared TypeScript contracts, type-only (no test runner).
 - **Tests:** Jest in `apps/api` (unit `*.spec.ts` with `rootDir: src`; e2e
   `apps/api/test/*.e2e-spec.ts`), Vitest in `apps/web`, `packages/ai`,

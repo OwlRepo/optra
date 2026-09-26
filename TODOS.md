@@ -10,7 +10,7 @@
 
 **Cons:** Not cheap or obvious. String-matching the fallback phrase is brittle; adding a second grading/model call adds cost and latency. Needs a deliberate product/quality decision, not a rushed patch.
 
-**Context:** Surfaced during cache-poisoning RCA on 2026-07-02 while fixing deterministic fallback caching. Documented explicitly in `.ai-scratchpad.md` for "fallback/non-answers get cached as if they were real answers".
+**Context:** Surfaced during cache-poisoning RCA on 2026-07-02 while fixing deterministic fallback caching. The RCA's working notes lived in a since-retired scratchpad file; durable decisions now go to `docs/plans/` and `learnings.md`. The known gap is "fallback/non-answers get cached as if they were real answers" on the real retrieval path.
 
 **Depends on / blocked by:** Decision on whether to accept brittle phrase matching, add a separate grading signal, or leave this path intentionally allowed.
 
@@ -54,7 +54,7 @@
 
 **Cons:** Real effort to write well; not urgent for a single internal pilot screen.
 
-**Context:** Surfaced during `/plan-design-review` on 2026-07-01 while reviewing the ticket-copilot review/edit screen (see `~/.gstack/projects/OwlRepo-mnemra/romeoangelesjr-main-design-20260701-121631.md`). The existing system was reconstructed from `packages/ui/src/globals.css` and `apps/web/app/dashboard/page.tsx`.
+**Context:** Surfaced during `/plan-design-review` on 2026-07-01 while reviewing the ticket-copilot review/edit screen (see `~/.gstack/projects/OwlRepo-mnemra/romeoangelesjr-main-design-20260701-121631.md`). The existing system was reconstructed from `packages/ui/src/globals.css` and `apps/web/app/dashboard/page.tsx` (that page was removed on 2026-07-02 in `732da6d`, when the sidebar shell replaced per-page nav; `DESIGN.md` and `globals.css` are the current sources).
 
 **Depends on / blocked by:** Nothing — can be picked up anytime via `/design-consultation`.
 
@@ -104,7 +104,7 @@
 
 **Outcome: does not reproduce. Retired.** Two things were wrong with the original framing.
 
-**1. Production has never run Node.** `apps/api/Dockerfile:99` ends in `exec node dist/main`, but the image base is `oven/bun:1.2.22` (`:10`), where `node` is a symlink:
+**1. Production has never run Node.** `apps/api/Dockerfile:101` ends in `exec node dist/main`, but the image base is `oven/bun:1.2.22` (`:10`), where `node` is a symlink:
 
 ```
 /usr/local/bun-node-fallback-bin/node -> /usr/local/bin/bun
