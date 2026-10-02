@@ -1218,4 +1218,50 @@ describe('ProcurementParseProcessor', () => {
       ])
     })
   })
+
+  // B1. sheet_to_json drops blank rows, so numbering XLSX lines by their
+  // position in the converted CSV cited the wrong spreadsheet row for every
+  // line after a blank one. The citation must be the row the reviewer sees.
+  describe('XLSX source rows (B1)', () => {
+    async function seedSheet(rows: unknown[][], workspaceId: string) {
+      const book = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(book, XLSX.utils.aoa_to_sheet(rows), 'Sheet1')
+      return seedPoBuffer(XLSX.write(book, { type: 'buffer', bookType: 'xlsx' }) as Buffer, workspaceId, 'po.xlsx')
+    }
+
+    it('regression: a line after a blank row cites its true spreadsheet row', async () => {
+      const workspace = await seedWorkspace(`${prefix}b1-blank@example.com`, prefix)
+      const po = await seedSheet([['sku', 'qty'], ['A1', 1], [], ['A3', 3]], workspace.id)
+
+      await processor.handleParse(job('job-b1-blank', { kind: 'purchase_order', id: po.id }))
+
+      const items = await db
+        .select()
+        .from(poLineItems)
+        .where(eq(poLineItems.purchaseOrderId, po.id))
+        .orderBy(poLineItems.lineNumber)
+      expect(items.map((item) => [item.sku, item.sourceRow])).toEqual([
+        ['A1', 2],
+        ['A3', 4],
+      ])
+    })
+
+    it('regression: a row of empty cells is skipped and the next line keeps its true row', async () => {
+      const workspace = await seedWorkspace(`${prefix}b1-empty-cells@example.com`, prefix)
+      const po = await seedSheet([['sku', 'qty'], ['A1', 1], [], ['A3', 3], ['', ''], ['A5', 5]], workspace.id)
+
+      await processor.handleParse(job('job-b1-empty-cells', { kind: 'purchase_order', id: po.id }))
+
+      const items = await db
+        .select()
+        .from(poLineItems)
+        .where(eq(poLineItems.purchaseOrderId, po.id))
+        .orderBy(poLineItems.lineNumber)
+      expect(items.map((item) => [item.sku, item.sourceRow, item.sourceSheet])).toEqual([
+        ['A1', 2, 'Sheet1'],
+        ['A3', 4, 'Sheet1'],
+        ['A5', 6, 'Sheet1'],
+      ])
+    })
+  })
 })
