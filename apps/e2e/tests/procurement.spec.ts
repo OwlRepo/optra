@@ -105,6 +105,47 @@ test('a goods receipt linked to that purchase order does the same', async ({ pag
   await expectParsedStoredAndDownloadable(page, 'goods-receipts', file)
 })
 
+test('a price flag cites the PO row and the invoice row, and the source downloads', async ({ page }) => {
+  // CSV row numbering: the header is row 1, so the first data line (A1) is row 2
+  // (procurement-parse.processor.ts: `sourceRow: index + 2`).
+  const invoiceFile = fixture('invoice-mismatch.csv', `invoice-mismatch-${state.run}.csv`)
+  await openTab(page, 'Invoices')
+  await chooseFile(page, 'Upload invoice', invoiceFile)
+
+  const dialog = page.getByRole('dialog')
+  await dialog.locator('#invoice-po').selectOption(purchaseOrderId)
+  await dialog.locator('#invoice-number').fill(`INV-MM-${state.run}`)
+  await dialog.getByRole('button', { name: 'Upload', exact: true }).click()
+  await expect(toast(page, 'Invoice uploaded')).toBeVisible()
+
+  const invoice = await waitForRow<{ id: string; name: string; status: string }>(
+    page,
+    listUrl('invoices'),
+    (candidate) => candidate.name === invoiceFile.name,
+    'done',
+  )
+
+  const compared = await bff(page, `/api/workspaces/${state.ownerA.workspaceId}/procurement/discrepancies/compare`, {
+    method: 'POST',
+    json: { purchaseOrderId, invoiceId: invoice.id },
+  })
+  expect(compared.status).toBe(201)
+
+  await page.goto(
+    `/workspaces/${state.ownerA.workspaceId}/discrepancies?purchaseOrderId=${purchaseOrderId}&invoiceId=${invoice.id}`,
+  )
+  await page.getByRole('button', { name: 'Review discrepancy A1' }).click()
+
+  const review = page.getByRole('dialog')
+  await expect(review.getByText('Source')).toBeVisible()
+  await expect(review.getByText('PO row 2', { exact: true })).toBeVisible()
+  await expect(review.getByText('Invoice row 2', { exact: true })).toBeVisible()
+  await expect(review.getByText(/\bpage\b/i)).toHaveCount(0)
+
+  const got = await download(page, () => review.getByRole('button', { name: /download/i }).first().click())
+  expect(got.bytes.length, 'the cited source downloads').toBeGreaterThan(0)
+})
+
 test('a file that is not CSV, XLSX or PDF is refused with the reason', async ({ page }) => {
   // The input's `accept` is only a hint to the picker; the API is the guard.
   await openTab(page, 'Purchase Orders')

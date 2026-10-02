@@ -1289,4 +1289,139 @@ describe('Procurement flow (e2e)', () => {
       expect(events[0].detail).toBe('1 discrepancy to review')
     })
   })
+
+  // S2. GET /discrepancies cites the line behind each side of a flag.
+  describe('discrepancy citations (S2)', () => {
+    interface Citation {
+      lineNumber: number | null
+      sourceRow: number | null
+      sourceSheet: string | null
+      extractionConfidence: number | null
+      documentId: string
+    }
+
+    async function uploadPair(
+      owner: { workspaceId: string; accessToken: string },
+      files: { po: [Buffer, string]; invoice: [Buffer, string] },
+      numbers: { po: string; invoice: string },
+    ) {
+      const vendorId = await createVendor(app, owner.workspaceId, owner.accessToken)
+      const po = await request(app.getHttpServer())
+        .post(`/workspaces/${owner.workspaceId}/procurement/purchase-orders`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .field('vendorId', vendorId)
+        .field('poNumber', numbers.po)
+        .field('currency', 'USD')
+        .attach('file', files.po[0], files.po[1])
+        .expect(201)
+      const invoice = await request(app.getHttpServer())
+        .post(`/workspaces/${owner.workspaceId}/procurement/invoices`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .field('purchaseOrderId', po.body.id)
+        .field('invoiceNumber', numbers.invoice)
+        .field('currency', 'USD')
+        .attach('file', files.invoice[0], files.invoice[1])
+        .expect(201)
+      await waitForPoDone(po.body.id)
+      await waitForInvoiceDone(invoice.body.id)
+      await request(app.getHttpServer())
+        .post(`/workspaces/${owner.workspaceId}/procurement/discrepancies/compare`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .send({ purchaseOrderId: po.body.id, invoiceId: invoice.body.id })
+        .expect(201)
+      return { poId: po.body.id as string, invoiceId: invoice.body.id as string }
+    }
+
+    const listFlags = async (owner: { workspaceId: string; accessToken: string }) =>
+      request(app.getHttpServer())
+        .get(`/workspaces/${owner.workspaceId}/procurement/discrepancies`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .expect(200)
+
+    const poCsv = 'sku,description,qty,unit price\nA1,Widget,10,5.00\nC3,Only On PO,1,1.00'
+    const invoiceCsv = 'sku,description,qty,unit price\nA1,Widget,10,6.00\nD4,Only On Invoice,1,1.00'
+
+    it('error: a flag in workspace B pointing at workspace A\'s line id gets null for that side and leaks nothing', async () => {
+      const a = await seedOwnerWithWorkspace(app, `${prefix}cite-a@example.com`, 'Cite A')
+      const b = await seedOwnerWithWorkspace(app, `${prefix}cite-b@example.com`, 'Cite B')
+      const pairA = await uploadPair(a, { po: [Buffer.from(poCsv), 'po.csv'], invoice: [Buffer.from(invoiceCsv), 'invoice.csv'] }, { po: 'PO-CITE-A', invoice: 'INV-CITE-A' })
+      const pairB = await uploadPair(b, { po: [Buffer.from(poCsv), 'po.csv'], invoice: [Buffer.from(invoiceCsv), 'invoice.csv'] }, { po: 'PO-CITE-B', invoice: 'INV-CITE-B' })
+      const [lineOfA] = await db.select().from(poLineItems).where(eq(poLineItems.purchaseOrderId, pairA.poId))
+      await db.insert(discrepancyFlags).values({
+        workspaceId: b.workspaceId,
+        purchaseOrderId: pairB.poId,
+        invoiceId: pairB.invoiceId,
+        poLineItemId: lineOfA.id,
+        flagType: 'price_mismatch',
+        reason: 'Planted cross-workspace reference.',
+      })
+
+      const res = await listFlags(b)
+
+      const planted = res.body.items.find((flag: { reason: string }) => flag.reason === 'Planted cross-workspace reference.')
+      expect(planted.poLine).toBeNull()
+      const body = JSON.stringify(res.body)
+      expect(body).not.toContain(pairA.poId)
+      expect(body).not.toContain(pairA.invoiceId)
+    })
+
+    it('edge: a flag with no line on a side returns null for it and the request still succeeds', async () => {
+      const owner = await seedOwnerWithWorkspace(app, `${prefix}cite-missing@example.com`, 'Cite Missing')
+      await uploadPair(owner, { po: [Buffer.from(poCsv), 'po.csv'], invoice: [Buffer.from(invoiceCsv), 'invoice.csv'] }, { po: 'PO-CITE-M', invoice: 'INV-CITE-M' })
+
+      const res = await listFlags(owner)
+
+      const onlyOnPo = res.body.items.find((flag: { flagType: string }) => flag.flagType === 'missing_on_invoice')
+      const onlyOnInvoice = res.body.items.find((flag: { flagType: string }) => flag.flagType === 'missing_on_po')
+      expect(onlyOnPo.invoiceLine).toBeNull()
+      expect(onlyOnPo.poLine).not.toBeNull()
+      expect(onlyOnInvoice.poLine).toBeNull()
+      expect(onlyOnInvoice.invoiceLine).not.toBeNull()
+      for (const flag of res.body.items) expect(flag.receiptLine).toBeNull()
+    })
+
+    it('regression: citations do not change total, counts or the number of items', async () => {
+      const owner = await seedOwnerWithWorkspace(app, `${prefix}cite-counts@example.com`, 'Cite Counts')
+      await uploadPair(owner, { po: [Buffer.from(poCsv), 'po.csv'], invoice: [Buffer.from(invoiceCsv), 'invoice.csv'] }, { po: 'PO-CITE-C', invoice: 'INV-CITE-C' })
+
+      const res = await listFlags(owner)
+
+      expect(res.body.items).toHaveLength(3)
+      expect(res.body.total).toBe(3)
+      expect(res.body.counts).toMatchObject({ price_mismatch: 1, missing_on_invoice: 1, missing_on_po: 1 })
+    })
+
+    it('happy: a CSV flag cites the 1-based file row (header is row 1) and the owning document ids', async () => {
+      const owner = await seedOwnerWithWorkspace(app, `${prefix}cite-csv@example.com`, 'Cite Csv')
+      const pair = await uploadPair(owner, { po: [Buffer.from(poCsv), 'po.csv'], invoice: [Buffer.from(invoiceCsv), 'invoice.csv'] }, { po: 'PO-CITE-1', invoice: 'INV-CITE-1' })
+
+      const res = await listFlags(owner)
+
+      const price = res.body.items.find((flag: { flagType: string }) => flag.flagType === 'price_mismatch')
+      const poLine = price.poLine as Citation
+      const invoiceLine = price.invoiceLine as Citation
+      expect(typeof poLine.sourceRow).toBe('number')
+      expect(poLine.sourceRow).toBe(2)
+      expect(poLine).toMatchObject({ sourceSheet: null, extractionConfidence: null, documentId: pair.poId })
+      expect(invoiceLine).toMatchObject({ sourceRow: 2, documentId: pair.invoiceId })
+      expect(price.poLine.documentId).toBe(price.purchaseOrderId)
+      expect(price.invoiceLine.documentId).toBe(price.invoiceId)
+    })
+
+    it('happy: a PDF flag cites a numeric confidence and no row or sheet', async () => {
+      const owner = await seedOwnerWithWorkspace(app, `${prefix}cite-pdf@example.com`, 'Cite Pdf')
+      await uploadPair(
+        owner,
+        { po: [Buffer.from('%PDF-1.4 PDF-PO-MARKER'), 'po.pdf'], invoice: [Buffer.from('%PDF-1.4 PDF-INVOICE-MARKER'), 'invoice.pdf'] },
+        { po: 'PO-CITE-P', invoice: 'INV-CITE-P' },
+      )
+
+      const res = await listFlags(owner)
+
+      const price = res.body.items.find((flag: { flagType: string }) => flag.flagType === 'price_mismatch')
+      expect(typeof price.poLine.extractionConfidence).toBe('number')
+      expect(price.poLine.extractionConfidence).toBeCloseTo(0.9)
+      expect(price.poLine).toMatchObject({ sourceRow: null, sourceSheet: null })
+    })
+  })
 })
