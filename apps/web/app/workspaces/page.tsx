@@ -169,9 +169,9 @@ export default function WorkspacesPage() {
   })
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background leading-[normal]">
       <header className="sticky top-0 z-40 border-b border-border bg-background/86 backdrop-blur-[16px]">
-        <div className="mx-auto flex max-w-[1040px] items-center justify-between gap-6 px-[clamp(20px,3.4vw,40px)] py-3.5">
+        <div className="mx-auto box-content flex max-w-[1040px] items-center justify-between gap-6 px-[clamp(20px,3.4vw,40px)] py-3.5">
           <Link href="/" aria-label="Home" className="flex items-center gap-2.5 text-foreground">
             <BrandMark decorative className="size-7" />
             <span className="font-display text-xl font-semibold tracking-[-0.04em]">Optra</span>
@@ -197,7 +197,7 @@ export default function WorkspacesPage() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-[1040px] px-[clamp(20px,3.4vw,40px)] pb-16 pt-14">
+      <main className="mx-auto box-content max-w-[1040px] px-[clamp(20px,3.4vw,40px)] pb-16 pt-14">
         <Eyebrow rule>Tenant access</Eyebrow>
         <h1 className="mt-[18px] text-[42px] leading-[1.06]">Your workspaces</h1>
         <p className="mt-3.5 max-w-[56ch] text-[17px] leading-[1.65] text-ink-body">
@@ -256,7 +256,7 @@ export default function WorkspacesPage() {
                       >
                         {workspace.name.trim().charAt(0).toUpperCase() || 'W'}
                       </span>
-                      <span className="truncate font-medium">{workspace.name}</span>
+                      <span className="truncate text-[16px] font-medium">{workspace.name}</span>
                     </div>
                   </TableCell>
                   <TableCell className="p-3.5">

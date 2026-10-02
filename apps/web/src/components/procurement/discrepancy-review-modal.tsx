@@ -28,7 +28,7 @@ import {
   type DiscrepancyLineCitation,
   type ProcurementDocKind,
 } from '@/lib/api/procurement'
-import { flagTypeLabel, flagTypeTone } from './flag-type'
+import { flagTypeLabel, flagTypeTone, formatDelta } from './flag-type'
 
 // POLICY v1 #7's four outcomes. "Dismissed" alone lost the distinction between
 // a false positive, an approved exception, a vendor's mistake and unresolved
@@ -290,7 +290,7 @@ export function DiscrepancyReviewModal({
                 {showDelta ? (
                   <span className="flex justify-between gap-4 text-flag-text">
                     delta
-                    <span>{flag.delta}</span>
+                    <span>{flag.delta === null ? '—' : formatDelta(flag.delta)}</span>
                   </span>
                 ) : null}
               </div>
@@ -303,6 +303,7 @@ export function DiscrepancyReviewModal({
                   {sources.map(({ key, label, kind, citation }) => (
                     <DefinitionRow
                       key={key}
+                      density="compact"
                       label={label}
                       value={citationText(label, citation)}
                       action={

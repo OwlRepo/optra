@@ -120,7 +120,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   return (
     <ToastContext.Provider value={{ toasts, toast, updateToast, dismissToast }}>
       {children}
-      <div className="pointer-events-none fixed inset-x-0 bottom-4 z-50 flex justify-center px-4 sm:justify-end">
+      <div className="pointer-events-none fixed inset-x-0 bottom-4 z-50 flex justify-center px-4 leading-[normal] sm:justify-end">
         <div className="flex w-full max-w-sm flex-col gap-3">
           {toasts.map((item) => {
             const variant = item.variant ?? 'default'

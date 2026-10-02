@@ -5,24 +5,43 @@ export interface DefinitionRowProps {
   label: React.ReactNode
   value: React.ReactNode
   action?: React.ReactNode
+  /**
+   * default = C20 sheet (110px, 16px 18px); compact = frame 2.9 citations
+   * (96px, 13px 16px); roomy = frame 3.10 Workspace ID (140px, label 14px 24px,
+   * value 14px 18px). The screen frame wins where a row is actually used.
+   */
+  density?: 'default' | 'compact' | 'roomy'
   className?: string
+}
+
+const densityClassName = {
+  default: { grid: 'grid-cols-[110px_minmax(0,1fr)_auto]', label: 'px-[18px] py-4', value: 'px-[18px] py-4' },
+  compact: { grid: 'grid-cols-[96px_minmax(0,1fr)_auto]', label: 'px-4 py-[13px]', value: 'px-4 py-[13px]' },
+  roomy: { grid: 'grid-cols-[140px_minmax(0,1fr)_auto]', label: 'px-6 py-[14px]', value: 'px-[18px] py-[14px]' },
 }
 
 // Storyboard 01 C20 "Files & trust" row: 110px Mono teal label on the subtle
 // fill | Mono 12 value | optional action. Stack rows inside a panel with
 // overflow-hidden; the last row drops its rule.
-export function DefinitionRow({ label, value, action, className }: DefinitionRowProps) {
+export function DefinitionRow({ label, value, action, density = 'default', className }: DefinitionRowProps) {
+  const sizing = densityClassName[density]
   return (
     <div
       className={cn(
-        'grid grid-cols-[110px_minmax(0,1fr)_auto] items-center border-b border-border-definition last:border-b-0',
+        'grid items-center border-b border-border-definition last:border-b-0',
+        sizing.grid,
         className,
       )}
     >
-      <div className="self-stretch bg-surface-subtle px-[18px] py-4 font-mono text-[10px] uppercase tracking-[0.14em] text-primary-strong">
+      <div
+        className={cn(
+          'self-stretch bg-surface-subtle font-mono text-[10px] uppercase tracking-[0.14em] text-primary-strong',
+          sizing.label,
+        )}
+      >
         {label}
       </div>
-      <div className="min-w-0 break-words px-[18px] py-4 font-mono text-[12px] text-[oklch(0.36_0.02_264)]">{value}</div>
+      <div className={cn('min-w-0 break-words font-mono text-[12px] text-[oklch(0.36_0.02_264)]', sizing.value)}>{value}</div>
       {action ? <div className="mr-[10px]">{action}</div> : <div />}
     </div>
   )

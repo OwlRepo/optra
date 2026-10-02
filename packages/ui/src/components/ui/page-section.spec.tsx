@@ -96,6 +96,13 @@ describe('PageSection, Eyebrow and MicroLabel', () => {
     )
   })
 
+  it('edge: the header is not width-capped; a screen caps only its description (frame 3.3 Activity, 60ch)', () => {
+    render(<PageSection title="Activity" description="What this workspace has done." descriptionClassName="max-w-[60ch]" />)
+    const description = screen.getByText('What this workspace has done.')
+    expect(classesOf(description)).toContain('max-w-[60ch]')
+    expect(classesOf(description.parentElement).some((name) => name.startsWith('max-w-'))).toBe(false)
+  })
+
   it('happy: actions render beside the header and children below it', () => {
     render(
       <PageSection title="Members" actions={<button type="button">Invite</button>}>

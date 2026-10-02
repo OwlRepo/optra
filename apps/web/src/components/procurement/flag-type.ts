@@ -43,3 +43,13 @@ export const flagTypeLabel: Record<DiscrepancyFlagType, string> = {
   contract_price_variance: 'Off contract price',
   contract_price_unavailable: 'Contract price unclear',
 }
+
+/**
+ * A finding's delta as the frames write it (2.7, 2.9): the API sends invoice
+ * minus PO with no sign on positives, so a positive gap gains a "+"; a
+ * negative or zero gap is shown as sent.
+ */
+export function formatDelta(delta: string): string {
+  const value = Number(delta)
+  return Number.isFinite(value) && value > 0 && !delta.startsWith('+') ? `+${delta}` : delta
+}

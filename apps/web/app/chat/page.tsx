@@ -59,12 +59,12 @@ export default function ChatRedirectPage() {
   }, [router, toast])
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background leading-[normal]">
       <header className="flex items-center gap-2.5 border-b border-border px-5 py-3.5 sm:px-10">
         <BrandMark decorative className="size-7" />
         <span className="font-display text-xl font-semibold tracking-[-0.04em] text-foreground">Optra</span>
       </header>
-      <main className="mx-auto max-w-[1040px] px-5 py-16 sm:px-10">
+      <main className="mx-auto box-content max-w-[1040px] px-5 py-16 sm:px-10">
         {/* [support-surfaces-off] was: icon MessageSquareText, title "Opening workspace chat" */}
         <div className="relative overflow-hidden rounded-[18px] border border-border-panel bg-card p-7">
           <div

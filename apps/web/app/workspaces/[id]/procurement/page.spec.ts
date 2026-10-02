@@ -70,6 +70,22 @@ const doneInvoice = {
   hasSourceFile: true,
 }
 
+function stubDesktop(matches: boolean) {
+  return vi.spyOn(window, 'matchMedia').mockImplementation(
+    (query: string) =>
+      ({
+        matches: matches && query === '(min-width: 1024px)',
+        media: query,
+        onchange: null,
+        addListener: () => {},
+        removeListener: () => {},
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        dispatchEvent: () => false,
+      }) as unknown as MediaQueryList,
+  )
+}
+
 function renderPage() {
   return render(
     React.createElement(
@@ -554,7 +570,23 @@ describe('ProcurementPage', () => {
       expect(uploadPurchaseOrderMock).not.toHaveBeenCalled()
     })
 
+    it('edge: below lg the header shortens to the workspace name and "Purchase orders" (frame 4.2)', async () => {
+      stubDesktop(false)
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme' })
+      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+      listPurchaseOrdersMock.mockResolvedValue([])
+      listInvoicesMock.mockResolvedValue([])
+
+      renderPage()
+
+      const banner = await screen.findByRole('banner')
+      expect(await within(banner).findByText('Acme')).toBeDefined()
+      expect(within(banner).getByRole('heading', { level: 1, name: 'Purchase orders' })).toBeDefined()
+      expect(within(banner).queryByText('Acme / Matching')).toBeNull()
+    })
+
     it('happy: the header names the workspace in the breadcrumb and capitalises the role', async () => {
+      stubDesktop(true)
       getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme' })
       listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
       listPurchaseOrdersMock.mockResolvedValue([])

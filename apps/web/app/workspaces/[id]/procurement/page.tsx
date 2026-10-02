@@ -594,6 +594,7 @@ export default function ProcurementPage({ params }: { params: { id: string } }) 
     const openPicker = () => inputRef.current?.click()
     const header = (
       <PanelHeader
+        className="max-lg:hidden"
         eyebrow={copy.eyebrow}
         title={copy.title}
         action={
@@ -634,6 +635,7 @@ export default function ProcurementPage({ params }: { params: { id: string } }) 
               label={formatLabel(ACCEPT[kind])}
               title={copy.emptyTitle}
               description={copy.emptyDescription}
+              descriptionClassName="max-w-[52ch]"
               actions={
                 canManage ? (
                   <Button size="sm" onClick={openPicker}>
@@ -802,9 +804,11 @@ export default function ProcurementPage({ params }: { params: { id: string } }) 
         <MobileTabBar items={workspacePrimaryTabItems(workspaceId)} moreActive={moreActive} onMoreClick={onMoreClick} />
       )}
       breadcrumb={workspace ? `${workspace.name} / Matching` : 'Matching'}
+      mobileBreadcrumb={workspace ? workspace.name : undefined}
       // This page renders its own mobile upload under the tabs (C-3 #13).
       hideMobileActions
       title="Purchase orders, invoices & goods receipts"
+      mobileTitle="Purchase orders"
       description="Upload what was ordered, what was delivered, and what was billed, then compare a pair to surface discrepancies."
       badge={
         membership ? (

@@ -302,7 +302,7 @@ export default function SettingsPage({ params }: { params: { id: string } }) {
                 <p className="text-[13px] text-ink-muted">Only owners and admins can rename the workspace.</p>
               ) : null}
             </div>
-            <DefinitionRow label="Workspace ID" value={workspaceId} className="border-t border-border-definition" />
+            <DefinitionRow density="roomy" label="Workspace ID" value={workspaceId} className="border-t border-border-definition" />
             {canRename ? (
               <div className="flex justify-end border-t border-border-inner bg-surface-subtle px-6 py-3.5">
                 <Button type="submit" size="sm" className="h-[38px] px-4" isLoading={isSubmitting} loadingText="Saving">

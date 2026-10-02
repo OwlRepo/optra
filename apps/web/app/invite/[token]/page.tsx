@@ -52,14 +52,14 @@ export default function InvitePage({ params }: { params: { token: string } }) {
   }, [params.token, router, toast])
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background leading-[normal]">
       <header className="border-b border-border">
-        <div className="mx-auto flex max-w-[1040px] items-center gap-2.5 px-5 py-3.5 sm:px-10">
+        <div className="mx-auto box-content flex max-w-[1040px] items-center gap-2.5 px-5 py-3.5 sm:px-10">
           <BrandMark decorative className="size-7" />
           <span className="font-display text-xl font-semibold tracking-[-0.04em] text-foreground">Optra</span>
         </div>
       </header>
-      <main className="mx-auto max-w-[1040px] px-5 py-[72px] sm:px-10">
+      <main className="mx-auto box-content max-w-[1040px] px-5 py-[72px] sm:px-10">
         <div className="grid items-center gap-12 rounded-[24px] bg-cta-surface p-8 text-cta-surface-foreground sm:p-12 md:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
           <div>
             <Eyebrow className="text-cta-surface-accent">Invitation</Eyebrow>

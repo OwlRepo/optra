@@ -11,7 +11,7 @@ import { BrandMark } from '@/components/brand-mark'
 
 export default function NotFound() {
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background leading-[normal]">
       <header className="flex items-center gap-2.5 border-b border-border px-5 py-3.5 sm:px-8">
         <BrandMark decorative className="size-[26px]" />
         <span className="font-display text-[19px] font-semibold tracking-[-0.04em] text-foreground">Optra</span>

@@ -16,6 +16,7 @@ export function EmptyState({
   label,
   labelTone = 'muted',
   nested = false,
+  descriptionClassName,
   className,
 }: {
   icon?: React.ReactNode
@@ -28,6 +29,8 @@ export function EmptyState({
   labelTone?: EmptyStateLabelTone
   /** Inside another panel: 14px radius instead of 18px. */
   nested?: boolean
+  /** Screen-specific description width (frame 2.3 caps it at 52ch; the others run full width). */
+  descriptionClassName?: string
   className?: string
 }) {
   return (
@@ -48,7 +51,7 @@ export function EmptyState({
         </MicroLabel>
       ) : null}
       <h3 className={cn('text-[20px] leading-[normal]', label ? 'mt-3' : null)}>{title}</h3>
-      <p className="mt-2 max-w-[48ch] text-[15px] leading-[1.6] text-ink-body">{description}</p>
+      <p className={cn('mt-2 text-[15px] leading-[1.6] text-ink-body', descriptionClassName)}>{description}</p>
       {actions ? <div className="mt-[18px] flex flex-wrap items-center gap-[10px]">{actions}</div> : null}
     </div>
   )

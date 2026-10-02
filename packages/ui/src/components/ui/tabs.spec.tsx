@@ -197,6 +197,18 @@ describe('SegmentedControl', () => {
     expect(screen.getByRole('radiogroup').className).toContain('bg-surface-segmented')
   })
 
+  it('edge: fullWidth is a below-lg layout; at lg the md control returns (frames 4.2 vs 2.7)', () => {
+    setupSegmented({ fullWidth: true })
+    const group = screen.getByRole('radiogroup').className
+    expect(group).toContain('lg:inline-flex')
+    expect(group).toContain('lg:w-auto')
+    expect(group).toContain('lg:p-1')
+    const option = screen.getByRole('radio', { name: 'All' }).className
+    expect(option).toContain('lg:flex-none')
+    expect(option).toContain('lg:px-[14px]')
+    expect(option).toContain('lg:py-[7px]')
+  })
+
   it('happy: clicking another option reports its value and fullWidth stretches the options', () => {
     const { onValueChange } = setupSegmented({ fullWidth: true })
     fireEvent.click(screen.getByRole('radio', { name: 'Dismissed' }))

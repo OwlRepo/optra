@@ -7,7 +7,7 @@ const TABLE_ROWS = [0, 1, 2, 3, 4]
 
 export default function RootLoading() {
   return (
-    <div className="grid min-h-screen bg-background lg:grid-cols-[248px_minmax(0,1fr)]">
+    <div className="grid min-h-screen bg-background leading-[normal] lg:grid-cols-[248px_minmax(0,1fr)]">
       <aside className="hidden flex-col gap-[22px] border-r border-border bg-secondary px-3.5 py-[18px] lg:flex">
         <div className="flex items-center gap-2.5 px-2 py-1.5">
           <BrandMark decorative className="size-7" />

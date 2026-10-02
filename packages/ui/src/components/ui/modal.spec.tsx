@@ -160,6 +160,16 @@ describe('Modal', () => {
     expect(screen.queryByRole('heading')).toBeNull()
   })
 
+  it('regression: the dialog resets line-height to the font default the frames inherit', () => {
+    render(
+      <Modal open onClose={() => {}} title="Details">
+        <p>Body</p>
+      </Modal>,
+    )
+
+    expect(screen.getByRole('dialog').classList.contains('leading-[normal]')).toBe(true)
+  })
+
   it('regression: the panel is the 20px hairline demo panel with the modal shadow over an ink backdrop', () => {
     render(
       <Modal open onClose={() => {}} title="Create workspace">

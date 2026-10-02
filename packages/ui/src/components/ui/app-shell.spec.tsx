@@ -135,6 +135,49 @@ describe('AppShell', () => {
     expect(screen.queryByRole('navigation', { name: 'Primary' })).toBeNull()
   })
 
+  it('edge: below lg the header uses the short mobile breadcrumb and title when given (frame 4.2)', () => {
+    stubViewport(false)
+
+    render(
+      <AppShell
+        sidebarHeader={() => <span>Header</span>}
+        navigation={() => <span>Nav</span>}
+        breadcrumb="Kestrel Supply Co. / Matching"
+        mobileBreadcrumb="Kestrel Supply Co."
+        title="Purchase orders, invoices & goods receipts"
+        mobileTitle="Purchase orders"
+      >
+        <div>Body</div>
+      </AppShell>,
+    )
+
+    const banner = screen.getByRole('banner')
+    expect(within(banner).getByText('Kestrel Supply Co.')).toBeTruthy()
+    expect(within(banner).queryByText('Kestrel Supply Co. / Matching')).toBeNull()
+    expect(within(banner).getByRole('heading', { level: 1, name: 'Purchase orders' })).toBeTruthy()
+  })
+
+  it('edge: at lg and up the full breadcrumb and title win over the mobile ones', () => {
+    stubViewport(true)
+
+    render(
+      <AppShell
+        sidebarHeader={() => <span>Header</span>}
+        navigation={() => <span>Nav</span>}
+        breadcrumb="Kestrel Supply Co. / Matching"
+        mobileBreadcrumb="Kestrel Supply Co."
+        title="Purchase orders, invoices & goods receipts"
+        mobileTitle="Purchase orders"
+      >
+        <div>Body</div>
+      </AppShell>,
+    )
+
+    const banner = screen.getByRole('banner')
+    expect(within(banner).getByText('Kestrel Supply Co. / Matching')).toBeTruthy()
+    expect(within(banner).getByRole('heading', { level: 1, name: 'Purchase orders, invoices & goods receipts' })).toBeTruthy()
+  })
+
   it('regression: renders the breadcrumb as a micro label above an h1 page title', () => {
     render(
       <AppShell
@@ -150,6 +193,16 @@ describe('AppShell', () => {
     const banner = screen.getByRole('banner')
     expect(within(banner).getByText('Kestrel Supply Co. / Matching').closest('p')).not.toBeNull()
     expect(within(banner).getByRole('heading', { level: 1, name: 'Discrepancies' })).toBeTruthy()
+  })
+
+  it('regression: the shell root resets line-height to the font default the frames inherit', () => {
+    const { container } = render(
+      <AppShell sidebarHeader={() => <span>Header</span>} navigation={() => <span>Nav</span>}>
+        <div>Body</div>
+      </AppShell>,
+    )
+
+    expect((container.firstElementChild as HTMLElement).classList.contains('leading-[normal]')).toBe(true)
   })
 
   it('regression: the expanded sidebar is 248px on the secondary surface with a hairline border', () => {

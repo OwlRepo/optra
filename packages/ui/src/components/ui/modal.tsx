@@ -93,7 +93,7 @@ export function Modal({
         aria-label={ariaLabel ?? title}
         tabIndex={-1}
         className={cn(
-          'flex max-h-[85vh] w-full flex-col overflow-hidden rounded-[20px] border border-border-panel bg-card text-card-foreground shadow-modal outline-none',
+          'flex max-h-[85vh] w-full flex-col overflow-hidden rounded-[20px] border border-border-panel bg-card leading-[normal] text-card-foreground shadow-modal outline-none',
           sizeClasses[size],
         )}
         onClick={(event) => event.stopPropagation()}

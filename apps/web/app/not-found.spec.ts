@@ -35,6 +35,12 @@ describe('NotFound', () => {
     expect(screen.getByText('This page does not exist. Go home or open your workspace to continue.')).toBeTruthy()
   })
 
+  it('regression: the page root resets line-height to the font default the frames inherit', () => {
+    const { container } = render(React.createElement(NotFound))
+
+    expect((container.firstElementChild as HTMLElement).classList.contains('leading-[normal]')).toBe(true)
+  })
+
   it('happy: links home', () => {
     render(React.createElement(NotFound))
 

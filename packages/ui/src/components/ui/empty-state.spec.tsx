@@ -43,6 +43,14 @@ describe('EmptyState', () => {
     expect(screen.getByText('Needs a vendor first').querySelector('svg')).toBeNull()
   })
 
+  it('edge: the description runs full width unless the screen caps it (frames 2.7-3.11 vs 2.3)', () => {
+    render(<EmptyState title="No vendors yet" description="Add a vendor first." />)
+    expect(classesOf(screen.getByText('Add a vendor first.')).some((name) => name.startsWith('max-w-'))).toBe(false)
+    cleanup()
+    render(<EmptyState title="No purchase orders yet" description="Upload one." descriptionClassName="max-w-[52ch]" />)
+    expect(classesOf(screen.getByText('Upload one.'))).toContain('max-w-[52ch]')
+  })
+
   it('edge: the icon prop is accepted but not rendered', () => {
     render(<EmptyState icon={<svg data-testid="empty-icon" />} title="No photos yet" description="Photos will appear here once available." />)
     expect(screen.queryByTestId('empty-icon')).toBeNull()
@@ -79,7 +87,7 @@ describe('EmptyState', () => {
     )
     expect(
       classesOf(screen.getByText('Upload a CSV, XLSX, or PDF purchase order to compare it against an invoice.')),
-    ).toEqual(expect.arrayContaining(['mt-2', 'max-w-[48ch]', 'text-[15px]', 'leading-[1.6]', 'text-ink-body']))
+    ).toEqual(expect.arrayContaining(['mt-2', 'text-[15px]', 'leading-[1.6]', 'text-ink-body']))
     expect(classesOf(screen.getByRole('button', { name: 'Upload purchase order' }).parentElement)).toContain('mt-[18px]')
   })
 })

@@ -73,6 +73,7 @@ export function PageSection({
   description,
   actions,
   children,
+  descriptionClassName,
   className,
 }: {
   eyebrow?: React.ReactNode
@@ -80,13 +81,15 @@ export function PageSection({
   description?: React.ReactNode
   actions?: React.ReactNode
   children?: React.ReactNode
+  /** Screen-specific description width (frame 3.3 Activity caps it at 60ch; others run free). */
+  descriptionClassName?: string
   className?: string
 }) {
   return (
     <section className={cn('space-y-5', className)}>
       {(eyebrow || title || description || actions) ? (
         <div className="flex flex-wrap items-end justify-between gap-x-8 gap-y-4">
-          <div className="max-w-[56ch]">
+          <div className="min-w-0">
             {eyebrow ? (typeof eyebrow === 'string' ? <Eyebrow>{eyebrow}</Eyebrow> : <div>{eyebrow}</div>) : null}
             {title ? (
               typeof title === 'string' ? (
@@ -96,7 +99,7 @@ export function PageSection({
               )
             ) : null}
             {description ? (
-              <div className={cn('text-[15px] leading-[1.65] text-ink-body', eyebrow || title ? 'mt-[10px]' : null)}>
+              <div className={cn('text-[15px] leading-[1.65] text-ink-body', eyebrow || title ? 'mt-[10px]' : null, descriptionClassName)}>
                 {description}
               </div>
             ) : null}

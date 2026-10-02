@@ -1,7 +1,7 @@
 /** @vitest-environment jsdom */
 
 import React from 'react'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ToastProvider } from '@repo/ui'
 import DiscrepanciesPage from './page'
@@ -96,6 +96,22 @@ function listOf(flags: ReturnType<typeof makeFlag>[], overrides: Record<string, 
     counts,
     ...overrides,
   }
+}
+
+function stubDesktop(matches: boolean) {
+  return vi.spyOn(window, 'matchMedia').mockImplementation(
+    (query: string) =>
+      ({
+        matches: matches && query === '(min-width: 1024px)',
+        media: query,
+        onchange: null,
+        addListener: () => {},
+        removeListener: () => {},
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        dispatchEvent: () => false,
+      }) as unknown as MediaQueryList,
+  )
 }
 
 function renderPage() {
@@ -480,6 +496,21 @@ describe('DiscrepanciesPage', () => {
       expect(pushMock).not.toHaveBeenCalled()
     })
 
+    it('edge: a positive delta reads with a plus sign and a negative one keeps its minus (frame 2.7)', async () => {
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
+      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+      listDiscrepanciesMock.mockResolvedValue(listOf([
+        makeFlag({ id: 'f1', sku: 'S-1', flagType: 'price_mismatch', poValue: '1.80', invoiceValue: '2.05', delta: '0.25' }),
+        makeFlag({ id: 'f2', sku: 'S-2', flagType: 'short_receipt', poValue: '6', receivedValue: '4', invoiceValue: '6', delta: '-2' }),
+      ]))
+
+      renderPage()
+
+      expect(await screen.findByText('+0.25')).toBeDefined()
+      expect(screen.getByText('-2')).toBeDefined()
+      expect(screen.queryByText('0.25')).toBeNull()
+    })
+
     it('edge: a dismissed row offers no Dismiss, even to an owner', async () => {
       getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
       listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
@@ -630,7 +661,24 @@ describe('DiscrepanciesPage', () => {
       expect(await screen.findByText('40 flags · 1 shown')).toBeDefined()
     })
 
+    it('edge: below lg the breadcrumb is the workspace name and the filter spans the width (frame 4.2)', async () => {
+      stubDesktop(false)
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
+      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'member' }], nextCursor: null })
+      listDiscrepanciesMock.mockResolvedValue(listOf([makeFlag()]))
+
+      renderPage()
+
+      const banner = await screen.findByRole('banner')
+      expect(await within(banner).findByText('Alpha')).toBeDefined()
+      expect(within(banner).queryByText('Alpha / Matching')).toBeNull()
+      expect(screen.getByRole('radiogroup', { name: 'Filter by status' }).className).toContain('w-full')
+      const count = screen.getByText('1 flag · 1 shown').className.split(/\s+/)
+      expect(count).toEqual(expect.arrayContaining(['hidden', 'lg:inline']))
+    })
+
     it('happy: the header breadcrumb reads "{workspace} / Matching"', async () => {
+      stubDesktop(true)
       getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
       listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'member' }], nextCursor: null })
       listDiscrepanciesMock.mockResolvedValue(listOf([]))

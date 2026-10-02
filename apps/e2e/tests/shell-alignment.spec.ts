@@ -25,6 +25,16 @@ test('error: the 404 screen sends "Open workspace" to the workspaces list', asyn
   await expect(page.getByRole('heading', { level: 1, name: 'Your workspaces' })).toBeVisible()
 })
 
+test('edge: at 390px the header shortens to the workspace name and "Purchase orders"', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto(`/workspaces/${state.ownerA.workspaceId}/procurement`)
+
+  const header = page.getByRole('banner')
+  await expect(header.getByRole('heading', { level: 1, name: 'Purchase orders', exact: true })).toBeVisible()
+  await expect(header.getByText(`E2E A ${state.run}`, { exact: true })).toBeVisible()
+  await expect(header.getByText(/\/ Matching/)).toHaveCount(0)
+})
+
 test('edge: at 390px the tab bar holds three links plus More, and More opens the 300px drawer', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto(`/workspaces/${state.ownerA.workspaceId}/procurement`)

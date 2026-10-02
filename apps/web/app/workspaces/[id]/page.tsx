@@ -245,6 +245,7 @@ export default function WorkspaceOverviewPage({ params }: { params: { id: string
           eyebrow={<Eyebrow>Activity</Eyebrow>}
           title="Activity"
           description="What this workspace has done on its own — imports, crawls, extractions and comparisons."
+          descriptionClassName="max-w-[60ch]"
           actions={
             unseenCount > 0 ? (
               <span className="font-mono text-[11px] text-primary-strong-hover">{`${unseenCount} new since your last visit`}</span>

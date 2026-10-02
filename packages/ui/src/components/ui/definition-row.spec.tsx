@@ -19,6 +19,21 @@ describe('DefinitionRow and MetricTile', () => {
     expect(screen.getByText('2f1c9a4e-0b7d-4d1a-9f0e-5c2b8a7d6e31')).toBeTruthy()
   })
 
+  it('edge: density="compact" is the 2.9 citation row (96px label, 13px 16px cells)', () => {
+    const { container } = render(<DefinitionRow density="compact" label="PO" value="PO row 2" />)
+    const row = container.firstElementChild
+    expect(classesOf(row)).toContain('grid-cols-[96px_minmax(0,1fr)_auto]')
+    expect(classesOf(screen.getByText('PO'))).toEqual(expect.arrayContaining(['px-4', 'py-[13px]']))
+    expect(classesOf(screen.getByText('PO row 2'))).toEqual(expect.arrayContaining(['px-4', 'py-[13px]']))
+  })
+
+  it('edge: density="roomy" is the 3.10 settings row (140px label, 14px 24px label, 14px 18px value)', () => {
+    const { container } = render(<DefinitionRow density="roomy" label="Workspace ID" value="ws-1" />)
+    expect(classesOf(container.firstElementChild)).toContain('grid-cols-[140px_minmax(0,1fr)_auto]')
+    expect(classesOf(screen.getByText('Workspace ID'))).toEqual(expect.arrayContaining(['px-6', 'py-[14px]']))
+    expect(classesOf(screen.getByText('ws-1'))).toEqual(expect.arrayContaining(['px-[18px]', 'py-[14px]']))
+  })
+
   it('edge: a breaking MetricTile takes the amber border, tint and ink', () => {
     const { container } = render(<MetricTile label="Billed" value="24" breaking />)
     const tile = container.firstElementChild

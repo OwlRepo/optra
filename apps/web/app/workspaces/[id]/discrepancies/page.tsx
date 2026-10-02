@@ -38,7 +38,7 @@ import { MobileTabBar } from '@/components/mobile-tab-bar'
 import { WorkspaceBrandLink } from '@/components/workspace-brand-link'
 import { DiscrepancyReviewModal } from '@/components/procurement/discrepancy-review-modal'
 import { ScopeChip } from '@/components/procurement/scope-chip'
-import { flagTypeLabel, flagTypeTone, type FlagTone } from '@/components/procurement/flag-type'
+import { flagTypeLabel, flagTypeTone, type FlagTone, formatDelta } from '@/components/procurement/flag-type'
 
 type Workspace = { id: string; name: string }
 type WorkspaceRole = 'owner' | 'admin' | 'member'
@@ -293,6 +293,7 @@ export default function DiscrepanciesPage({ params }: { params: { id: string } }
         <MobileTabBar items={workspacePrimaryTabItems(workspaceId)} moreActive={moreActive} onMoreClick={onMoreClick} />
       )}
       breadcrumb={workspace ? `${workspace.name} / Matching` : 'Matching'}
+      mobileBreadcrumb={workspace ? workspace.name : undefined}
       title="Discrepancies"
       description="Line items where a purchase order and invoice don't match."
       badge={
@@ -314,10 +315,11 @@ export default function DiscrepanciesPage({ params }: { params: { id: string } }
             <StatStrip items={statItems} />
 
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex min-w-0 flex-wrap items-center gap-3">
+              <div className="flex w-full min-w-0 flex-wrap items-center gap-3 lg:w-auto">
                 <SegmentedControl
                   aria-label="Filter by status"
                   size="md"
+                  fullWidth
                   options={STATUS_OPTIONS}
                   value={statusFilter || 'all'}
                   onValueChange={(value) =>
@@ -329,7 +331,7 @@ export default function DiscrepanciesPage({ params }: { params: { id: string } }
                 ) : null}
               </div>
               {meta.total > 0 ? (
-                <span className="font-mono text-[12px] text-ink-muted">
+                <span className="hidden font-mono text-[12px] text-ink-muted lg:inline">
                   {`${meta.total} flag${meta.total === 1 ? '' : 's'} · ${flags.length} shown`}
                 </span>
               ) : null}
@@ -378,7 +380,7 @@ export default function DiscrepanciesPage({ params }: { params: { id: string } }
                         </TableCell>
                         <TableCell numeric>{flag.invoiceValue ?? '—'}</TableCell>
                         <TableCell numeric className={deltaInk[tone]}>
-                          {flag.delta ?? '—'}
+                          {flag.delta === null ? '—' : formatDelta(flag.delta)}
                         </TableCell>
                         <TableCell className="truncate text-[13px] text-ink-body" title={flag.reason}>
                           {flag.reason}

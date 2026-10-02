@@ -55,7 +55,9 @@ export function AppShell({
   mobileFullBleed,
   hideMobileActions,
   breadcrumb,
+  mobileBreadcrumb,
   title,
+  mobileTitle,
   description,
   badge,
   actions,
@@ -76,7 +78,11 @@ export function AppShell({
   hideMobileActions?: boolean
   /** Mono micro label above the title, e.g. "Kestrel Supply Co. / Matching". */
   breadcrumb?: React.ReactNode
+  /** Below lg, a shorter breadcrumb (frame 4.2 shows only the workspace name). */
+  mobileBreadcrumb?: React.ReactNode
   title?: string
+  /** Below lg, a shorter title (frame 4.2: "Purchase orders"). */
+  mobileTitle?: string
   description?: string
   badge?: React.ReactNode
   actions?: React.ReactNode
@@ -87,13 +93,15 @@ export function AppShell({
   const [collapsed, setCollapsed] = React.useState(false)
   const [mobileNavOpen, setMobileNavOpen] = React.useState(false)
   const isDesktop = useIsDesktop()
+  const shownBreadcrumb = isDesktop ? breadcrumb : (mobileBreadcrumb ?? breadcrumb)
+  const shownTitle = isDesktop ? title : (mobileTitle ?? title)
 
   const hasHeader = Boolean(breadcrumb || title || description || badge || actions)
   const showHeaderActions = Boolean(actions) && isDesktop
   const showMobileActions = Boolean(actions) && !isDesktop && !mobileFullBleed && !hideMobileActions
 
   return (
-    <div className={cn('flex min-h-screen', className)}>
+    <div className={cn('flex min-h-screen leading-[normal]', className)}>
       <aside
         className={cn(
           'hidden shrink-0 flex-col justify-between gap-6 border-r border-border bg-secondary pb-4 pt-[18px] transition-[width] duration-200 ease-out lg:flex',
@@ -180,11 +188,11 @@ export function AppShell({
           >
             <div className="flex flex-wrap items-center justify-between gap-4">
               <div className="min-w-0 flex-1">
-                {breadcrumb ? <MicroLabel as="p">{breadcrumb}</MicroLabel> : null}
-                {title || badge ? (
-                  <div className={cn('flex min-w-0 items-center gap-2 lg:gap-2.5', breadcrumb && 'mt-1.5')}>
-                    {title ? (
-                      <h1 className="min-w-0 truncate text-[22px] leading-[1.15] lg:text-[26px] lg:leading-[1.1]">{title}</h1>
+                {shownBreadcrumb ? <MicroLabel as="p">{shownBreadcrumb}</MicroLabel> : null}
+                {shownTitle || badge ? (
+                  <div className={cn('flex min-w-0 items-center gap-2 lg:gap-2.5', shownBreadcrumb && 'mt-1.5')}>
+                    {shownTitle ? (
+                      <h1 className="min-w-0 truncate text-[22px] leading-[1.15] lg:text-[26px] lg:leading-[1.1]">{shownTitle}</h1>
                     ) : null}
                     {badge ? (
                       <div className="shrink-0 max-lg:[&>div]:px-2 max-lg:[&>div]:py-0.5 max-lg:[&>div]:text-[11px]">

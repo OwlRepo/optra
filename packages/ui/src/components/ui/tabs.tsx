@@ -147,7 +147,10 @@ export function SegmentedControl({
       className={cn(
         trackClassName,
         fullWidth
-          ? 'flex w-full p-[3px]'
+          ? cn(
+              'flex w-full p-[3px] lg:inline-flex lg:w-auto lg:self-start',
+              size === 'sm' ? 'lg:rounded-[11px]' : 'lg:p-1',
+            )
           : size === 'sm'
             ? 'inline-flex self-start rounded-[11px] p-[3px]'
             : 'inline-flex self-start p-1',
@@ -173,7 +176,12 @@ export function SegmentedControl({
             className={cn(
               optionClassName,
               fullWidth
-                ? 'flex-1 justify-center px-[6px] py-[9px] text-[13px] leading-[normal]'
+                ? cn(
+                    'flex-1 justify-center px-[6px] py-[9px] text-[13px] leading-[normal] lg:flex-none',
+                    size === 'sm'
+                      ? 'lg:rounded-[8px] lg:px-3 lg:py-[6px]'
+                      : 'lg:px-[14px] lg:py-[7px] lg:text-[14px]',
+                  )
                 : size === 'sm'
                   ? 'rounded-[8px] px-3 py-[6px] text-[13px] leading-[normal]'
                   : 'px-[14px] py-[7px]',

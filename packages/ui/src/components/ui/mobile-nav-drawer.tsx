@@ -61,7 +61,7 @@ export function MobileNavDrawer({ open, onClose, sidebarHeader, navigation, user
         aria-modal="true"
         aria-label="Navigation"
         tabIndex={-1}
-        className="animate-drawer-in relative z-10 flex h-full w-[300px] max-w-[85vw] flex-col justify-between gap-6 border-r border-border bg-secondary px-3.5 pb-[calc(16px+env(safe-area-inset-bottom))] pt-[calc(18px+env(safe-area-inset-top))] outline-none"
+        className="animate-drawer-in relative z-10 flex h-full w-[300px] max-w-[85vw] flex-col leading-[normal] justify-between gap-6 border-r border-border bg-secondary px-3.5 pb-[calc(16px+env(safe-area-inset-bottom))] pt-[calc(18px+env(safe-area-inset-top))] outline-none"
       >
         <div className="flex min-h-0 min-w-0 flex-col gap-[22px] overflow-y-auto">
           <div className="flex min-w-0 items-center gap-2">

@@ -83,6 +83,12 @@ test('happy: Run comparison lands on Discrepancies scoped to the pair, and × cl
   await expect(page.getByRole('button', { name: 'Clear pair filter' })).toHaveCount(0)
 })
 
+test('edge: a positive delta reads with a plus sign, as the frames write it', async ({ page }) => {
+  await page.goto(pairDiscrepanciesPage())
+  const row = page.getByRole('row').filter({ has: page.getByRole('button', { name: 'Review discrepancy A1' }) })
+  await expect(row.getByText(/^\+1(\.0+)?$/)).toBeVisible()
+})
+
 test('happy: the status segmented control refetches Dismissed, then All', async ({ page }) => {
   await page.goto(pairDiscrepanciesPage())
   await expect(page.getByRole('button', { name: 'Review discrepancy A1' })).toBeVisible()
