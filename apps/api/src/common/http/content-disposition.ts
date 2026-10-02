@@ -4,8 +4,9 @@
  *
  * The name comes from `file.originalname` at upload time and is never
  * validated, so it can contain a double quote (which would end the quoted
- * string early and let the rest be read as header parameters) or a CR/LF
- * (header injection). Both become `_`.
+ * string early and let the rest be read as header parameters), a backslash
+ * (which escapes the next character, so a trailing one swallows the closing
+ * quote) or a CR/LF (header injection). All become `_`.
  *
  * Extracted here because the same regex previously lived in two controllers
  * independently — `documents.controller.ts` defined `safeFilename` and
@@ -15,8 +16,10 @@
  * Non-ASCII is left alone here; `attachmentDisposition` handles it.
  */
 export function safeContentDispositionFilename(name: string): string {
-  return name.replace(/["\r\n]/g, '_')
+  return name.replace(/["\r\n\\]/g, '_')
 }
+
+const LONE_SURROGATE = /[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/g
 
 // RFC 5987 attr-char excludes these, and encodeURIComponent leaves them as-is.
 function encodeRfc5987(value: string): string {
@@ -30,7 +33,9 @@ function encodeRfc5987(value: string): string {
  * download answer 500. `apps/web/src/lib/http/download.ts` prefers `filename*`.
  */
 export function attachmentDisposition(name: string): string {
-  const safe = safeContentDispositionFilename(name)
+  // An unpaired surrogate (possible in a JSON-supplied title) would make
+  // encodeURIComponent throw; it becomes U+FFFD, as a UTF-8 decoder would.
+  const safe = safeContentDispositionFilename(name).replace(LONE_SURROGATE, '\ufffd')
   if (!/[^\x20-\x7e]/.test(safe)) {
     return `attachment; filename="${safe}"`
   }
