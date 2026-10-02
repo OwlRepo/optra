@@ -20,7 +20,7 @@ describe('WorkspaceAccessDenied (B14)', () => {
     render(React.createElement(WorkspaceAccessDenied))
 
     expect(screen.getByRole('heading', { name: "You don't have access to this workspace" })).toBeDefined()
-    expect(screen.getByText('It may have been deleted, or you are not a member. Ask its owner to invite you.')).toBeDefined()
+    expect(screen.getByText("It may have been deleted, or you're not a member. Ask its owner to invite you.")).toBeDefined()
     fireEvent.click(screen.getByRole('button', { name: 'Go to your workspaces' }))
     expect(pushMock).toHaveBeenCalledWith('/workspaces')
   })

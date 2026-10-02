@@ -438,6 +438,18 @@ describe('ProcurementPage', () => {
       expect(pushMock).not.toHaveBeenCalledWith('/login')
     })
 
+    it('edge: a failure that is not a 403 still shows the error toast and the page', async () => {
+      getWorkspaceMock.mockRejectedValue({ statusCode: 500, message: 'Internal server error' })
+      listPurchaseOrdersMock.mockResolvedValue([])
+      listInvoicesMock.mockResolvedValue([])
+      listWorkspacesMock.mockResolvedValue({ items: [], nextCursor: null })
+
+      renderPage()
+
+      expect(await screen.findByText('Failed to load procurement documents')).toBeDefined()
+      expect(screen.queryByRole('heading', { name: "You don't have access to this workspace" })).toBeNull()
+    })
+
     it('regression: a non-member sees no empty lists, no compare card and no upload control', async () => {
       denyAccess()
 
@@ -449,18 +461,6 @@ describe('ProcurementPage', () => {
       expect(screen.queryByRole('button', { name: 'Run comparison' })).toBeNull()
       expect(screen.queryByRole('button', { name: 'Upload purchase order' })).toBeNull()
       expect(screen.queryByRole('tablist')).toBeNull()
-    })
-
-    it('edge: a failure that is not a 403 still shows the error toast and the page', async () => {
-      getWorkspaceMock.mockRejectedValue({ statusCode: 500, message: 'Internal server error' })
-      listPurchaseOrdersMock.mockResolvedValue([])
-      listInvoicesMock.mockResolvedValue([])
-      listWorkspacesMock.mockResolvedValue({ items: [], nextCursor: null })
-
-      renderPage()
-
-      expect(await screen.findByText('Failed to load procurement documents')).toBeDefined()
-      expect(screen.queryByRole('heading', { name: "You don't have access to this workspace" })).toBeNull()
     })
   })
 })
