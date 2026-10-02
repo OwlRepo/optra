@@ -437,6 +437,6 @@ And one rule the owner made standing: every change now ships with its tests for 
 
 **Predicted (from the approved plan):** test-only slices land green with zero guarded-source change.
 
-**Actual:** confirmed — 25 new cases, 745/745 api unit tests green three times, no source file touched. The planning probes changed two expectations before any test was written: SheetJS reads a plain-text `.xlsx` instead of refusing it, and a numeric `5.00` cell becomes `"5"`.
+**Actual:** confirmed — 25 new cases; the two touched specs green three runs in a row (78/78 each) and the full api unit suite green once (745/745); no source file touched. The planning probes changed two expectations before any test was written: SheetJS reads a plain-text `.xlsx` instead of refusing it, and a numeric `5.00` cell becomes `"5"`.
 
 **Why different:** not different, because the expectations were measured rather than assumed. **When a test pins today's behaviour, replay the library on the exact bytes first; intuition about parsers is wrong often enough to matter.**

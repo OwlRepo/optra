@@ -3530,9 +3530,9 @@
     "semantic_hash": "c1702e5aeeb16da9c1c08ace17fcdf3d"
   },
   "docs/ai/risk-register.md": {
-    "mtime": 1790951554.5654685,
-    "ast_hash": "abcd6e1f102d803a9fd119f438878f16",
-    "semantic_hash": "abcd6e1f102d803a9fd119f438878f16"
+    "mtime": 1790952055.073252,
+    "ast_hash": "85c166482b7ecf8fbaf802916b794782",
+    "semantic_hash": "85c166482b7ecf8fbaf802916b794782"
   },
   "docs/ai/task-router.md": {
     "mtime": 1790951446.7725127,
@@ -3550,9 +3550,9 @@
     "semantic_hash": "22fd13b287c37dfd16da69ed22733b2b"
   },
   "learnings.md": {
-    "mtime": 1790951569.347476,
-    "ast_hash": "78cb90430d15a4d802c99d7db329bc90",
-    "semantic_hash": "78cb90430d15a4d802c99d7db329bc90"
+    "mtime": 1790952055.0727878,
+    "ast_hash": "7e4a9ebe577db4102424092decc30709",
+    "semantic_hash": "7e4a9ebe577db4102424092decc30709"
   },
   "scripts/eval/README.md": {
     "mtime": 1790951446.8492353,
