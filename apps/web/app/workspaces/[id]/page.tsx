@@ -1,10 +1,17 @@
 'use client'
 
+// [support-surfaces-off] 2026-10-02: Knowledge Bases, Datasets, Chat, Tickets and
+// Insights are hidden from the UI. Their pages, BFF routes, API and jobs still
+// exist and are tested. To re-enable: uncomment every line tagged
+// [support-surfaces-off] in this file and restore each "was:" value noted there.
+// Repo checklist: grep -rn "support-surfaces-off" apps/web apps/e2e
+
 import * as React from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { AppShell, Badge, Button, Card, EmptyState, PageSection, useToast } from '@repo/ui'
-import { CircleAlert, Database, FileText, Globe, MessageSquareText, Scale, Settings, Ticket, Users } from 'lucide-react'
+// [support-surfaces-off] was: import { CircleAlert, Database, FileText, Globe, MessageSquareText, Scale, Settings, Ticket, Users } from 'lucide-react'
+import { CircleAlert, FileText, Globe, Scale, Settings, Ticket, Users } from 'lucide-react'
 import { logout } from '@/lib/api/auth'
 import { listEvents, markEventsSeen } from '@/lib/api/events'
 import { isUnauthorized } from '@/lib/api/handle-unauthorized'
@@ -48,30 +55,33 @@ type EventListResponse = {
 }
 
 const quickLinks = (workspaceId: string) => [
-  {
-    label: 'Knowledge Bases',
-    href: `/workspaces/${workspaceId}/knowledge-bases`,
-    description: 'Manage the sources your assistant retrieves from.',
-    icon: <Database className="size-5" />,
-  },
+  // [support-surfaces-off] Knowledge Bases quick link:
+  // {
+  //   label: 'Knowledge Bases',
+  //   href: `/workspaces/${workspaceId}/knowledge-bases`,
+  //   description: 'Manage the sources your assistant retrieves from.',
+  //   icon: <Database className="size-5" />,
+  // },
   {
     label: 'Members',
     href: `/workspaces/${workspaceId}/members`,
     description: 'Invite teammates and manage roster access.',
     icon: <Users className="size-5" />,
   },
-  {
-    label: 'Chat',
-    href: `/workspaces/${workspaceId}/chat`,
-    description: 'Ask grounded questions against this workspace.',
-    icon: <MessageSquareText className="size-5" />,
-  },
-  {
-    label: 'Tickets',
-    href: `/workspaces/${workspaceId}/tickets`,
-    description: 'Draft and review tickets from support calls.',
-    icon: <Ticket className="size-5" />,
-  },
+  // [support-surfaces-off] Chat quick link:
+  // {
+  //   label: 'Chat',
+  //   href: `/workspaces/${workspaceId}/chat`,
+  //   description: 'Ask grounded questions against this workspace.',
+  //   icon: <MessageSquareText className="size-5" />,
+  // },
+  // [support-surfaces-off] Tickets quick link:
+  // {
+  //   label: 'Tickets',
+  //   href: `/workspaces/${workspaceId}/tickets`,
+  //   description: 'Draft and review tickets from support calls.',
+  //   icon: <Ticket className="size-5" />,
+  // },
   {
     label: 'Settings',
     href: `/workspaces/${workspaceId}/settings`,

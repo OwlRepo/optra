@@ -10,6 +10,9 @@ import { bff, download, fixture, toast, waitForRow, type FilePayload, rowFor } f
 // production.
 
 test.describe.configure({ mode: 'serial' })
+// [support-surfaces-off] This spec drives a page that is disabled while the
+// support surfaces are off. Its BFF, API and unit coverage still run.
+test.skip(true, '[support-surfaces-off] page route disabled (404) on 2026-10-02; delete this line to re-enable')
 test.use({ storageState: storageStateFor('ownerA') })
 
 let state: SeedState

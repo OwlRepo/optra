@@ -1,22 +1,29 @@
 'use client'
 
+// [support-surfaces-off] 2026-10-02: Knowledge Bases, Datasets, Chat, Tickets and
+// Insights are hidden from the UI. Their pages, BFF routes, API and jobs still
+// exist and are tested. To re-enable: uncomment every line tagged
+// [support-surfaces-off] in this file and restore each "was:" value noted there.
+// Repo checklist: grep -rn "support-surfaces-off" apps/web apps/e2e
+
 import * as React from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { Badge, cn } from '@repo/ui'
-import { BriefcaseBusiness, ClipboardList, Database, FileSpreadsheet, FileWarning, LineChart, MessageSquareText, PackageSearch, Settings, Store, Ticket, Users } from 'lucide-react'
+// [support-surfaces-off] was: import { BriefcaseBusiness, ClipboardList, Database, FileSpreadsheet, FileWarning, LineChart, MessageSquareText, PackageSearch, Settings, Store, Ticket, Users } from 'lucide-react'
+import { BriefcaseBusiness, ClipboardList, FileWarning, PackageSearch, Settings, Store, Users } from 'lucide-react'
 import { getUnreadCount } from '@/lib/api/events'
-import { WorkspaceSearch } from './workspace-search'
+// [support-surfaces-off] import { WorkspaceSearch } from './workspace-search'
 
 export function workspaceNavItems(workspaceId: string) {
   return [
     { label: 'Overview', href: `/workspaces/${workspaceId}`, icon: <BriefcaseBusiness className="size-4" />, exact: true },
-    { label: 'Knowledge Bases', href: `/workspaces/${workspaceId}/knowledge-bases`, icon: <Database className="size-4" /> },
-    { label: 'Datasets', href: `/workspaces/${workspaceId}/datasets`, icon: <FileSpreadsheet className="size-4" /> },
+    // [support-surfaces-off] { label: 'Knowledge Bases', href: `/workspaces/${workspaceId}/knowledge-bases`, icon: <Database className="size-4" /> },
+    // [support-surfaces-off] { label: 'Datasets', href: `/workspaces/${workspaceId}/datasets`, icon: <FileSpreadsheet className="size-4" /> },
     { label: 'Members', href: `/workspaces/${workspaceId}/members`, icon: <Users className="size-4" /> },
-    { label: 'Chat', href: `/workspaces/${workspaceId}/chat`, icon: <MessageSquareText className="size-4" /> },
-    { label: 'Tickets', href: `/workspaces/${workspaceId}/tickets`, icon: <Ticket className="size-4" /> },
-    { label: 'Insights', href: `/workspaces/${workspaceId}/insights`, icon: <LineChart className="size-4" /> },
+    // [support-surfaces-off] { label: 'Chat', href: `/workspaces/${workspaceId}/chat`, icon: <MessageSquareText className="size-4" /> },
+    // [support-surfaces-off] { label: 'Tickets', href: `/workspaces/${workspaceId}/tickets`, icon: <Ticket className="size-4" /> },
+    // [support-surfaces-off] { label: 'Insights', href: `/workspaces/${workspaceId}/insights`, icon: <LineChart className="size-4" /> },
     { label: 'Settings', href: `/workspaces/${workspaceId}/settings`, icon: <Settings className="size-4" /> },
     { label: 'Vendors', href: `/workspaces/${workspaceId}/vendors`, icon: <Store className="size-4" /> },
     { label: 'Purchase Orders', href: `/workspaces/${workspaceId}/procurement`, icon: <ClipboardList className="size-4" /> },
@@ -28,8 +35,11 @@ export function workspaceNavItems(workspaceId: string) {
 export function workspacePrimaryTabItems(workspaceId: string) {
   return [
     { href: `/workspaces/${workspaceId}`, label: 'Overview', icon: <BriefcaseBusiness className="size-5" />, exact: true },
-    { href: `/workspaces/${workspaceId}/chat`, label: 'Chat', icon: <MessageSquareText className="size-5" /> },
-    { href: `/workspaces/${workspaceId}/knowledge-bases`, label: 'Knowledge', icon: <Database className="size-5" /> },
+    // [support-surfaces-off] { href: `/workspaces/${workspaceId}/chat`, label: 'Chat', icon: <MessageSquareText className="size-5" /> },
+    // [support-surfaces-off] { href: `/workspaces/${workspaceId}/knowledge-bases`, label: 'Knowledge', icon: <Database className="size-5" /> },
+    // [support-surfaces-off] Stand-in tabs while Chat and Knowledge are hidden; delete these two on re-enable.
+    { href: `/workspaces/${workspaceId}/procurement`, label: 'Purchase Orders', icon: <ClipboardList className="size-5" /> },
+    { href: `/workspaces/${workspaceId}/discrepancies`, label: 'Discrepancies', icon: <FileWarning className="size-5" /> },
   ]
 }
 
@@ -49,9 +59,11 @@ export function WorkspaceNav({ workspaceId, collapsed }: { workspaceId: string; 
 
   return (
     <nav className="flex flex-col gap-1">
+      {/* [support-surfaces-off] Search only finds KB documents, tickets and chat history.
       <div data-testid="workspace-search-slot" className="mb-4">
         <WorkspaceSearch workspaceId={workspaceId} collapsed={collapsed} />
       </div>
+      */}
       {workspaceNavItems(workspaceId).map((item) => {
         const isActive = item.exact ? pathname === item.href : pathname === item.href || pathname?.startsWith(`${item.href}/`)
 

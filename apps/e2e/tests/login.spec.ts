@@ -21,7 +21,7 @@ test.describe('signed out', () => {
     await page.locator('#password').fill(state.ownerA.password)
     await page.getByRole('button', { name: 'Sign in' }).click()
 
-    await expect(page).toHaveURL(new RegExp(`/workspaces/${state.ownerA.workspaceId}/`))
+    await expect(page).toHaveURL(new RegExp(`/workspaces/${state.ownerA.workspaceId}/procurement`))
     const names = (await context.cookies()).map((cookie) => cookie.name)
     expect(names).toEqual(expect.arrayContaining(['mnemra_at', 'mnemra_rt']))
   })
@@ -64,7 +64,7 @@ test.describe('signed out', () => {
     await page.getByRole('button', { name: 'Verify email' }).click()
 
     // verifyOtp creates the personal workspace in the same transaction.
-    await expect(page).toHaveURL(/\/workspaces\/[0-9a-f-]{36}\//)
+    await expect(page).toHaveURL(/\/workspaces\/[0-9a-f-]{36}\/procurement/)
   })
 
   test('a protected page without a session redirects to /login', async ({ page }) => {

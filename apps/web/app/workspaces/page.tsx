@@ -1,5 +1,11 @@
 'use client'
 
+// [support-surfaces-off] 2026-10-02: Knowledge Bases, Datasets, Chat, Tickets and
+// Insights are hidden from the UI. Their pages, BFF routes, API and jobs still
+// exist and are tested. To re-enable: uncomment every line tagged
+// [support-surfaces-off] in this file and restore each "was:" value noted there.
+// Repo checklist: grep -rn "support-surfaces-off" apps/web apps/e2e
+
 import * as React from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
@@ -215,7 +221,8 @@ export default function WorkspacesPage() {
                       </TableCell>
                       <TableCell className="text-right">
                         <Button asChild variant="ghost" size="sm">
-                          <Link href={`/workspaces/${workspace.id}/chat`}>Open</Link>
+                          {/* [support-surfaces-off] was: href={`/workspaces/${workspace.id}/chat`} */}
+                          <Link href={`/workspaces/${workspace.id}/procurement`}>Open</Link>
                         </Button>
                       </TableCell>
                     </TableRow>

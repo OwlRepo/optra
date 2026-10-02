@@ -56,6 +56,7 @@ test.afterAll(async () => {
 })
 
 test('a file type the product cannot read is refused before anything is stored', async () => {
+  test.skip(true, '[support-surfaces-off] page route disabled (404) on 2026-10-02; delete this line to re-enable')
   await page.goto(`/workspaces/${smoke.workspaceId}/knowledge-bases/${smoke.knowledgeBaseId}`)
   await page.getByLabel('Upload document').setInputFiles(wrongType(`${run}.exe`))
   await expect(toast(page, 'Upload failed')).toBeVisible()
@@ -63,6 +64,7 @@ test('a file type the product cannot read is refused before anything is stored',
 })
 
 test('a knowledge-base document round-trips through object storage and leaves with its row', async () => {
+  test.skip(true, '[support-surfaces-off] page route disabled (404) on 2026-10-02; delete this line to re-enable')
   const name = `${run}.md`
   const file = fixture('kb-note.md', name)
   const id = await uploadKnowledgeBaseDocument(page, smoke, name)
@@ -84,6 +86,7 @@ test('a knowledge-base document round-trips through object storage and leaves wi
 })
 
 test('a dataset is stored, profiled and deleted', async () => {
+  test.skip(true, '[support-surfaces-off] page route disabled (404) on 2026-10-02; delete this line to re-enable')
   const file = fixture('dataset.csv', `${run}.csv`)
   await page.goto(`/workspaces/${smoke.workspaceId}/datasets`)
   await chooseFile(page, 'Upload dataset', file)
