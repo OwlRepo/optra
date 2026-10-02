@@ -1,14 +1,6 @@
 import { Reveal } from '@/components/motion/reveal'
 
-const FILE_TYPES = [
-  'PDF',
-  'Scanned PDF',
-  'XLSX',
-  'CSV',
-  'JPG / PNG',
-  'Email attachment',
-  'Price list',
-]
+const FILE_TYPES = ['PDF', 'Scanned PDF', 'CSV', 'XLSX']
 
 // These four claims must stay accurate to the actual deployment (per-workspace
 // isolation, per-workspace storage, real deletion). Do not add certifications
@@ -28,7 +20,7 @@ const TRUST_ROWS = [
   },
   {
     label: 'Deletion',
-    text: 'Remove a workspace and its files, matches, and history are removed with it.',
+    text: 'Email us and we delete the workspace, its files, matches and history within 30 days.',
   },
 ]
 

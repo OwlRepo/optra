@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { BrandMark } from '@/components/brand-mark'
+import { CONTACT_EMAIL, SELLER_COUNTRY, SELLER_NAME } from '@/lib/legal-facts'
 
 const COLUMNS = [
   {
@@ -15,6 +16,15 @@ const COLUMNS = [
     links: [
       { label: 'FAQ', href: '#faq' },
       { label: 'A look inside', href: '#tour' },
+    ],
+  },
+  {
+    heading: 'Legal',
+    links: [
+      { label: 'Terms', href: '/terms' },
+      { label: 'Privacy', href: '/privacy' },
+      { label: 'Refunds', href: '/refund' },
+      { label: 'Contact', href: `mailto:${CONTACT_EMAIL}` },
     ],
   },
   {
@@ -64,8 +74,8 @@ export function SiteFooter() {
         </div>
 
         <div className="mt-12 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-6 text-[13px] text-muted-foreground">
-          <p>© 2026 Optra. All rights reserved.</p>
-          <p>Figures on this page are illustrative examples, not customer results.</p>
+          <p>{`© 2026 ${SELLER_NAME} · Optra · ${SELLER_COUNTRY}`}</p>
+          <p>Product screens on this page show sample data.</p>
         </div>
       </div>
     </footer>
