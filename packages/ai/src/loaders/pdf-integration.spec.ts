@@ -6,12 +6,12 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { loadPDF } from './pdf'
 
 // Regression: real PDFs failed to ingest with `ReferenceError: DOMMatrix is
-// not defined` — pdf-parse's bundled pdfjs-dist constructs `new DOMMatrix()`
+// not defined` — the then-bundled pdfjs-dist (via pdf-parse) constructed `new DOMMatrix()`
 // at module top level, which crashes on this repo's Node/Alpine image (no
 // DOMMatrix, and no `process.getBuiltinModule` to polyfill it from `canvas`).
-// pdf.spec.ts mocks `pdf-parse` entirely, so it can't catch this — this file
+// pdf.spec.ts mocks `./pdfjs` entirely, so it can't catch this — this file
 // exercises the real dependency against a real, freshly generated PDF.
-describe('loadPDF (real pdf-parse, no mocks)', () => {
+describe('loadPDF (real pdfjs-dist, no mocks)', () => {
   const tempDirs: string[] = []
 
   afterEach(async () => {
