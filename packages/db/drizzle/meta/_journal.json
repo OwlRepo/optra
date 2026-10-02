@@ -246,6 +246,13 @@
       "when": 1790349993306,
       "tag": "0034_fixed_lionheart",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "5",
+      "when": 1790962893182,
+      "tag": "0035_white_ricochet",
+      "breakpoints": true
     }
   ]
 }
