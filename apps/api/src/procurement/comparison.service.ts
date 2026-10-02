@@ -364,6 +364,35 @@ function serializeForCsv(item: LineItemForCsv) {
  */
 export const COMPARISON_STRATEGY_VERSION = 3
 
+// A double as an exact scaled integer, read from its shortest round-trip text
+// (String(0.3333) is "0.3333"), which is the decimal the document stated.
+function toScaledDecimal(value: number): { digits: bigint; scale: number } {
+  const [mantissa, exponent = '0'] = String(value).toLowerCase().split('e')
+  const negative = mantissa.startsWith('-')
+  const [whole, fraction = ''] = mantissa.replace('-', '').split('.')
+  let digits = BigInt(whole + fraction)
+  let scale = fraction.length - Number(exponent)
+  if (scale < 0) {
+    digits *= 10n ** BigInt(-scale)
+    scale = 0
+  }
+  return { digits: negative ? -digits : digits, scale }
+}
+
+function decimalDifference(a: number, b: number): string {
+  const left = toScaledDecimal(a)
+  const right = toScaledDecimal(b)
+  const scale = Math.max(left.scale, right.scale)
+  const difference =
+    left.digits * 10n ** BigInt(scale - left.scale) - right.digits * 10n ** BigInt(scale - right.scale)
+  if (difference === 0n) return '0'
+  const sign = difference < 0n ? '-' : ''
+  const text = (difference < 0n ? -difference : difference).toString().padStart(scale + 1, '0')
+  const whole = text.slice(0, text.length - scale)
+  const fraction = text.slice(text.length - scale).replace(/0+$/, '')
+  return `${sign}${whole}${fraction ? `.${fraction}` : ''}`
+}
+
 @Injectable()
 export class ComparisonService {
   private readonly logger = new Logger(ComparisonService.name)
@@ -1142,17 +1171,17 @@ export class ComparisonService {
       // delta is computed. Ten boxes against ten each is not a difference of
       // zero, and writing 0 here would read as "agreed".
       delta: isQuantity
-        ? this.numToStr(this.diff(row.inv_qty, row.po_qty))
+        ? this.diff(row.inv_qty, row.po_qty)
         : isPrice
-          ? this.numToStr(this.diff(invoicePrice, poPrice))
+          ? this.diff(invoicePrice, poPrice)
           : isMissingOnInvoice
-            ? this.numToStr(this.diff(0, row.po_qty))
+            ? this.diff(0, row.po_qty)
             : isMissingOnPo
-              ? this.numToStr(this.diff(row.inv_qty, 0))
+              ? this.diff(row.inv_qty, 0)
               : isShortReceipt
-                ? this.numToStr(this.diff(row.grn_accepted_qty, row.po_qty))
+                ? this.diff(row.grn_accepted_qty, row.po_qty)
                 : isInvoiceExceedsReceived
-                  ? this.numToStr(this.diff(row.inv_qty, row.grn_accepted_qty))
+                  ? this.diff(row.inv_qty, row.grn_accepted_qty)
                   : null,
       reason: this.buildReason(row, poLine, invoiceLine),
     }
@@ -1364,7 +1393,7 @@ export class ComparisonService {
         contractTermId: term.id,
         // Ordered minus agreed, so positive always means we ordered above the
         // contract — the same reading direction as every other delta.
-        delta: this.numToStr(this.diff(orderedPrice, agreed)),
+        delta: this.diff(orderedPrice, agreed),
         reason: `${group.sku} was ordered at ${orderedPrice} but the agreed price is ${agreed} (${dated}${term.sourceReference ? `, ${term.sourceReference}` : ''})`,
       })
     }
@@ -1377,9 +1406,14 @@ export class ComparisonService {
     return min !== null && min === max ? min : null
   }
 
-  private diff(a: number | null, b: number | null): number | null {
-    if (a === null || b === null) return null
-    return Math.round((a - b) * 100) / 100
+  // a - b as exact decimal text (B9). Rounding to cents wrote '0' for a
+  // mismatch smaller than a cent, and plain double subtraction leaks binary
+  // noise (20.1 - 19.99 = 0.11000000000000298).
+  private diff(a: number | null, b: number | null): string | null {
+    // A stated value too large for a double (1e400) reads back as Infinity:
+    // no exact difference exists, so the delta is unknown, not a crash.
+    if (a === null || b === null || !Number.isFinite(a) || !Number.isFinite(b)) return null
+    return decimalDifference(a, b)
   }
 
   private numToStr(value: number | null): string | null {

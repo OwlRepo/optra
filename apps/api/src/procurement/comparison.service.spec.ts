@@ -2698,6 +2698,23 @@ describe('ComparisonService', () => {
   // was flagged with delta '0' (and -0 printed as '0'): the flag said
   // "mismatch" while its number said "no difference".
   describe('exact deltas (B9)', () => {
+    // DECIMAL_PATTERN accepts exponents and Postgres numeric stores 1e400, but
+    // DuckDB reads it as an infinite double: no exact delta exists, and the
+    // compare must still finish.
+    it('error: a quantity too large for a double gives no delta instead of failing the compare', async () => {
+      const { workspace } = await seedWorkspace(`${prefix}b9-huge@example.com`, 'B9 Huge')
+      const { po, invoice } = await seedReadyPoAndInvoice(
+        workspace.id,
+        [{ sku: 'A1', quantity: '1e400', unitPrice: '5.00' }],
+        [{ sku: 'A1', quantity: '1', unitPrice: '5.00' }],
+      )
+
+      const result = await service.compare(workspace.id, po.id, invoice.id)
+
+      expect(result.flags).toHaveLength(1)
+      expect(result.flags[0]).toMatchObject({ flagType: 'quantity_mismatch', delta: null })
+    })
+
     it('edge: a fractional quantity mismatch keeps its exact delta', async () => {
       const { workspace } = await seedWorkspace(`${prefix}b9-qty@example.com`, 'B9 Qty')
       const { po, invoice } = await seedReadyPoAndInvoice(
