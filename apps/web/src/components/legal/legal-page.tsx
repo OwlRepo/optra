@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useId, type ReactNode } from 'react'
 import Link from 'next/link'
 import { BrandMark } from '@/components/brand-mark'
 import { SiteFooter } from '@/components/landing/site-footer'
@@ -37,10 +37,16 @@ export function LegalTable({
   headers: string[]
   rows: ReactNode[][]
 }) {
+  const captionId = useId()
   return (
-    <div className="overflow-x-auto rounded-xl border border-border">
+    <div
+      role="region"
+      tabIndex={0}
+      aria-labelledby={captionId}
+      className="overflow-x-auto rounded-xl border border-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+    >
       <table className="w-full min-w-[32rem] border-collapse text-left text-sm">
-        <caption className="sr-only">{caption}</caption>
+        <caption id={captionId} className="sr-only">{caption}</caption>
         <thead className="bg-card">
           <tr>
             {headers.map((header) => (
@@ -83,7 +89,7 @@ export function LegalPage({ title, children }: { title: string; children: ReactN
         <div className="mx-auto flex max-w-[1200px] items-center px-[clamp(20px,3.4vw,40px)] py-4">
           <Link
             href="/"
-            aria-label="Home"
+            aria-label="Optra home"
             className="inline-flex items-center gap-2.5 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
           >
             <BrandMark className="h-[26px] w-[26px]" decorative />

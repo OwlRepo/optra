@@ -2,7 +2,7 @@
 // compared, and a person records one of four decision outcomes.
 const METRICS = [
   { label: 'Formats read', value: 'PDF · CSV · XLSX', tint: '' },
-  { label: 'Lines checked', value: 'Every line', tint: '' },
+  { label: 'Lines checked', value: 'Each PO line', tint: '' },
   { label: 'Final call', value: 'A person', tint: 'text-primary-strong' },
 ]
 

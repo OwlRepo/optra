@@ -6,16 +6,16 @@ const COLUMNS = [
   {
     heading: 'Product',
     links: [
-      { label: 'Matching', href: '#product' },
-      { label: 'Workflow', href: '#workflow' },
-      { label: 'Pricing', href: '#pricing' },
+      { label: 'Matching', href: '/#product' },
+      { label: 'Workflow', href: '/#workflow' },
+      { label: 'Pricing', href: '/#pricing' },
     ],
   },
   {
     heading: 'Company',
     links: [
-      { label: 'FAQ', href: '#faq' },
-      { label: 'A look inside', href: '#tour' },
+      { label: 'FAQ', href: '/#faq' },
+      { label: 'A look inside', href: '/#tour' },
     ],
   },
   {

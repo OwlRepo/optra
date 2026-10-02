@@ -3,6 +3,7 @@ import { LegalLink, LegalPage, LegalSection, LegalTable } from '@/components/leg
 import {
   CONTACT_EMAIL,
   DELETION_SLA_DAYS,
+  FILE_STORAGE_REGION,
   HOSTING_COUNTRY,
   LANGSMITH_TRACING_IN_PROD,
   OFFSITE_BACKUP_RETENTION_DAYS,
@@ -21,9 +22,6 @@ export const metadata: Metadata = {
 }
 
 export default function PrivacyPage() {
-  const hosting = HOSTING_COUNTRY
-    ? `Hosting server location: ${HOSTING_COUNTRY}.`
-    : 'Hosting server location: on request.'
   const offsite =
     OFFSITE_BACKUP_RETENTION_DAYS !== null
       ? `Off-site backups are kept for ${OFFSITE_BACKUP_RETENTION_DAYS} days.`
@@ -32,14 +30,14 @@ export default function PrivacyPage() {
   const processors: string[][] = [
     [
       'OpenAI',
-      'Document text, page images of PDFs and product photos, to read line items and compare photos.',
-      'Not used for training by default. Abuse-monitoring logs may be kept up to 30 days.',
+      'Text and page images of uploaded documents, product photos, and questions you type into chat with the passages retrieved to answer them.',
+      'AI reading and matching, and chat answers. Provided by OpenAI, L.L.C. in the United States. Not used for training by default; abuse-monitoring logs may be kept up to 30 days.',
     ],
     ['Resend', 'Your email address and the sign-in codes we email you.', 'Email delivery.'],
     [
       'Backblaze B2',
       'Uploaded files and backups.',
-      'File storage and off-site backups.',
+      `File storage and off-site backups. Region: ${FILE_STORAGE_REGION}.`,
     ],
     [
       'Hetzner',
@@ -75,8 +73,17 @@ export default function PrivacyPage() {
             ['Password (stored as a bcrypt hash)', 'Sign-in. We cannot read your password.'],
             ['One-time sign-in code (expires after 10 minutes)', 'Verify it is you.'],
             ['Refresh token (stored as a SHA-256 hash)', 'Keep you signed in.'],
-            ['IP address', 'Rate limiting, to protect the service from abuse.'],
+            ['IP address', 'Rate limiting and abuse protection, and site analytics (Umami, self-hosted).'],
             ['Documents you upload and the matches built from them', 'Run the service for you.'],
+            ['Chat messages and the answers given', 'Answer your questions about your documents.'],
+            ['Tickets extracted from your documents', 'Show and track extracted tasks.'],
+            ['Web pages you ask us to crawl', 'Make them searchable in your workspace.'],
+            [
+              'Decision history (outcome, note, who decided and their role)',
+              'Record who resolved each flag.',
+            ],
+            ['Workspace activity events', 'Show what happened in your workspace.'],
+            ['Workspace member emails and roles', 'Control who can access the workspace.'],
           ]}
         />
       </LegalSection>
@@ -87,7 +94,10 @@ export default function PrivacyPage() {
           headers={['Processor', 'What it receives', 'Purpose']}
           rows={processors}
         />
-        <p>{hosting}</p>
+        <p>
+          Uploaded files and backups are stored in the United States ({FILE_STORAGE_REGION}). The
+          application server runs in {HOSTING_COUNTRY ?? 'a location available on request'}.
+        </p>
       </LegalSection>
 
       <LegalSection title="Cookies">
@@ -100,6 +110,10 @@ export default function PrivacyPage() {
           ]}
         />
         <p>
+          <code>mnemra_session_active</code> is a session-storage flag, not a cookie. It only marks
+          that you are signed in and clears when the browser tab closes.
+        </p>
+        <p>
           We set no advertising or tracking cookies. Site analytics use Umami, self-hosted by us and
           cookieless.
         </p>
@@ -107,8 +121,9 @@ export default function PrivacyPage() {
 
       <LegalSection title="How long we keep it">
         <p>
-          We keep your data while your workspace exists. Email us and we delete the workspace, its
-          files, matches and history within {DELETION_SLA_DAYS} days.
+          We keep your data while your workspace exists. Email us and we delete your workspace data,
+          including uploaded files, within {DELETION_SLA_DAYS} days. Backups expire on the schedule
+          in the privacy policy.
         </p>
         <p>
           Backups: the {VPS_BACKUP_COUNT} newest database backups are kept on the server. {offsite}{' '}

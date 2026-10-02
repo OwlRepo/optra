@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { CONTACT_EMAIL } from '@/lib/legal-facts'
 import { Check } from 'lucide-react'
 import { Reveal } from '@/components/motion/reveal'
 
@@ -56,7 +57,8 @@ const PLANS = [
       'Onboarding for existing archives',
     ],
     cta: 'Email us about Scale',
-    href: 'mailto:romeo@tyvera.app?subject=Optra%20Scale',
+    href: `mailto:${CONTACT_EMAIL}?subject=Optra%20Scale`,
+    external: true,
     featured: false,
     tag: null,
   },
@@ -132,6 +134,9 @@ export function PricingPlans() {
                   }`}
                 >
                   {plan.cta}
+                  {'external' in plan && plan.external && (
+                    <span className="sr-only"> (opens email)</span>
+                  )}
                 </Link>
               </article>
             </Reveal>

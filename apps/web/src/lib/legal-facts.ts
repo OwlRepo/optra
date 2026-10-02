@@ -11,5 +11,6 @@ export const TRIAL_DAYS = 14
 // Owner preflight, confirmed 2026-10-02.
 export const HOSTING_COUNTRY: string | null = 'Singapore' // Hetzner Singapore
 export const OFFSITE_BACKUP_RETENTION_DAYS: number | null = 30
+export const FILE_STORAGE_REGION = 'United States (Backblaze B2 us-east-005)'
 // Unverified: null renders "may receive" wording, never a guessed yes/no.
 export const LANGSMITH_TRACING_IN_PROD: boolean | null = null
