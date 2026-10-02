@@ -27,29 +27,28 @@ interface ToastContextValue {
 
 const ToastContext = React.createContext<ToastContextValue | null>(null)
 
-// Surface = border + background tint ONLY. Text stays a neutral high-contrast
-// token (see title/description below) so copy is always readable on the tint —
-// the previous same-hue foreground (e.g. loading = text-primary on bg-primary/10)
-// failed contrast.
-const variantSurface: Record<ToastVariant, string> = {
-  default: 'border-border/70 bg-card',
-  success: 'border-emerald-500/30 bg-emerald-500/10',
-  error: 'border-destructive/30 bg-destructive/10',
-  loading: 'border-primary/30 bg-primary/10',
+// Storyboard 01 C14: every toast is a white card; the tone lives only in the
+// 3px inset rule and the icon. Text stays ink (title) / body ink (description)
+// so copy is always readable -- the reason surface and text were split.
+const variantRule: Record<ToastVariant, string> = {
+  default: 'inset-shadow-[3px_0_0_var(--border-dashed)]',
+  success: 'inset-shadow-[3px_0_0_var(--primary-strong)]',
+  error: 'inset-shadow-[3px_0_0_var(--destructive-tone)]',
+  loading: 'inset-shadow-[3px_0_0_var(--primary-strong)]/50',
 }
 
 const variantIconColor: Record<ToastVariant, string> = {
-  default: 'text-muted-foreground',
-  success: 'text-emerald-600 dark:text-emerald-400',
-  error: 'text-destructive',
-  loading: 'text-primary',
+  default: 'text-ink-muted',
+  success: 'text-primary-strong',
+  error: 'text-destructive-tone',
+  loading: 'text-primary-strong',
 }
 
 const variantIcon: Record<ToastVariant, React.ReactNode> = {
-  default: <Info className="size-4" />,
-  success: <CheckCircle2 className="size-4" />,
-  error: <XCircle className="size-4" />,
-  loading: <Loader2 className="size-4 animate-spin" />,
+  default: <Info className="size-[17px]" aria-hidden="true" />,
+  success: <CheckCircle2 className="size-[17px]" aria-hidden="true" />,
+  error: <XCircle className="size-[17px]" aria-hidden="true" />,
+  loading: <Loader2 className="size-[17px] animate-[spin_0.9s_linear_infinite]" aria-hidden="true" />,
 }
 
 export function ToastProvider({ children }: { children: React.ReactNode }) {
@@ -130,26 +129,26 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
               <div
                 key={item.id}
                 className={cn(
-                  'pointer-events-auto fade-slide-in flex items-start gap-3 rounded-3xl border px-4 py-3 text-foreground shadow-[var(--shadow-xl)] backdrop-blur-xl',
-                  variantSurface[variant]
+                  'pointer-events-auto fade-slide-in flex items-start gap-3 rounded-[14px] border border-border-panel bg-card px-4 py-[14px] text-foreground shadow-toast',
+                  variantRule[variant]
                 )}
                 role="status"
                 aria-live="polite"
               >
-                <div className={cn('mt-0.5 shrink-0', variantIconColor[variant])}>{variantIcon[variant]}</div>
-                <div className="min-w-0 flex-1 space-y-1">
-                  <div className="text-sm font-semibold text-foreground">{item.title}</div>
+                <div className={cn('mt-px shrink-0', variantIconColor[variant])}>{variantIcon[variant]}</div>
+                <div className="min-w-0 flex-1">
+                  <div className="text-[14px] font-semibold text-foreground">{item.title}</div>
                   {item.description ? (
-                    <p className="text-sm text-muted-foreground">{item.description}</p>
+                    <p className="mt-[3px] text-[14px] text-ink-body">{item.description}</p>
                   ) : null}
                 </div>
                 <button
                   type="button"
                   onClick={() => dismissToast(item.id)}
-                  className="rounded-full p-1 opacity-70 transition hover:bg-black/5 hover:opacity-100 dark:hover:bg-white/10"
+                  className="-m-1 shrink-0 rounded-[6px] p-1 text-ink-muted transition-colors duration-200 hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-strong"
                   aria-label="Dismiss notification"
                 >
-                  <X className="size-4" />
+                  <X className="size-[15px]" aria-hidden="true" />
                 </button>
               </div>
             )

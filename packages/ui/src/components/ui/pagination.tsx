@@ -18,6 +18,10 @@ export interface PaginationProps {
   className?: string
 }
 
+// Storyboard 01 C09: a table footer, not a toolbar. Docks to the bottom of
+// its table panel (pass it as <Table footer={...}>) on the subtle fill.
+const pageButtonClassName = 'size-8 rounded-[9px] [&_svg]:size-[15px]'
+
 export function Pagination({
   page,
   pageSize,
@@ -56,20 +60,20 @@ export function Pagination({
     <nav
       aria-label="Pagination"
       className={cn(
-        'flex flex-col gap-3 border-t border-border/60 pt-4 text-sm sm:flex-row sm:items-center sm:justify-between',
+        'flex flex-wrap items-center justify-between gap-3 border-t border-border-inner bg-surface-subtle px-[18px] py-3',
         className,
       )}
     >
-      <div className="flex items-center gap-3 text-muted-foreground">
-        <span>
+      <div className="flex items-center gap-3">
+        <span className="font-mono text-[12px] text-ink-body">
           {rangeStart}–{rangeEnd} of {total}
         </span>
         {onPageSizeChange ? (
-          <label className="flex items-center gap-2">
+          <label className="flex items-center">
             <span className="sr-only">Rows per page</span>
             <Select
               aria-label="Rows per page"
-              className="h-9 w-auto rounded-xl px-3 text-xs"
+              className="h-8 w-auto rounded-[9px] pl-[10px] pr-[30px] font-mono text-[12px] [--chevron-right:9px] [--chevron-size:14px]"
               value={pageSize}
               disabled={isLoading}
               onChange={(event) => onPageSizeChange(Number(event.target.value))}
@@ -84,8 +88,8 @@ export function Pagination({
         ) : null}
       </div>
 
-      <div className="flex items-center gap-2">
-        <span className="mr-1 whitespace-nowrap text-muted-foreground">
+      <div className="flex items-center gap-[6px]">
+        <span className="mr-[6px] whitespace-nowrap font-mono text-[12px] text-ink-body">
           Page {Math.min(page, effectivePages)} of {effectivePages}
         </span>
 
@@ -93,24 +97,26 @@ export function Pagination({
           type="button"
           variant="outline"
           size="icon"
+          className={pageButtonClassName}
           aria-label="First page"
           disabled={atFirst || isLoading}
           onClick={() => go(1)}
         >
-          <ChevronsLeft className="size-4" />
+          <ChevronsLeft />
         </Button>
         <Button
           type="button"
           variant="outline"
           size="icon"
+          className={pageButtonClassName}
           aria-label="Previous page"
           disabled={atFirst || isLoading}
           onClick={() => go(page - 1)}
         >
-          <ChevronLeft className="size-4" />
+          <ChevronLeft />
         </Button>
 
-        <form onSubmit={submitJump} className="flex items-center gap-1">
+        <form onSubmit={submitJump} className="flex items-center">
           <label htmlFor="pagination-goto" className="sr-only">
             Go to page
           </label>
@@ -123,7 +129,7 @@ export function Pagination({
             disabled={isLoading}
             onChange={(event) => setJump(event.target.value.replace(/[^\d]/g, ''))}
             placeholder="Go"
-            className="h-9 w-14 rounded-xl border border-input bg-background/90 px-2 text-center text-xs shadow-[var(--shadow-sm)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/25 disabled:opacity-60"
+            className="h-8 w-12 rounded-[9px] border border-border-panel bg-card text-center font-mono text-[12px] text-foreground outline-none transition-[border-color,box-shadow] duration-200 placeholder:text-ink-muted focus-visible:border-primary-strong focus-visible:shadow-focus disabled:opacity-45"
           />
         </form>
 
@@ -131,21 +137,23 @@ export function Pagination({
           type="button"
           variant="outline"
           size="icon"
+          className={pageButtonClassName}
           aria-label="Next page"
           disabled={atLast || isLoading}
           onClick={() => go(page + 1)}
         >
-          <ChevronRight className="size-4" />
+          <ChevronRight />
         </Button>
         <Button
           type="button"
           variant="outline"
           size="icon"
+          className={pageButtonClassName}
           aria-label="Last page"
           disabled={atLast || isLoading}
           onClick={() => go(effectivePages)}
         >
-          <ChevronsRight className="size-4" />
+          <ChevronsRight />
         </Button>
       </div>
     </nav>

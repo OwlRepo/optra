@@ -7,7 +7,8 @@ export interface PhotoGridItem {
   id: string
   src?: string | null
   alt: string
-  caption?: string
+  /** String = one Mono line; node = caller-built caption (frame 3.6 SKU + description). */
+  caption?: React.ReactNode
   badge?: React.ReactNode
 }
 
@@ -39,7 +40,8 @@ export function PhotoGrid({
   className,
   ...props
 }: PhotoGridProps) {
-  const gridClassName = cn('grid gap-4', colsMap[maxCols], className)
+  // Frame 3.6 catalog items grid: 14px gap.
+  const gridClassName = cn('grid gap-[14px]', colsMap[maxCols], className)
 
   // Loading state wins regardless of whether items is also non-empty —
   // callers may pass stale items while a refetch is in flight.
@@ -50,6 +52,11 @@ export function PhotoGrid({
         {Array.from({ length: count }).map((_, index) => (
           <div key={`photo-grid-loading-${index}`} data-testid="photo-grid-tile-loading">
             <ImageTile isLoading alt="" />
+            <div
+              data-caption-placeholder
+              aria-hidden="true"
+              className="mt-2 h-[11px] w-[70%] rounded-[6px] bg-surface-skeleton"
+            />
           </div>
         ))}
       </div>
