@@ -13,16 +13,13 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import {
-  AppHeader,
   Badge,
   Button,
-  Card,
   EmptyState,
+  Eyebrow,
   Input,
   Modal,
-  PageSection,
-  PageShell,
-  Skeleton,
+  SkeletonRows,
   Table,
   TableBody,
   TableCell,
@@ -31,7 +28,8 @@ import {
   TableRow,
   useToast,
 } from '@repo/ui'
-import { BriefcaseBusiness, Plus } from 'lucide-react'
+import { LogOut, Plus } from 'lucide-react'
+import { BrandMark } from '@/components/brand-mark'
 import { logout } from '@/lib/api/auth'
 import { createWorkspace, listWorkspaces } from '@/lib/api/workspaces'
 import { isUnauthorized } from '@/lib/api/handle-unauthorized'
@@ -39,6 +37,8 @@ import { isUnauthorized } from '@/lib/api/handle-unauthorized'
 const schema = z.object({
   name: z.string().trim().min(1, 'Workspace name is required').max(255, 'Workspace name is too long'),
 })
+
+const CREATE_WORKSPACE_FORM_ID = 'create-workspace-form'
 
 type Workspace = {
   id: string
@@ -54,6 +54,10 @@ type WorkspaceListResponse = {
 }
 
 type FormData = z.infer<typeof schema>
+
+function roleTone(role: string): 'teal' | 'neutral' {
+  return role === 'owner' || role === 'admin' ? 'teal' : 'neutral'
+}
 
 export default function WorkspacesPage() {
   const router = useRouter()
@@ -165,75 +169,64 @@ export default function WorkspacesPage() {
   })
 
   return (
-    <PageShell contentClassName="pb-16">
-      <AppHeader
-        title="Workspaces"
-        description="Create a workspace, review your access, and jump into knowledge operations."
-        actions={
-          <Button size="sm" onClick={() => setIsModalOpen(true)}>
-            <Plus className="size-4" />
-            New workspace
-          </Button>
-        }
-        onLogout={handleLogout}
-      />
+    <div className="min-h-screen bg-background">
+      <header className="sticky top-0 z-40 border-b border-border bg-background/86 backdrop-blur-[16px]">
+        <div className="mx-auto flex max-w-[1040px] items-center justify-between gap-6 px-[clamp(20px,3.4vw,40px)] py-3.5">
+          <Link href="/" aria-label="Home" className="flex items-center gap-2.5 text-foreground">
+            <BrandMark decorative className="size-7" />
+            <span className="font-display text-xl font-semibold tracking-[-0.04em]">Optra</span>
+          </Link>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              aria-label="Log out"
+              className="gap-2 px-2.5"
+              onClick={() => {
+                void handleLogout().catch(() => {})
+              }}
+            >
+              <LogOut className="size-4" aria-hidden="true" />
+              Log out
+            </Button>
+            <Button size="sm" className="gap-2" onClick={() => setIsModalOpen(true)}>
+              <Plus className="size-4" aria-hidden="true" />
+              New workspace
+            </Button>
+          </div>
+        </div>
+      </header>
 
-      <div className="space-y-8 py-10">
-        <PageSection
-          eyebrow={<Badge variant="outline">Tenant access</Badge>}
-          title="Your workspaces"
-          description="Each workspace keeps its own knowledge bases, documents, and member permissions."
-        >
-          {isLoading ? (
-            <Card variant="elevated" className="space-y-4 p-6">
-              <Skeleton className="h-12 w-full" />
-              <Skeleton className="h-12 w-full" />
-              <Skeleton className="h-12 w-full" />
-            </Card>
-          ) : workspaces.length === 0 ? (
-            <EmptyState
-              icon={<BriefcaseBusiness className="size-5" />}
-              title="No workspaces yet"
-              description="Create your first workspace to start organizing knowledge."
-              actions={
-                <Button onClick={() => setIsModalOpen(true)}>
-                  <Plus className="size-4" />
-                  New workspace
-                </Button>
-              }
-            />
-          ) : (
-            <>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Role</TableHead>
-                    <TableHead className="text-right">Open</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {workspaces.map((workspace) => (
-                    <TableRow key={workspace.id}>
-                      <TableCell className="font-medium">{workspace.name}</TableCell>
-                      <TableCell>
-                        <Badge variant={workspace.role === 'owner' ? 'success' : 'secondary'}>{workspace.role}</Badge>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Button asChild variant="ghost" size="sm">
-                          {/* [support-surfaces-off] was: href={`/workspaces/${workspace.id}/chat`} */}
-                          <Link href={`/workspaces/${workspace.id}/procurement`}>Open</Link>
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-              {nextCursor ? (
-                <div className="mt-4 flex justify-center">
+      <main className="mx-auto max-w-[1040px] px-[clamp(20px,3.4vw,40px)] pb-16 pt-14">
+        <Eyebrow rule>Tenant access</Eyebrow>
+        <h1 className="mt-[18px] text-[42px] leading-[1.06]">Your workspaces</h1>
+        <p className="mt-3.5 max-w-[56ch] text-[17px] leading-[1.65] text-ink-body">
+          {/* [support-surfaces-off] was: Each workspace keeps its own knowledge bases, documents, and member permissions. (AppHeader description: Create a workspace, review your access, and jump into knowledge operations.) */}
+          Each workspace keeps its own vendors, documents, and member permissions.
+        </p>
+
+        {isLoading ? (
+          <div className="mt-9 overflow-hidden rounded-[18px] border border-border-panel bg-card">
+            <SkeletonRows rows={3} columns={3} />
+          </div>
+        ) : workspaces.length === 0 ? (
+          // [support-surfaces-off] was: description "Create your first workspace to start organizing knowledge."
+          <EmptyState
+            className="mt-9"
+            label="Start here"
+            title="No workspaces yet"
+            description="Create your first workspace to start matching purchase orders."
+          />
+        ) : (
+          <Table
+            containerClassName="mt-9"
+            footer={
+              nextCursor ? (
+                <div className="border-t border-border-inner bg-surface-subtle px-6 py-3.5">
                   <Button
                     type="button"
                     variant="outline"
+                    size="sm"
                     onClick={() => void loadMoreWorkspaces()}
                     isLoading={isLoadingMore}
                     loadingText="Loading"
@@ -242,11 +235,50 @@ export default function WorkspacesPage() {
                     {!isLoadingMore ? 'Load more workspaces' : null}
                   </Button>
                 </div>
-              ) : null}
-            </>
-          )}
-        </PageSection>
-      </div>
+              ) : undefined
+            }
+          >
+            <TableHeader>
+              <TableRow>
+                <TableHead className="px-6">Name</TableHead>
+                <TableHead className="w-[140px] px-3.5">Role</TableHead>
+                <TableHead className="w-[120px] px-6 text-right">Open</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {workspaces.map((workspace) => (
+                <TableRow key={workspace.id} className="relative">
+                  <TableCell className="px-6 py-3.5">
+                    <div className="flex min-w-0 items-center gap-3">
+                      <span
+                        aria-hidden="true"
+                        className="inline-flex size-[30px] shrink-0 items-center justify-center rounded-[9px] bg-primary-strong/10 font-display text-sm font-semibold text-primary-strong-hover"
+                      >
+                        {workspace.name.trim().charAt(0).toUpperCase() || 'W'}
+                      </span>
+                      <span className="truncate font-medium">{workspace.name}</span>
+                    </div>
+                  </TableCell>
+                  <TableCell className="p-3.5">
+                    <Badge variant={roleTone(workspace.role)} className="capitalize">
+                      {workspace.role}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="px-6 py-3.5 text-right">
+                    {/* [support-surfaces-off] was: href={`/workspaces/${workspace.id}/chat`} */}
+                    <Link
+                      href={`/workspaces/${workspace.id}/procurement`}
+                      className="text-sm font-medium text-primary-strong transition-colors duration-200 after:absolute after:inset-0 hover:text-primary-strong-hover"
+                    >
+                      Open <span aria-hidden="true">→</span>
+                    </Link>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </main>
 
       <Modal
         open={isModalOpen}
@@ -257,25 +289,38 @@ export default function WorkspacesPage() {
           }
         }}
         title="Create workspace"
-      >
-        <form className="space-y-4" onSubmit={onSubmit}>
-          <div className="space-y-2">
-            <label htmlFor="workspace-name" className="text-sm font-medium">
-              Workspace name
-            </label>
-            <Input id="workspace-name" {...register('name')} />
-            {errors.name ? <p className="text-sm text-destructive">{errors.name.message}</p> : null}
-          </div>
-          <div className="flex justify-end gap-3">
-            <Button type="button" variant="ghost" onClick={() => setIsModalOpen(false)}>
+        eyebrow="New"
+        footer={
+          <div className="flex justify-end gap-2.5">
+            <Button type="button" variant="ghost" className="px-3.5" onClick={() => setIsModalOpen(false)}>
               Cancel
             </Button>
-            <Button type="submit" isLoading={isSubmitting} loadingText="Creating">
+            <Button type="submit" form={CREATE_WORKSPACE_FORM_ID} isLoading={isSubmitting} loadingText="Creating">
               Create workspace
             </Button>
           </div>
+        }
+      >
+        <form id={CREATE_WORKSPACE_FORM_ID} onSubmit={onSubmit}>
+          <div className="flex flex-col gap-2">
+            <label htmlFor="workspace-name" className="text-sm font-medium">
+              Workspace name
+            </label>
+            <Input
+              id="workspace-name"
+              aria-invalid={errors.name ? true : undefined}
+              aria-describedby={errors.name ? 'workspace-name-error' : undefined}
+              className={errors.name ? 'border-destructive-tone' : undefined}
+              {...register('name')}
+            />
+            {errors.name ? (
+              <p id="workspace-name-error" className="text-[13px] text-destructive-strong-text">
+                {errors.name.message}
+              </p>
+            ) : null}
+          </div>
         </form>
       </Modal>
-    </PageShell>
+    </div>
   )
 }

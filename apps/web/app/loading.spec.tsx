@@ -1,11 +1,15 @@
 /** @vitest-environment jsdom */
 
 import React from 'react'
-import { render, screen } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { cleanup, render, screen } from '@testing-library/react'
+import { afterEach, describe, expect, it } from 'vitest'
 import RootLoading from './loading'
 
 describe('RootLoading', () => {
+  afterEach(() => {
+    cleanup()
+  })
+
   it('regression: drops "Preparing polished product shell." and the "Please wait" badge', () => {
     render(<RootLoading />)
 
