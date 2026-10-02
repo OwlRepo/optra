@@ -575,3 +575,12 @@ And one rule the owner made standing: every change now ships with its tests for 
 **Actual:** confirmed — the PDF, blank-row and stray-photo cases red then green; full api unit 823/823 and API e2e 104/104 three times.
 
 **Why different:** not different. **"Empty line" is a parser's idea; "describes nothing we can use" is the domain's. Filter on the fields the product matches on, after mapping, not on raw text — and before any paid or slow work (a photo fetch) runs for the row.**
+
+## 2026-10-03 — Fix B16: guard a rule across the codebase, not one module
+*Learning Contract: the plan's design is the prediction; the diff is below. No live prediction solicited.*
+
+**Predicted (from the approved plan):** the same pipe B13 added to catalogs turns the remaining eleven 500s into 400s.
+
+**Actual:** confirmed — the walk listed exactly the eleven routes, all answered 500 over HTTP before the fix and 400 after; api unit 825/825 and API e2e 105/105 three times. One surprise: a scrape request with an empty body was refused by body validation before the path pipe ran, so the sweep sends valid bodies.
+
+**Why different:** **A fix applied to one module invites the same bug in the next. When a rule is mechanical (every path id is a UUID), enforce it with one test that walks the whole codebase, so the next route cannot forget it.**
