@@ -431,3 +431,12 @@ And one rule the owner made standing: every change now ships with its tests for 
 **Actual:** confirmed. The new cross-load spec failed in all three cases with the exact production error before the fix and passed after it. A Bun 1.2.22 run, matching the production image, succeeded in both orders. pdfjs 6 destroys through the loading task (`task.destroy()`), not the document; the first attempt called `doc.destroy()` and failed.
 
 **Why different:** not different. The general lesson: **a library that bundles its own copy of a dependency is not "just a wrapper"; two copies of anything that writes a process-wide global will fight.** Check `node_modules/<pkg>/node_modules` for nested copies before adding a convenience wrapper.
+
+## 2026-10-02 — Reproducing a design handoff 1:1 across a whole app
+*Learning Contract: the plan's design is the prediction; the diff is below. No live prediction solicited.*
+
+**Predicted (from the approved plan):** locking the primitive API first (contract C-1) lets four authors write tokens, shell, matching and workspace screens in parallel without collisions, and restyling primitives changes most of what users see before any page is touched.
+
+**Actual:** the parallel authors never touched the same file, and every literal block applied cleanly (111 operations, 0 mismatches). But the first contract was not enough: twelve amendments (C-3) were needed once the screens were drawn against it — a compact segmented size, a Mono modal title with its own accessible name, a red metric tile, a header slot in the photo comparison, a page-owned mobile action. Integration then surfaced two things no author could see alone: AppShell renders header actions in exactly one place chosen by a media query, and the web test setup reports every viewport as mobile, so the disabled chat page's desktop History button vanished from its spec; and one rewritten spec never cleaned up between renders.
+
+**Why different:** a component contract is written from the component storyboard, but the screens are where the components meet real data and layout, so the screen frames decide the props. **Lock the contract from the screens that consume a primitive, not from the primitive's own sheet**, and run the whole suite, including the specs of pages you think are out of scope, as soon as a shared shell changes.
