@@ -639,6 +639,19 @@ describe('CatalogParseProcessor', () => {
       ])
     })
 
+    // With B5 a SKU over 200 characters is stored as no SKU; a row with nothing
+    // else would still become an empty item, so it is dropped like a blank row.
+    it('regression: a row whose only value is an over-long SKU becomes no item', async () => {
+      const { workspace, vendor } = await seedWorkspaceAndVendor(`${prefix}b4-longsku@example.com`, 'B4 Long Sku')
+      const csv = ['sku,description', `${'X'.repeat(201)},`, 'A1,Widget'].join('\n')
+      const catalog = await seedCatalog(workspace.id, vendor.id, 'catalog.csv', csv)
+
+      await processor.handleParse({ id: 'job-b4-longsku', data: { id: catalog.id } } as any)
+
+      const items = await db.select().from(catalogItems).where(eq(catalogItems.catalogId, catalog.id))
+      expect(items.map((item) => [item.lineNumber, item.sku])).toEqual([[1, 'A1']])
+    })
+
     it('regression: a blank row with a photo URL fetches no photo', async () => {
       const { workspace, vendor } = await seedWorkspaceAndVendor(`${prefix}b4-photo@example.com`, 'B4 Photo')
       const csv = ['sku,description,photo_url', ',,https://vendor.example.com/orphan.png', 'A1,Widget,'].join('\n')
