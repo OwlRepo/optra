@@ -494,3 +494,12 @@ And one rule the owner made standing: every change now ships with its tests for 
 **Actual:** confirmed — two web unit cases red then green, the page spec 15/15 three times, full web suite 669/669, and a browser test that follows the real flag link.
 
 **Why different:** not different. **When a page runs a write and then a read, derive both from one value; two hand-built filters drift.** A test that works around a bug (S4 opened the page with one id) hides it — follow the real link.
+
+## 2026-10-02 — Fix B7: a job timeout that cannot stop the job
+*Learning Contract: the plan's design is the prediction; the diff is below. No live prediction solicited.*
+
+**Predicted (from the approved plan):** bounding photo fetches in concurrency and total time keeps every catalog parse inside its attempt.
+
+**Actual:** confirmed — the concurrency and budget cases red then green, full api unit 785/785 and API e2e 94/94.
+
+**Why different:** not different. **Bull 4's `timeout` only rejects the job's promise; the handler keeps running. A timeout you cannot enforce has to be met by the work itself — bound the work, do not rely on the queue to stop it.**
