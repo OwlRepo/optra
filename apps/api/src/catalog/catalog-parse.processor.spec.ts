@@ -17,6 +17,9 @@ const mockRenderPdfToImages = jest.fn()
 
 jest.mock('@repo/ai', () => ({
   renderPdfToImages: (...args: unknown[]) => mockRenderPdfToImages(...args),
+  // The real limiter, loaded from its own file so the rest of @repo/ai stays mocked.
+  createLimit: (concurrency: number) =>
+    jest.requireActual('../../../../packages/ai/src/web/limit').createLimit(concurrency),
 }))
 
 async function cleanupFixtures(prefix: string) {
@@ -417,6 +420,95 @@ describe('CatalogParseProcessor', () => {
         [3, 'C3', 'Gizmo', `${base}/c3.png`],
       ])
       expect(images.fetchAndStore.mock.calls.map((call) => call[2])).toEqual(urls)
+    })
+  })
+
+  // B7. Photos were fetched one at a time, 20 s each at worst, inside a
+  // 5-minute Bull attempt; a catalog whose photo host hangs outlived the
+  // attempt, Bull started a retry beside the still-running one, and both
+  // rewrote the items. Photo fetching is now bounded in both concurrency and
+  // total time, so the job always finishes inside its attempt.
+  describe('photo fetching budget (B7)', () => {
+    function csvWithPhotos(count: number) {
+      const lines = ['sku,description,photo_url']
+      for (let i = 1; i <= count; i++) lines.push(`P${i},Item ${i},https://vendor.example.com/p${i}.png`)
+      return lines.join('\n')
+    }
+
+    it('regression: a catalog whose photo host hangs stops fetching at the budget and still finishes with every row', async () => {
+      const { workspace, vendor } = await seedWorkspaceAndVendor(`${prefix}b7-hang@example.com`, 'B7 Hang')
+      const catalog = await seedCatalog(workspace.id, vendor.id, 'catalog.csv', csvWithPhotos(16))
+      // Each fetch hits the 20 s timeout and fails; a controlled clock stands in for the wait.
+      let clock = Date.now()
+      const nowSpy = jest.spyOn(Date, 'now').mockImplementation(() => clock)
+      images.fetchAndStore.mockImplementation(async () => {
+        clock += 20_000
+        return null
+      })
+
+      try {
+        await processor.handleParse({ id: 'job-b7-hang', data: { id: catalog.id } } as any)
+      } finally {
+        nowSpy.mockRestore()
+      }
+
+      const [updated] = await db.select().from(catalogs).where(eq(catalogs.id, catalog.id))
+      expect(updated.status).toBe('done')
+      expect(updated.rowCount).toBe(16)
+      expect(images.fetchAndStore.mock.calls.length).toBeLessThan(16)
+      const items = await db
+        .select()
+        .from(catalogItems)
+        .where(eq(catalogItems.catalogId, catalog.id))
+        .orderBy(catalogItems.lineNumber)
+      expect(items).toHaveLength(16)
+      expect(items.every((item) => item.photoStorageKey === null)).toBe(true)
+    })
+
+    it('edge: fetches several photos at once, never more than four', async () => {
+      const { workspace, vendor } = await seedWorkspaceAndVendor(`${prefix}b7-concurrency@example.com`, 'B7 Concurrency')
+      const catalog = await seedCatalog(workspace.id, vendor.id, 'catalog.csv', csvWithPhotos(10))
+      let inFlight = 0
+      let maxInFlight = 0
+      images.fetchAndStore.mockImplementation(async () => {
+        inFlight += 1
+        maxInFlight = Math.max(maxInFlight, inFlight)
+        await new Promise((resolve) => setTimeout(resolve, 5))
+        inFlight -= 1
+        return null
+      })
+
+      await processor.handleParse({ id: 'job-b7-concurrency', data: { id: catalog.id } } as any)
+
+      expect(images.fetchAndStore).toHaveBeenCalledTimes(10)
+      expect(maxInFlight).toBeGreaterThan(1)
+      expect(maxInFlight).toBeLessThanOrEqual(4)
+    })
+
+    it('regression: photos fetched out of order still land on their own rows', async () => {
+      const { workspace, vendor } = await seedWorkspaceAndVendor(`${prefix}b7-order@example.com`, 'B7 Order')
+      const catalog = await seedCatalog(workspace.id, vendor.id, 'catalog.csv', csvWithPhotos(6))
+      images.fetchAndStore.mockImplementation(async (workspaceId: string, catalogId: string, url: string) => {
+        const n = Number(url.match(/p(\d+)\.png$/)![1])
+        await new Promise((resolve) => setTimeout(resolve, (7 - n) * 3))
+        return `${workspaceId}/catalogs/${catalogId}/images/p${n}.png`
+      })
+
+      await processor.handleParse({ id: 'job-b7-order', data: { id: catalog.id } } as any)
+
+      const items = await db
+        .select()
+        .from(catalogItems)
+        .where(eq(catalogItems.catalogId, catalog.id))
+        .orderBy(catalogItems.lineNumber)
+      expect(items.map((item) => [item.sku, item.photoStorageKey?.split('/').pop()])).toEqual([
+        ['P1', 'p1.png'],
+        ['P2', 'p2.png'],
+        ['P3', 'p3.png'],
+        ['P4', 'p4.png'],
+        ['P5', 'p5.png'],
+        ['P6', 'p6.png'],
+      ])
     })
   })
 })
