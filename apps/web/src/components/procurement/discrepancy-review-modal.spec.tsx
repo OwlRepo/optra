@@ -1,7 +1,7 @@
 /** @vitest-environment jsdom */
 
 import React from 'react'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ToastProvider } from '@repo/ui'
 import { DiscrepancyReviewModal } from './discrepancy-review-modal'
@@ -354,6 +354,20 @@ describe('DiscrepancyReviewModal', () => {
       expect(await screen.findByText('Read-only')).toBeDefined()
       expect(screen.getByText('Only an owner or admin can record a decision on this discrepancy.')).toBeDefined()
       expect(screen.queryByRole('radiogroup', { name: 'Outcome' })).toBeNull()
+    })
+
+    it('regression: decision history and comparison runs stay lists, one item per entry', async () => {
+      listDecisionsMock.mockResolvedValue([
+        makeDecision({ id: 'd1', note: 'First call.', createdAt: '2026-07-02T00:00:00.000Z' }),
+        makeDecision({ id: 'd2', outcome: 'resolved', note: 'Vendor credited us.', createdAt: '2026-07-03T00:00:00.000Z' }),
+      ])
+
+      renderModal()
+
+      const entry = (await screen.findByText('Vendor credited us.')).closest('li')
+      expect(entry).not.toBeNull()
+      expect(entry?.closest('ol')?.querySelectorAll(':scope > li')).toHaveLength(2)
+      expect(within(entry as HTMLElement).getByText('Resolved')).toBeDefined()
     })
 
     it('regression: records the outcome chosen from the radio cards with its note', async () => {

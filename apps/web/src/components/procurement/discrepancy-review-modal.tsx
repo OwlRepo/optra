@@ -332,11 +332,11 @@ export function DiscrepancyReviewModal({
               ) : (
                 // Frame 2.9 run rows (C-3 #10: page-local, not HistoryRow):
                 // 2px rule red when failed, teal for the latest, else neutral.
-                <div className="flex flex-col gap-[6px]">
+                <ol className="flex flex-col gap-[6px]">
                   {runs.map((run, index) => {
                     const failed = run.status === 'failed'
                     return (
-                      <div
+                      <li
                         key={run.id}
                         className={cn(
                           'flex flex-wrap items-center gap-x-[10px] gap-y-2 border-l-2 px-3 py-2',
@@ -359,10 +359,10 @@ export function DiscrepancyReviewModal({
                         {run.lastError ? (
                           <span className="basis-full text-[12px] text-destructive-strong-text">{run.lastError}</span>
                         ) : null}
-                      </div>
+                      </li>
                     )
                   })}
-                </div>
+                </ol>
               )}
             </div>
             <div>
@@ -370,13 +370,13 @@ export function DiscrepancyReviewModal({
               {decisions.length === 0 ? (
                 <p className="text-[14px] text-ink-muted">No decisions recorded yet.</p>
               ) : (
-                <div className="flex flex-col gap-[6px]">
+                <ol className="flex flex-col gap-[6px]">
                   {decisions.map((decision, index) => {
                     // Oldest first, so the latest call is the last row and
                     // takes the teal rule + tinted fill (frame 2.9).
                     const latest = index === decisions.length - 1
                     return (
-                      <div
+                      <li
                         key={decision.id}
                         className={cn(
                           'border-l-2 px-3 py-2',
@@ -394,10 +394,10 @@ export function DiscrepancyReviewModal({
                           </span>
                         </div>
                         <p className="mt-[6px] text-[14px] leading-[1.55]">{decision.note}</p>
-                      </div>
+                      </li>
                     )
                   })}
-                </div>
+                </ol>
               )}
             </div>
           </section>
