@@ -10,6 +10,7 @@ import { eq } from 'drizzle-orm'
 import { Catalog, catalogItems, catalogs, db } from '@repo/db'
 import { createLimit, renderPdfToImages } from '@repo/ai'
 import { isBudgetExceeded } from '../limits/usage.service'
+import { MAX_SKU_LENGTH } from '../procurement/column-mapping'
 import { StorageService } from '../storage/storage.service'
 import { StorageObjectNotFoundError } from '../storage/storage.errors'
 import { CatalogExtractionService } from './catalog-extraction.service'
@@ -282,7 +283,8 @@ export class CatalogParseProcessor {
   }
 
   // Delete-then-insert makes a retried job (Bull attempts:3, which now really
-  // retries transient failures) idempotent.
+  // retries transient failures) idempotent. Both parse paths (spreadsheet and
+  // PDF) funnel through here, so the column limits are enforced once.
   private async replaceItems(catalogId: string, workspaceId: string, rows: ItemToInsert[]) {
     await db.delete(catalogItems).where(eq(catalogItems.catalogId, catalogId))
 
@@ -292,7 +294,10 @@ export class CatalogParseProcessor {
           workspaceId,
           catalogId,
           lineNumber: row.lineNumber,
-          sku: row.sku,
+          // catalog_items.sku is varchar(200). One SKU it cannot hold must not
+          // fail the whole catalog: the item keeps no SKU (rawRow keeps the
+          // vendor's text), as procurement's validateLineItem does.
+          sku: row.sku !== null && row.sku.length <= MAX_SKU_LENGTH ? row.sku : null,
           description: row.description,
           photoStorageKey: row.photoStorageKey,
           sourcePageNumber: row.sourcePageNumber,
