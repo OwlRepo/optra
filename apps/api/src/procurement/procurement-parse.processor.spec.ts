@@ -753,7 +753,8 @@ describe('ProcurementParseProcessor', () => {
   // save them. Every expected value was observed by replaying this processor's
   // own calls on the same bytes: Papa.parse(text, { header: true,
   // skipEmptyLines: false }), XLSX.read -> sheet_to_json({ defval: '' }) ->
-  // Papa.unparse, file read as utf-8, sourceRow = record index + 2.
+  // Papa.unparse, file read as utf-8, sourceRow = record index + 2 (XLSX:
+  // sheet row, see 'XLSX source rows (B1)').
   describe('real-world files (launch hardening)', () => {
     it('error: fails a truncated .xlsx at once with the spreadsheet message and stores no lines', async () => {
       const workspace = await seedWorkspace(`${prefix}rw-corrupt-xlsx@example.com`, prefix)
