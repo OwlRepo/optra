@@ -85,6 +85,14 @@ function mapRowToCatalogRow(row: Record<string, string>): MappedCatalogRow {
 
 // A problem with the catalog file itself: retrying cannot fix it, so the
 // worker fails the catalog at once instead of handing it back to Bull.
+// B17. A catalog with no item in it fails at parse with a reason, the rule
+// procurement files follow (NO_LINE_ITEMS_MESSAGE); `done` with 0 items read as
+// success and matching simply found nothing.
+export const NO_CATALOG_ITEMS_MESSAGE =
+  'No catalog items were found in this file. Its first row must hold column headers such as SKU and Description, and it must be saved as a UTF-8 CSV or an XLSX workbook.'
+export const NO_PDF_CATALOG_ITEMS_MESSAGE =
+  'No catalog items could be read from this PDF. Check that its pages show product SKUs or descriptions as text or clear images.'
+
 export class CatalogParseInputError extends Error {
   constructor(message: string) {
     super(message)
@@ -239,6 +247,9 @@ export class CatalogParseProcessor {
       }
     }
 
+    if (rows.length === 0) {
+      throw new CatalogParseInputError(NO_PDF_CATALOG_ITEMS_MESSAGE)
+    }
     await this.replaceItems(catalogId, workspaceId, rows)
     return rows.length
   }
@@ -257,6 +268,9 @@ export class CatalogParseProcessor {
     // B4. A ",,"-only row (or one with values only in unmapped columns)
     // describes nothing; it is dropped before any photo is fetched for it.
     const mapped = parsed.data.map((row) => mapRowToCatalogRow(row)).filter(describesAnItem)
+    if (mapped.length === 0) {
+      throw new CatalogParseInputError(NO_CATALOG_ITEMS_MESSAGE)
+    }
 
     const limit = createLimit(PHOTO_FETCH_CONCURRENCY)
     const deadline = Date.now() + PHOTO_PHASE_BUDGET_MS
