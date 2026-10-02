@@ -745,9 +745,9 @@
     "semantic_hash": "8b1127ea455c960375ffc7d9a08d5e1c"
   },
   "apps/api/src/procurement/procurement-parse.processor.spec.ts": {
-    "mtime": 1790954938.5193512,
-    "ast_hash": "faa51e7b81a3527a404ed12908401cc9",
-    "semantic_hash": "faa51e7b81a3527a404ed12908401cc9"
+    "mtime": 1790955273.492432,
+    "ast_hash": "cea586c24c03cacdcbf5d776ec0e25aa",
+    "semantic_hash": "cea586c24c03cacdcbf5d776ec0e25aa"
   },
   "apps/api/src/procurement/procurement-parse.processor.ts": {
     "mtime": 1790954990.2148242,
@@ -3485,9 +3485,9 @@
     "semantic_hash": "38c2ae4de4363ad578edbf70aee9b546"
   },
   "docs/ai/contracts/db-contracts.md": {
-    "mtime": 1790954881.6015399,
-    "ast_hash": "b43d03b6c33531935124715396714363",
-    "semantic_hash": "b43d03b6c33531935124715396714363"
+    "mtime": 1790955273.4920883,
+    "ast_hash": "9cff369df3d11ffe22d3a026f95b1ddc",
+    "semantic_hash": "9cff369df3d11ffe22d3a026f95b1ddc"
   },
   "docs/ai/entry-point.md": {
     "mtime": 1790954881.6020637,
