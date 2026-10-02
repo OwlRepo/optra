@@ -1854,4 +1854,41 @@ describe('Procurement flow (e2e)', () => {
       )
     })
   })
+
+  describe('exact flag deltas (B9)', () => {
+    it('regression: a sub-cent price mismatch compared over HTTP carries its real delta', async () => {
+      const owner = await seedOwnerWithWorkspace(app, `${prefix}b9-delta@example.com`, 'B9 Delta')
+      const vendorId = await createVendor(app, owner.workspaceId, owner.accessToken)
+      const base = `/workspaces/${owner.workspaceId}/procurement`
+      const auth = `Bearer ${owner.accessToken}`
+
+      const po = await request(app.getHttpServer())
+        .post(`${base}/purchase-orders`)
+        .set('Authorization', auth)
+        .field('vendorId', vendorId)
+        .field('poNumber', 'PO-B9')
+        .field('currency', 'USD')
+        .attach('file', Buffer.from('sku,description,qty,unit price\nA1,Washer,300,0.3333'), 'po.csv')
+        .expect(201)
+      await waitForPoDone(po.body.id)
+      const invoice = await request(app.getHttpServer())
+        .post(`${base}/invoices`)
+        .set('Authorization', auth)
+        .field('purchaseOrderId', po.body.id)
+        .field('invoiceNumber', 'INV-B9')
+        .field('currency', 'USD')
+        .attach('file', Buffer.from('sku,description,qty,unit price\nA1,Washer,300,0.33'), 'invoice.csv')
+        .expect(201)
+      await waitForInvoiceDone(invoice.body.id)
+
+      const compared = await request(app.getHttpServer())
+        .post(`${base}/discrepancies/compare`)
+        .set('Authorization', auth)
+        .send({ purchaseOrderId: po.body.id, invoiceId: invoice.body.id })
+        .expect(201)
+
+      expect(compared.body.flags).toHaveLength(1)
+      expect(compared.body.flags[0]).toMatchObject({ flagType: 'price_mismatch', delta: '-0.0033' })
+    })
+  })
 })

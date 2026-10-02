@@ -539,3 +539,12 @@ And one rule the owner made standing: every change now ships with its tests for 
 **Actual:** confirmed — unit (helper, header, both services, web download helper), API e2e and browser cases red then green; full api unit 804/804 twice (one unrelated reconcile flake on the third run), API e2e 101/101 three times, web 677/677, browser 49 passed three times.
 
 **Why different:** not different. **Fixing an encoding at the way in moves the problem to every way out: Node rejects header characters above U+00FF, so the first real `日本` filename would have turned every download of it into a 500. Test the header with `http.validateHeaderValue`, not by string comparison alone.**
+
+## 2026-10-03 — Fix B9: a mismatch whose number said zero
+*Learning Contract: the plan's design is the prediction; the diff is below. No live prediction solicited.*
+
+**Predicted (from the approved plan):** subtracting the stated decimals exactly gives a sub-cent flag its real delta and leaves every whole-number and cent delta as it was.
+
+**Actual:** confirmed, with one surprise. The sub-cent and fractional-quantity cases went red then green, and full api unit 811/811 and API e2e 102/102 passed three times. The surprise: the first exact implementation crashed on a stored `1e400`, which DuckDB reads as `Infinity`. It is now a null delta.
+
+**Why different:** **A number a flag shows a person is evidence, not arithmetic: round it and a real difference can print as zero. Doubles cannot hold decimals exactly, so compute money and quantity differences from decimal text (BigInt-scaled), and decide what an unrepresentable value means before it reaches that code.**
