@@ -599,8 +599,10 @@ describe('KnowledgeBasePage', () => {
 
     renderPage()
 
-    expect(await screen.findByRole('link', { name: 'Knowledge Bases' })).toBeDefined()
-    expect(screen.getByRole('link', { name: 'Knowledge Bases' }).getAttribute('aria-current')).toBe('page')
+    // [support-surfaces-off] was: Knowledge Bases link present with
+    // aria-current="page". It is hidden from the nav; restore on re-enable.
+    expect((await screen.findAllByRole('link', { name: 'Overview' })).length).toBeGreaterThanOrEqual(1)
+    expect(screen.queryByRole('link', { name: 'Knowledge Bases' })).toBeNull()
   })
 
   it('renders scrape website action in top bar', async () => {

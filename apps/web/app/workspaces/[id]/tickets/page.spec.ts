@@ -472,7 +472,10 @@ describe('TicketsPage', () => {
     renderPage()
 
     expect(await screen.findByText('Ticket copilot')).toBeDefined()
-    expect(screen.getByRole('link', { name: 'Tickets' }).getAttribute('aria-current')).toBe('page')
+    // [support-surfaces-off] was: Tickets link has aria-current="page". Tickets is
+    // hidden from the nav; restore the original assertion on re-enable.
+    expect(screen.getAllByRole('link', { name: 'Overview' }).length).toBeGreaterThanOrEqual(1)
+    expect(screen.queryByRole('link', { name: 'Tickets' })).toBeNull()
   })
 
   it('logs out and redirects to login', async () => {
