@@ -28,6 +28,8 @@ const NAMES = [
   'café.csv',
   '日本-catalog.csv',
   'march-invoices.csv',
+  // A character above U+FFFF: one code point in Postgres, two UTF-16 units in JS.
+  'kit-\u{1F4E6}.csv',
 ]
 
 describe('stored-name backfill, migration 0035 (B8 follow-up)', () => {
