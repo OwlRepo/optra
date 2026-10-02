@@ -16,25 +16,25 @@ before payment, with a citation behind every verdict. It is built on a
 multi-tenant RAG core that still powers grounded chat over a workspace's own
 documents, AI ticket extraction and web-source crawling.
 
-**Built to production standards, but not a production service.** Corrected
-2026-08-16 on the owner's word: this is a **personal portfolio project shown to
-interviewers**. There are no external customers, no billing and nothing to buy.
-It is still engineered and deployed like the real thing (multi-tenant
-workspaces, JWT + OTP auth, rate limits and token budgets, GitHub Actions CI/CD
-auto-deploying to a live VPS with backups), so the engineering discipline
-applies in full.
+**Going commercial (owner decision 2026-10-02).** Optra began as a portfolio
+project (2026-08-16 framing) and is now being prepared to sell through Lemon
+Squeezy as Merchant of Record. Seller: Romeo Angeles Jr., individual,
+Philippines (`apps/web/src/lib/legal-facts.ts`). Public legal pages live at
+`/terms`, `/privacy` and `/refund`. Billing itself (checkout, trial, line-item
+metering, per-plan token budgets) does not exist yet; it is a Deep task that
+starts after Lemon Squeezy approval. Unit costs and pricing rationale:
+`docs/business/unit-economics.md`.
 
-What that distinction changes, and what it does not:
+What that changes:
 
 - **Unchanged: keep the rigour.** TDD, workspace-isolation checks, migration
   care, job-status integrity, and the Deep classification for auth, schema,
-  queue and RAG work. These are what a reviewer looks at, and they are the point
-  of the project.
-- **Relaxed: public claims and billing.** Marketing copy that promises a metered
-  quota, a certification or a customer relationship is not a launch blocker
-  while nothing can be bought and nobody is onboarded. Log such items in
-  `docs/ai/risk-register.md` as deferred-with-conditions instead of blocking the
-  change. They become blockers the moment real users or payments exist.
+  queue and RAG work.
+- **Tightened: public claims.** Every claim on the public site and legal pages
+  must be traceable to code, a measurement or a cited source. No placeholder
+  metrics, no implied customers, no promise the product cannot keep. Quota and
+  overage copy is a launch blocker until metering enforces it
+  (`docs/ai/risk-register.md` "Landing Pricing Copy").
 
 > *Naming note (corrected 2026-08-16, 2026-09-20):* the product was renamed
 > Mnemra → Optra in the 2026-07-10 repositioning; only prose was updated.
