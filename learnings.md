@@ -413,3 +413,12 @@ And one rule the owner made standing: every change now ships with its tests for 
 **Actual:** graphify's semantic cache is keyed by content hash inside per-prompt `p{fingerprint}/` namespaces, and the skill never prunes it. The old `semantic_cache()` picked one namespace and loaded every entry in it, so it replayed stale drafts of edited docs (82 entries for 77 docs) and missed docs cached only under an older prompt. The fix resolves exactly one entry per doc: hash the file as it is now with `graphify.cache.file_hash`, look that hash up in every namespace, take the newest (`scripts/graphify-complete.py` `semantic_cache`), and fail loudly naming any doc with no entry. Separately, `/graphify . --update` on its own rewrites `graph.json` without the completer's `coverage` block, so the completer must run after it.
 
 **Why different:** a content-addressed cache looks self-cleaning, but only a lookup by the *current* hash benefits from that; enumerating a directory treats every historical draft as live. **A cache keyed by content is only as fresh as the key you ask it for.**
+
+## 2026-10-02 — Disabling the Mnemra-era support surfaces
+*Learning Contract: the plan's design is the prediction; the diff is below. No live prediction solicited.*
+
+**Predicted (from the approved plan):** hiding by commenting only the entry points keeps every feature spec green; no existing test is deleted or skipped.
+
+**Actual:** three specs of the hidden pages asserted their own sidebar link was active, so they changed with the nav. Mid-task the owner chose to disable the routes as well: a `notFound()` line in each route's `layout.tsx`. That parked the 7 browser tests that drive those pages and 3 prod-smoke tests (`test.skip`, tagged), and moved the shared KB upload helper onto the BFF. `notFound()` renders the not-found screen but the status stays 200, because the root `loading.tsx` has already started the stream.
+
+**Why different:** a page's tests are not only its own spec. Integration assertions (the nav's active link), shared e2e helpers (KB upload as a fixture for the storage-access suite) and the streaming boundary all reached across the "five areas" line. A comment-out kill switch is cheap to flip but cannot give a hard 404 behind a root Suspense boundary; that needs middleware.

@@ -1,5 +1,12 @@
 ## Hide the support surfaces (Knowledge Bases, Datasets, Chat, Tickets, Insights)
 
+> **Amendment 2026-10-02 (owner, mid-execution):** "disable those not needed routes, then comment out their components on the sidebar and/or bottom nav". Changes against the plan below:
+> - Each of the five routes gets `apps/web/app/workspaces/[id]/<segment>/layout.tsx` with a tagged `notFound()` line (re-enable: comment it out). Unit spec `support-surfaces-disabled.spec.ts`. The status stays 200 (soft 404) because root `loading.tsx` streams first; Playwright asserts the "Page not found" screen.
+> - The 3 hidden-page unit cases that asserted their own nav link was active (`chat`, `tickets`, `knowledge-bases/[kbId]` page specs) now assert that the link is absent.
+> - `apps/e2e/support/flows.ts` `uploadKnowledgeBaseDocument` posts through the KB BFF, so `access.spec.ts` and `storage-errors.spec.ts` keep their KB coverage.
+> - `knowledge-base.spec.ts` and `datasets.spec.ts` (7 tests) and 3 prod-smoke tests drive the disabled pages and are parked with tagged `test.skip`.
+> - BFF routes, API and jobs are unchanged.
+
 TL;DR: Optra's core is PO ↔ invoice matching. Today the sidebar, the mobile tab bar, the search box, the Overview cards and even the post-login landing still steer people into the old Mnemra-era support tools. We hide those five areas by **commenting out their entry points** (owner's choice, 2026-10-02). Each commented line carries the tag `[support-surfaces-off]`, and a tip comment at the top of every touched file explains how to turn them back on. Think of it as taking down the signs, not demolishing the rooms: the pages, BFF routes, API and jobs stay built and tested, and a direct URL still opens them for a signed-in member. Users now land on **Purchase Orders**.
 
 ### Flowchart (high-level)
