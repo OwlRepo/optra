@@ -65,6 +65,12 @@ function findValue(row: Record<string, string>, aliases: string[]): string | nul
   return null
 }
 
+// An item needs something to match on: catalog matching searches by SKU or
+// description, so a row with neither is not an item (B4).
+function describesAnItem(row: { sku: string | null; description: string | null }): boolean {
+  return Boolean(row.sku?.trim() || row.description?.trim())
+}
+
 function mapRowToCatalogRow(row: Record<string, string>): MappedCatalogRow {
   return {
     sku: findValue(row, SKU_ALIASES),
@@ -217,7 +223,7 @@ export class CatalogParseProcessor {
         continue
       }
 
-      for (const item of items) {
+      for (const item of items.filter(describesAnItem)) {
         lineNumber += 1
         rows.push({
           lineNumber,
@@ -245,7 +251,9 @@ export class CatalogParseProcessor {
     }
 
     const parsed = Papa.parse<Record<string, string>>(csvContent, { header: true, skipEmptyLines: true })
-    const mapped = parsed.data.map((row) => mapRowToCatalogRow(row))
+    // B4. A ",,"-only row (or one with values only in unmapped columns)
+    // describes nothing; it is dropped before any photo is fetched for it.
+    const mapped = parsed.data.map((row) => mapRowToCatalogRow(row)).filter(describesAnItem)
 
     const limit = createLimit(PHOTO_FETCH_CONCURRENCY)
     const deadline = Date.now() + PHOTO_PHASE_BUDGET_MS
