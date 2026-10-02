@@ -559,4 +559,48 @@ describe('Catalog flow (e2e)', () => {
       }
     })
   })
+
+  // B13: a malformed :vendorId or :catalogId used to reach a uuid query and
+  // answer 500. It must be a 400 before any query runs, on every route.
+  describe('malformed vendor and catalog ids (B13)', () => {
+    it('error: every catalog route answers 400 for a malformed vendor id', async () => {
+      const owner = await seedOwnerWithWorkspace(app, `${prefix}b13-vendor@example.com`, 'B13 Vendor')
+      const ws = `/workspaces/${owner.workspaceId}/vendors/not-a-uuid`
+      const auth = `Bearer ${owner.accessToken}`
+
+      const answers = [
+        await request(app.getHttpServer()).get(ws).set('Authorization', auth),
+        await request(app.getHttpServer()).get(`${ws}/price-history`).set('Authorization', auth),
+        await request(app.getHttpServer()).get(`${ws}/exception-summary`).set('Authorization', auth),
+        await request(app.getHttpServer()).get(`${ws}/price-terms`).set('Authorization', auth),
+        await request(app.getHttpServer())
+          .post(`${ws}/price-terms`)
+          .set('Authorization', auth)
+          .send({ sku: 'A1', unitPrice: '5.00', currency: 'USD', effectiveFrom: '2026-01-01' }),
+        await request(app.getHttpServer()).get(`${ws}/catalogs`).set('Authorization', auth),
+        await request(app.getHttpServer())
+          .post(`${ws}/catalogs`)
+          .set('Authorization', auth)
+          .attach('file', Buffer.from('sku,description\nA1,Widget'), 'catalog.csv'),
+        await request(app.getHttpServer())
+          .post(`${ws}/catalogs/scrape`)
+          .set('Authorization', auth)
+          .send({ seedUrl: 'https://vendor.example.com/' }),
+        await request(app.getHttpServer()).get(`${ws}/catalogs/${randomUUID()}/items`).set('Authorization', auth),
+      ].map((res) => ({ status: res.status, message: res.body.message }))
+
+      expect(answers).toEqual(Array(9).fill({ status: 400, message: 'Validation failed (uuid is expected)' }))
+    })
+
+    it('error: listing a catalog\'s items answers 400 for a malformed catalog id', async () => {
+      const owner = await seedOwnerWithWorkspace(app, `${prefix}b13-catalog@example.com`, 'B13 Catalog')
+
+      const res = await request(app.getHttpServer())
+        .get(`/workspaces/${owner.workspaceId}/vendors/${randomUUID()}/catalogs/not-a-uuid/items`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .expect(400)
+
+      expect(res.body.message).toBe('Validation failed (uuid is expected)')
+    })
+  })
 })

@@ -503,3 +503,12 @@ And one rule the owner made standing: every change now ships with its tests for 
 **Actual:** confirmed — the concurrency and budget cases red then green, full api unit 785/785 and API e2e 94/94.
 
 **Why different:** not different. **Bull 4's `timeout` only rejects the job's promise; the handler keeps running. A timeout you cannot enforce has to be met by the work itself — bound the work, do not rely on the queue to stop it.**
+
+## 2026-10-02 — Fix B13: path ids reached Postgres unparsed
+*Learning Contract: the plan's design is the prediction; the diff is below. No live prediction solicited.*
+
+**Predicted (from the approved plan):** `ParseUUIDPipe` on every catalog `:vendorId` and `:catalogId` turns the 500s into 400s with no other behaviour change.
+
+**Actual:** confirmed — the route-metadata unit test and the HTTP cases red then green; full api unit 786/786 and API e2e 96/96, three runs each.
+
+**Why different:** not different. **A path param skips the global `ValidationPipe`'s DTO checks, so an id the database types as `uuid` needs its pipe on every route, and a test that walks the route metadata catches the next route that forgets it.**
