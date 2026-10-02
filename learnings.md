@@ -422,3 +422,12 @@ And one rule the owner made standing: every change now ships with its tests for 
 **Actual:** three specs of the hidden pages asserted their own sidebar link was active, so they changed with the nav. Mid-task the owner chose to disable the routes as well: a `notFound()` line in each route's `layout.tsx`. That parked the 7 browser tests that drive those pages and 3 prod-smoke tests (`test.skip`, tagged), and moved the shared KB upload helper onto the BFF. `notFound()` renders the not-found screen but the status stays 200, because the root `loading.tsx` has already started the stream.
 
 **Why different:** a page's tests are not only its own spec. Integration assertions (the nav's active link), shared e2e helpers (KB upload as a fixture for the storage-access suite) and the streaming boundary all reached across the "five areas" line. A comment-out kill switch is cheap to flip but cannot give a hard 404 behind a root Suspense boundary; that needs middleware.
+
+## 2026-10-02 — One process, one copy of pdfjs
+*Learning Contract: the plan's design is the prediction; the diff is below. No live prediction solicited.*
+
+**Predicted (from the approved plan):** the version-mismatch failures came from two pdfjs copies sharing `globalThis.pdfjsWorker`; reading text and rendering pages through one copy (`loadPdfjs()`) would make either order work, on Node and on the production Bun runtime.
+
+**Actual:** confirmed. The new cross-load spec failed in all three cases with the exact production error before the fix and passed after it. A Bun 1.2.22 run, matching the production image, succeeded in both orders. pdfjs 6 destroys through the loading task (`task.destroy()`), not the document; the first attempt called `doc.destroy()` and failed.
+
+**Why different:** not different. The general lesson: **a library that bundles its own copy of a dependency is not "just a wrapper"; two copies of anything that writes a process-wide global will fight.** Check `node_modules/<pkg>/node_modules` for nested copies before adding a convenience wrapper.

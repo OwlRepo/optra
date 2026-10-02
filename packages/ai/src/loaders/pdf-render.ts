@@ -1,4 +1,5 @@
 import { createCanvas } from '@napi-rs/canvas'
+import { loadPdfjs } from './pdfjs'
 
 // Renders PDF pages to PNG images for the vision-extraction path (scanned/
 // image-only PDFs with no text layer). Uses pdfjs-dist (Apache-2.0) +
@@ -28,7 +29,7 @@ export async function renderPdfToImages(data: Buffer, opts: RenderPdfOptions = {
   const maxPages = opts.maxPages ?? DEFAULT_MAX_PAGES
   const scale = opts.scale ?? DEFAULT_SCALE
 
-  const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs')
+  const pdfjsLib = await loadPdfjs()
 
   // pdfjs-dist explicitly rejects a Node Buffer instance (even though Buffer
   // extends Uint8Array) and requires a plain Uint8Array — verified via its
