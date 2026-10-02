@@ -689,4 +689,31 @@ describe('DiscrepanciesPage', () => {
       expect(screen.getAllByText('Member').length).toBeGreaterThan(0)
     })
   })
+
+  describe('no access (B18)', () => {
+    const denied = { statusCode: 403, message: 'Not a member of this workspace' }
+
+    it('error: a non-member sees the no-access state, not an error toast', async () => {
+      getWorkspaceMock.mockRejectedValue(denied)
+      listDiscrepanciesMock.mockRejectedValue(denied)
+      listWorkspacesMock.mockResolvedValue({ items: [], nextCursor: null })
+
+      renderPage()
+
+      expect(await screen.findByRole('heading', { name: "You don't have access to this workspace" })).toBeDefined()
+      expect(screen.queryByText('Failed to load discrepancies')).toBeNull()
+      expect(pushMock).not.toHaveBeenCalledWith('/login')
+    })
+
+    it('edge: a failure that is not a 403 still shows the error toast', async () => {
+      getWorkspaceMock.mockRejectedValue({ statusCode: 500, message: 'Internal server error' })
+      listDiscrepanciesMock.mockResolvedValue(listOf([]))
+      listWorkspacesMock.mockResolvedValue({ items: [], nextCursor: null })
+
+      renderPage()
+
+      expect(await screen.findByText('Failed to load discrepancies')).toBeDefined()
+      expect(screen.queryByRole('heading', { name: "You don't have access to this workspace" })).toBeNull()
+    })
+  })
 })

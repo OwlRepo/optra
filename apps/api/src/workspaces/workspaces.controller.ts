@@ -6,6 +6,7 @@ import {
   HttpCode,
   HttpStatus,
   Param,
+  ParseUUIDPipe,
   Patch,
   Post,
   Query,
@@ -93,7 +94,7 @@ export class WorkspacesController {
   @Roles('owner')
   remove(
     @Param('workspaceId') workspaceId: string,
-    @Param('userId') userId: string,
+    @Param('userId', new ParseUUIDPipe()) userId: string,
   ) {
     return this.workspacesService.removeMember(workspaceId, userId)
   }

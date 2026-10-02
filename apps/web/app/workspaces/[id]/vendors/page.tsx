@@ -25,7 +25,8 @@ import {
 import { Plus } from 'lucide-react'
 import { logout } from '@/lib/api/auth'
 import { createVendor, listVendors, type VendorDetail } from '@/lib/api/catalog'
-import { isUnauthorized } from '@/lib/api/handle-unauthorized'
+import { isForbidden, isUnauthorized } from '@/lib/api/handle-unauthorized'
+import { WorkspaceAccessDenied } from '@/components/workspace-access-denied'
 import { getWorkspace, listWorkspaces } from '@/lib/api/workspaces'
 import { formatDate } from '@/lib/format-date'
 import { WorkspaceNav, workspacePrimaryTabItems } from '@/components/workspace-nav'
@@ -60,6 +61,9 @@ export default function VendorsPage({ params }: { params: { id: string } }) {
   const [vendors, setVendors] = React.useState<VendorDetail[]>([])
   const [membership, setMembership] = React.useState<WorkspaceMembership | null>(null)
   const [isLoading, setIsLoading] = React.useState(true)
+  // B18. Set when the first load answers 403; the page then shows only the
+  // no-access state instead of empty content.
+  const [accessDenied, setAccessDenied] = React.useState(false)
   const [isCreateModalOpen, setIsCreateModalOpen] = React.useState(false)
 
   const vendorForm = useForm<VendorFormData>({
@@ -91,6 +95,10 @@ export default function VendorsPage({ params }: { params: { id: string } }) {
     } catch (err) {
       if (isUnauthorized(err)) {
         router.push('/login')
+        return
+      }
+      if (isForbidden(err)) {
+        setAccessDenied(true)
         return
       }
       toastRef.current({
@@ -158,52 +166,58 @@ export default function VendorsPage({ params }: { params: { id: string } }) {
       onLogout={handleLogout}
     >
       <div className="flex flex-col gap-6">
-        {isLoading ? (
-          <div aria-busy="true" className="rounded-[18px] border border-border-panel bg-card px-6 py-4">
-            <SkeletonRows rows={3} columns={3} />
-          </div>
-        ) : vendors.length === 0 ? (
-          <EmptyState
-            label="Vendors"
-            title="No vendors yet"
-            description="Add a vendor to start uploading or scraping their catalog."
-            actions={canManage ? <Button size="sm" onClick={() => setIsCreateModalOpen(true)}>Add vendor</Button> : undefined}
-          />
+        {accessDenied ? (
+          <WorkspaceAccessDenied />
         ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="pl-6">Name</TableHead>
-                <TableHead>Contact</TableHead>
-                <TableHead className="w-[130px]">Created</TableHead>
-                <TableHead className="w-12" />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {vendors.map((vendor) => (
-                <TableRow key={vendor.id} className="relative cursor-pointer">
-                  <TableCell className="py-3.5 pl-6 font-medium">
-                    {/* One row-level link (3.4): its ::after covers the whole
-                        row, so any cell opens the vendor and the row reads as
-                        one link to assistive tech. */}
-                    <Link
-                      href={`/workspaces/${workspaceId}/vendors/${vendor.id}`}
-                      className="after:absolute after:inset-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-strong"
-                    >
-                      {vendor.name}
-                    </Link>
-                  </TableCell>
-                  <TableCell className="max-w-0 truncate py-3.5 text-[14px] text-ink-body">{vendor.contactInfo ?? '—'}</TableCell>
-                  <TableCell className="py-3.5 font-mono text-[13px] text-ink-body">
-                    {vendor.createdAt ? formatDate(vendor.createdAt) : 'Recently created'}
-                  </TableCell>
-                  <TableCell aria-hidden="true" className="py-3.5 pr-5 text-right text-ink-muted">
-                    →
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+          <>
+            {isLoading ? (
+              <div aria-busy="true" className="rounded-[18px] border border-border-panel bg-card px-6 py-4">
+                <SkeletonRows rows={3} columns={3} />
+              </div>
+            ) : vendors.length === 0 ? (
+              <EmptyState
+                label="Vendors"
+                title="No vendors yet"
+                description="Add a vendor to start uploading or scraping their catalog."
+                actions={canManage ? <Button size="sm" onClick={() => setIsCreateModalOpen(true)}>Add vendor</Button> : undefined}
+              />
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="pl-6">Name</TableHead>
+                    <TableHead>Contact</TableHead>
+                    <TableHead className="w-[130px]">Created</TableHead>
+                    <TableHead className="w-12" />
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {vendors.map((vendor) => (
+                    <TableRow key={vendor.id} className="relative cursor-pointer">
+                      <TableCell className="py-3.5 pl-6 font-medium">
+                        {/* One row-level link (3.4): its ::after covers the whole
+                            row, so any cell opens the vendor and the row reads as
+                            one link to assistive tech. */}
+                        <Link
+                          href={`/workspaces/${workspaceId}/vendors/${vendor.id}`}
+                          className="after:absolute after:inset-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-strong"
+                        >
+                          {vendor.name}
+                        </Link>
+                      </TableCell>
+                      <TableCell className="max-w-0 truncate py-3.5 text-[14px] text-ink-body">{vendor.contactInfo ?? '—'}</TableCell>
+                      <TableCell className="py-3.5 font-mono text-[13px] text-ink-body">
+                        {vendor.createdAt ? formatDate(vendor.createdAt) : 'Recently created'}
+                      </TableCell>
+                      <TableCell aria-hidden="true" className="py-3.5 pr-5 text-right text-ink-muted">
+                        →
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </>
         )}
       </div>
 

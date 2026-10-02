@@ -12,7 +12,8 @@ import { useRouter } from 'next/navigation'
 import { AppShell, Badge, Button, EmptyState, Eyebrow, HistoryRow, PageSection, useToast } from '@repo/ui'
 import { logout } from '@/lib/api/auth'
 import { getUnreadCount, listEvents, markEventsSeen } from '@/lib/api/events'
-import { isUnauthorized } from '@/lib/api/handle-unauthorized'
+import { isForbidden, isUnauthorized } from '@/lib/api/handle-unauthorized'
+import { WorkspaceAccessDenied } from '@/components/workspace-access-denied'
 import { getWorkspace, listWorkspaces } from '@/lib/api/workspaces'
 import { formatDateTime } from '@/lib/format-date'
 import { WorkspaceNav, workspacePrimaryTabItems } from '@/components/workspace-nav'
@@ -128,6 +129,9 @@ export default function WorkspaceOverviewPage({ params }: { params: { id: string
   const [isLoadingMoreEvents, setIsLoadingMoreEvents] = React.useState(false)
   const [unseenCount, setUnseenCount] = React.useState(0)
   const hasMarkedSeenRef = React.useRef(false)
+  // B18. Set when the first load answers 403; the page then shows only the
+  // no-access state instead of empty content.
+  const [accessDenied, setAccessDenied] = React.useState(false)
 
   React.useEffect(() => {
     toastRef.current = toast
@@ -162,6 +166,10 @@ export default function WorkspaceOverviewPage({ params }: { params: { id: string
         return
       }
 
+      if (isForbidden(err)) {
+        setAccessDenied(true)
+        return
+      }
       toastRef.current({
         variant: 'error',
         title: 'Failed to load workspace',
@@ -221,81 +229,87 @@ export default function WorkspaceOverviewPage({ params }: { params: { id: string
       onLogout={handleLogout}
     >
       <div className="flex flex-col gap-10">
-        <PageSection eyebrow={<Eyebrow>Workspace</Eyebrow>} title="Where to next" description="Jump into any area of this workspace.">
-          <div className="grid gap-4 md:grid-cols-2">
-            {quickLinks(workspaceId).map((link) => (
-              <Link
-                key={link.href}
-                href={link.href}
-                className="flex items-end justify-between gap-4 rounded-[16px] border border-border-panel bg-card p-[22px] text-foreground transition-colors duration-200 hover:border-primary-strong/50"
-              >
-                <div>
-                  <h3 className="text-[17px]">{link.label}</h3>
-                  <p className="mt-1.5 text-[14px] leading-[1.6] text-[oklch(0.48_0.02_264)]">{link.description}</p>
-                </div>
-                <span aria-hidden="true" className="text-primary-strong">
-                  →
-                </span>
-              </Link>
-            ))}
-          </div>
-        </PageSection>
-
-        <PageSection
-          eyebrow={<Eyebrow>Activity</Eyebrow>}
-          title="Activity"
-          description="What this workspace has done on its own — imports, crawls, extractions and comparisons."
-          descriptionClassName="max-w-[60ch]"
-          actions={
-            unseenCount > 0 ? (
-              <span className="font-mono text-[11px] text-primary-strong-hover">{`${unseenCount} new since your last visit`}</span>
-            ) : undefined
-          }
-        >
-          {events.length === 0 ? (
-            <EmptyState
-              label="Quiet so far"
-              labelTone="teal"
-              title="No activity yet"
-              description="Work this workspace does on its own will show up here."
-            />
-          ) : (
-            <div className="overflow-hidden rounded-[18px] border border-border-panel bg-card">
-              <ol className="flex flex-col gap-1.5 p-4">
-                {events.map((event, index) => (
-                  <li key={event.id}>
-                    {/* Events arrive newest first and the unread count is every
-                        event newer than the last visit, so the first
-                        `unseenCount` rows are exactly the unseen ones. */}
-                    <HistoryRow
-                      eventKey={event.type}
-                      title={event.title}
-                      detail={event.detail ?? undefined}
-                      timestamp={formatDateTime(event.createdAt)}
-                      tone={toneFor(event.type)}
-                      unseen={index < unseenCount}
-                    />
-                  </li>
-                ))}
-              </ol>
-
-              {eventsNextCursor ? (
-                <div className="border-t border-border-inner bg-surface-subtle px-5 py-3.5">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => void loadMoreEvents()}
-                    isLoading={isLoadingMoreEvents}
-                    loadingText="Loading"
+        {accessDenied ? (
+          <WorkspaceAccessDenied />
+        ) : (
+          <>
+            <PageSection eyebrow={<Eyebrow>Workspace</Eyebrow>} title="Where to next" description="Jump into any area of this workspace.">
+              <div className="grid gap-4 md:grid-cols-2">
+                {quickLinks(workspaceId).map((link) => (
+                  <Link
+                    key={link.href}
+                    href={link.href}
+                    className="flex items-end justify-between gap-4 rounded-[16px] border border-border-panel bg-card p-[22px] text-foreground transition-colors duration-200 hover:border-primary-strong/50"
                   >
-                    {!isLoadingMoreEvents ? 'Load more' : null}
-                  </Button>
+                    <div>
+                      <h3 className="text-[17px]">{link.label}</h3>
+                      <p className="mt-1.5 text-[14px] leading-[1.6] text-[oklch(0.48_0.02_264)]">{link.description}</p>
+                    </div>
+                    <span aria-hidden="true" className="text-primary-strong">
+                      →
+                    </span>
+                  </Link>
+                ))}
+              </div>
+            </PageSection>
+
+            <PageSection
+              eyebrow={<Eyebrow>Activity</Eyebrow>}
+              title="Activity"
+              description="What this workspace has done on its own — imports, crawls, extractions and comparisons."
+              descriptionClassName="max-w-[60ch]"
+              actions={
+                unseenCount > 0 ? (
+                  <span className="font-mono text-[11px] text-primary-strong-hover">{`${unseenCount} new since your last visit`}</span>
+                ) : undefined
+              }
+            >
+              {events.length === 0 ? (
+                <EmptyState
+                  label="Quiet so far"
+                  labelTone="teal"
+                  title="No activity yet"
+                  description="Work this workspace does on its own will show up here."
+                />
+              ) : (
+                <div className="overflow-hidden rounded-[18px] border border-border-panel bg-card">
+                  <ol className="flex flex-col gap-1.5 p-4">
+                    {events.map((event, index) => (
+                      <li key={event.id}>
+                        {/* Events arrive newest first and the unread count is every
+                            event newer than the last visit, so the first
+                            `unseenCount` rows are exactly the unseen ones. */}
+                        <HistoryRow
+                          eventKey={event.type}
+                          title={event.title}
+                          detail={event.detail ?? undefined}
+                          timestamp={formatDateTime(event.createdAt)}
+                          tone={toneFor(event.type)}
+                          unseen={index < unseenCount}
+                        />
+                      </li>
+                    ))}
+                  </ol>
+
+                  {eventsNextCursor ? (
+                    <div className="border-t border-border-inner bg-surface-subtle px-5 py-3.5">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => void loadMoreEvents()}
+                        isLoading={isLoadingMoreEvents}
+                        loadingText="Loading"
+                      >
+                        {!isLoadingMoreEvents ? 'Load more' : null}
+                      </Button>
+                    </div>
+                  ) : null}
                 </div>
-              ) : null}
-            </div>
-          )}
-        </PageSection>
+              )}
+            </PageSection>
+          </>
+        )}
       </div>
     </AppShell>
   )

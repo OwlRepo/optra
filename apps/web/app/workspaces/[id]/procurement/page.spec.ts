@@ -622,4 +622,53 @@ describe('ProcurementPage', () => {
       expect(click).toHaveBeenCalled()
     })
   })
+
+  // B14. A 403 on load used to fall through to the empty lists: an error toast,
+  // then "No purchase orders yet" and the Compare card, as if the workspace
+  // were simply empty.
+  describe('no access (B14)', () => {
+    function denyAccess() {
+      const denied = { statusCode: 403, message: 'Not a member of this workspace' }
+      getWorkspaceMock.mockRejectedValue(denied)
+      listPurchaseOrdersMock.mockRejectedValue(denied)
+      listInvoicesMock.mockRejectedValue(denied)
+      listGoodsReceiptsMock.mockRejectedValue(denied)
+      listWorkspacesMock.mockResolvedValue({ items: [], nextCursor: null })
+    }
+
+    it('error: a non-member sees the no-access state, not an error toast', async () => {
+      denyAccess()
+
+      renderPage()
+
+      expect(await screen.findByRole('heading', { name: "You don't have access to this workspace" })).toBeDefined()
+      expect(screen.queryByText('Failed to load procurement documents')).toBeNull()
+      expect(pushMock).not.toHaveBeenCalledWith('/login')
+    })
+
+    it('edge: a failure that is not a 403 still shows the error toast and the page', async () => {
+      getWorkspaceMock.mockRejectedValue({ statusCode: 500, message: 'Internal server error' })
+      listPurchaseOrdersMock.mockResolvedValue([])
+      listInvoicesMock.mockResolvedValue([])
+      listWorkspacesMock.mockResolvedValue({ items: [], nextCursor: null })
+
+      renderPage()
+
+      expect(await screen.findByText('Failed to load procurement documents')).toBeDefined()
+      expect(screen.queryByRole('heading', { name: "You don't have access to this workspace" })).toBeNull()
+    })
+
+    it('regression: a non-member sees no empty lists, no compare card and no upload control', async () => {
+      denyAccess()
+
+      renderPage()
+
+      await screen.findByRole('heading', { name: "You don't have access to this workspace" })
+      expect(screen.queryByText('No purchase orders yet')).toBeNull()
+      expect(screen.queryByText('Compare')).toBeNull()
+      expect(screen.queryByRole('button', { name: 'Run comparison' })).toBeNull()
+      expect(screen.queryByRole('button', { name: 'Upload purchase order' })).toBeNull()
+      expect(screen.queryByRole('tablist')).toBeNull()
+    })
+  })
 })

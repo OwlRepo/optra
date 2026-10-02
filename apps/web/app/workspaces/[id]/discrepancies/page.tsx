@@ -21,7 +21,8 @@ import {
   useToast,
 } from '@repo/ui'
 import { logout } from '@/lib/api/auth'
-import { isUnauthorized } from '@/lib/api/handle-unauthorized'
+import { isForbidden, isUnauthorized } from '@/lib/api/handle-unauthorized'
+import { WorkspaceAccessDenied } from '@/components/workspace-access-denied'
 import { getWorkspace, listWorkspaces } from '@/lib/api/workspaces'
 import {
   dismissDiscrepancy,
@@ -106,6 +107,9 @@ export default function DiscrepanciesPage({ params }: { params: { id: string } }
   const [flags, setFlags] = React.useState<DiscrepancyFlag[]>([])
   const [membership, setMembership] = React.useState<WorkspaceMembership | null>(null)
   const [isLoading, setIsLoading] = React.useState(true)
+  // B18. Set when the first load answers 403; the page then shows only the
+  // no-access state instead of empty content.
+  const [accessDenied, setAccessDenied] = React.useState(false)
   const [statusFilter, setStatusFilter] = React.useState<StatusFilterValue>('')
   const [page, setPage] = React.useState(1)
   const [pageSize, setPageSize] = React.useState(20)
@@ -189,6 +193,10 @@ export default function DiscrepanciesPage({ params }: { params: { id: string } }
     } catch (err) {
       if (isUnauthorized(err)) {
         router.push('/login')
+        return
+      }
+      if (isForbidden(err)) {
+        setAccessDenied(true)
         return
       }
       toastRef.current({
@@ -310,6 +318,8 @@ export default function DiscrepanciesPage({ params }: { params: { id: string } }
           <div aria-busy="true" className="overflow-hidden rounded-[18px] border border-border-panel bg-card">
             <SkeletonRows rows={5} columns={4} />
           </div>
+        ) : accessDenied ? (
+          <WorkspaceAccessDenied />
         ) : (
           <>
             <StatStrip items={statItems} />

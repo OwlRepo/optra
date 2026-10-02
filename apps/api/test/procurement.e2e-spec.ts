@@ -7,6 +7,7 @@ import { tmpdir } from 'os'
 import { join } from 'path'
 import { and, eq, like } from 'drizzle-orm'
 import request from 'supertest'
+import * as XLSX from 'xlsx'
 import {
   comparisonRuns,
   db,
@@ -1429,6 +1430,537 @@ describe('Procurement flow (e2e)', () => {
       expect(typeof price.poLine.extractionConfidence).toBe('number')
       expect(price.poLine.extractionConfidence).toBeCloseTo(0.9)
       expect(price.poLine).toMatchObject({ sourceRow: null, sourceSheet: null })
+    })
+  })
+
+  // Launch hardening. Each answer is the one the route gives today. Guard
+  // order is ThrottlerGuard (global) → JwtAuthGuard → WorkspaceMemberGuard →
+  // RolesGuard, then FileInterceptor / ParseUUIDPipe / ValidationPipe, then the
+  // service. No case here calls /auth/register.
+  describe('launch hardening: HTTP error answers', () => {
+    // Well-formed ids that name nothing: a 401 must come from the missing
+    // token, never from whatever the id points at.
+    const anyId = '00000000-0000-4000-8000-000000000000'
+
+    type Method = 'get' | 'post' | 'patch'
+
+    async function answersWithoutToken(routes: [Method, string][]) {
+      const answers: { route: string; status: number; message: unknown }[] = []
+      for (const [method, path] of routes) {
+        const res = await request(app.getHttpServer())[method](`/workspaces/${anyId}/procurement/${path}`)
+        answers.push({ route: `${method.toUpperCase()} ${path}`, status: res.status, message: res.body.message })
+      }
+      return answers
+    }
+
+    const unauthorized = (routes: [Method, string][]) =>
+      routes.map(([method, path]) => ({ route: `${method.toUpperCase()} ${path}`, status: 401, message: 'Unauthorized' }))
+
+    // `done` with no line items, inserted directly: every refusal below happens
+    // before compare() reads a single line.
+    async function seedDoneDocs(workspaceId: string) {
+      const [po] = await db
+        .insert(purchaseOrders)
+        .values({ workspaceId, name: 'po.csv', status: 'done', rowCount: 0 })
+        .returning()
+      const [invoice] = await db
+        .insert(invoices)
+        .values({ workspaceId, name: 'invoice.csv', status: 'done', rowCount: 0 })
+        .returning()
+      return { po, invoice }
+    }
+
+    it('error: every upload route answers 401 without a token', async () => {
+      const routes: [Method, string][] = [
+        ['post', 'purchase-orders'],
+        ['post', 'invoices'],
+        ['post', 'goods-receipts'],
+      ]
+
+      expect(await answersWithoutToken(routes)).toEqual(unauthorized(routes))
+    })
+
+    it('error: every list route answers 401 without a token', async () => {
+      const routes: [Method, string][] = [
+        ['get', 'purchase-orders'],
+        ['get', 'invoices'],
+        ['get', 'goods-receipts'],
+        ['get', 'discrepancies'],
+        ['get', 'comparison-runs'],
+      ]
+
+      expect(await answersWithoutToken(routes)).toEqual(unauthorized(routes))
+    })
+
+    it('error: every download route answers 401 without a token', async () => {
+      const routes: [Method, string][] = [
+        ['get', `purchase-orders/${anyId}/download`],
+        ['get', `invoices/${anyId}/download`],
+        ['get', `goods-receipts/${anyId}/download`],
+      ]
+
+      expect(await answersWithoutToken(routes)).toEqual(unauthorized(routes))
+    })
+
+    it('error: every discrepancy action answers 401 without a token', async () => {
+      const routes: [Method, string][] = [
+        ['post', 'discrepancies/compare'],
+        ['patch', `discrepancies/${anyId}/dismiss`],
+        ['post', `discrepancies/${anyId}/decisions`],
+        ['get', `discrepancies/${anyId}/decisions`],
+      ]
+
+      expect(await answersWithoutToken(routes)).toEqual(unauthorized(routes))
+    })
+
+    it('error: a malformed id on the invoice and receipt downloads and both decision routes answers 400', async () => {
+      const owner = await seedOwnerWithWorkspace(app, `${prefix}lh-uuid@example.com`, 'LH Uuid')
+      const base = `/workspaces/${owner.workspaceId}/procurement`
+      const auth = `Bearer ${owner.accessToken}`
+
+      const answers = [
+        await request(app.getHttpServer()).get(`${base}/invoices/not-a-uuid/download`).set('Authorization', auth),
+        await request(app.getHttpServer()).get(`${base}/goods-receipts/not-a-uuid/download`).set('Authorization', auth),
+        // A valid body, so the only thing wrong is the id.
+        await request(app.getHttpServer())
+          .post(`${base}/discrepancies/not-a-uuid/decisions`)
+          .set('Authorization', auth)
+          .send({ outcome: 'resolved', note: 'Checked against the source.' }),
+        await request(app.getHttpServer()).get(`${base}/discrepancies/not-a-uuid/decisions`).set('Authorization', auth),
+      ].map((res) => ({ status: res.status, message: res.body.message }))
+
+      expect(answers).toEqual([
+        { status: 400, message: 'Validation failed (uuid is expected)' },
+        { status: 400, message: 'Validation failed (uuid is expected)' },
+        { status: 400, message: 'Validation failed (uuid is expected)' },
+        { status: 400, message: 'Validation failed (uuid is expected)' },
+      ])
+    })
+
+    it('error: compare answers 404 for a purchase order or invoice from another workspace and records no run', async () => {
+      const owner = await seedOwnerWithWorkspace(app, `${prefix}lh-cross-mine@example.com`, 'LH Cross Mine')
+      const stranger = await seedOwnerWithWorkspace(app, `${prefix}lh-cross-other@example.com`, 'LH Cross Other')
+      const mine = await seedDoneDocs(owner.workspaceId)
+      const theirs = await seedDoneDocs(stranger.workspaceId)
+
+      const foreignPo = await request(app.getHttpServer())
+        .post(`/workspaces/${owner.workspaceId}/procurement/discrepancies/compare`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .send({ purchaseOrderId: theirs.po.id, invoiceId: mine.invoice.id })
+        .expect(404)
+      expect(foreignPo.body.message).toBe('Purchase order not found')
+
+      const foreignInvoice = await request(app.getHttpServer())
+        .post(`/workspaces/${owner.workspaceId}/procurement/discrepancies/compare`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .send({ purchaseOrderId: mine.po.id, invoiceId: theirs.invoice.id })
+        .expect(404)
+      expect(foreignInvoice.body.message).toBe('Invoice not found')
+
+      const runs = await db.select().from(comparisonRuns).where(eq(comparisonRuns.workspaceId, owner.workspaceId))
+      expect(runs).toHaveLength(0)
+    })
+
+    it('error: a member is refused compare and every upload with 403 on role alone', async () => {
+      const owner = await seedOwnerWithWorkspace(app, `${prefix}lh-role-owner@example.com`, 'LH Role Owner')
+      const member = await seedMemberOfWorkspace(app, owner.workspaceId, `${prefix}lh-role-member@example.com`)
+      const vendorId = await createVendor(app, owner.workspaceId, owner.accessToken)
+      const { po, invoice } = await seedDoneDocs(owner.workspaceId)
+      const base = `/workspaces/${owner.workspaceId}/procurement`
+      const auth = `Bearer ${member.accessToken}`
+      const lines = 'sku,description,qty,unit price\nA1,Widget,10,5.00'
+
+      const answers = [
+        await request(app.getHttpServer())
+          .post(`${base}/discrepancies/compare`)
+          .set('Authorization', auth)
+          .send({ purchaseOrderId: po.id, invoiceId: invoice.id }),
+        await request(app.getHttpServer())
+          .post(`${base}/purchase-orders`)
+          .set('Authorization', auth)
+          .field('vendorId', vendorId)
+          .field('poNumber', 'PO-LH-MEMBER')
+          .field('currency', 'USD')
+          .attach('file', Buffer.from(lines), 'po.csv'),
+        await request(app.getHttpServer())
+          .post(`${base}/invoices`)
+          .set('Authorization', auth)
+          .field('purchaseOrderId', po.id)
+          .field('invoiceNumber', 'INV-LH-MEMBER')
+          .field('currency', 'USD')
+          .attach('file', Buffer.from(lines), 'invoice.csv'),
+        await request(app.getHttpServer())
+          .post(`${base}/goods-receipts`)
+          .set('Authorization', auth)
+          .field('purchaseOrderId', po.id)
+          .field('grnNumber', 'GRN-LH-MEMBER')
+          .attach('file', Buffer.from('sku,qty received,qty accepted\nA1,10,10'), 'grn.csv'),
+      ].map((res) => ({ status: res.status, message: res.body.message }))
+
+      expect(answers).toEqual([
+        { status: 403, message: 'Insufficient workspace role' },
+        { status: 403, message: 'Insufficient workspace role' },
+        { status: 403, message: 'Insufficient workspace role' },
+        { status: 403, message: 'Insufficient workspace role' },
+      ])
+      // Refused before the service ran: nothing was compared or stored.
+      expect(await db.select().from(comparisonRuns).where(eq(comparisonRuns.workspaceId, owner.workspaceId))).toHaveLength(0)
+      expect(await db.select().from(purchaseOrders).where(eq(purchaseOrders.workspaceId, owner.workspaceId))).toHaveLength(1)
+      expect(await db.select().from(invoices).where(eq(invoices.workspaceId, owner.workspaceId))).toHaveLength(1)
+      expect(await db.select().from(goodsReceipts).where(eq(goodsReceipts.workspaceId, owner.workspaceId))).toHaveLength(0)
+    })
+
+    it('error: an oversized invoice or goods receipt answers 413 naming the 25MB limit', async () => {
+      const owner = await seedOwnerWithWorkspace(app, `${prefix}lh-too-big@example.com`, 'LH Too Big')
+      const { po } = await seedDoneDocs(owner.workspaceId)
+      const tooBig = Buffer.alloc(26 * 1024 * 1024, 'a')
+
+      const invoiceRes = await request(app.getHttpServer())
+        .post(`/workspaces/${owner.workspaceId}/procurement/invoices`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .field('purchaseOrderId', po.id)
+        .field('invoiceNumber', 'INV-LH-BIG')
+        .field('currency', 'USD')
+        .attach('file', tooBig, 'too-big.csv')
+        .expect(413)
+      expect(invoiceRes.body).toEqual({ statusCode: 413, message: 'File exceeds 25MB upload limit' })
+
+      const receiptRes = await request(app.getHttpServer())
+        .post(`/workspaces/${owner.workspaceId}/procurement/goods-receipts`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .field('purchaseOrderId', po.id)
+        .field('grnNumber', 'GRN-LH-BIG')
+        .attach('file', tooBig, 'too-big.csv')
+        .expect(413)
+      expect(receiptRes.body).toEqual({ statusCode: 413, message: 'File exceeds 25MB upload limit' })
+
+      // Refused in the interceptor, before the service stored anything.
+      expect(await db.select().from(invoices).where(eq(invoices.workspaceId, owner.workspaceId))).toHaveLength(1)
+      expect(await db.select().from(goodsReceipts).where(eq(goodsReceipts.workspaceId, owner.workspaceId))).toHaveLength(0)
+    })
+
+    it('happy: a three-way match over HTTP with the delivery split across two receipts raises no flag', async () => {
+      const owner = await seedOwnerWithWorkspace(app, `${prefix}lh-split@example.com`, 'LH Split')
+      const vendorId = await createVendor(app, owner.workspaceId, owner.accessToken)
+      const base = `/workspaces/${owner.workspaceId}/procurement`
+      const auth = `Bearer ${owner.accessToken}`
+
+      const poUpload = await request(app.getHttpServer())
+        .post(`${base}/purchase-orders`)
+        .set('Authorization', auth)
+        .field('vendorId', vendorId)
+        .field('poNumber', 'PO-LH-SPLIT')
+        .field('currency', 'USD')
+        .attach('file', Buffer.from('sku,description,qty,unit price\nA1,Widget,10,5.00\nB2,Gadget,4,12.50'), 'po.csv')
+        .expect(201)
+      await waitForPoDone(poUpload.body.id)
+
+      const firstReceipt = await request(app.getHttpServer())
+        .post(`${base}/goods-receipts`)
+        .set('Authorization', auth)
+        .field('purchaseOrderId', poUpload.body.id)
+        .field('grnNumber', 'GRN-LH-1')
+        .attach('file', Buffer.from('sku,qty received,qty accepted\nA1,6,6\nB2,4,4'), 'grn-1.csv')
+        .expect(201)
+      await waitForGoodsReceiptDone(firstReceipt.body.id)
+
+      const secondReceipt = await request(app.getHttpServer())
+        .post(`${base}/goods-receipts`)
+        .set('Authorization', auth)
+        .field('purchaseOrderId', poUpload.body.id)
+        .field('grnNumber', 'GRN-LH-2')
+        .attach('file', Buffer.from('sku,qty received,qty accepted\nA1,4,4'), 'grn-2.csv')
+        .expect(201)
+      await waitForGoodsReceiptDone(secondReceipt.body.id)
+
+      const invoiceUpload = await request(app.getHttpServer())
+        .post(`${base}/invoices`)
+        .set('Authorization', auth)
+        .field('purchaseOrderId', poUpload.body.id)
+        .field('invoiceNumber', 'INV-LH-SPLIT')
+        .field('currency', 'USD')
+        .attach('file', Buffer.from('sku,description,qty,unit price\nB2,Gadget,4,12.50\nA1,Widget,10,5.00'), 'invoice.csv')
+        .expect(201)
+      await waitForInvoiceDone(invoiceUpload.body.id)
+
+      const compareRes = await request(app.getHttpServer())
+        .post(`${base}/discrepancies/compare`)
+        .set('Authorization', auth)
+        .send({ purchaseOrderId: poUpload.body.id, invoiceId: invoiceUpload.body.id })
+        .expect(201)
+
+      expect(compareRes.body.flags).toEqual([])
+      expect(compareRes.body.counts).toEqual({
+        quantity_mismatch: 0,
+        price_mismatch: 0,
+        missing_on_invoice: 0,
+        missing_on_po: 0,
+        short_receipt: 0,
+        invoice_exceeds_received: 0,
+        uom_mismatch: 0,
+        currency_mismatch: 0,
+        contract_price_variance: 0,
+        contract_price_unavailable: 0,
+      })
+      // Neither receipt alone covers A1, and a two-way engine also returns no
+      // flags for this pair, so the run itself must prove three-way happened.
+      const [run] = await db.select().from(comparisonRuns).where(eq(comparisonRuns.id, compareRes.body.runId))
+      expect(run.status).toBe('succeeded')
+      expect(run.mode).toBe('three_way')
+      expect(run.goodsReceiptLineCount).toBe(3)
+      expect(run.flagCount).toBe(0)
+    })
+  })
+  // B2/B3 over HTTP: the upload is accepted, then the document fails at parse
+  // with an authored reason instead of finishing `done` with no lines.
+  describe('unreadable files (B2/B3)', () => {
+    const NO_LINE_ITEMS =
+      'No line items were found in this file. Its first row must hold column headers such as SKU, Description, Qty and Unit price, and it must be saved as a UTF-8 CSV or an XLSX workbook.'
+
+    async function waitForPoTerminal(id: string, timeoutMs = 15_000) {
+      const deadline = Date.now() + timeoutMs
+      while (Date.now() < deadline) {
+        const [row] = await db.select().from(purchaseOrders).where(eq(purchaseOrders.id, id)).limit(1)
+        if (row?.status === 'done' || row?.status === 'failed') return row
+        await new Promise((resolve) => setTimeout(resolve, 200))
+      }
+      throw new Error(`Purchase order ${id} did not finish within ${timeoutMs}ms`)
+    }
+
+    it('error: a header-only purchase order is accepted, then fails with the no-line-items reason and is listed with it', async () => {
+      const owner = await seedOwnerWithWorkspace(app, `${prefix}zr-http-owner@example.com`, 'ZR Http')
+      const vendorId = await createVendor(app, owner.workspaceId, owner.accessToken)
+
+      const upload = await request(app.getHttpServer())
+        .post(`/workspaces/${owner.workspaceId}/procurement/purchase-orders`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .field('vendorId', vendorId)
+        .field('poNumber', 'PO-ZR-HEADERS')
+        .field('currency', 'USD')
+        .attach('file', Buffer.from('sku,description,qty,unit price\n'), 'po-headers-only.csv')
+        .expect(201)
+
+      const row = await waitForPoTerminal(upload.body.id)
+      expect(row.status).toBe('failed')
+      expect(row.lastError).toBe(NO_LINE_ITEMS)
+
+      const list = await request(app.getHttpServer())
+        .get(`/workspaces/${owner.workspaceId}/procurement/purchase-orders`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .expect(200)
+      expect(list.body.find((doc: { id: string }) => doc.id === upload.body.id)).toMatchObject({
+        status: 'failed',
+        lastError: NO_LINE_ITEMS,
+      })
+    })
+
+    it('edge: a two-column semicolon goods receipt uploaded over HTTP parses both lines', async () => {
+      const owner = await seedOwnerWithWorkspace(app, `${prefix}zr-http-grn@example.com`, 'ZR Http Grn')
+      const [po] = await db
+        .insert(purchaseOrders)
+        .values({ workspaceId: owner.workspaceId, name: 'po.csv', status: 'done', rowCount: 0 })
+        .returning()
+
+      const upload = await request(app.getHttpServer())
+        .post(`/workspaces/${owner.workspaceId}/procurement/goods-receipts`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .field('purchaseOrderId', po.id)
+        .field('grnNumber', 'GRN-ZR-SEMI')
+        .attach('file', Buffer.from('sku;qty received\nA1;5\nB2;7\n'), 'grn-semicolon.csv')
+        .expect(201)
+      await waitForGoodsReceiptDone(upload.body.id)
+
+      const [receipt] = await db.select().from(goodsReceipts).where(eq(goodsReceipts.id, upload.body.id))
+      expect(receipt.rowCount).toBe(2)
+    })
+  })
+
+  // B1 over HTTP: a flag on an XLSX line that sits below a blank row cites the
+  // row a reviewer finds when they open the file.
+  describe('XLSX citations (B1)', () => {
+    it('regression: a price flag on an XLSX line below a blank row cites its true spreadsheet row', async () => {
+      const owner = await seedOwnerWithWorkspace(app, `${prefix}b1-http@example.com`, 'B1 Http')
+      const vendorId = await createVendor(app, owner.workspaceId, owner.accessToken)
+      const book = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(
+        book,
+        XLSX.utils.aoa_to_sheet([['sku', 'description', 'qty', 'unit price'], ['A1', 'Widget', 10, 5], [], ['B2', 'Gadget', 4, 12.5]]),
+        'Order Lines',
+      )
+
+      const po = await request(app.getHttpServer())
+        .post(`/workspaces/${owner.workspaceId}/procurement/purchase-orders`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .field('vendorId', vendorId)
+        .field('poNumber', 'PO-B1-XLSX')
+        .field('currency', 'USD')
+        .attach('file', XLSX.write(book, { type: 'buffer', bookType: 'xlsx' }) as Buffer, 'po.xlsx')
+        .expect(201)
+      const invoice = await request(app.getHttpServer())
+        .post(`/workspaces/${owner.workspaceId}/procurement/invoices`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .field('purchaseOrderId', po.body.id)
+        .field('invoiceNumber', 'INV-B1-XLSX')
+        .field('currency', 'USD')
+        .attach('file', Buffer.from('sku,description,qty,unit price\nA1,Widget,10,5.00\nB2,Gadget,4,13.00'), 'invoice.csv')
+        .expect(201)
+      await waitForPoDone(po.body.id)
+      await waitForInvoiceDone(invoice.body.id)
+      await request(app.getHttpServer())
+        .post(`/workspaces/${owner.workspaceId}/procurement/discrepancies/compare`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .send({ purchaseOrderId: po.body.id, invoiceId: invoice.body.id })
+        .expect(201)
+
+      const res = await request(app.getHttpServer())
+        .get(`/workspaces/${owner.workspaceId}/procurement/discrepancies`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .expect(200)
+
+      const price = res.body.items.find((flag: { flagType: string }) => flag.flagType === 'price_mismatch')
+      expect(price.sku).toBe('B2')
+      expect(price.poLine).toMatchObject({ sourceRow: 4, sourceSheet: 'Order Lines', documentId: po.body.id })
+      expect(price.invoiceLine).toMatchObject({ sourceRow: 3, documentId: invoice.body.id })
+    })
+  })
+
+  describe('non-ASCII filenames (B8)', () => {
+    it('regression: a purchase order uploaded as façture-日本.csv is listed and downloaded under that name', async () => {
+      const owner = await seedOwnerWithWorkspace(app, `${prefix}b8-name@example.com`, 'B8 Name')
+      const vendorId = await createVendor(app, owner.workspaceId, owner.accessToken)
+      const base = `/workspaces/${owner.workspaceId}/procurement`
+      const auth = `Bearer ${owner.accessToken}`
+
+      const upload = await request(app.getHttpServer())
+        .post(`${base}/purchase-orders`)
+        .set('Authorization', auth)
+        .field('vendorId', vendorId)
+        .field('poNumber', 'PO-B8')
+        .field('currency', 'USD')
+        .attach('file', Buffer.from('sku,description,qty,unit price\nA1,Widget,10,5.00'), 'façture-日本.csv')
+        .expect(201)
+      expect(upload.body.name).toBe('façture-日本.csv')
+
+      const listed = await request(app.getHttpServer()).get(`${base}/purchase-orders`).set('Authorization', auth).expect(200)
+      const rows = (Array.isArray(listed.body) ? listed.body : listed.body.items) as { id: string; name: string }[]
+      expect(rows.find((row) => row.id === upload.body.id)?.name).toBe('façture-日本.csv')
+
+      const download = await request(app.getHttpServer())
+        .get(`${base}/purchase-orders/${upload.body.id}/download`)
+        .set('Authorization', auth)
+        .expect(200)
+      expect(download.headers['content-disposition']).toBe(
+        "attachment; filename=\"fa_ture-__.csv\"; filename*=UTF-8''fa%C3%A7ture-%E6%97%A5%E6%9C%AC.csv",
+      )
+    })
+  })
+
+  describe('exact flag deltas (B9)', () => {
+    it('regression: a sub-cent price mismatch compared over HTTP carries its real delta', async () => {
+      const owner = await seedOwnerWithWorkspace(app, `${prefix}b9-delta@example.com`, 'B9 Delta')
+      const vendorId = await createVendor(app, owner.workspaceId, owner.accessToken)
+      const base = `/workspaces/${owner.workspaceId}/procurement`
+      const auth = `Bearer ${owner.accessToken}`
+
+      const po = await request(app.getHttpServer())
+        .post(`${base}/purchase-orders`)
+        .set('Authorization', auth)
+        .field('vendorId', vendorId)
+        .field('poNumber', 'PO-B9')
+        .field('currency', 'USD')
+        .attach('file', Buffer.from('sku,description,qty,unit price\nA1,Washer,300,0.3333'), 'po.csv')
+        .expect(201)
+      await waitForPoDone(po.body.id)
+      const invoice = await request(app.getHttpServer())
+        .post(`${base}/invoices`)
+        .set('Authorization', auth)
+        .field('purchaseOrderId', po.body.id)
+        .field('invoiceNumber', 'INV-B9')
+        .field('currency', 'USD')
+        .attach('file', Buffer.from('sku,description,qty,unit price\nA1,Washer,300,0.33'), 'invoice.csv')
+        .expect(201)
+      await waitForInvoiceDone(invoice.body.id)
+
+      const compared = await request(app.getHttpServer())
+        .post(`${base}/discrepancies/compare`)
+        .set('Authorization', auth)
+        .send({ purchaseOrderId: po.body.id, invoiceId: invoice.body.id })
+        .expect(201)
+
+      expect(compared.body.flags).toHaveLength(1)
+      expect(compared.body.flags[0]).toMatchObject({ flagType: 'price_mismatch', delta: '-0.0033' })
+    })
+  })
+
+  describe('line names in flag reasons (B10)', () => {
+    it('regression: a compare over HTTP names a line without a SKU by its description', async () => {
+      const owner = await seedOwnerWithWorkspace(app, `${prefix}b10-name@example.com`, 'B10 Name')
+      const vendorId = await createVendor(app, owner.workspaceId, owner.accessToken)
+      const base = `/workspaces/${owner.workspaceId}/procurement`
+      const auth = `Bearer ${owner.accessToken}`
+
+      const po = await request(app.getHttpServer())
+        .post(`${base}/purchase-orders`)
+        .set('Authorization', auth)
+        .field('vendorId', vendorId)
+        .field('poNumber', 'PO-B10')
+        .field('currency', 'USD')
+        .attach('file', Buffer.from('description,qty,unit price\nBolt M8x20,100,0.12'), 'po.csv')
+        .expect(201)
+      await waitForPoDone(po.body.id)
+      const invoice = await request(app.getHttpServer())
+        .post(`${base}/invoices`)
+        .set('Authorization', auth)
+        .field('purchaseOrderId', po.body.id)
+        .field('invoiceNumber', 'INV-B10')
+        .field('currency', 'USD')
+        .attach('file', Buffer.from('description,qty,unit price\nBolt M8x20,90,0.12'), 'invoice.csv')
+        .expect(201)
+      await waitForInvoiceDone(invoice.body.id)
+
+      const compared = await request(app.getHttpServer())
+        .post(`${base}/discrepancies/compare`)
+        .set('Authorization', auth)
+        .send({ purchaseOrderId: po.body.id, invoiceId: invoice.body.id })
+        .expect(201)
+
+      expect(compared.body.flags).toHaveLength(1)
+      expect(compared.body.flags[0].reason).toBe('Quantity mismatch for "Bolt M8x20": PO=100 Invoice=90')
+    })
+  })
+
+  // B16. Lives in this suite for its seeded owner (no /auth/register spend);
+  // the routes belong to other modules. Each used to answer 500 (Postgres
+  // 22P02) on a malformed id.
+  describe('malformed path ids on the remaining routes (B16)', () => {
+    it('error: every route that takes an id from the path answers 400 for a malformed one', async () => {
+      const owner = await seedOwnerWithWorkspace(app, `${prefix}b16-ids@example.com`, 'B16 Ids')
+      const ws = `/workspaces/${owner.workspaceId}`
+      const auth = `Bearer ${owner.accessToken}`
+      const http = () => request(app.getHttpServer())
+      const routes: [string, () => request.Test][] = [
+        ['DELETE members/:userId', () => http().delete(`${ws}/members/not-a-uuid`)],
+        ['GET chat/sessions/:sessionId/messages', () => http().get(`${ws}/chat/sessions/not-a-uuid/messages`)],
+        ['PATCH faq-drafts/:draftId/approve', () => http().patch(`${ws}/insights/faq-drafts/not-a-uuid/approve`).send({})],
+        ['PATCH faq-drafts/:draftId/reject', () => http().patch(`${ws}/insights/faq-drafts/not-a-uuid/reject`).send({})],
+        ['PATCH freshness-flags/:flagId/dismiss', () => http().patch(`${ws}/insights/freshness-flags/not-a-uuid/dismiss`)],
+        ['DELETE knowledge-bases/:kbId', () => http().delete(`${ws}/knowledge-bases/not-a-uuid`)],
+        ['POST knowledge-bases/:kbId/scrape', () => http().post(`${ws}/knowledge-bases/not-a-uuid/scrape`).send({ url: 'https://vendor.example.com/' })],
+        ['GET knowledge-bases/:kbId/scrape-runs', () => http().get(`${ws}/knowledge-bases/not-a-uuid/scrape-runs`)],
+        ['GET tickets/:ticketId/transcript.pdf', () => http().get(`${ws}/tickets/not-a-uuid/transcript.pdf`)],
+        ['GET tickets/:ticketId', () => http().get(`${ws}/tickets/not-a-uuid`)],
+        ['PATCH tickets/:ticketId', () => http().patch(`${ws}/tickets/not-a-uuid`).send({})],
+      ]
+
+      const answers: { route: string; status: number; message: unknown }[] = []
+      for (const [route, send] of routes) {
+        const res = await send().set('Authorization', auth)
+        answers.push({ route, status: res.status, message: res.body.message })
+      }
+
+      expect(answers).toEqual(
+        routes.map(([route]) => ({ route, status: 400, message: 'Validation failed (uuid is expected)' })),
+      )
     })
   })
 })

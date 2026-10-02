@@ -4,19 +4,19 @@
 
 - Detected source files: 1077
 - Source files represented by graph nodes: 1077
-- Semantic files represented: 131
-- Raw extracted relationships retained: 14767
-- Interactive unique endpoint-pair edges: 14419
-- Collapsed edge groups preserved in ledger: 243
-- Zero-symbol files materialized as artifacts: 44
-- Unresolved endpoint IDs materialized as placeholders: 302
+- Semantic files represented: 147
+- Raw extracted relationships retained: 14862
+- Interactive unique endpoint-pair edges: 14485
+- Collapsed edge groups preserved in ledger: 274
+- Zero-symbol files materialized as artifacts: 45
+- Unresolved endpoint IDs materialized as placeholders: 297
 
 ## Integrity
 
 - Missing endpoint edges: 0
 - Dangling endpoint edges: 0
 - Self-loop edges: 0
-- Undirected collapsed variants: 291
+- Undirected collapsed variants: 323
 
 Parallel variants are retained in `collapsed-edge-variants.json`; the interactive graph remains an undirected simple graph.
 
@@ -62,6 +62,7 @@ Parallel variants are retained in `collapsed-edge-variants.json`; the interactiv
 - `packages/db/drizzle/meta/0032_snapshot.json`
 - `packages/db/drizzle/meta/0033_snapshot.json`
 - `packages/db/drizzle/meta/0034_snapshot.json`
+- `packages/db/drizzle/meta/0035_snapshot.json`
 - `packages/db/drizzle/meta/_journal.json`
 - `scripts/eval/eval-dataset.json`
 - `scripts/eval/extraction-eval-dataset.json`
@@ -69,7 +70,7 @@ Parallel variants are retained in `collapsed-edge-variants.json`; the interactiv
 
 ## Excluded External Symlinks
 
-64 paths were excluded because their symlink targets are outside the scan root. They are tooling links, not application corpus files.
+65 paths were excluded because their symlink targets are outside the scan root. They are tooling links, not application corpus files.
 
 - `.claude/skills/_gstack-command/SKILL.md [symlink target outside scan root]`
 - `.claude/skills/autoplan/SKILL.md [symlink target outside scan root]`
@@ -135,3 +136,4 @@ Parallel variants are retained in `collapsed-edge-variants.json`; the interactiv
 - `.claude/skills/spec/SKILL.md [symlink target outside scan root]`
 - `.claude/skills/sync-gbrain/SKILL.md [symlink target outside scan root]`
 - `.claude/skills/unfreeze/SKILL.md [symlink target outside scan root]`
+- `apps/e2e/fixtures/po.xlsx [office conversion failed - pip install graphifyy[office]]`

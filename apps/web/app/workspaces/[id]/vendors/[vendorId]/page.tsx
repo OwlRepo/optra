@@ -25,7 +25,8 @@ import {
 } from '@repo/ui'
 import { Upload } from 'lucide-react'
 import { logout } from '@/lib/api/auth'
-import { isUnauthorized } from '@/lib/api/handle-unauthorized'
+import { isForbidden, isUnauthorized } from '@/lib/api/handle-unauthorized'
+import { WorkspaceAccessDenied } from '@/components/workspace-access-denied'
 import { getWorkspace, listWorkspaces } from '@/lib/api/workspaces'
 import type { VendorExceptionSummary, VendorPriceHistoryRow } from '@/lib/api/catalog'
 import {
@@ -110,6 +111,9 @@ export default function VendorDetailPage({ params }: { params: { id: string; ven
   }, [history])
   const [membership, setMembership] = React.useState<WorkspaceMembership | null>(null)
   const [isLoading, setIsLoading] = React.useState(true)
+  // B18. Set when the first load answers 403; the page then shows only the
+  // no-access state instead of empty content.
+  const [accessDenied, setAccessDenied] = React.useState(false)
   const [isUploading, setIsUploading] = React.useState(false)
 
   const [isScrapeModalOpen, setIsScrapeModalOpen] = React.useState(false)
@@ -156,6 +160,10 @@ export default function VendorDetailPage({ params }: { params: { id: string; ven
     } catch (err) {
       if (isUnauthorized(err)) {
         router.push('/login')
+        return
+      }
+      if (isForbidden(err)) {
+        setAccessDenied(true)
         return
       }
       toastRef.current({
@@ -343,159 +351,165 @@ export default function VendorDetailPage({ params }: { params: { id: string; ven
       onLogout={handleLogout}
     >
       <div className="flex flex-col gap-10">
-        {/* One hidden picker for every "Upload catalog" button, kept out of
-            `actions` so it exists once however the shell places actions. */}
-        {canManage ? (
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".pdf,.csv,.xlsx"
-            className="hidden"
-            onChange={(event) => void handleFileSelected(event)}
-          />
-        ) : null}
-
-        {/* S9. What this vendor has charged, and what has gone wrong with
-            them. Rendered as numbers and a table rather than a chart:
-            packages/ui has no chart component, and a handful of observations
-            per item is a table's job, not a graph's. */}
-        {!isLoading ? (
-          <PageSection eyebrow={<Eyebrow>Price history</Eyebrow>} title="What this vendor has charged">
-            <div className="flex flex-col gap-5">
-              <StatStrip
-                items={[
-                  { label: 'Orders', value: summary?.purchaseOrderCount ?? 0 },
-                  { label: 'Items bought', value: priceStats.skuCount },
-                  { label: 'Priced off contract', value: priceStats.offContract, tone: 'amber' },
-                  { label: 'Open exceptions', value: summary?.openTotal ?? 0, tone: 'amber' },
-                ]}
+        {accessDenied ? (
+          <WorkspaceAccessDenied />
+        ) : (
+          <>
+            {/* One hidden picker for every "Upload catalog" button, kept out of
+                `actions` so it exists once however the shell places actions. */}
+            {canManage ? (
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".pdf,.csv,.xlsx"
+                className="hidden"
+                onChange={(event) => void handleFileSelected(event)}
               />
+            ) : null}
 
-              {history.length === 0 ? (
+            {/* S9. What this vendor has charged, and what has gone wrong with
+                them. Rendered as numbers and a table rather than a chart:
+                packages/ui has no chart component, and a handful of observations
+                per item is a table's job, not a graph's. */}
+            {!isLoading ? (
+              <PageSection eyebrow={<Eyebrow>Price history</Eyebrow>} title="What this vendor has charged">
+                <div className="flex flex-col gap-5">
+                  <StatStrip
+                    items={[
+                      { label: 'Orders', value: summary?.purchaseOrderCount ?? 0 },
+                      { label: 'Items bought', value: priceStats.skuCount },
+                      { label: 'Priced off contract', value: priceStats.offContract, tone: 'amber' },
+                      { label: 'Open exceptions', value: summary?.openTotal ?? 0, tone: 'amber' },
+                    ]}
+                  />
+
+                  {history.length === 0 ? (
+                    <EmptyState
+                      label="Price history"
+                      title="Nothing bought from this vendor yet"
+                      description="Upload a purchase order against them and its prices will show up here."
+                    />
+                  ) : (
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="w-[120px] pl-6">Item</TableHead>
+                          <TableHead>Order</TableHead>
+                          <TableHead className="w-[170px]">Date</TableHead>
+                          <TableHead className="w-[100px] text-right">Unit price</TableHead>
+                          <TableHead className="w-[90px] text-right">Agreed</TableHead>
+                          <TableHead className="w-[150px] pr-6">Against contract</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {history.map((row) => {
+                          const ordered = row.unitPrice === null ? null : Number(row.unitPrice)
+                          const agreed = row.contractUnitPrice === null ? null : Number(row.contractUnitPrice)
+                          const gap = ordered !== null && agreed !== null ? ordered - agreed : null
+                          return (
+                            <TableRow key={row.poLineItemId}>
+                              <TableCell className="pl-6 font-mono text-[13px] font-medium">{row.sku ?? '—'}</TableCell>
+                              <TableCell className="font-mono text-[13px] text-ink-body">{row.poNumber ?? row.poName}</TableCell>
+                              <TableCell className="font-mono text-[13px] text-ink-body">
+                                {/* The order date when we have it; otherwise the day the
+                                    file arrived, said out loud rather than passed off. */}
+                                {row.orderedAt
+                                  ? formatDate(row.orderedAt)
+                                  : `${formatDate(row.recordedAt)} (uploaded)`}
+                              </TableCell>
+                              <TableCell numeric>{row.unitPrice ?? '—'}</TableCell>
+                              <TableCell numeric className="text-ink-body">{row.contractUnitPrice ?? '—'}</TableCell>
+                              <TableCell className="pr-6">
+                                {gap === null ? (
+                                  <span className="text-[13px] text-ink-muted">No agreed price</span>
+                                ) : gap === 0 ? (
+                                  <Badge variant="teal">On contract</Badge>
+                                ) : (
+                                  <Badge variant="amber" className="font-mono font-medium">
+                                    {gap > 0 ? '+' : ''}
+                                    {gap.toFixed(2)}
+                                  </Badge>
+                                )}
+                              </TableCell>
+                            </TableRow>
+                          )
+                        })}
+                      </TableBody>
+                    </Table>
+                  )}
+                </div>
+              </PageSection>
+            ) : null}
+
+            <PageSection eyebrow={<Eyebrow>Catalogs</Eyebrow>} title="What they say they sell">
+              {isLoading ? (
+                <div aria-busy="true" className="rounded-[18px] border border-border-panel bg-card px-6 py-4">
+                  <SkeletonRows rows={3} columns={6} />
+                </div>
+              ) : catalogs.length === 0 ? (
                 <EmptyState
-                  label="Price history"
-                  title="Nothing bought from this vendor yet"
-                  description="Upload a purchase order against them and its prices will show up here."
+                  label="pdf / csv / xlsx · or a website"
+                  title="No catalogs yet"
+                  description="Upload a catalog file or scrape the vendor's website to build one."
+                  actions={
+                    canManage ? (
+                      <>
+                        <Button size="sm" onClick={handleUploadClick}>
+                          Upload catalog
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={() => setIsScrapeModalOpen(true)}>
+                          Scrape website
+                        </Button>
+                      </>
+                    ) : undefined
+                  }
                 />
               ) : (
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="w-[120px] pl-6">Item</TableHead>
-                      <TableHead>Order</TableHead>
-                      <TableHead className="w-[170px]">Date</TableHead>
-                      <TableHead className="w-[100px] text-right">Unit price</TableHead>
-                      <TableHead className="w-[90px] text-right">Agreed</TableHead>
-                      <TableHead className="w-[150px] pr-6">Against contract</TableHead>
+                      <TableHead className="pl-6">Name</TableHead>
+                      <TableHead className="w-[100px]">Source</TableHead>
+                      <TableHead className="w-[128px]">Status</TableHead>
+                      <TableHead className="w-[70px] text-right">Rows</TableHead>
+                      <TableHead className="w-[120px]">Created</TableHead>
+                      <TableHead className="w-[130px] pr-6 text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {history.map((row) => {
-                      const ordered = row.unitPrice === null ? null : Number(row.unitPrice)
-                      const agreed = row.contractUnitPrice === null ? null : Number(row.contractUnitPrice)
-                      const gap = ordered !== null && agreed !== null ? ordered - agreed : null
-                      return (
-                        <TableRow key={row.poLineItemId}>
-                          <TableCell className="pl-6 font-mono text-[13px] font-medium">{row.sku ?? '—'}</TableCell>
-                          <TableCell className="font-mono text-[13px] text-ink-body">{row.poNumber ?? row.poName}</TableCell>
-                          <TableCell className="font-mono text-[13px] text-ink-body">
-                            {/* The order date when we have it; otherwise the day the
-                                file arrived, said out loud rather than passed off. */}
-                            {row.orderedAt
-                              ? formatDate(row.orderedAt)
-                              : `${formatDate(row.recordedAt)} (uploaded)`}
-                          </TableCell>
-                          <TableCell numeric>{row.unitPrice ?? '—'}</TableCell>
-                          <TableCell numeric className="text-ink-body">{row.contractUnitPrice ?? '—'}</TableCell>
-                          <TableCell className="pr-6">
-                            {gap === null ? (
-                              <span className="text-[13px] text-ink-muted">No agreed price</span>
-                            ) : gap === 0 ? (
-                              <Badge variant="teal">On contract</Badge>
-                            ) : (
-                              <Badge variant="amber" className="font-mono font-medium">
-                                {gap > 0 ? '+' : ''}
-                                {gap.toFixed(2)}
-                              </Badge>
-                            )}
-                          </TableCell>
-                        </TableRow>
-                      )
-                    })}
+                    {catalogs.map((catalog) => (
+                      <TableRow key={catalog.id}>
+                        <TableCell className="min-w-0 pl-6">
+                          <div className="font-medium">{catalog.name}</div>
+                          {catalog.status === 'failed' && catalog.lastError ? (
+                            <p className="mt-1 text-[12px] text-destructive-strong-text">{catalog.lastError}</p>
+                          ) : null}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="chip">{sourceKindLabel[catalog.sourceKind]}</Badge>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant={statusTone[catalog.status]} pulse={catalog.status === 'processing'}>
+                            {statusLabel[catalog.status]}
+                          </Badge>
+                        </TableCell>
+                        <TableCell numeric>{catalog.rowCount ?? '—'}</TableCell>
+                        <TableCell className="font-mono text-[13px] text-ink-body">
+                          {catalog.createdAt ? formatDate(catalog.createdAt) : 'Recently created'}
+                        </TableCell>
+                        <TableCell className="py-2 pr-[18px] text-right">
+                          <Button variant="outline" size="xs" onClick={() => void handleViewItems(catalog)}>
+                            View items
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
                   </TableBody>
                 </Table>
               )}
-            </div>
-          </PageSection>
-        ) : null}
-
-        <PageSection eyebrow={<Eyebrow>Catalogs</Eyebrow>} title="What they say they sell">
-          {isLoading ? (
-            <div aria-busy="true" className="rounded-[18px] border border-border-panel bg-card px-6 py-4">
-              <SkeletonRows rows={3} columns={6} />
-            </div>
-          ) : catalogs.length === 0 ? (
-            <EmptyState
-              label="pdf / csv / xlsx · or a website"
-              title="No catalogs yet"
-              description="Upload a catalog file or scrape the vendor's website to build one."
-              actions={
-                canManage ? (
-                  <>
-                    <Button size="sm" onClick={handleUploadClick}>
-                      Upload catalog
-                    </Button>
-                    <Button size="sm" variant="outline" onClick={() => setIsScrapeModalOpen(true)}>
-                      Scrape website
-                    </Button>
-                  </>
-                ) : undefined
-              }
-            />
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="pl-6">Name</TableHead>
-                  <TableHead className="w-[100px]">Source</TableHead>
-                  <TableHead className="w-[128px]">Status</TableHead>
-                  <TableHead className="w-[70px] text-right">Rows</TableHead>
-                  <TableHead className="w-[120px]">Created</TableHead>
-                  <TableHead className="w-[130px] pr-6 text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {catalogs.map((catalog) => (
-                  <TableRow key={catalog.id}>
-                    <TableCell className="min-w-0 pl-6">
-                      <div className="font-medium">{catalog.name}</div>
-                      {catalog.status === 'failed' && catalog.lastError ? (
-                        <p className="mt-1 text-[12px] text-destructive-strong-text">{catalog.lastError}</p>
-                      ) : null}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="chip">{sourceKindLabel[catalog.sourceKind]}</Badge>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={statusTone[catalog.status]} pulse={catalog.status === 'processing'}>
-                        {statusLabel[catalog.status]}
-                      </Badge>
-                    </TableCell>
-                    <TableCell numeric>{catalog.rowCount ?? '—'}</TableCell>
-                    <TableCell className="font-mono text-[13px] text-ink-body">
-                      {catalog.createdAt ? formatDate(catalog.createdAt) : 'Recently created'}
-                    </TableCell>
-                    <TableCell className="py-2 pr-[18px] text-right">
-                      <Button variant="outline" size="xs" onClick={() => void handleViewItems(catalog)}>
-                        View items
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </PageSection>
+            </PageSection>
+          </>
+        )}
       </div>
 
       <Modal

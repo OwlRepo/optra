@@ -27,7 +27,8 @@ import {
 } from '@repo/ui'
 import { Mail, Search, Trash2 } from 'lucide-react'
 import { getCurrentUser, logout } from '@/lib/api/auth'
-import { isUnauthorized } from '@/lib/api/handle-unauthorized'
+import { isForbidden, isUnauthorized } from '@/lib/api/handle-unauthorized'
+import { WorkspaceAccessDenied } from '@/components/workspace-access-denied'
 import { getWorkspace, inviteMember, listMembers, listWorkspaces, removeMember } from '@/lib/api/workspaces'
 import { formatDate } from '@/lib/format-date'
 import { WorkspaceNav, workspacePrimaryTabItems } from '@/components/workspace-nav'
@@ -63,6 +64,9 @@ export default function MembersPage({ params }: { params: { id: string } }) {
   const [debouncedSearch, setDebouncedSearch] = React.useState('')
   const [roleFilter, setRoleFilter] = React.useState<RoleFilter>('')
   const [isLoading, setIsLoading] = React.useState(true)
+  // B18. Set when the first load answers 403; the page then shows only the
+  // no-access state instead of empty content.
+  const [accessDenied, setAccessDenied] = React.useState(false)
   const [isMembersLoading, setIsMembersLoading] = React.useState(false)
   const [pendingRemove, setPendingRemove] = React.useState<Member | null>(null)
   const [currentUserId, setCurrentUserId] = React.useState<string | null>(null)
@@ -102,6 +106,10 @@ export default function MembersPage({ params }: { params: { id: string } }) {
         router.push('/login')
         return
       }
+      if (isForbidden(err)) {
+        setAccessDenied(true)
+        return
+      }
       toast({
         variant: 'error',
         title: 'Failed to load workspace',
@@ -131,6 +139,10 @@ export default function MembersPage({ params }: { params: { id: string } }) {
     } catch (err) {
       if (isUnauthorized(err)) {
         router.push('/login')
+        return
+      }
+      if (isForbidden(err)) {
+        setAccessDenied(true)
         return
       }
       toast({
@@ -223,154 +235,160 @@ export default function MembersPage({ params }: { params: { id: string } }) {
       onLogout={handleLogout}
     >
       <div className="flex flex-col gap-10">
-        <PageSection
-          eyebrow={<Eyebrow>Collaborators</Eyebrow>}
-          title="Invite members"
-          description="Invites go out by email. The link joins them to this workspace as a member."
-        >
-          {canManage ? (
-            <form
-              className="grid gap-3.5 rounded-[18px] border border-border-panel bg-card px-6 py-[22px] md:grid-cols-[minmax(0,1fr)_auto] md:items-end"
-              onSubmit={submitInvite}
+        {accessDenied ? (
+          <WorkspaceAccessDenied />
+        ) : (
+          <>
+            <PageSection
+              eyebrow={<Eyebrow>Collaborators</Eyebrow>}
+              title="Invite members"
+              description="Invites go out by email. The link joins them to this workspace as a member."
             >
-              <div className="flex flex-col gap-2">
-                <label htmlFor="member-email" className="text-[14px] font-medium">Member email</label>
-                <Input
-                  id="member-email"
-                  type="email"
-                  placeholder="teammate@example.com"
-                  aria-invalid={inviteEmailError ? true : undefined}
-                  {...inviteForm.register('email')}
-                />
-                {inviteEmailError ? <p className="text-[13px] text-destructive-strong-text">{inviteEmailError.message}</p> : null}
-              </div>
-              <Button type="submit" isLoading={inviteForm.formState.isSubmitting} loadingText="Sending">
-                <Mail className="size-4" />
-                Send invite
-              </Button>
-            </form>
-          ) : (
-            <EmptyState
-              label="Owners & admins"
-              labelTone="neutral"
-              title="Invite controls hidden"
-              description="Only owners and admins can invite members to this workspace."
-            />
-          )}
-        </PageSection>
-
-        <PageSection eyebrow={<Eyebrow>Roster</Eyebrow>} title="Members">
-          <Table
-            header={
-              <div className="flex flex-col gap-3 border-b border-border-inner px-5 py-4 sm:flex-row">
-                <div className="relative flex-1">
-                  <Search
-                    aria-hidden="true"
-                    className="pointer-events-none absolute left-[14px] top-1/2 size-4 -translate-y-1/2 text-ink-muted"
-                  />
-                  <Input
-                    aria-label="Search members"
-                    placeholder="Search by email"
-                    className="pl-10"
-                    value={search}
-                    onChange={(event) => setSearch(event.target.value)}
-                  />
-                </div>
-                <Select
-                  aria-label="Filter by role"
-                  className="sm:w-[180px]"
-                  value={roleFilter}
-                  onChange={(event) => setRoleFilter(event.target.value as RoleFilter)}
+              {canManage ? (
+                <form
+                  className="grid gap-3.5 rounded-[18px] border border-border-panel bg-card px-6 py-[22px] md:grid-cols-[minmax(0,1fr)_auto] md:items-end"
+                  onSubmit={submitInvite}
                 >
-                  <option value="">All roles</option>
-                  <option value="owner">Owner</option>
-                  <option value="admin">Admin</option>
-                  <option value="member">Member</option>
-                </Select>
-              </div>
-            }
-            footer={
-              !isLoading && members.length > 0 ? (
-                <Pagination
-                  page={meta.page}
-                  pageSize={meta.pageSize}
-                  total={meta.total}
-                  totalPages={meta.totalPages}
-                  onPageChange={setPage}
-                  onPageSizeChange={setPageSize}
-                  isLoading={isMembersLoading}
-                />
-              ) : undefined
-            }
-          >
-            {isLoading ? (
-              <TableBody>
-                <TableRow>
-                  <TableCell colSpan={4} aria-busy="true" className="px-6 py-4">
-                    <SkeletonRows rows={3} columns={4} />
-                  </TableCell>
-                </TableRow>
-              </TableBody>
-            ) : members.length === 0 ? (
-              <TableBody>
-                <TableRow className="hover:bg-transparent">
-                  <TableCell colSpan={4} className="p-5">
-                    <EmptyState
-                      nested
-                      label={debouncedSearch ? `Search · "${debouncedSearch}"` : undefined}
-                      title="No members found"
-                      description="Try a different search or role filter."
+                  <div className="flex flex-col gap-2">
+                    <label htmlFor="member-email" className="text-[14px] font-medium">Member email</label>
+                    <Input
+                      id="member-email"
+                      type="email"
+                      placeholder="teammate@example.com"
+                      aria-invalid={inviteEmailError ? true : undefined}
+                      {...inviteForm.register('email')}
                     />
-                  </TableCell>
-                </TableRow>
-              </TableBody>
-            ) : (
-              <>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="pl-6">Email</TableHead>
-                    <TableHead className="w-[140px]">Role</TableHead>
-                    <TableHead className="w-[140px]">Joined</TableHead>
-                    <TableHead className="w-[140px] pr-6 text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {members.map((member) => (
-                    <TableRow key={member.id}>
-                      <TableCell className="pl-6">
-                        <div className="flex min-w-0 items-center gap-2.5">
-                          <span className="truncate font-medium">{member.email}</span>
-                          {/* 3.8: says why this row has no Remove. */}
-                          {member.userId === currentUserId ? (
-                            <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-ink-muted">you</span>
-                          ) : null}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={member.role === 'member' ? 'neutral' : 'teal'}>{roleLabel[member.role]}</Badge>
-                      </TableCell>
-                      <TableCell className="font-mono text-[13px] text-ink-body">{formatDate(member.joinedAt)}</TableCell>
-                      <TableCell className="py-2 pr-[18px] text-right">
-                        {membership?.role === 'owner' && member.userId !== currentUserId ? (
-                          <Button
-                            variant="ghost"
-                            size="xs"
-                            aria-label={`Remove ${member.email}`}
-                            className="hover:bg-destructive-tone/8 hover:text-destructive-strong-text"
-                            onClick={() => setPendingRemove(member)}
-                          >
-                            <Trash2 className="size-[15px]" />
-                            Remove
-                          </Button>
-                        ) : null}
+                    {inviteEmailError ? <p className="text-[13px] text-destructive-strong-text">{inviteEmailError.message}</p> : null}
+                  </div>
+                  <Button type="submit" isLoading={inviteForm.formState.isSubmitting} loadingText="Sending">
+                    <Mail className="size-4" />
+                    Send invite
+                  </Button>
+                </form>
+              ) : (
+                <EmptyState
+                  label="Owners & admins"
+                  labelTone="neutral"
+                  title="Invite controls hidden"
+                  description="Only owners and admins can invite members to this workspace."
+                />
+              )}
+            </PageSection>
+
+            <PageSection eyebrow={<Eyebrow>Roster</Eyebrow>} title="Members">
+              <Table
+                header={
+                  <div className="flex flex-col gap-3 border-b border-border-inner px-5 py-4 sm:flex-row">
+                    <div className="relative flex-1">
+                      <Search
+                        aria-hidden="true"
+                        className="pointer-events-none absolute left-[14px] top-1/2 size-4 -translate-y-1/2 text-ink-muted"
+                      />
+                      <Input
+                        aria-label="Search members"
+                        placeholder="Search by email"
+                        className="pl-10"
+                        value={search}
+                        onChange={(event) => setSearch(event.target.value)}
+                      />
+                    </div>
+                    <Select
+                      aria-label="Filter by role"
+                      className="sm:w-[180px]"
+                      value={roleFilter}
+                      onChange={(event) => setRoleFilter(event.target.value as RoleFilter)}
+                    >
+                      <option value="">All roles</option>
+                      <option value="owner">Owner</option>
+                      <option value="admin">Admin</option>
+                      <option value="member">Member</option>
+                    </Select>
+                  </div>
+                }
+                footer={
+                  !isLoading && members.length > 0 ? (
+                    <Pagination
+                      page={meta.page}
+                      pageSize={meta.pageSize}
+                      total={meta.total}
+                      totalPages={meta.totalPages}
+                      onPageChange={setPage}
+                      onPageSizeChange={setPageSize}
+                      isLoading={isMembersLoading}
+                    />
+                  ) : undefined
+                }
+              >
+                {isLoading ? (
+                  <TableBody>
+                    <TableRow>
+                      <TableCell colSpan={4} aria-busy="true" className="px-6 py-4">
+                        <SkeletonRows rows={3} columns={4} />
                       </TableCell>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </>
-            )}
-          </Table>
-        </PageSection>
+                  </TableBody>
+                ) : members.length === 0 ? (
+                  <TableBody>
+                    <TableRow className="hover:bg-transparent">
+                      <TableCell colSpan={4} className="p-5">
+                        <EmptyState
+                          nested
+                          label={debouncedSearch ? `Search · "${debouncedSearch}"` : undefined}
+                          title="No members found"
+                          description="Try a different search or role filter."
+                        />
+                      </TableCell>
+                    </TableRow>
+                  </TableBody>
+                ) : (
+                  <>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="pl-6">Email</TableHead>
+                        <TableHead className="w-[140px]">Role</TableHead>
+                        <TableHead className="w-[140px]">Joined</TableHead>
+                        <TableHead className="w-[140px] pr-6 text-right">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {members.map((member) => (
+                        <TableRow key={member.id}>
+                          <TableCell className="pl-6">
+                            <div className="flex min-w-0 items-center gap-2.5">
+                              <span className="truncate font-medium">{member.email}</span>
+                              {/* 3.8: says why this row has no Remove. */}
+                              {member.userId === currentUserId ? (
+                                <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-ink-muted">you</span>
+                              ) : null}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant={member.role === 'member' ? 'neutral' : 'teal'}>{roleLabel[member.role]}</Badge>
+                          </TableCell>
+                          <TableCell className="font-mono text-[13px] text-ink-body">{formatDate(member.joinedAt)}</TableCell>
+                          <TableCell className="py-2 pr-[18px] text-right">
+                            {membership?.role === 'owner' && member.userId !== currentUserId ? (
+                              <Button
+                                variant="ghost"
+                                size="xs"
+                                aria-label={`Remove ${member.email}`}
+                                className="hover:bg-destructive-tone/8 hover:text-destructive-strong-text"
+                                onClick={() => setPendingRemove(member)}
+                              >
+                                <Trash2 className="size-[15px]" />
+                                Remove
+                              </Button>
+                            ) : null}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </>
+                )}
+              </Table>
+            </PageSection>
+          </>
+        )}
       </div>
 
       <Modal

@@ -3,9 +3,10 @@ import {
   Controller,
   Get,
   HttpException,
-  Query,
   Param,
+  ParseUUIDPipe,
   Post,
+  Query,
   Res,
   UseGuards,
 } from '@nestjs/common'
@@ -100,7 +101,7 @@ export class ChatController {
   @UseGuards(JwtAuthGuard, WorkspaceMemberGuard)
   getMessages(
     @Param('workspaceId') workspaceId: string,
-    @Param('sessionId') sessionId: string,
+    @Param('sessionId', new ParseUUIDPipe()) sessionId: string,
     @CurrentUser() user: CurrentUserContext,
     @Query() query: ListQueryDto,
   ) {

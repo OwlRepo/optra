@@ -50,6 +50,13 @@ interface MappedLineItemRow {
 // 15,000 parameters, still far below Postgres's 65,535 limit for one INSERT.
 const INSERT_CHUNK_ROWS = 1_000
 
+// Records Papa samples to guess the delimiter, blank lines excluded.
+const DELIMITER_SAMPLE_ROWS = 50
+
+// Authored and client-safe: shown as lastError on the document row.
+export const NO_LINE_ITEMS_MESSAGE =
+  'No line items were found in this file. Its first row must hold column headers such as SKU, Description, Qty and Unit price, and it must be saved as a UTF-8 CSV or an XLSX workbook.'
+
 // A problem with the document itself. Retrying cannot fix it, so the worker
 // fails the document at once and tells the user exactly why (the message is
 // authored here, never derived from cell content).
@@ -80,7 +87,7 @@ function isPermanentParseError(error: unknown): boolean {
 
 // First sheet only (same as DatasetProfilingProcessor). Converted in memory:
 // the stored original stays byte-for-byte what the user uploaded.
-function convertXlsxToCsv(buffer: Buffer): { csv: string; sheetName: string | null } {
+function convertXlsxToCsv(buffer: Buffer): { csv: string; sheetName: string | null; sourceRows: number[] } {
   let workbook: XLSX.WorkBook
   try {
     workbook = XLSX.read(buffer, { type: 'buffer' })
@@ -90,7 +97,11 @@ function convertXlsxToCsv(buffer: Buffer): { csv: string; sheetName: string | nu
   const firstSheetName = workbook.SheetNames[0]
   const sheet = workbook.Sheets[firstSheetName]
   const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '' })
-  return { csv: Papa.unparse(rows), sheetName: firstSheetName ?? null }
+  // sheet_to_json skips blank rows, so a row's position in `rows` is not its
+  // place in the sheet. SheetJS records that on each row as the 0-based,
+  // non-enumerable `__rowNum__`; the reviewer's row is that plus one.
+  const sourceRows = rows.map((row) => (row as { __rowNum__: number }).__rowNum__ + 1)
+  return { csv: Papa.unparse(rows), sheetName: firstSheetName ?? null, sourceRows }
 }
 
 @Processor('procurement-parse-queue')
@@ -179,7 +190,14 @@ export class ProcurementParseProcessor {
         const isXlsx = extension === '.xlsx'
         const converted = isXlsx ? convertXlsxToCsv(await readFile(tempPath)) : null
         const csvContent = converted ? converted.csv : await readFile(tempPath, 'utf-8')
-        rows = this.parseCsvRows(csvContent, converted?.sheetName ?? null)
+        rows = this.parseCsvRows(csvContent, converted?.sheetName ?? null, converted?.sourceRows ?? null)
+        // Rows that all map to nothing mean the headers were not recognised
+        // (wrong row, unknown names, an encoding we do not read). Marking that
+        // done would show "Ready" and fail only at compare, so it fails here,
+        // the way an empty PDF does.
+        if (rows.length === 0) {
+          throw new ProcurementParseInputError(NO_LINE_ITEMS_MESSAGE)
+        }
         sourceKind = isXlsx ? 'xlsx' : 'csv'
       }
 
@@ -243,12 +261,22 @@ export class ProcurementParseProcessor {
     throw error
   }
 
-  private parseCsvRows(csvContent: string, sourceSheet: string | null): MappedLineItemRow[] {
+  private parseCsvRows(csvContent: string, sourceSheet: string | null, sourceRows: number[] | null): MappedLineItemRow[] {
     // skipEmptyLines is off on purpose: with it on, Papa collapses the array and
     // a row's index no longer corresponds to its line in the file, which is the
     // whole point of sourceRow. Blank rows are dropped below by isEmptyLineItem
     // instead, so the resulting line set is unchanged.
-    const parsed = Papa.parse<Record<string, string>>(csvContent, { header: true, skipEmptyLines: false })
+    // Papa guesses the delimiter from every record, blank ones included, so a
+    // trailing newline in a two-column file (`sku;qty`) pulls the average field
+    // count under its threshold and it falls back to a comma. Guess on the
+    // non-blank records only, then parse every record with that delimiter so
+    // sourceRow still counts blank lines.
+    const { delimiter } = Papa.parse<Record<string, string>>(csvContent, {
+      header: true,
+      skipEmptyLines: 'greedy',
+      preview: DELIMITER_SAMPLE_ROWS,
+    }).meta
+    const parsed = Papa.parse<Record<string, string>>(csvContent, { header: true, skipEmptyLines: false, delimiter })
 
     // Broken quoting shifts every later cell into the wrong column, so the
     // rows cannot be trusted. A row with too few/many fields is tolerated —
@@ -261,13 +289,14 @@ export class ProcurementParseProcessor {
     }
 
     // The index is captured here, before the empty-row filter: afterwards the
-    // position in the file is unrecoverable. Papa consumes the header, so the
-    // file's 1-based row is index + 2.
+    // position in the file is unrecoverable.
     return parsed.data
       .map((row, index) => ({
         ...validateLineItem(mapRowToLineItem(row)),
         rawRow: row,
-        sourceRow: index + 2,
+        // XLSX: the sheet row SheetJS recorded. CSV: Papa consumed the header,
+        // so the file's 1-based row is index + 2.
+        sourceRow: sourceRows ? sourceRows[index] : index + 2,
         sourceSheet,
         extractionConfidence: null,
         extractorVersion: null,

@@ -15,6 +15,7 @@ import { StorageService } from '../storage/storage.service'
 import { readOrNotFound } from '../storage/storage.errors'
 import { ProcurementDocKind, ProcurementParseService } from './procurement-parse.service'
 import { assertUnreachable, docLabel } from './procurement-kind'
+import { decodeUploadFilename } from '../common/http/upload-filename'
 
 // Header metadata supplied by the user at upload time (S3b). Nothing in the
 // repo extracts document-level fields, and POLICY v1 #2/#3 want the vendor and
@@ -101,14 +102,15 @@ export class ProcurementDocumentsService {
     // orphan object in storage.
     await this.assertHeaderInWorkspace(workspaceId, kind, header)
 
-    const storageKey = `${workspaceId}/procurement/${kind}/${randomUUID()}-${file.originalname}`
+    const name = decodeUploadFilename(file.originalname)
+    const storageKey = `${workspaceId}/procurement/${kind}/${randomUUID()}-${name}`
     await this.storage.save(storageKey, file.buffer, file.mimetype)
 
-    const extension = extname(file.originalname).toLowerCase()
+    const extension = extname(name).toLowerCase()
     const sourceKind = extension === '.pdf' ? 'pdf' : extension === '.xlsx' ? 'xlsx' : 'csv'
     const common = {
       workspaceId,
-      name: file.originalname,
+      name,
       storageKey,
       status: 'pending' as const,
       sourceKind,

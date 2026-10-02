@@ -8,7 +8,8 @@ import { z } from 'zod'
 import { AppShell, Button, DefinitionRow, Eyebrow, Input, MicroLabel, Switch, cn, useToast } from '@repo/ui'
 import { changePassword, logout } from '@/lib/api/auth'
 import { getDigestSettings, previewDigest, updateDigestSettings } from '@/lib/api/digest-settings'
-import { isUnauthorized } from '@/lib/api/handle-unauthorized'
+import { isForbidden, isUnauthorized } from '@/lib/api/handle-unauthorized'
+import { WorkspaceAccessDenied } from '@/components/workspace-access-denied'
 import { getWorkspace, listWorkspaces, updateWorkspace } from '@/lib/api/workspaces'
 import { WorkspaceNav, workspacePrimaryTabItems } from '@/components/workspace-nav'
 import { MobileTabBar } from '@/components/mobile-tab-bar'
@@ -74,6 +75,9 @@ export default function SettingsPage({ params }: { params: { id: string } }) {
   const { toast } = useToast()
   const workspaceId = params.id
   const [workspace, setWorkspace] = React.useState<Workspace | null>(null)
+  // B18. Set when the first load answers 403; the page then shows only the
+  // no-access state instead of empty content.
+  const [accessDenied, setAccessDenied] = React.useState(false)
   const [role, setRole] = React.useState<WorkspaceMembership['role'] | null>(null)
   const [digestSettings, setDigestSettings] = React.useState<DigestSettings | null>(null)
   const [slackWebhookInput, setSlackWebhookInput] = React.useState('')
@@ -121,6 +125,10 @@ export default function SettingsPage({ params }: { params: { id: string } }) {
       } catch (err) {
         if (isUnauthorized(err)) {
           router.push('/login')
+          return
+        }
+        if (isForbidden(err)) {
+          setAccessDenied(true)
           return
         }
         toast({
@@ -285,177 +293,183 @@ export default function SettingsPage({ params }: { params: { id: string } }) {
       {/* Frame 3.10 main is `8px 40px 48px`: AppShell's <main> pads 32px on
           top, so -mt-6 brings it back to 8px. */}
       <div className="-mt-6 flex flex-col">
-        <SettingsSection eyebrow="Workspace" title="Workspace name" description="Shown in the sidebar and on invites.">
-          <form onSubmit={onSubmitRename}>
-            <div className="flex flex-col gap-2 px-6 py-[22px]">
-              <label htmlFor="workspace-name-input" className="text-[14px] font-medium">
-                Workspace name
-              </label>
-              <Input
-                id="workspace-name-input"
-                disabled={!canRename}
-                aria-invalid={errors.name ? true : undefined}
-                {...register('name')}
-              />
-              {errors.name ? <p className="text-[13px] text-destructive-strong-text">{errors.name.message}</p> : null}
-              {role !== null && !canRename ? (
-                <p className="text-[13px] text-ink-muted">Only owners and admins can rename the workspace.</p>
-              ) : null}
-            </div>
-            <DefinitionRow density="roomy" label="Workspace ID" value={workspaceId} className="border-t border-border-definition" />
-            {canRename ? (
-              <div className="flex justify-end border-t border-border-inner bg-surface-subtle px-6 py-3.5">
-                <Button type="submit" size="sm" className="h-[38px] px-4" isLoading={isSubmitting} loadingText="Saving">
-                  Save changes
-                </Button>
-              </div>
-            ) : null}
-          </form>
-        </SettingsSection>
-
-        <SettingsSection
-          eyebrow="Security"
-          title="Change password"
-          description="Changing your password signs you out of every other session."
-          last={!showDigest}
-        >
-          <form onSubmit={onSubmitChangePassword}>
-            <div className="flex flex-col gap-4 px-6 py-[22px]">
-              <div className="flex flex-col gap-2">
-                <label htmlFor="current-password-input" className="text-[14px] font-medium">
-                  Current password
-                </label>
-                <Input
-                  id="current-password-input"
-                  type="password"
-                  autoComplete="current-password"
-                  aria-invalid={passwordErrors.currentPassword ? true : undefined}
-                  {...registerPassword('currentPassword')}
-                />
-                {passwordErrors.currentPassword ? (
-                  <p className="text-[13px] text-destructive-strong-text">{passwordErrors.currentPassword.message}</p>
-                ) : null}
-              </div>
-              <div className="grid gap-3.5 sm:grid-cols-2">
-                <div className="flex flex-col gap-2">
-                  <label htmlFor="new-password-input" className="text-[14px] font-medium">
-                    New password
+        {accessDenied ? (
+          <WorkspaceAccessDenied />
+        ) : (
+          <>
+            <SettingsSection eyebrow="Workspace" title="Workspace name" description="Shown in the sidebar and on invites.">
+              <form onSubmit={onSubmitRename}>
+                <div className="flex flex-col gap-2 px-6 py-[22px]">
+                  <label htmlFor="workspace-name-input" className="text-[14px] font-medium">
+                    Workspace name
                   </label>
                   <Input
-                    id="new-password-input"
-                    type="password"
-                    autoComplete="new-password"
-                    aria-invalid={passwordErrors.newPassword ? true : undefined}
-                    {...registerPassword('newPassword')}
+                    id="workspace-name-input"
+                    disabled={!canRename}
+                    aria-invalid={errors.name ? true : undefined}
+                    {...register('name')}
                   />
-                  {passwordErrors.newPassword ? (
-                    <p className="text-[13px] text-destructive-strong-text">{passwordErrors.newPassword.message}</p>
-                  ) : (
-                    <p className="text-[13px] text-ink-muted">At least 8 characters.</p>
-                  )}
-                </div>
-                <div className="flex flex-col gap-2">
-                  <label htmlFor="confirm-password-input" className="text-[14px] font-medium">
-                    Confirm new password
-                  </label>
-                  <Input
-                    id="confirm-password-input"
-                    type="password"
-                    autoComplete="new-password"
-                    aria-invalid={passwordErrors.confirmPassword ? true : undefined}
-                    {...registerPassword('confirmPassword')}
-                  />
-                  {passwordErrors.confirmPassword ? (
-                    <p className="text-[13px] text-destructive-strong-text">{passwordErrors.confirmPassword.message}</p>
+                  {errors.name ? <p className="text-[13px] text-destructive-strong-text">{errors.name.message}</p> : null}
+                  {role !== null && !canRename ? (
+                    <p className="text-[13px] text-ink-muted">Only owners and admins can rename the workspace.</p>
                   ) : null}
                 </div>
-              </div>
-              {passwordApiError ? <p className="text-[13px] text-destructive-strong-text">{passwordApiError}</p> : null}
-            </div>
-            <div className="flex justify-end border-t border-border-inner bg-surface-subtle px-6 py-3.5">
-              <Button type="submit" size="sm" className="h-[38px] px-4" isLoading={isChangingPassword} loadingText="Changing">
-                Change password
-              </Button>
-            </div>
-          </form>
-        </SettingsSection>
+                <DefinitionRow density="roomy" label="Workspace ID" value={workspaceId} className="border-t border-border-definition" />
+                {canRename ? (
+                  <div className="flex justify-end border-t border-border-inner bg-surface-subtle px-6 py-3.5">
+                    <Button type="submit" size="sm" className="h-[38px] px-4" isLoading={isSubmitting} loadingText="Saving">
+                      Save changes
+                    </Button>
+                  </div>
+                ) : null}
+              </form>
+            </SettingsSection>
 
-        {showDigest && digestSettings ? (
-          <SettingsSection
-            eyebrow="Notifications"
-            title="Weekly digest"
-            description="A weekly summary of activity, sent by email and/or posted to Slack."
-            last
-          >
-            <div className="flex items-center justify-between gap-4 px-6 py-5">
-              <div>
-                <p className="text-[15px] font-medium">Email digest</p>
-                <p className="mt-1 text-[13px] text-ink-muted">Sent to the workspace owner.</p>
-              </div>
-              <Switch
-                aria-label="Email digest"
-                checked={digestSettings.emailEnabled}
-                disabled={isSavingDigest}
-                onCheckedChange={() => void handleToggleEmail()}
-              />
-            </div>
+            <SettingsSection
+              eyebrow="Security"
+              title="Change password"
+              description="Changing your password signs you out of every other session."
+              last={!showDigest}
+            >
+              <form onSubmit={onSubmitChangePassword}>
+                <div className="flex flex-col gap-4 px-6 py-[22px]">
+                  <div className="flex flex-col gap-2">
+                    <label htmlFor="current-password-input" className="text-[14px] font-medium">
+                      Current password
+                    </label>
+                    <Input
+                      id="current-password-input"
+                      type="password"
+                      autoComplete="current-password"
+                      aria-invalid={passwordErrors.currentPassword ? true : undefined}
+                      {...registerPassword('currentPassword')}
+                    />
+                    {passwordErrors.currentPassword ? (
+                      <p className="text-[13px] text-destructive-strong-text">{passwordErrors.currentPassword.message}</p>
+                    ) : null}
+                  </div>
+                  <div className="grid gap-3.5 sm:grid-cols-2">
+                    <div className="flex flex-col gap-2">
+                      <label htmlFor="new-password-input" className="text-[14px] font-medium">
+                        New password
+                      </label>
+                      <Input
+                        id="new-password-input"
+                        type="password"
+                        autoComplete="new-password"
+                        aria-invalid={passwordErrors.newPassword ? true : undefined}
+                        {...registerPassword('newPassword')}
+                      />
+                      {passwordErrors.newPassword ? (
+                        <p className="text-[13px] text-destructive-strong-text">{passwordErrors.newPassword.message}</p>
+                      ) : (
+                        <p className="text-[13px] text-ink-muted">At least 8 characters.</p>
+                      )}
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      <label htmlFor="confirm-password-input" className="text-[14px] font-medium">
+                        Confirm new password
+                      </label>
+                      <Input
+                        id="confirm-password-input"
+                        type="password"
+                        autoComplete="new-password"
+                        aria-invalid={passwordErrors.confirmPassword ? true : undefined}
+                        {...registerPassword('confirmPassword')}
+                      />
+                      {passwordErrors.confirmPassword ? (
+                        <p className="text-[13px] text-destructive-strong-text">{passwordErrors.confirmPassword.message}</p>
+                      ) : null}
+                    </div>
+                  </div>
+                  {passwordApiError ? <p className="text-[13px] text-destructive-strong-text">{passwordApiError}</p> : null}
+                </div>
+                <div className="flex justify-end border-t border-border-inner bg-surface-subtle px-6 py-3.5">
+                  <Button type="submit" size="sm" className="h-[38px] px-4" isLoading={isChangingPassword} loadingText="Changing">
+                    Change password
+                  </Button>
+                </div>
+              </form>
+            </SettingsSection>
 
-            <div className="flex flex-col gap-2 border-t border-border-definition px-6 py-5">
-              <label htmlFor="slack-webhook-input" className="text-[14px] font-medium">
-                Slack webhook URL
-              </label>
-              <div className="flex flex-col gap-2.5 sm:flex-row">
-                <Input
-                  id="slack-webhook-input"
-                  className="min-w-0 flex-1 font-mono text-[13px]"
-                  placeholder="https://hooks.slack.com/services/..."
-                  value={slackWebhookInput}
-                  onChange={(event) => setSlackWebhookInput(event.target.value)}
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="px-4"
-                  isLoading={isSavingDigest}
-                  loadingText="Saving"
-                  onClick={() => void handleSaveSlackWebhook()}
-                >
-                  Save
-                </Button>
-              </div>
-              {digestSettings.slackEnabled ? (
-                <p className="flex items-center gap-2 text-[13px] text-primary-strong-hover">
-                  <span aria-hidden="true" className="size-1.5 rounded-full bg-primary-strong" />
-                  Slack posting is enabled.
-                </p>
-              ) : (
-                <p className="text-[13px] text-ink-muted">Leave blank to disable Slack posting.</p>
-              )}
-            </div>
+            {showDigest && digestSettings ? (
+              <SettingsSection
+                eyebrow="Notifications"
+                title="Weekly digest"
+                description="A weekly summary of activity, sent by email and/or posted to Slack."
+                last
+              >
+                <div className="flex items-center justify-between gap-4 px-6 py-5">
+                  <div>
+                    <p className="text-[15px] font-medium">Email digest</p>
+                    <p className="mt-1 text-[13px] text-ink-muted">Sent to the workspace owner.</p>
+                  </div>
+                  <Switch
+                    aria-label="Email digest"
+                    checked={digestSettings.emailEnabled}
+                    disabled={isSavingDigest}
+                    onCheckedChange={() => void handleToggleEmail()}
+                  />
+                </div>
 
-            <div className="flex flex-col gap-3 border-t border-border-definition px-6 pb-[22px] pt-4">
-              <div className="flex items-center justify-between gap-4">
-                <MicroLabel>Preview · Slack plain-text form</MicroLabel>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="xs"
-                  isLoading={isPreviewingDigest}
-                  loadingText="Loading"
-                  onClick={() => void handlePreviewDigest()}
-                >
-                  Preview digest
-                </Button>
-              </div>
+                <div className="flex flex-col gap-2 border-t border-border-definition px-6 py-5">
+                  <label htmlFor="slack-webhook-input" className="text-[14px] font-medium">
+                    Slack webhook URL
+                  </label>
+                  <div className="flex flex-col gap-2.5 sm:flex-row">
+                    <Input
+                      id="slack-webhook-input"
+                      className="min-w-0 flex-1 font-mono text-[13px]"
+                      placeholder="https://hooks.slack.com/services/..."
+                      value={slackWebhookInput}
+                      onChange={(event) => setSlackWebhookInput(event.target.value)}
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="px-4"
+                      isLoading={isSavingDigest}
+                      loadingText="Saving"
+                      onClick={() => void handleSaveSlackWebhook()}
+                    >
+                      Save
+                    </Button>
+                  </div>
+                  {digestSettings.slackEnabled ? (
+                    <p className="flex items-center gap-2 text-[13px] text-primary-strong-hover">
+                      <span aria-hidden="true" className="size-1.5 rounded-full bg-primary-strong" />
+                      Slack posting is enabled.
+                    </p>
+                  ) : (
+                    <p className="text-[13px] text-ink-muted">Leave blank to disable Slack posting.</p>
+                  )}
+                </div>
 
-              {digestPreviewText ? (
-                <pre className="m-0 whitespace-pre-wrap rounded-[12px] border border-border-segmented bg-surface-subtle p-4 font-mono text-[12px] leading-[1.7] text-[oklch(0.36_0.02_264)]">
-                  {digestPreviewText}
-                </pre>
-              ) : null}
-            </div>
-          </SettingsSection>
-        ) : null}
+                <div className="flex flex-col gap-3 border-t border-border-definition px-6 pb-[22px] pt-4">
+                  <div className="flex items-center justify-between gap-4">
+                    <MicroLabel>Preview · Slack plain-text form</MicroLabel>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="xs"
+                      isLoading={isPreviewingDigest}
+                      loadingText="Loading"
+                      onClick={() => void handlePreviewDigest()}
+                    >
+                      Preview digest
+                    </Button>
+                  </div>
+
+                  {digestPreviewText ? (
+                    <pre className="m-0 whitespace-pre-wrap rounded-[12px] border border-border-segmented bg-surface-subtle p-4 font-mono text-[12px] leading-[1.7] text-[oklch(0.36_0.02_264)]">
+                      {digestPreviewText}
+                    </pre>
+                  ) : null}
+                </div>
+              </SettingsSection>
+            ) : null}
+          </>
+        )}
       </div>
     </AppShell>
   )

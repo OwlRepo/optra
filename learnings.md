@@ -432,6 +432,195 @@ And one rule the owner made standing: every change now ships with its tests for 
 
 **Why different:** not different. The general lesson: **a library that bundles its own copy of a dependency is not "just a wrapper"; two copies of anything that writes a process-wide global will fight.** Check `node_modules/<pkg>/node_modules` for nested copies before adding a convenience wrapper.
 
+## 2026-10-02 — Launch hardening S1: real-world spreadsheets
+*Learning Contract: the plan's design is the prediction; the diff is below. No live prediction solicited.*
+
+**Predicted (from the approved plan):** test-only slices land green with zero guarded-source change.
+
+**Actual:** confirmed — 25 new cases; the two touched specs green three runs in a row (78/78 each) and the full api unit suite green once (745/745); no source file touched. The planning probes changed two expectations before any test was written: SheetJS reads a plain-text `.xlsx` instead of refusing it, and a numeric `5.00` cell becomes `"5"`.
+
+**Why different:** not different, because the expectations were measured rather than assumed. **When a test pins today's behaviour, replay the library on the exact bytes first; intuition about parsers is wrong often enough to matter.**
+
+## 2026-10-02 — Launch hardening S2: the engine meets real AP documents
+*Learning Contract: the plan's design is the prediction; the diff is below. No live prediction solicited.*
+
+**Predicted (from the approved plan):** test-only slices land green with zero guarded-source change.
+
+**Actual:** confirmed — 13 unit and 9 API e2e cases, each spec green three runs in a row (113/113 and 34/34), no source file touched.
+
+**Why different:** not different. The lesson sits in what was left out: two engine outputs (sub-cent `delta '0'`, "Item (unknown)" reasons) would have been easy to pin and would have turned bugs into "expected behaviour". **A characterization suite is only honest if it refuses to assert what is wrong.**
+
+## 2026-10-02 — Launch hardening S3: catalogs under failure
+*Learning Contract: the plan's design is the prediction; the diff is below. No live prediction solicited.*
+
+**Predicted (from the approved plan):** test-only slices land green with zero guarded-source change.
+
+**Actual:** confirmed — 12 unit and 4 API e2e cases, each spec green three runs in a row (44/44 and 7/7), full api unit 770/770 and API e2e 91/91 once, no source file touched. The planned "a model failure on one of several candidates rejects the search" case was dropped before it was written, because asserting it would have pinned bug B6. The single-candidate "malformed model verdict rejects the search" case is kept and pins today's rejection; the B6 fix slice must update it explicitly.
+
+**Why different:** not different. **When the honest assertion for a case is a known bug, the right move is to drop the case and test the invariant next to it (here: the rollback), not to pin the bug.**
+
+## 2026-10-02 — Launch hardening S4: browser flows a buyer clicks
+*Learning Contract: the plan's design is the prediction; the diff is below. No live prediction solicited.*
+
+**Predicted (from the approved plan):** test-only slices land green with zero guarded-source change.
+
+**Actual:** confirmed — 7 new browser tests; the whole Playwright suite green three runs in a row (45 passed, 7 parked); no product code touched. Getting there exposed environment problems, not test problems: a stale primary `node_modules` with no `@playwright/test`, bun extracting packages empty until `--force`, and a 98%-full disk killing the Next build.
+
+**Why different:** not different for the tests. **A browser suite is only as reproducible as the install under it — verify `node_modules/.bin/playwright` exists before blaming a spec.**
+
+## 2026-10-02 — Fix B2/B3: a file with no readable rows is a failure, not an empty success
+*Learning Contract: the plan's design is the prediction; the diff is below. No live prediction solicited.*
+
+**Predicted (from the approved plan):** one zero-row guard plus a two-pass delimiter guess fixes both bugs with every existing procurement spec green and unedited.
+
+**Actual:** confirmed — 9 of 10 new unit cases failed first (the tenth is a deliberate over-reach guard), all pass after a 25-line change; full api unit 780/780 with no existing test edited.
+
+**Why different:** not different. **Two code paths that do the same job must share the same failure rules: the PDF path already refused an empty result, the spreadsheet path silently accepted one.**
+
+## 2026-10-02 — Fix B1: cite the row the reviewer sees
+*Learning Contract: the plan's design is the prediction; the diff is below. No live prediction solicited.*
+
+**Predicted (from the approved plan):** passing SheetJS's `__rowNum__` through the CSV conversion fixes XLSX citations with no change to CSV behaviour.
+
+**Actual:** confirmed — both unit regressions red then green, a citation proven over HTTP, full api unit 782/782 and API e2e 94/94. One RCA sub-claim (data starting at row 2) was withdrawn: it held only for an in-memory sheet.
+
+**Why different:** **probe file formats through the same write/read path production uses; an in-memory object is not a file.**
+
+## 2026-10-02 — Fix B12: search and list must scope to the same thing
+*Learning Contract: the plan's design is the prediction; the diff is below. No live prediction solicited.*
+
+**Predicted (from the approved plan):** making the list scope mirror the search query fixes the empty list with no API change.
+
+**Actual:** confirmed — two web unit cases red then green, the page spec 15/15 three times, full web suite 669/669, and a browser test that follows the real flag link.
+
+**Why different:** not different. **When a page runs a write and then a read, derive both from one value; two hand-built filters drift.** A test that works around a bug (S4 opened the page with one id) hides it — follow the real link.
+
+## 2026-10-02 — Fix B7: a job timeout that cannot stop the job
+*Learning Contract: the plan's design is the prediction; the diff is below. No live prediction solicited.*
+
+**Predicted (from the approved plan):** bounding photo fetches in concurrency and total time keeps every catalog parse inside its attempt.
+
+**Actual:** confirmed — the concurrency and budget cases red then green, full api unit 785/785 and API e2e 94/94.
+
+**Why different:** not different. **Bull 4's `timeout` only rejects the job's promise; the handler keeps running. A timeout you cannot enforce has to be met by the work itself — bound the work, do not rely on the queue to stop it.**
+
+## 2026-10-02 — Fix B13: path ids reached Postgres unparsed
+*Learning Contract: the plan's design is the prediction; the diff is below. No live prediction solicited.*
+
+**Predicted (from the approved plan):** `ParseUUIDPipe` on every catalog `:vendorId` and `:catalogId` turns the 500s into 400s with no other behaviour change.
+
+**Actual:** confirmed — the route-metadata unit test and the HTTP cases red then green; full api unit 786/786 and API e2e 96/96, three runs each.
+
+**Why different:** not different. **A path param skips the global `ValidationPipe`'s DTO checks, so an id the database types as `uuid` needs its pipe on every route, and a test that walks the route metadata catches the next route that forgets it.**
+
+## 2026-10-03 — Fix B5: one cell failed a whole catalog
+*Learning Contract: the plan's design is the prediction; the diff is below. No live prediction solicited.*
+
+**Predicted (from the approved plan):** applying procurement's SKU length rule at the catalog's single insert keeps every row and turns the failed catalog into `done`.
+
+**Actual:** confirmed — the CSV and PDF cases and the HTTP upload red then green; full api unit 789/789 three times, API e2e 97/97 twice (one unrelated auth `socket hang up` on the other run).
+
+**Why different:** not different. **When two import paths share a table, enforce its column limits where they meet the insert, not in each parser — and reuse the limit the other domain already exports instead of restating 200.**
+
+## 2026-10-03 — Fix B6 + B15: one bad verdict failed a paid search
+*Learning Contract: the plan's design is the prediction; the diff is below. No live prediction solicited.*
+
+**Predicted (from the approved plan):** catching each candidate's failure keeps the verdicts already paid for, and a counted skip tells the user what is missing.
+
+**Actual:** confirmed — unit, `packages/ai`, API e2e, web and browser cases red then green; full api unit 794/794 and API e2e 99/99 three times, web 673/673, ai 190/190, browser suite 48 passed / 7 parked three times.
+
+**Why different:** not different. **`Promise.all` over paid calls is all-or-nothing: one rejection discards every result already bought. Settle each call, save what came back, and when a write replaces old results, leave out the items this run could not judge.**
+
+## 2026-10-03 — Fix B8: a fixed filename can break the download
+*Learning Contract: the plan's design is the prediction; the diff is below. No live prediction solicited.*
+
+**Predicted (from the approved plan):** re-reading busboy's latin1 filename as UTF-8 stores the real name, and RFC 5987 `filename*` lets it be downloaded.
+
+**Actual:** confirmed — unit (helper, header, both services, web download helper), API e2e and browser cases red then green; full api unit 804/804 twice (one unrelated reconcile flake on the third run), API e2e 101/101 three times, web 677/677, browser 49 passed three times.
+
+**Why different:** not different. **Fixing an encoding at the way in moves the problem to every way out: Node rejects header characters above U+00FF, so the first real `日本` filename would have turned every download of it into a 500. Test the header with `http.validateHeaderValue`, not by string comparison alone.**
+
+## 2026-10-03 — Fix B9: a mismatch whose number said zero
+*Learning Contract: the plan's design is the prediction; the diff is below. No live prediction solicited.*
+
+**Predicted (from the approved plan):** subtracting the stated decimals exactly gives a sub-cent flag its real delta and leaves every whole-number and cent delta as it was.
+
+**Actual:** confirmed, with one surprise. The sub-cent and fractional-quantity cases went red then green, and full api unit 811/811 and API e2e 102/102 passed three times. The surprise: the first exact implementation crashed on a stored `1e400`, which DuckDB reads as `Infinity`. It is now a null delta.
+
+**Why different:** **A number a flag shows a person is evidence, not arithmetic: round it and a real difference can print as zero. Doubles cannot hold decimals exactly, so compute money and quantity differences from decimal text (BigInt-scaled), and decide what an unrepresentable value means before it reaches that code.**
+
+## 2026-10-03 — Fix B10 + B11: evidence text must name what the reviewer sees
+*Learning Contract: the plan's design is the prediction; the diff is below. No live prediction solicited.*
+
+**Predicted (from the approved plan):** naming a line the way it was matched (SKU, else description) and printing the stated units makes every reason point at a row the reviewer can find.
+
+**Actual:** confirmed — four reason cases red then green; full api unit 816/816 and API e2e 103/103 three times.
+
+**Why different:** not different. **A reason is a citation: build it from the same text the flag's values and the source document show, never from the engine's normalized match keys.**
+
+## 2026-10-03 — Fix B14: an error must not look like an empty workspace
+*Learning Contract: the plan's design is the prediction; the diff is below. No live prediction solicited.*
+
+**Predicted (from the approved plan):** reading a first-load 403 as "no access" and rendering one shared state replaces the toast-over-empty-lists screen.
+
+**Actual:** confirmed — page, helper and component cases red then green; web 684/684, browser 49 passed three times, including the S4 test whose old expectation changed on purpose.
+
+**Why different:** not different. **A page that renders its empty state after a failed load tells the user something false ("you have none") instead of something true ("you can't see this"). Branch on the failure kind before rendering defaults; keep the toast for failures the user can retry.**
+
+## 2026-10-03 — Fix B4: a row is an item only if it names one
+*Learning Contract: the plan's design is the prediction; the diff is below. No live prediction solicited.*
+
+**Predicted (from the approved plan):** dropping rows with neither SKU nor description, in both parse paths and before photo fetching, removes blank items without touching real ones.
+
+**Actual:** confirmed — the PDF, blank-row and stray-photo cases red then green; full api unit 823/823 and API e2e 104/104 three times.
+
+**Why different:** not different. **"Empty line" is a parser's idea; "describes nothing we can use" is the domain's. Filter on the fields the product matches on, after mapping, not on raw text — and before any paid or slow work (a photo fetch) runs for the row.**
+
+## 2026-10-03 — Fix B16: guard a rule across the codebase, not one module
+*Learning Contract: the plan's design is the prediction; the diff is below. No live prediction solicited.*
+
+**Predicted (from the approved plan):** the same pipe B13 added to catalogs turns the remaining eleven 500s into 400s.
+
+**Actual:** confirmed — the walk listed exactly the eleven routes, all answered 500 over HTTP before the fix and 400 after; api unit 825/825 and API e2e 105/105 three times. One surprise: a scrape request with an empty body was refused by body validation before the path pipe ran, so the sweep sends valid bodies.
+
+**Why different:** **A fix applied to one module invites the same bug in the next. When a rule is mechanical (every path id is a UUID), enforce it with one test that walks the whole codebase, so the next route cannot forget it.**
+
+## 2026-10-03 — Fix B17: an empty result is a failure the user must hear about
+*Learning Contract: the plan's design is the prediction; the diff is below. No live prediction solicited.*
+
+**Predicted (from the approved plan):** failing a zero-item catalog at parse with a reason, as procurement does, turns a silent empty catalog into an actionable error.
+
+**Actual:** confirmed — three failure cases red then green; api unit 829/829 three times, API e2e 106/106 twice (one unrelated `socket hang up`).
+
+**Why different:** not different. **Apply one domain's hard-won rule to its siblings in the same pass: B2 taught procurement that `done` with zero rows reads as success; catalogs had the same hole.**
+
+## 2026-10-03 — Fix B18: finish a UI rule on every page in one pass
+*Learning Contract: the plan's design is the prediction; the diff is below. No live prediction solicited.*
+
+**Predicted (from the approved plan):** the B14 component and helper drop into each page's first-load catch with no other change.
+
+**Actual:** confirmed — 7 page cases red then green, web 698/698, browser 50 passed. Five pages reuse their loader for filters and paging, so a 403 there also shows the state, which is right for someone who lost access mid-session.
+
+**Why different:** not different. **A shared component plus a one-line branch is what makes "the rest of the pages" a cheap follow-up instead of a backlog item; build the reusable piece in the first fix.**
+
+## 2026-10-03 — Two flakes, two root causes, no retries
+*Learning Contract: the plan's design is the prediction; the diff is below. No live prediction solicited.*
+
+**Predicted (from the approved plan):** each intermittent failure has a specific cause that a fix can remove, not mask.
+
+**Actual:** confirmed — supertest's listen/close cycle plus Node 19+ keep-alive reused stale sockets on a recycled port; and a global sweeper in a parallel worker acted on another spec's fixture. API e2e 107/107 five times, unit 831/831 three times after the fixes.
+
+**Why different:** not different. **A flake is a bug in the harness or the test's assumptions. Read the library's lifecycle code (here, supertest's `serverAddress`/`end`) before touching timeouts or retries, and never assert another process's legitimate work away.**
+
+## 2026-10-03 — A data backfill tested against the code rule it mirrors
+*Learning Contract: the plan's design is the prediction; the diff is below. No live prediction solicited.*
+
+**Predicted (from the approved plan):** a SQL migration can apply exactly the `decodeUploadFilename` rule to rows stored before B8.
+
+**Actual:** confirmed — the parity spec runs the migration file and compares it name for name with the TypeScript helper; adding an emoji name proved the SQL needs a code-point test (`[^\u0001-\u00ff]`) where JS uses a UTF-16 range.
+
+**Why different:** **When SQL must reproduce application logic, test the SQL file itself against the application function on the same inputs, not against hand-written expectations.**
+
 ## 2026-10-02 — Reproducing a design handoff 1:1 across a whole app
 *Learning Contract: the plan's design is the prediction; the diff is below. No live prediction solicited.*
 

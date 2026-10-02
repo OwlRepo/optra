@@ -364,6 +364,50 @@ function serializeForCsv(item: LineItemForCsv) {
  */
 export const COMPARISON_STRATEGY_VERSION = 3
 
+// A double as an exact scaled integer, read from its shortest round-trip text
+// (String(0.3333) is "0.3333"), which is the decimal the document stated.
+function toScaledDecimal(value: number): { digits: bigint; scale: number } {
+  const [mantissa, exponent = '0'] = String(value).toLowerCase().split('e')
+  const negative = mantissa.startsWith('-')
+  const [whole, fraction = ''] = mantissa.replace('-', '').split('.')
+  let digits = BigInt(whole + fraction)
+  let scale = fraction.length - Number(exponent)
+  if (scale < 0) {
+    digits *= 10n ** BigInt(-scale)
+    scale = 0
+  }
+  return { digits: negative ? -digits : digits, scale }
+}
+
+function decimalDifference(a: number, b: number): string {
+  const left = toScaledDecimal(a)
+  const right = toScaledDecimal(b)
+  const scale = Math.max(left.scale, right.scale)
+  const difference =
+    left.digits * 10n ** BigInt(scale - left.scale) - right.digits * 10n ** BigInt(scale - right.scale)
+  if (difference === 0n) return '0'
+  const sign = difference < 0n ? '-' : ''
+  const text = (difference < 0n ? -difference : difference).toString().padStart(scale + 1, '0')
+  const whole = text.slice(0, text.length - scale)
+  const fraction = text.slice(text.length - scale).replace(/0+$/, '')
+  return `${sign}${whole}${fraction ? `.${fraction}` : ''}`
+}
+
+const REASON_NAME_MAX = 80
+
+// How a reason names a line: its SKU, else its description in quotes.
+function lineName(line?: { sku: string | null; description: string | null }): string | null {
+  const sku = line?.sku?.trim()
+  if (sku) return line!.sku
+  const description = line?.description?.trim()
+  if (!description) return null
+  // Counted in characters, not UTF-16 units, so an emoji is never cut in half.
+  const characters = Array.from(description)
+  const shown =
+    characters.length > REASON_NAME_MAX ? `${characters.slice(0, REASON_NAME_MAX - 1).join('')}…` : description
+  return `"${shown}"`
+}
+
 @Injectable()
 export class ComparisonService {
   private readonly logger = new Logger(ComparisonService.name)
@@ -1142,19 +1186,19 @@ export class ComparisonService {
       // delta is computed. Ten boxes against ten each is not a difference of
       // zero, and writing 0 here would read as "agreed".
       delta: isQuantity
-        ? this.numToStr(this.diff(row.inv_qty, row.po_qty))
+        ? this.diff(row.inv_qty, row.po_qty)
         : isPrice
-          ? this.numToStr(this.diff(invoicePrice, poPrice))
+          ? this.diff(invoicePrice, poPrice)
           : isMissingOnInvoice
-            ? this.numToStr(this.diff(0, row.po_qty))
+            ? this.diff(0, row.po_qty)
             : isMissingOnPo
-              ? this.numToStr(this.diff(row.inv_qty, 0))
+              ? this.diff(row.inv_qty, 0)
               : isShortReceipt
-                ? this.numToStr(this.diff(row.grn_accepted_qty, row.po_qty))
+                ? this.diff(row.grn_accepted_qty, row.po_qty)
                 : isInvoiceExceedsReceived
-                  ? this.numToStr(this.diff(row.inv_qty, row.grn_accepted_qty))
+                  ? this.diff(row.inv_qty, row.grn_accepted_qty)
                   : null,
-      reason: this.buildReason(row, poLine, invoiceLine),
+      reason: this.buildReason(row, poLine, invoiceLine, goodsReceiptLine),
     }
   }
 
@@ -1364,7 +1408,7 @@ export class ComparisonService {
         contractTermId: term.id,
         // Ordered minus agreed, so positive always means we ordered above the
         // contract — the same reading direction as every other delta.
-        delta: this.numToStr(this.diff(orderedPrice, agreed)),
+        delta: this.diff(orderedPrice, agreed),
         reason: `${group.sku} was ordered at ${orderedPrice} but the agreed price is ${agreed} (${dated}${term.sourceReference ? `, ${term.sourceReference}` : ''})`,
       })
     }
@@ -1377,17 +1421,30 @@ export class ComparisonService {
     return min !== null && min === max ? min : null
   }
 
-  private diff(a: number | null, b: number | null): number | null {
-    if (a === null || b === null) return null
-    return Math.round((a - b) * 100) / 100
+  // a - b as exact decimal text (B9). Rounding to cents wrote '0' for a
+  // mismatch smaller than a cent, and plain double subtraction leaks binary
+  // noise (20.1 - 19.99 = 0.11000000000000298).
+  private diff(a: number | null, b: number | null): string | null {
+    // A stated value too large for a double (1e400) reads back as Infinity:
+    // no exact difference exists, so the delta is unknown, not a crash.
+    if (a === null || b === null || !Number.isFinite(a) || !Number.isFinite(b)) return null
+    return decimalDifference(a, b)
   }
 
   private numToStr(value: number | null): string | null {
     return value === null ? null : String(value)
   }
 
-  private buildReason(row: ComparisonRow, poLine?: PoLineItem, invoiceLine?: InvoiceLineItem): string {
-    const sku = poLine?.sku ?? invoiceLine?.sku ?? '(unknown)'
+  private buildReason(
+    row: ComparisonRow,
+    poLine?: PoLineItem,
+    invoiceLine?: InvoiceLineItem,
+    goodsReceiptLine?: GoodsReceiptLineItem,
+  ): string {
+    // B10. A line is named the way it was matched: by SKU, or by its quoted
+    // description when it has none (description-keyed lines, freight). A long
+    // description is shortened so the reason stays one readable line.
+    const sku = lineName(poLine) ?? lineName(invoiceLine) ?? '(unknown)'
     const summed = this.summedNote(row)
 
     switch (row.flag_type) {
@@ -1419,10 +1476,12 @@ export class ComparisonService {
         if (selfContradicting.length > 0) {
           return `Unit of measure mismatch for ${sku}: ${selfContradicting.join(' and ')} lists more than one unit for this item, so its quantities cannot be added together`
         }
+        // B11. The units as the documents wrote them, the same text the flag's
+        // values carry; the engine compared normalized copies (normalizeUom).
         const stated = [
-          row.po_uom ? `PO=${row.po_uom}` : null,
-          row.grn_uom ? `Received=${row.grn_uom}` : null,
-          row.inv_uom ? `Invoice=${row.inv_uom}` : null,
+          row.po_uom ? `PO=${poLine?.uom?.trim() || row.po_uom}` : null,
+          row.grn_uom ? `Received=${goodsReceiptLine?.uom?.trim() || row.grn_uom}` : null,
+          row.inv_uom ? `Invoice=${invoiceLine?.uom?.trim() || row.inv_uom}` : null,
         ].filter(Boolean)
         return `Unit of measure mismatch for ${sku}: ${stated.join(' ')}. Units are captured, never converted, so no quantity difference is reported${summed}`
       }

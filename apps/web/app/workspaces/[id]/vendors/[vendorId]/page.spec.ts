@@ -428,4 +428,29 @@ describe('VendorDetailPage', () => {
     expect(getVendorMock).toHaveBeenCalledWith('ws-1', 'vendor-1')
     expect(listVendorsMock).not.toHaveBeenCalled()
   })
+
+  describe('no access (B18)', () => {
+    const denied = { statusCode: 403, message: 'Not a member of this workspace' }
+
+    it('error: a non-member sees the no-access state, not an error toast', async () => {
+      getWorkspaceMock.mockRejectedValue(denied)
+      getVendorMock.mockRejectedValue(denied)
+      listCatalogsMock.mockRejectedValue(denied)
+
+      renderPage()
+
+      expect(await screen.findByRole('heading', { name: "You don't have access to this workspace" })).toBeDefined()
+      expect(screen.queryByText('Failed to load vendor')).toBeNull()
+      expect(pushMock).not.toHaveBeenCalledWith('/login')
+    })
+
+    it('edge: a failure that is not a 403 still shows the error toast', async () => {
+      getVendorMock.mockRejectedValue({ statusCode: 500, message: 'Internal server error' })
+
+      renderPage()
+
+      expect(await screen.findByText('Failed to load vendor')).toBeDefined()
+      expect(screen.queryByRole('heading', { name: "You don't have access to this workspace" })).toBeNull()
+    })
+  })
 })

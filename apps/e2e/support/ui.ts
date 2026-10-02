@@ -16,6 +16,7 @@ const MIME: Record<string, string> = {
   '.md': 'text/markdown',
   '.html': 'text/html',
   '.pdf': 'application/pdf',
+  '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
 }
 
 /** A committed fixture, optionally renamed so parallel uploads stay distinguishable. */

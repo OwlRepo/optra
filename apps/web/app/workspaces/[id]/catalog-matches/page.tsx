@@ -16,7 +16,8 @@ import {
   useToast,
 } from '@repo/ui'
 import { logout } from '@/lib/api/auth'
-import { isUnauthorized } from '@/lib/api/handle-unauthorized'
+import { isForbidden, isUnauthorized } from '@/lib/api/handle-unauthorized'
+import { WorkspaceAccessDenied } from '@/components/workspace-access-denied'
 import { getWorkspace, listWorkspaces } from '@/lib/api/workspaces'
 import {
   dismissCatalogMatch,
@@ -76,11 +77,13 @@ export default function CatalogMatchesPage({ params }: { params: { id: string } 
   // page listed every match in the workspace, which is not what "Find catalog
   // matches" on a single discrepancy row means. Empty when opened from the
   // sidebar, which keeps the workspace-wide listing for that entry point.
+  //
+  // It is the same line matchQuery searches by. A flag's link carries both its
+  // PO and its invoice line ids, a search stores matches under the PO line
+  // only, and the API ANDs the two filters, so scoping to both listed nothing
+  // right after "1 match found".
   const lineScope = React.useMemo(
-    () => ({
-      poLineItemId: poLineItemId ?? undefined,
-      invoiceLineItemId: invoiceLineItemId ?? undefined,
-    }),
+    () => (poLineItemId ? { poLineItemId } : invoiceLineItemId ? { invoiceLineItemId } : {}),
     [poLineItemId, invoiceLineItemId],
   )
 
@@ -89,6 +92,9 @@ export default function CatalogMatchesPage({ params }: { params: { id: string } 
   const [vendors, setVendors] = React.useState<VendorDetail[]>([])
   const [matches, setMatches] = React.useState<CatalogMatch[]>([])
   const [isLoading, setIsLoading] = React.useState(true)
+  // B18. Set when the first load answers 403; the page then shows only the
+  // no-access state instead of empty content.
+  const [accessDenied, setAccessDenied] = React.useState(false)
   const [vendorFilter, setVendorFilter] = React.useState('')
   const [statusFilter, setStatusFilter] = React.useState<CatalogMatchStatus | ''>('')
   const [isSearching, setIsSearching] = React.useState(false)
@@ -164,6 +170,10 @@ export default function CatalogMatchesPage({ params }: { params: { id: string } 
         router.push('/login')
         return
       }
+      if (isForbidden(err)) {
+        setAccessDenied(true)
+        return
+      }
       toastRef.current({
         variant: 'error',
         title: 'Failed to load catalog matches',
@@ -206,6 +216,21 @@ export default function CatalogMatchesPage({ params }: { params: { id: string } 
     router.replace(`/workspaces/${workspaceId}/catalog-matches${query ? `?${query}` : ''}`)
   }, [router, searchParams, workspaceId])
 
+  // A search saves the verdicts it got; candidates the model could not compare
+  // are skipped and counted (B6). Said in its own toast so the success summary
+  // keeps its wording and the skip cannot be missed.
+  const notifyUnjudged = React.useCallback(
+    (unjudged: number) => {
+      if (unjudged > 0) {
+        toast({
+          title: 'Some catalog items were not compared',
+          description: `${unjudged} catalog item${unjudged === 1 ? '' : 's'} could not be compared. Search again to retry.`,
+        })
+      }
+    },
+    [toast],
+  )
+
   const handleSearch = React.useCallback(async () => {
     if (!matchQuery) return
     try {
@@ -217,6 +242,7 @@ export default function CatalogMatchesPage({ params }: { params: { id: string } 
         title: 'Search complete',
         description: `${count} match${count === 1 ? '' : 'es'} found.`,
       })
+      notifyUnjudged(result.unjudged)
       setHasSearched(true)
       await refetchMatches(vendorFilter, statusFilter)
     } catch (err) {
@@ -232,7 +258,7 @@ export default function CatalogMatchesPage({ params }: { params: { id: string } 
     } finally {
       setIsSearching(false)
     }
-  }, [matchQuery, refetchMatches, router, statusFilter, toast, vendorFilter, workspaceId])
+  }, [matchQuery, notifyUnjudged, refetchMatches, router, statusFilter, toast, vendorFilter, workspaceId])
 
   const handleVerify = React.useCallback(async () => {
     if (!matchQuery || !verifyVendorId) return
@@ -245,6 +271,7 @@ export default function CatalogMatchesPage({ params }: { params: { id: string } 
         title: 'Verification complete',
         description: `${count} match${count === 1 ? '' : 'es'} found.`,
       })
+      notifyUnjudged(result.unjudged)
       setHasSearched(true)
       await refetchMatches(vendorFilter, statusFilter)
     } catch (err) {
@@ -260,7 +287,7 @@ export default function CatalogMatchesPage({ params }: { params: { id: string } 
     } finally {
       setIsVerifying(false)
     }
-  }, [matchQuery, refetchMatches, router, statusFilter, toast, vendorFilter, verifyVendorId, workspaceId])
+  }, [matchQuery, notifyUnjudged, refetchMatches, router, statusFilter, toast, vendorFilter, verifyVendorId, workspaceId])
 
   const handleDismiss = React.useCallback(
     async (matchId: string) => {
@@ -332,107 +359,113 @@ export default function CatalogMatchesPage({ params }: { params: { id: string } 
       {/* AppShell <main> owns the frame padding (Part 2 addendum); this is
           only the content column. Frame 2.11 main gap is 20, not 24. */}
       <div className="flex flex-col gap-[14px] lg:gap-5">
-        <div className="flex flex-wrap items-center gap-3">
-          {lineScopeLabel ? (
-            <ScopeChip label={lineScopeLabel} clearLabel="Clear line scope" onClear={clearLineScope} />
-          ) : null}
-          <Select
-            aria-label="Filter by vendor"
-            className="h-[38px] w-[220px] rounded-[10px] pl-3 pr-9 text-[14px]"
-            value={vendorFilter}
-            onChange={(event) => handleVendorFilterChange(event.target.value)}
-          >
-            <option value="">All vendors</option>
-            {vendors.map((vendor) => (
-              <option key={vendor.id} value={vendor.id}>
-                {vendor.name}
-              </option>
-            ))}
-          </Select>
-          <SegmentedControl
-            aria-label="Filter by status"
-            size="sm"
-            options={STATUS_OPTIONS}
-            value={statusFilter || 'all'}
-            onValueChange={(value) => handleStatusFilterChange(value === 'open' || value === 'dismissed' ? value : '')}
-          />
-        </div>
-
-        {isLoading ? (
-          <div aria-busy="true" className="overflow-hidden rounded-[18px] border border-border-panel bg-card">
-            <SkeletonRows rows={3} columns={4} />
-          </div>
-        ) : matches.length === 0 ? (
-          <EmptyState
-            title={hasSearched ? 'No matches found' : 'No catalog matches yet'}
-            description={
-              hasSearched
-                ? 'Try a different vendor or line item.'
-                : 'Search for matches from the Discrepancies page, or adjust the filters above.'
-            }
-            actions={
-              // Frame 2.12 (amber): opened from the sidebar, Discrepancies is
-              // the only place a search can start, so link there.
-              !hasSearched && !matchQuery ? (
-                <Button asChild variant="outline" size="sm">
-                  <Link href={`/workspaces/${workspaceId}/discrepancies`}>
-                    Open discrepancies <span aria-hidden="true">→</span>
-                  </Link>
-                </Button>
-              ) : undefined
-            }
-          />
+        {accessDenied ? (
+          <WorkspaceAccessDenied />
         ) : (
-          matches.map((match) => (
-            // C18 is the panel; its `header` slot (C-3 #8) is the top row with
-            // the type chip, status and Dismiss. Dismissed panels fade (2.11).
-            <PhotoCompare
-              key={match.id}
-              className={cn(match.status !== 'open' && 'opacity-70')}
-              header={
-                <div className="flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-2">
-                    <Badge variant="chip">{match.matchType === 'sourcing' ? 'Sourcing' : 'Compliance'}</Badge>
-                    <Badge variant="neutral">{match.status === 'open' ? 'Open' : 'Dismissed'}</Badge>
-                  </div>
-                  {canManage && match.status === 'open' ? (
-                    <Button
-                      variant="ghost"
-                      size="xs"
-                      className="px-[10px]"
-                      aria-label={`Dismiss match ${match.id}`}
-                      onClick={() => void handleDismiss(match.id)}
-                      isLoading={dismissingId === match.id}
-                      loadingText="Dismissing"
-                    >
-                      {dismissingId === match.id ? null : 'Dismiss'}
+          <>
+            <div className="flex flex-wrap items-center gap-3">
+              {lineScopeLabel ? (
+                <ScopeChip label={lineScopeLabel} clearLabel="Clear line scope" onClear={clearLineScope} />
+              ) : null}
+              <Select
+                aria-label="Filter by vendor"
+                className="h-[38px] w-[220px] rounded-[10px] pl-3 pr-9 text-[14px]"
+                value={vendorFilter}
+                onChange={(event) => handleVendorFilterChange(event.target.value)}
+              >
+                <option value="">All vendors</option>
+                {vendors.map((vendor) => (
+                  <option key={vendor.id} value={vendor.id}>
+                    {vendor.name}
+                  </option>
+                ))}
+              </Select>
+              <SegmentedControl
+                aria-label="Filter by status"
+                size="sm"
+                options={STATUS_OPTIONS}
+                value={statusFilter || 'all'}
+                onValueChange={(value) => handleStatusFilterChange(value === 'open' || value === 'dismissed' ? value : '')}
+              />
+            </div>
+
+            {isLoading ? (
+              <div aria-busy="true" className="overflow-hidden rounded-[18px] border border-border-panel bg-card">
+                <SkeletonRows rows={3} columns={4} />
+              </div>
+            ) : matches.length === 0 ? (
+              <EmptyState
+                title={hasSearched ? 'No matches found' : 'No catalog matches yet'}
+                description={
+                  hasSearched
+                    ? 'Try a different vendor or line item.'
+                    : 'Search for matches from the Discrepancies page, or adjust the filters above.'
+                }
+                actions={
+                  // Frame 2.12 (amber): opened from the sidebar, Discrepancies is
+                  // the only place a search can start, so link there.
+                  !hasSearched && !matchQuery ? (
+                    <Button asChild variant="outline" size="sm">
+                      <Link href={`/workspaces/${workspaceId}/discrepancies`}>
+                        Open discrepancies <span aria-hidden="true">→</span>
+                      </Link>
                     </Button>
-                  ) : null}
-                </div>
-              }
-              query={{
-                sku: match.queryItem?.sku ?? null,
-                // Falls back to the truncated id only when the referenced
-                // line item no longer exists.
-                description:
-                  match.queryItem?.description ??
-                  `Query item ${(match.queryPoLineItemId ?? match.queryInvoiceLineItemId ?? '').slice(0, 8)}...`,
-              }}
-              candidate={{
-                sku: match.catalogItem?.sku ?? null,
-                description: match.catalogItem?.description ?? `Catalog item ${match.catalogItemId.slice(0, 8)}...`,
-                photoSrc: match.catalogItem?.photoStorageKey
-                  ? catalogItemPhotoUrl(workspaceId, match.catalogItemId)
-                  : null,
-                vendorName: vendors.find((vendor) => vendor.id === match.vendorId)?.name,
-              }}
-              verdict={{
-                score: match.score !== null ? Number(match.score) : null,
-                isMatch: match.isMatch,
-                reason: match.reason,
-              }}
-            />
-          ))
+                  ) : undefined
+                }
+              />
+            ) : (
+              matches.map((match) => (
+                // C18 is the panel; its `header` slot (C-3 #8) is the top row with
+                // the type chip, status and Dismiss. Dismissed panels fade (2.11).
+                <PhotoCompare
+                  key={match.id}
+                  className={cn(match.status !== 'open' && 'opacity-70')}
+                  header={
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2">
+                        <Badge variant="chip">{match.matchType === 'sourcing' ? 'Sourcing' : 'Compliance'}</Badge>
+                        <Badge variant="neutral">{match.status === 'open' ? 'Open' : 'Dismissed'}</Badge>
+                      </div>
+                      {canManage && match.status === 'open' ? (
+                        <Button
+                          variant="ghost"
+                          size="xs"
+                          className="px-[10px]"
+                          aria-label={`Dismiss match ${match.id}`}
+                          onClick={() => void handleDismiss(match.id)}
+                          isLoading={dismissingId === match.id}
+                          loadingText="Dismissing"
+                        >
+                          {dismissingId === match.id ? null : 'Dismiss'}
+                        </Button>
+                      ) : null}
+                    </div>
+                  }
+                  query={{
+                    sku: match.queryItem?.sku ?? null,
+                    // Falls back to the truncated id only when the referenced
+                    // line item no longer exists.
+                    description:
+                      match.queryItem?.description ??
+                      `Query item ${(match.queryPoLineItemId ?? match.queryInvoiceLineItemId ?? '').slice(0, 8)}...`,
+                  }}
+                  candidate={{
+                    sku: match.catalogItem?.sku ?? null,
+                    description: match.catalogItem?.description ?? `Catalog item ${match.catalogItemId.slice(0, 8)}...`,
+                    photoSrc: match.catalogItem?.photoStorageKey
+                      ? catalogItemPhotoUrl(workspaceId, match.catalogItemId)
+                      : null,
+                    vendorName: vendors.find((vendor) => vendor.id === match.vendorId)?.name,
+                  }}
+                  verdict={{
+                    score: match.score !== null ? Number(match.score) : null,
+                    isMatch: match.isMatch,
+                    reason: match.reason,
+                  }}
+                />
+              ))
+            )}
+          </>
         )}
       </div>
     </AppShell>
