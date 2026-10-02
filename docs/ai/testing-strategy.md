@@ -401,6 +401,8 @@ Environment traps hit while verifying (they are execution preflight, not test lo
 
 **2026-10-02 — fix B7 (catalog photo budget).** `catalog-parse.processor.spec.ts` `describe('photo fetching budget (B7)')` (3). **Test a time budget with a controlled clock, not real waiting:** the hanging-host case spies on `Date.now` and lets each mocked fetch advance it by 20 s, so 16 hung photos run in milliseconds. The spec's `jest.mock('@repo/ai')` gained `createLimit` through `jest.requireActual` of `packages/ai/src/web/limit` alone — a mock factory must cover every name the code imports (see the chat e2e note above), and loading one small file keeps the rest of `@repo/ai` mocked.
 
+**2026-10-02 — fix B13 (catalog path ids).** `catalog.controller.spec.ts` `describe('CatalogController path ids (B13)')` reads Nest's `ROUTE_ARGS_METADATA` and fails when any catalog handler's `:vendorId`, `:catalogId`, `:itemId` or `:matchId` lacks `ParseUUIDPipe` — a new route with a bare id param breaks it, not just the ten fixed here. `catalog.e2e-spec.ts` `describe('malformed vendor and catalog ids (B13)')` (2) sends `not-a-uuid` to every one of them over HTTP and expects 400 `Validation failed (uuid is expected)`.
+
 ## Infrastructure / Docker / Deployment Verification
 
 Infra/config/script changes (Dockerfiles, compose files, CI workflows, deploy shell scripts) are not

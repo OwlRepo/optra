@@ -1,0 +1,9 @@
+# Fix B13 — malformed catalog path ids answer 400, not 500
+
+Owner instruction 2026-10-02: continue through the bug list without waiting; pull the owner in only when a decision is needed.
+
+- Classification: BUG_FIX · Standard (one controller, no service, schema or queue change) · Vendor Catalog / Vision Matching. Contract areas: API — a malformed `:vendorId`/`:catalogId` now answers 400 `Validation failed (uuid is expected)` where it answered 500; valid ids unchanged. DB — none. Jobs — none.
+- Root cause: `CatalogController` declared `@Param('vendorId')` with no pipe on getVendor, vendorPriceHistory, vendorExceptionSummary, createPriceTerm, listPriceTerms, uploadCatalog, scrapeCatalog, listCatalogs and listCatalogItems (plus `:catalogId` on listCatalogItems). The id reached a `uuid` column query, Postgres raised `22P02`, which is not an `HttpException`, so `AllExceptionsFilter` answered 500. The item, match and verify routes already had `ParseUUIDPipe`; the controller's own comment on verifyMatches named this failure.
+- Fix: `new ParseUUIDPipe()` on those ten params, the same pipe the other catalog routes use. Pipes run after guards, so a non-member still gets 403 first; on the upload route the file is buffered by the interceptor and then refused, never stored.
+- Tests first (RED `acf9ba2`): unit `catalog.controller.spec.ts` `describe('CatalogController path ids (B13)')` checks every id param's route metadata carries `ParseUUIDPipe`; API e2e `catalog.e2e-spec.ts` `describe('malformed vendor and catalog ids (B13)')` checks 400 and the message on every affected route. No page or BFF route changed, so no browser test.
+- Also in this slice (review advisory from B7): the B7 records no longer claim every attempt ends inside its timeout — an in-flight photo's DNS lookup and storage write are not time-bounded.
