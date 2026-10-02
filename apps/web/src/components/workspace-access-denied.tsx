@@ -16,7 +16,7 @@ export function WorkspaceAccessDenied() {
     <EmptyState
       icon={<Lock className="size-5" />}
       title="You don't have access to this workspace"
-      description="It may have been deleted, or you are not a member. Ask its owner to invite you."
+      description="It may have been deleted, or you're not a member. Ask its owner to invite you."
       actions={
         <Button size="sm" onClick={() => router.push('/workspaces')}>
           Go to your workspaces
