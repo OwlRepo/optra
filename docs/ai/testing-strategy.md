@@ -212,7 +212,7 @@ track them.
 | `cd packages/db && bun run test` | Vitest 3.2.6 | 1 (`src/**/*.spec.ts`) |
 | `cd packages/ui && bun run test` | Vitest 4.1.9 | 11 |
 | `bun run db:seed:test` (root) | Vitest, `scripts/seed` | 2 (`scripts/seed/__tests__/*.test.ts`) |
-| `cd apps/e2e && bun run test:e2e` (root `bun run e2e` builds first) | Playwright 1.63 | 10 (`apps/e2e/tests/*.spec.ts`) plus the `tests/auth.setup.ts` setup project; `knowledge-base.spec.ts` and `datasets.spec.ts` are parked with `test.skip` while the support surfaces are disabled (`[support-surfaces-off]`, 2026-10-02) |
+| `cd apps/e2e && bun run test:e2e` (root `bun run e2e` builds first) | Playwright 1.63 | 13 (`apps/e2e/tests/*.spec.ts`; CONTEXT DRIFT fixed 2026-10-02 — this said 10 while 11 existed, before S4 added 2) plus the `tests/auth.setup.ts` setup project; `knowledge-base.spec.ts` and `datasets.spec.ts` are parked with `test.skip` while the support surfaces are disabled (`[support-surfaces-off]`, 2026-10-02) |
 | `cd apps/e2e && bun run test:smoke` (by hand, after a deploy) | Playwright 1.63, `playwright.prod.config.ts` | 1 (`apps/e2e/smoke/prod.smoke.spec.ts`) |
 | `bun run test:scripts` (root) | `node --test` | 6 (`scripts/**/*.test.mjs`) |
 | `$(cat graphify-out/.graphify_python) -m unittest discover -s scripts/graphify -p 'test_*.py'` (not in CI; graphify is not installed there) | Python `unittest` | 2 (`scripts/graphify/test_*.py`) |
@@ -390,6 +390,8 @@ Environment traps hit while verifying (they are execution preflight, not test lo
 - **Prove a budget guard through the real metering path, not a mocked compare.** The budget case builds `CatalogMatchService` over a real `CatalogExtractionService` and `UsageService` with a stubbed Redis that reports the cap, so the 402 comes from `assertWithinBudget` exactly as in production, and `incrby` is asserted never called.
 - **Test a transaction by making its second statement fail.** `catalog_matches.reason` is NOT NULL, so a verdict with `reason: null` fails the insert after the scoped delete; the previous open match surviving is the proof the two run in one transaction.
 `catalog.e2e-spec.ts` already spends the whole `/auth/register` budget (5 per 10 minutes), so the new cases seed users with `seedOwnerWithWorkspace` / `seedMemberOfWorkspace`, copied from `procurement.e2e-spec.ts`. Malformed `:vendorId` / `:catalogId` cases are not written: those routes answer 500 today (B13). The single-candidate "malformed model verdict rejects the search" case pins today's rejection, which the B6 per-candidate fix will change on purpose; that slice updates it explicitly.
+
+**2026-10-02 — launch hardening S4 (browser flows a buyer clicks).** New `procurement-core.spec.ts` (5) and `catalog-core.spec.ts` (2); the OpenAI stub gained a catalog-compare route keyed on the compare prompt's own wording, so the two model calls can never cross; `flows.ts` gained file-based PO/invoice/goods-receipt upload helpers; new fixtures include a deterministic `po.xlsx`. Full suite 45 passed / 7 skipped (the parked support-surface specs), three runs in a row. Two harness findings: the catalog-matches page is opened with only `poLineItemId`, because the flag row's own link also passes `invoiceLineItemId` and the list then shows nothing (bug B12); and the happy path pins that a decision stays on the run it was made on, since a re-compare starts a new run with open flags (D15).
 
 ## Infrastructure / Docker / Deployment Verification
 

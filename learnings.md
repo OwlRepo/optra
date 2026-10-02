@@ -458,3 +458,12 @@ And one rule the owner made standing: every change now ships with its tests for 
 **Actual:** confirmed — 12 unit and 4 API e2e cases, each spec green three runs in a row (44/44 and 7/7), full api unit 770/770 and API e2e 91/91 once, no source file touched. The planned "a model failure on one of several candidates rejects the search" case was dropped before it was written, because asserting it would have pinned bug B6. The single-candidate "malformed model verdict rejects the search" case is kept and pins today's rejection; the B6 fix slice must update it explicitly.
 
 **Why different:** not different. **When the honest assertion for a case is a known bug, the right move is to drop the case and test the invariant next to it (here: the rollback), not to pin the bug.**
+
+## 2026-10-02 — Launch hardening S4: browser flows a buyer clicks
+*Learning Contract: the plan's design is the prediction; the diff is below. No live prediction solicited.*
+
+**Predicted (from the approved plan):** test-only slices land green with zero guarded-source change.
+
+**Actual:** confirmed — 7 new browser tests; the whole Playwright suite green three runs in a row (45 passed, 7 parked); no product code touched. Getting there exposed environment problems, not test problems: a stale primary `node_modules` with no `@playwright/test`, bun extracting packages empty until `--force`, and a 98%-full disk killing the Next build.
+
+**Why different:** not different for the tests. **A browser suite is only as reproducible as the install under it — verify `node_modules/.bin/playwright` exists before blaming a spec.**
