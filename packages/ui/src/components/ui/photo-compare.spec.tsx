@@ -90,4 +90,71 @@ describe('PhotoCompare', () => {
     const rightPanel = screen.getByTestId('photo-compare-candidate-panel')
     expect(within(rightPanel).queryByRole('img')).toBeNull()
   })
+
+  it('edge: the candidate photo border takes the verdict tone', () => {
+    setup({ verdict: { score: 0.2, isMatch: false, reason: 'SKU differs' } })
+    const tile = screen
+      .getByTestId('photo-compare-candidate-panel')
+      .querySelector('[data-image-frame]')?.parentElement as HTMLElement
+    expect(tile.className).toContain('[&_[data-image-frame]]:border-destructive-tone')
+    cleanup()
+    setup({ verdict: { score: 0.9, isMatch: true, reason: 'Matches on SKU' } })
+    const matchTile = screen
+      .getByTestId('photo-compare-candidate-panel')
+      .querySelector('[data-image-frame]')?.parentElement as HTMLElement
+    expect(matchTile.className).toContain('[&_[data-image-frame]]:border-primary-strong')
+  })
+
+  it('edge: header renders as the panel\'s first row above the two cells', () => {
+    setup({
+      header: (
+        <>
+          <span>Sourcing</span>
+          <button type="button">Dismiss</button>
+        </>
+      ),
+    })
+    const queryPanel = screen.getByTestId('photo-compare-query-panel')
+    const root = queryPanel.parentElement?.parentElement as HTMLElement
+    const first = root.firstElementChild as HTMLElement
+    expect(first.hasAttribute('data-photo-compare-header')).toBe(true)
+    expect(first.className).toContain('border-b')
+    expect(first.className).toContain('px-5')
+    expect(first.className).toContain('py-3')
+    expect(within(first).getByRole('button', { name: 'Dismiss' })).toBeTruthy()
+  })
+
+  it('edge: no header row renders without a header', () => {
+    setup()
+    const root = screen.getByTestId('photo-compare-query-panel').parentElement?.parentElement as HTMLElement
+    expect(root.querySelector('[data-photo-compare-header]')).toBeNull()
+  })
+
+  it('edge: the confidence bar is the compact "Conf." meter', () => {
+    setup({ verdict: { score: 0.61, isMatch: false, reason: 'Likely substituted' } })
+    expect(screen.getByText('Conf.')).toBeTruthy()
+    expect(screen.getByText('61%')).toBeTruthy()
+  })
+
+  it('regression: requested and candidate are two cells of one hairline panel with a subtle verdict footer', () => {
+    setup()
+    const queryPanel = screen.getByTestId('photo-compare-query-panel')
+    const root = queryPanel.parentElement?.parentElement as HTMLElement
+    expect(root.className).toContain('rounded-[18px]')
+    expect(root.className).toContain('border-border-panel')
+    expect(root.className).toContain('bg-card')
+    expect(queryPanel.className).toContain('sm:border-r')
+    const footer = root.lastElementChild as HTMLElement
+    expect(footer.className).toContain('bg-surface-subtle')
+    expect(footer.className).toContain('border-t')
+  })
+
+  it('regression: the verdict is a solid pill (white on red for No match, white on teal for Match)', () => {
+    setup({ verdict: { score: 0.2, isMatch: false, reason: 'SKU differs' } })
+    expect(screen.getByText('No match').className).toContain('bg-destructive-tone')
+    expect(screen.getByText('No match').className).toContain('uppercase')
+    cleanup()
+    setup({ verdict: { score: 0.9, isMatch: true, reason: 'Matches on SKU' } })
+    expect(screen.getByText('Match').className).toContain('bg-primary-strong')
+  })
 })

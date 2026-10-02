@@ -49,6 +49,16 @@ vi.mock('@/lib/api/auth', () => ({
 
 const vendor = { id: 'vendor-1', name: 'Acme Supplies', contactInfo: 'orders@acme.com', createdAt: '2026-07-01T00:00:00.000Z' }
 
+const readyCatalog = {
+  id: 'cat-1',
+  name: 'Spring price list',
+  sourceKind: 'pdf',
+  status: 'done',
+  rowCount: 120,
+  lastError: null,
+  createdAt: '2026-07-01T00:00:00.000Z',
+}
+
 function renderPage() {
   return render(
     React.createElement(
@@ -88,7 +98,50 @@ describe('VendorDetailPage', () => {
     vi.restoreAllMocks()
   })
 
-  it('renders loading skeleton before data resolves', async () => {
+  it('error: shows an error toast when catalog upload fails', async () => {
+    uploadCatalogMock.mockRejectedValue({ message: 'Catalog uploads are not enabled for this workspace' })
+
+    renderPage()
+    await screen.findByText('No catalogs yet')
+
+    const file = new File(['%PDF-1.4'], 'sales.pdf', { type: 'application/pdf' })
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement
+    fireEvent.change(input, { target: { files: [file] } })
+
+    await waitFor(() => {
+      expect(screen.getByText('Upload failed')).toBeDefined()
+      expect(screen.getByText('Catalog uploads are not enabled for this workspace')).toBeDefined()
+    })
+  })
+
+  it('error: shows an error toast when starting a scrape fails', async () => {
+    scrapeCatalogMock.mockRejectedValue({ message: 'Scraping is not enabled for this workspace' })
+
+    renderPage()
+    await screen.findByText('No catalogs yet')
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Scrape website' })[0] as HTMLButtonElement)
+    fireEvent.change(screen.getByLabelText('Website URL'), { target: { value: 'https://acme.example.com/catalog' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Start scrape' }))
+
+    await waitFor(() => {
+      expect(screen.getByText('Failed to start scrape')).toBeDefined()
+      expect(screen.getByText('Scraping is not enabled for this workspace')).toBeDefined()
+    })
+  })
+
+  it('error: redirects to login when loading the vendor returns unauthorized', async () => {
+    listCatalogsMock.mockRejectedValue({ statusCode: 401, message: 'Unauthorized' })
+
+    renderPage()
+
+    await waitFor(() => {
+      expect(pushMock).toHaveBeenCalledWith('/login')
+    })
+  })
+
+  // [RED] rewritten probe: C-0 skeletons no longer carry bg-secondary.
+  it('edge: shows the catalog skeleton as a busy region until catalogs resolve', async () => {
     let resolveCatalogs: (value: unknown) => void = () => {}
     listCatalogsMock.mockReturnValue(
       new Promise((resolve) => {
@@ -98,13 +151,138 @@ describe('VendorDetailPage', () => {
 
     const { container } = renderPage()
 
-    expect(container.querySelectorAll('[class*="bg-secondary"]').length).toBeGreaterThan(0)
+    expect(container.querySelector('[aria-busy="true"]')).not.toBeNull()
 
     resolveCatalogs([])
     await screen.findByText('No catalogs yet')
+    expect(container.querySelector('[aria-busy="true"]')).toBeNull()
   })
 
-  it('renders empty state with correct copy and the vendor header', async () => {
+  it('edge: keeps Start scrape disabled until the seed URL looks valid', async () => {
+    renderPage()
+    await screen.findByText('No catalogs yet')
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Scrape website' })[0] as HTMLButtonElement)
+    const startButton = screen.getByRole('button', { name: 'Start scrape' }) as HTMLButtonElement
+    expect(startButton.disabled).toBe(true)
+
+    fireEvent.change(screen.getByLabelText('Website URL'), { target: { value: 'not-a-url' } })
+    expect(startButton.disabled).toBe(true)
+    expect(screen.getByText('Enter a valid URL starting with http:// or https://')).toBeDefined()
+
+    fireEvent.change(screen.getByLabelText('Website URL'), { target: { value: 'https://acme.example.com' } })
+    expect(startButton.disabled).toBe(false)
+  })
+
+  it('edge: hides upload/scrape actions for members and shows them for owner/admin', async () => {
+    listWorkspacesMock.mockResolvedValueOnce({ items: [{ id: 'ws-1', role: 'member' }], nextCursor: null })
+
+    const view = renderPage()
+
+    expect(await screen.findByText('No catalogs yet')).toBeDefined()
+    expect(screen.queryByRole('button', { name: 'Upload catalog' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Scrape website' })).toBeNull()
+    expect(document.querySelector('input[type="file"]')).toBeNull()
+
+    view.unmount()
+
+    listWorkspacesMock.mockResolvedValueOnce({ items: [{ id: 'ws-1', role: 'admin' }], nextCursor: null })
+    renderPage()
+
+    expect((await screen.findAllByRole('button', { name: 'Upload catalog' })).length).toBeGreaterThan(0)
+    expect(screen.getAllByRole('button', { name: 'Scrape website' }).length).toBeGreaterThan(0)
+  })
+
+  // [RED] no "Price history" label exists today.
+  it('edge: says nothing has been bought yet, under the Price history section and label', async () => {
+    renderPage()
+
+    expect(await screen.findByText('Nothing bought from this vendor yet')).toBeTruthy()
+    expect(screen.getByText('Upload a purchase order against them and its prices will show up here.')).toBeTruthy()
+    expect(screen.getAllByText('Price history')).toHaveLength(2)
+  })
+
+  // [RED] ranges live in the label sentence today.
+  it('edge: the scrape modal puts depth and pages on one row with their ranges as a muted suffix', async () => {
+    renderPage()
+    await screen.findByText('No catalogs yet')
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Scrape website' })[0] as HTMLButtonElement)
+
+    expect(screen.getByLabelText('Max depth')).toBeDefined()
+    expect(screen.getByLabelText('Max pages')).toBeDefined()
+    expect(screen.getByText('0–5')).toBeDefined()
+    expect(screen.getByText('1–2000')).toBeDefined()
+    expect(screen.getByText('Both optional. The catalog fills in once the crawl finishes.')).toBeDefined()
+    expect(screen.queryByText(/optional, 0-5/)).toBeNull()
+    // C-3 #15: placeholders state the API's real defaults.
+    expect(screen.getByLabelText('Max depth').getAttribute('placeholder')).toBe('3')
+    expect(screen.getByLabelText('Max pages').getAttribute('placeholder')).toBe('500')
+    expect(screen.getByText('Catalog source')).toBeDefined()
+  })
+
+  // [RED] amber 3.5: the two tables had no headers.
+  it('regression: names the two sections "Price history" and "Catalogs"', async () => {
+    renderPage()
+    await screen.findByText('No catalogs yet')
+
+    expect(screen.getByRole('heading', { level: 2, name: 'What this vendor has charged' })).toBeDefined()
+    expect(screen.getByRole('heading', { level: 2, name: 'What they say they sell' })).toBeDefined()
+    expect(screen.getByText('Catalogs')).toBeDefined()
+    expect(screen.getAllByText('Price history').length).toBeGreaterThan(0)
+  })
+
+  // [RED] amber 3.5: the page had no way back.
+  it('regression: the breadcrumb links back to the Vendors list', async () => {
+    renderPage()
+    await screen.findByText('No catalogs yet')
+
+    const back = screen.getAllByRole('link', { name: 'Vendors' }).filter((link) => link.closest('aside') === null)
+    expect(back).toHaveLength(1)
+    expect(back[0]?.getAttribute('href')).toBe('/workspaces/ws-1/vendors')
+  })
+
+  // [RED] Upload catalog comes first today.
+  it('regression: header actions read secondary then primary, Scrape website before Upload catalog', async () => {
+    listCatalogsMock.mockResolvedValue([readyCatalog])
+
+    renderPage()
+    await screen.findByText('Spring price list')
+
+    const scrape = screen.getAllByRole('button', { name: 'Scrape website' })[0] as HTMLButtonElement
+    const upload = screen.getAllByRole('button', { name: 'Upload catalog' })[0] as HTMLButtonElement
+    expect(scrape.compareDocumentPosition(upload) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  // [RED] C-3 #11: caption is two lines under the photo (Mono SKU + description), plus the loaded count.
+  it('regression: catalog items show the SKU in Mono with the description under each photo, and the loaded count', async () => {
+    listCatalogsMock.mockResolvedValue([{ ...readyCatalog, rowCount: 2 }])
+    listCatalogItemsMock.mockResolvedValue([
+      { id: 'item-1', sku: 'SKU-1', description: 'Widget, 10-pack', photoStorageKey: 'catalogs/cat-1/item-1.jpg', sourcePageNumber: 1 },
+      { id: 'item-2', sku: 'SKU-2', description: 'Gadget, single', photoStorageKey: null, sourcePageNumber: 2 },
+    ])
+
+    renderPage()
+    await screen.findByText('Spring price list')
+
+    fireEvent.click(screen.getByRole('button', { name: 'View items' }))
+
+    await waitFor(() => {
+      expect(listCatalogItemsMock).toHaveBeenCalledWith('ws-1', 'vendor-1', 'cat-1')
+      expect(screen.getByText('Widget, 10-pack')).toBeDefined()
+      expect(screen.getByText('Gadget, single')).toBeDefined()
+    })
+    expect(screen.getByText('SKU-1').className).toContain('font-mono')
+    expect(screen.getByText('SKU-2').className).toContain('font-mono')
+    expect(screen.getByText('2 items')).toBeDefined()
+    // item-1 has a stored photo, so it renders an <img> pointed at the auth
+    // proxy; only item-2 (photoStorageKey null) keeps the fallback tile.
+    expect(document.querySelectorAll('[data-testid="image-tile-fallback"]').length).toBe(1)
+    const photo = document.querySelector('img[alt="SKU-1"]')
+    expect(photo?.getAttribute('src')).toBe('/api/workspaces/ws-1/catalog-items/item-1/photo')
+  })
+
+  it('happy: renders the empty state copy and the vendor header', async () => {
     renderPage()
 
     expect(await screen.findByText('No catalogs yet')).toBeDefined()
@@ -113,17 +291,9 @@ describe('VendorDetailPage', () => {
     expect(screen.getByText('orders@acme.com')).toBeDefined()
   })
 
-  it('renders fetched catalogs with source, status badges, row counts, and inline error', async () => {
+  it('happy: renders catalogs with source and status badges, row counts and the inline error', async () => {
     listCatalogsMock.mockResolvedValue([
-      {
-        id: 'cat-1',
-        name: 'Spring price list',
-        sourceKind: 'pdf',
-        status: 'done',
-        rowCount: 120,
-        lastError: null,
-        createdAt: '2026-07-01T00:00:00.000Z',
-      },
+      readyCatalog,
       {
         id: 'cat-2',
         name: 'Website crawl',
@@ -147,25 +317,7 @@ describe('VendorDetailPage', () => {
     expect(screen.getByText('Scrape')).toBeDefined()
   })
 
-  it('hides upload/scrape actions for member role and shows them for owner/admin', async () => {
-    listWorkspacesMock.mockResolvedValueOnce({ items: [{ id: 'ws-1', role: 'member' }], nextCursor: null })
-
-    const view = renderPage()
-
-    expect(await screen.findByText('No catalogs yet')).toBeDefined()
-    expect(screen.queryByRole('button', { name: 'Upload catalog' })).toBeNull()
-    expect(screen.queryByRole('button', { name: 'Scrape website' })).toBeNull()
-
-    view.unmount()
-
-    listWorkspacesMock.mockResolvedValueOnce({ items: [{ id: 'ws-1', role: 'admin' }], nextCursor: null })
-    renderPage()
-
-    expect((await screen.findAllByRole('button', { name: 'Upload catalog' })).length).toBeGreaterThan(0)
-    expect(screen.getAllByRole('button', { name: 'Scrape website' }).length).toBeGreaterThan(0)
-  })
-
-  it('uploads a selected catalog file, shows a success toast, and refreshes the list', async () => {
+  it('happy: uploads a selected catalog file, toasts success and refreshes the list', async () => {
     uploadCatalogMock.mockResolvedValue({ id: 'cat-1', name: 'sales.pdf', status: 'pending' })
 
     renderPage()
@@ -182,23 +334,7 @@ describe('VendorDetailPage', () => {
     expect(listCatalogsMock).toHaveBeenCalledTimes(2)
   })
 
-  it('shows an error toast when catalog upload fails', async () => {
-    uploadCatalogMock.mockRejectedValue({ message: 'Catalog uploads are not enabled for this workspace' })
-
-    renderPage()
-    await screen.findByText('No catalogs yet')
-
-    const file = new File(['%PDF-1.4'], 'sales.pdf', { type: 'application/pdf' })
-    const input = document.querySelector('input[type="file"]') as HTMLInputElement
-    fireEvent.change(input, { target: { files: [file] } })
-
-    await waitFor(() => {
-      expect(screen.getByText('Upload failed')).toBeDefined()
-      expect(screen.getByText('Catalog uploads are not enabled for this workspace')).toBeDefined()
-    })
-  })
-
-  it('starts a scrape from the modal, shows a success toast, and refreshes the list', async () => {
+  it('happy: starts a scrape from the modal, toasts success and refreshes the list', async () => {
     scrapeCatalogMock.mockResolvedValue({ id: 'cat-1', status: 'pending' })
 
     renderPage()
@@ -221,84 +357,8 @@ describe('VendorDetailPage', () => {
     expect(listCatalogsMock).toHaveBeenCalledTimes(2)
   })
 
-  it('disables the scrape submit button until the seed URL looks valid', async () => {
-    renderPage()
-    await screen.findByText('No catalogs yet')
-
-    fireEvent.click(screen.getAllByRole('button', { name: 'Scrape website' })[0] as HTMLButtonElement)
-    const startButton = screen.getByRole('button', { name: 'Start scrape' }) as HTMLButtonElement
-    expect(startButton.disabled).toBe(true)
-
-    fireEvent.change(screen.getByLabelText('Website URL'), { target: { value: 'not-a-url' } })
-    expect(startButton.disabled).toBe(true)
-    expect(screen.getByText('Enter a valid URL starting with http:// or https://')).toBeDefined()
-
-    fireEvent.change(screen.getByLabelText('Website URL'), { target: { value: 'https://acme.example.com' } })
-    expect(startButton.disabled).toBe(false)
-  })
-
-  it('shows an error toast when starting a scrape fails', async () => {
-    scrapeCatalogMock.mockRejectedValue({ message: 'Scraping is not enabled for this workspace' })
-
-    renderPage()
-    await screen.findByText('No catalogs yet')
-
-    fireEvent.click(screen.getAllByRole('button', { name: 'Scrape website' })[0] as HTMLButtonElement)
-    fireEvent.change(screen.getByLabelText('Website URL'), { target: { value: 'https://acme.example.com/catalog' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Start scrape' }))
-
-    await waitFor(() => {
-      expect(screen.getByText('Failed to start scrape')).toBeDefined()
-      expect(screen.getByText('Scraping is not enabled for this workspace')).toBeDefined()
-    })
-  })
-
-  it('shows catalog items as a photo grid (with text fallback) when View items is clicked', async () => {
-    listCatalogsMock.mockResolvedValue([
-      {
-        id: 'cat-1',
-        name: 'Spring price list',
-        sourceKind: 'pdf',
-        status: 'done',
-        rowCount: 2,
-        lastError: null,
-        createdAt: '2026-07-01T00:00:00.000Z',
-      },
-    ])
-    listCatalogItemsMock.mockResolvedValue([
-      { id: 'item-1', sku: 'SKU-1', description: 'Widget, 10-pack', photoStorageKey: 'catalogs/cat-1/item-1.jpg', sourcePageNumber: 1 },
-      { id: 'item-2', sku: 'SKU-2', description: 'Gadget, single', photoStorageKey: null, sourcePageNumber: 2 },
-    ])
-
-    renderPage()
-    await screen.findByText('Spring price list')
-
-    fireEvent.click(screen.getByRole('button', { name: 'View items' }))
-
-    await waitFor(() => {
-      expect(listCatalogItemsMock).toHaveBeenCalledWith('ws-1', 'vendor-1', 'cat-1')
-      expect(screen.getByText('Widget, 10-pack')).toBeDefined()
-      expect(screen.getByText('Gadget, single')).toBeDefined()
-    })
-    // item-1 has a stored photo, so it renders an <img> pointed at the auth
-    // proxy; only item-2 (photoStorageKey null) keeps the fallback tile.
-    expect(document.querySelectorAll('[data-testid="image-tile-fallback"]').length).toBe(1)
-    const photo = document.querySelector('img[alt="SKU-1"]')
-    expect(photo?.getAttribute('src')).toBe('/api/workspaces/ws-1/catalog-items/item-1/photo')
-  })
-
-  it('redirects to login when loading the vendor returns unauthorized', async () => {
-    listCatalogsMock.mockRejectedValue({ statusCode: 401, message: 'Unauthorized' })
-
-    renderPage()
-
-    await waitFor(() => {
-      expect(pushMock).toHaveBeenCalledWith('/login')
-    })
-  })
-
   // S9. The vendor page had zero procurement data on it until now.
-  it('shows what the vendor charged and how it compares with the agreed price', async () => {
+  it('happy: shows what the vendor charged against the agreed price, item SKUs in Mono, dates in ISO', async () => {
     getVendorExceptionSummaryMock.mockResolvedValue({
       counts: { contract_price_variance: 1 },
       openTotal: 3,
@@ -312,8 +372,8 @@ describe('VendorDetailPage', () => {
           poNumber: 'PO-2026-1188',
           poName: 'po.csv',
           currency: 'USD',
-          orderedAt: '2026-06-01T00:00:00.000Z',
-          recordedAt: '2026-06-02T00:00:00.000Z',
+          orderedAt: new Date(2026, 5, 1, 12, 0).toISOString(),
+          recordedAt: new Date(2026, 5, 2, 12, 0).toISOString(),
           sku: 'DSK-1042',
           uom: null,
           quantity: '12',
@@ -327,7 +387,7 @@ describe('VendorDetailPage', () => {
           poName: 'older-po.csv',
           currency: 'USD',
           orderedAt: null,
-          recordedAt: '2026-01-02T00:00:00.000Z',
+          recordedAt: new Date(2026, 0, 2, 12, 0).toISOString(),
           sku: 'CHR-2201',
           uom: null,
           quantity: '12',
@@ -344,7 +404,8 @@ describe('VendorDetailPage', () => {
 
     renderPage()
 
-    expect(await screen.findByText('DSK-1042')).toBeTruthy()
+    const sku = await screen.findByText('DSK-1042')
+    expect(sku.className).toContain('font-mono')
     expect(screen.getByText('542.79')).toBeTruthy()
     expect(screen.getByText('489.00')).toBeTruthy()
     // Ordered above contract: the gap is stated, not just implied.
@@ -353,16 +414,14 @@ describe('VendorDetailPage', () => {
     // An order with no stated order date says so rather than passing the
     // upload date off as one.
     expect(screen.getByText(/uploaded/)).toBeTruthy()
+    // C-3 #2: local ISO dates; the upload-date fallback keeps its label.
+    expect(screen.getByText('2026-06-01')).toBeTruthy()
+    expect(screen.getByText('2026-01-02 (uploaded)')).toBeTruthy()
     expect(screen.getByText('Open exceptions')).toBeTruthy()
+    expect(screen.getByText('Priced off contract')).toBeTruthy()
   })
 
-  it('says nothing has been bought yet rather than showing an empty table', async () => {
-    renderPage()
-
-    expect(await screen.findByText('Nothing bought from this vendor yet')).toBeTruthy()
-  })
-
-  it('fetches the vendor by id instead of scanning every vendor in the workspace', async () => {
+  it('happy: fetches the vendor by id instead of scanning every vendor in the workspace', async () => {
     renderPage()
 
     await screen.findByText('Acme Supplies')

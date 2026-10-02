@@ -1,7 +1,7 @@
 /** @vitest-environment jsdom */
 
 import React from 'react'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ToastProvider } from '@repo/ui'
 import ProcurementPage from './page'
@@ -108,65 +108,6 @@ describe('ProcurementPage', () => {
   afterEach(() => {
     cleanup()
     vi.restoreAllMocks()
-  })
-
-  it('shows a loading skeleton while the initial fetch is in flight', async () => {
-    let resolveWorkspace: (value: unknown) => void = () => {}
-    getWorkspaceMock.mockImplementation(
-      () => new Promise((resolve) => { resolveWorkspace = resolve }),
-    )
-    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
-    listPurchaseOrdersMock.mockResolvedValue([])
-    listInvoicesMock.mockResolvedValue([])
-
-    const { container } = renderPage()
-
-    expect(container.querySelectorAll('[class*="shimmer"]').length).toBeGreaterThan(0)
-    resolveWorkspace({ id: 'ws-1', name: 'Acme' })
-
-    await screen.findByText('No purchase orders yet')
-  })
-
-  it('renders empty state with correct copy for the active tab', async () => {
-    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme' })
-    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
-    listPurchaseOrdersMock.mockResolvedValue([])
-    listInvoicesMock.mockResolvedValue([])
-
-    renderPage()
-
-    expect(await screen.findByText('No purchase orders yet')).toBeDefined()
-    expect(
-      screen.getByText('Upload a CSV, XLSX, or PDF purchase order to compare it against an invoice.'),
-    ).toBeDefined()
-
-    fireEvent.click(screen.getByRole('tab', { name: 'Invoices' }))
-
-    expect(await screen.findByText('No invoices yet')).toBeDefined()
-    expect(
-      screen.getByText('Upload a CSV, XLSX, or PDF invoice to compare it against a purchase order.'),
-    ).toBeDefined()
-  })
-
-  it('hides upload controls for a member and shows them for owner/admin', async () => {
-    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme' })
-    listPurchaseOrdersMock.mockResolvedValue([])
-    listInvoicesMock.mockResolvedValue([])
-    listWorkspacesMock.mockResolvedValueOnce({ items: [{ id: 'ws-1', role: 'member' }], nextCursor: null })
-
-    const view = renderPage()
-
-    await screen.findByText('No purchase orders yet')
-    expect(screen.queryByRole('button', { name: 'Upload purchase order' })).toBeNull()
-    expect(screen.queryByRole('button', { name: 'Run comparison' })).toBeNull()
-
-    view.unmount()
-
-    listWorkspacesMock.mockResolvedValueOnce({ items: [{ id: 'ws-1', role: 'admin' }], nextCursor: null })
-    renderPage()
-
-    expect((await screen.findAllByRole('button', { name: 'Upload purchase order' })).length).toBeGreaterThan(0)
-    expect(screen.getByRole('button', { name: 'Run comparison' })).toBeDefined()
   })
 
   it('uploads a purchase order and shows a success toast after refreshing the list', async () => {
@@ -353,65 +294,297 @@ describe('ProcurementPage', () => {
     })
   })
 
-  // S5. A receipt answers exactly one purchase order (POLICY v1 #2), so picking
-  // a file opens the same kind of header form the invoice upload uses.
-  it('uploads a goods receipt against a chosen purchase order', async () => {
-    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme' })
-    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
-    listPurchaseOrdersMock.mockResolvedValue([donePurchaseOrder])
-    listInvoicesMock.mockResolvedValue([])
-    listGoodsReceiptsMock.mockResolvedValue([])
-    uploadGoodsReceiptMock.mockResolvedValue({ id: 'grn-1', name: 'grn.csv', status: 'pending' })
+  // Frames 2.1–2.6. Declared in error > edge > regression > happy order. The
+  // five regression cases are the pre-alignment tests whose setup or selectors
+  // changed on purpose: the tabs now carry a count in their accessible name,
+  // the skeleton no longer exposes a `shimmer` class, and Run comparison only
+  // exists once a parsed PO and invoice exist (2.3 faded panel, C-3 #14).
+  // Each keeps the behaviour it checked.
+  describe('design alignment (frames 2.1–2.6)', () => {
+    it('edge: a member is told who runs comparisons and gets no pickers', async () => {
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme' })
+      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'member' }], nextCursor: null })
+      listPurchaseOrdersMock.mockResolvedValue([donePurchaseOrder])
+      listInvoicesMock.mockResolvedValue([doneInvoice])
 
-    renderPage()
+      renderPage()
 
-    fireEvent.click(await screen.findByRole('tab', { name: 'Goods Receipts' }))
-
-    const file = new File(['sku,qty received\nA1,8'], 'grn.csv', { type: 'text/csv' })
-    const inputs = Array.from(document.querySelectorAll('input[type="file"]')) as HTMLInputElement[]
-    const grnInput = inputs.find((input) => input.accept === '.csv,.xlsx')
-    expect(grnInput).toBeDefined()
-    fireEvent.change(grnInput as HTMLInputElement, { target: { files: [file] } })
-
-    // Scoped by id: the compare section further down the page also labels a
-    // select "Purchase order", so a label query matches two controls.
-    const poSelect = await waitFor(() => {
-      const el = document.querySelector('#grn-po')
-      expect(el).not.toBeNull()
-      return el as HTMLSelectElement
+      expect(await screen.findByText('Owners & admins run comparisons')).toBeDefined()
+      expect(screen.queryByRole('button', { name: 'Run comparison' })).toBeNull()
+      expect(screen.queryByLabelText('Purchase order')).toBeNull()
+      expect(screen.queryByLabelText('Invoice')).toBeNull()
     })
-    fireEvent.change(poSelect, { target: { value: 'po-1' } })
-    fireEvent.change(screen.getByLabelText('Goods receipt number'), { target: { value: 'GRN-9001' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Upload' }))
 
-    await waitFor(() => {
-      expect(uploadGoodsReceiptMock).toHaveBeenCalledWith('ws-1', file, {
-        purchaseOrderId: 'po-1',
-        grnNumber: 'GRN-9001',
+    it('edge: with nothing Ready the compare panel is faded, explains why, and offers no pickers', async () => {
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme' })
+      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+      listPurchaseOrdersMock.mockResolvedValue([])
+      listInvoicesMock.mockResolvedValue([])
+
+      renderPage()
+
+      expect(
+        await screen.findByText(
+          'Selects list no documents and the button stays disabled until one PO and one invoice are Ready.',
+        ),
+      ).toBeDefined()
+      expect(screen.queryByRole('button', { name: 'Run comparison' })).toBeNull()
+      expect(screen.queryByLabelText('Purchase order')).toBeNull()
+    })
+
+    it('edge: an owner sees the Run comparison step, not the member chip', async () => {
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme' })
+      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+      listPurchaseOrdersMock.mockResolvedValue([donePurchaseOrder])
+      listInvoicesMock.mockResolvedValue([doneInvoice])
+
+      renderPage()
+
+      expect(await screen.findByText('Review the exceptions')).toBeDefined()
+      expect(screen.getByRole('button', { name: 'Run comparison' })).toBeDefined()
+      expect(screen.queryByText('Owners & admins run comparisons')).toBeNull()
+    })
+
+    it('edge: an empty tab labels its formats from the file input accept list', async () => {
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme' })
+      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+      listPurchaseOrdersMock.mockResolvedValue([])
+      listInvoicesMock.mockResolvedValue([])
+
+      renderPage()
+
+      await screen.findByText('No purchase orders yet')
+      expect(screen.getByText('csv / xlsx / pdf')).toBeDefined()
+
+      fireEvent.click(screen.getByRole('tab', { name: /^Goods Receipts/ }))
+
+      expect(await screen.findByText('No goods receipts yet')).toBeDefined()
+      expect(screen.getByText('csv / xlsx')).toBeDefined()
+    })
+
+    it('edge: with no vendors the PO form is blocked by an amber prerequisite that links out to vendors', async () => {
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme' })
+      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+      listPurchaseOrdersMock.mockResolvedValue([])
+      listInvoicesMock.mockResolvedValue([])
+      listVendorsMock.mockResolvedValue([])
+
+      renderPage()
+
+      await screen.findByText('No purchase orders yet')
+      const file = new File(['content'], 'po-march.csv', { type: 'text/csv' })
+      fireEvent.change(document.querySelector('input[type="file"]') as HTMLInputElement, { target: { files: [file] } })
+
+      expect(await screen.findByText('Needs a vendor first')).toBeDefined()
+      expect((screen.getByRole('button', { name: 'Upload' }) as HTMLButtonElement).disabled).toBe(true)
+      fireEvent.click(screen.getByRole('button', { name: 'Go to vendors' }))
+      expect(pushMock).toHaveBeenCalledWith('/workspaces/ws-1/vendors')
+    })
+
+    it('edge: only a processing row pulses; a queued row waits without it', async () => {
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme' })
+      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+      listPurchaseOrdersMock.mockResolvedValue([
+        { ...donePurchaseOrder, id: 'po-p', name: 'parsing.pdf', status: 'processing', rowCount: null },
+        { ...donePurchaseOrder, id: 'po-q', name: 'queued.csv', status: 'pending', rowCount: null },
+      ])
+      listInvoicesMock.mockResolvedValue([])
+
+      renderPage()
+
+      await screen.findByText('parsing.pdf')
+      // C-3 #9: Badge marks a pulsing pill with `data-pulse` on its root.
+      expect(screen.getByText('Processing').closest('[data-pulse]')).not.toBeNull()
+      expect(screen.getByText('Queued').closest('[data-pulse]')).toBeNull()
+    })
+
+    it('regression: hides upload controls for a member and shows them for owner/admin', async () => {
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme' })
+      listPurchaseOrdersMock.mockResolvedValue([donePurchaseOrder])
+      listInvoicesMock.mockResolvedValue([doneInvoice])
+      listWorkspacesMock.mockResolvedValueOnce({ items: [{ id: 'ws-1', role: 'member' }], nextCursor: null })
+
+      const view = renderPage()
+
+      await screen.findByText('po-march.csv')
+      expect(screen.queryByRole('button', { name: 'Upload purchase order' })).toBeNull()
+      expect(screen.queryByRole('button', { name: 'Run comparison' })).toBeNull()
+
+      view.unmount()
+
+      listWorkspacesMock.mockResolvedValueOnce({ items: [{ id: 'ws-1', role: 'admin' }], nextCursor: null })
+      renderPage()
+
+      expect((await screen.findAllByRole('button', { name: 'Upload purchase order' })).length).toBeGreaterThan(0)
+      expect(screen.getByRole('button', { name: 'Run comparison' })).toBeDefined()
+    })
+
+    it('regression: shows a loading placeholder while the initial fetch is in flight', async () => {
+      let resolveWorkspace: (value: unknown) => void = () => {}
+      getWorkspaceMock.mockImplementation(
+        () => new Promise((resolve) => { resolveWorkspace = resolve }),
+      )
+      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+      listPurchaseOrdersMock.mockResolvedValue([])
+      listInvoicesMock.mockResolvedValue([])
+
+      const { container } = renderPage()
+
+      expect(container.querySelector('div[aria-busy="true"]')).not.toBeNull()
+      resolveWorkspace({ id: 'ws-1', name: 'Acme' })
+
+      await screen.findByText('No purchase orders yet')
+      expect(container.querySelector('div[aria-busy="true"]')).toBeNull()
+    })
+
+    it('regression: renders empty state with correct copy for the active tab', async () => {
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme' })
+      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+      listPurchaseOrdersMock.mockResolvedValue([])
+      listInvoicesMock.mockResolvedValue([])
+
+      renderPage()
+
+      expect(await screen.findByText('No purchase orders yet')).toBeDefined()
+      expect(
+        screen.getByText('Upload a CSV, XLSX, or PDF purchase order to compare it against an invoice.'),
+      ).toBeDefined()
+
+      fireEvent.click(screen.getByRole('tab', { name: /^Invoices/ }))
+
+      expect(await screen.findByText('No invoices yet')).toBeDefined()
+      expect(
+        screen.getByText('Upload a CSV, XLSX, or PDF invoice to compare it against a purchase order.'),
+      ).toBeDefined()
+    })
+
+    // S5. A receipt answers exactly one purchase order (POLICY v1 #2), so picking
+    // a file opens the same kind of header form the invoice upload uses.
+    it('regression: uploads a goods receipt against a chosen purchase order', async () => {
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme' })
+      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+      listPurchaseOrdersMock.mockResolvedValue([donePurchaseOrder])
+      listInvoicesMock.mockResolvedValue([])
+      listGoodsReceiptsMock.mockResolvedValue([])
+      uploadGoodsReceiptMock.mockResolvedValue({ id: 'grn-1', name: 'grn.csv', status: 'pending' })
+
+      renderPage()
+
+      fireEvent.click(await screen.findByRole('tab', { name: /^Goods Receipts/ }))
+
+      const file = new File(['sku,qty received\nA1,8'], 'grn.csv', { type: 'text/csv' })
+      const inputs = Array.from(document.querySelectorAll('input[type="file"]')) as HTMLInputElement[]
+      const grnInput = inputs.find((input) => input.accept === '.csv,.xlsx')
+      expect(grnInput).toBeDefined()
+      fireEvent.change(grnInput as HTMLInputElement, { target: { files: [file] } })
+
+      // Scoped by id: the compare section further down the page also labels a
+      // select "Purchase order", so a label query matches two controls.
+      const poSelect = await waitFor(() => {
+        const el = document.querySelector('#grn-po')
+        expect(el).not.toBeNull()
+        return el as HTMLSelectElement
       })
+      fireEvent.change(poSelect, { target: { value: 'po-1' } })
+      fireEvent.change(screen.getByLabelText('Goods receipt number'), { target: { value: 'GRN-9001' } })
+      fireEvent.click(screen.getByRole('button', { name: 'Upload' }))
+
+      await waitFor(() => {
+        expect(uploadGoodsReceiptMock).toHaveBeenCalledWith('ws-1', file, {
+          purchaseOrderId: 'po-1',
+          grnNumber: 'GRN-9001',
+        })
+      })
+      expect(await screen.findByText('Goods receipt uploaded')).toBeDefined()
     })
-    expect(await screen.findByText('Goods receipt uploaded')).toBeDefined()
-  })
 
-  // Same dead-end handling as the PO modal's no-vendors case: explain it rather
-  // than letting the user submit into a guaranteed 404.
-  it('explains that a purchase order is needed before a receipt can be uploaded', async () => {
-    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme' })
-    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
-    listPurchaseOrdersMock.mockResolvedValue([])
-    listInvoicesMock.mockResolvedValue([])
-    listGoodsReceiptsMock.mockResolvedValue([])
+    // Same dead-end handling as the PO modal's no-vendors case: explain it rather
+    // than letting the user submit into a guaranteed 404.
+    it('regression: explains that a purchase order is needed before a receipt can be uploaded', async () => {
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme' })
+      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+      listPurchaseOrdersMock.mockResolvedValue([])
+      listInvoicesMock.mockResolvedValue([])
+      listGoodsReceiptsMock.mockResolvedValue([])
 
-    renderPage()
+      renderPage()
 
-    fireEvent.click(await screen.findByRole('tab', { name: 'Goods Receipts' }))
+      fireEvent.click(await screen.findByRole('tab', { name: /^Goods Receipts/ }))
 
-    const file = new File(['sku,qty received\nA1,8'], 'grn.csv', { type: 'text/csv' })
-    const inputs = Array.from(document.querySelectorAll('input[type="file"]')) as HTMLInputElement[]
-    const grnInput = inputs.find((input) => input.accept === '.csv,.xlsx')
-    fireEvent.change(grnInput as HTMLInputElement, { target: { files: [file] } })
+      const file = new File(['sku,qty received\nA1,8'], 'grn.csv', { type: 'text/csv' })
+      const inputs = Array.from(document.querySelectorAll('input[type="file"]')) as HTMLInputElement[]
+      const grnInput = inputs.find((input) => input.accept === '.csv,.xlsx')
+      fireEvent.change(grnInput as HTMLInputElement, { target: { files: [file] } })
 
-    expect(await screen.findByText('No purchase orders yet')).toBeDefined()
-    expect(uploadGoodsReceiptMock).not.toHaveBeenCalled()
+      expect(await screen.findByText('Needs a purchase order first')).toBeDefined()
+      expect(screen.getAllByText('No purchase orders yet').length).toBeGreaterThan(0)
+      expect(uploadGoodsReceiptMock).not.toHaveBeenCalled()
+    })
+
+    it('happy: each tab carries the count of the list it holds', async () => {
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme' })
+      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+      listPurchaseOrdersMock.mockResolvedValue([donePurchaseOrder, { ...donePurchaseOrder, id: 'po-2', name: 'po-april.csv' }])
+      listInvoicesMock.mockResolvedValue([doneInvoice])
+      listGoodsReceiptsMock.mockResolvedValue([])
+
+      renderPage()
+
+      const poTab = await screen.findByRole('tab', { name: /^Purchase Orders/ })
+      expect(within(poTab).getByText('2')).toBeDefined()
+      expect(within(screen.getByRole('tab', { name: /^Invoices/ })).getByText('1')).toBeDefined()
+      expect(within(screen.getByRole('tab', { name: /^Goods Receipts/ })).getByText('0')).toBeDefined()
+    })
+
+    it('happy: the picked file is held, not uploaded, under the step-2 eyebrow', async () => {
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme' })
+      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+      listPurchaseOrdersMock.mockResolvedValue([])
+      listInvoicesMock.mockResolvedValue([])
+
+      renderPage()
+
+      await screen.findByText('No purchase orders yet')
+      const file = new File(['content'], 'po-march.csv', { type: 'text/csv' })
+      fireEvent.change(document.querySelector('input[type="file"]') as HTMLInputElement, { target: { files: [file] } })
+
+      expect(await screen.findByText('held · not uploaded yet')).toBeDefined()
+      expect(screen.getByText('Upload · step 2 of 2')).toBeDefined()
+      expect(screen.getByText('po-march.csv')).toBeDefined()
+      expect(uploadPurchaseOrderMock).not.toHaveBeenCalled()
+    })
+
+    it('happy: the header names the workspace in the breadcrumb and capitalises the role', async () => {
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme' })
+      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+      listPurchaseOrdersMock.mockResolvedValue([])
+      listInvoicesMock.mockResolvedValue([])
+
+      renderPage()
+
+      expect((await screen.findAllByText('Acme / Matching')).length).toBeGreaterThan(0)
+      expect(screen.getAllByText('Owner').length).toBeGreaterThan(0)
+    })
+
+    // C-3 #13 / frame 4.2: below lg the active tab's upload is a full-width
+    // button under the tabs (CSS hides one of the two per breakpoint; jsdom
+    // renders both), and it opens the same file input.
+    it('happy: the active tab offers its upload again as the mobile button under the tabs', async () => {
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme' })
+      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+      listPurchaseOrdersMock.mockResolvedValue([donePurchaseOrder])
+      listInvoicesMock.mockResolvedValue([doneInvoice])
+
+      renderPage()
+
+      fireEvent.click(await screen.findByRole('tab', { name: /^Invoices/ }))
+
+      const buttons = await screen.findAllByRole('button', { name: 'Upload invoice' })
+      expect(buttons).toHaveLength(2)
+      const input = Array.from(document.querySelectorAll('input[type="file"]'))[0] as HTMLInputElement
+      const click = vi.spyOn(input, 'click')
+      fireEvent.click(buttons[0])
+      expect(click).toHaveBeenCalled()
+    })
   })
 })

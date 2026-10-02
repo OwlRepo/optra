@@ -43,6 +43,17 @@ describe('ChatRedirectPage', () => {
     expect(pushMock).toHaveBeenCalledWith('/workspaces')
   })
 
+  it('error: an unauthorized lookup sends the user to /login without a toast', async () => {
+    listWorkspacesMock.mockRejectedValue({ statusCode: 401, message: 'Unauthorized' })
+
+    renderPage()
+
+    await waitFor(() => {
+      expect(pushMock).toHaveBeenCalledWith('/login')
+    })
+    expect(screen.queryByText('Workspace unavailable')).toBeNull()
+  })
+
   it('edge: sends a user with no workspace to /workspaces', async () => {
     listWorkspacesMock.mockResolvedValue({ items: [], nextCursor: null })
 
@@ -64,12 +75,21 @@ describe('ChatRedirectPage', () => {
     })
   })
 
+  it('regression: the waiting panel is labelled "Redirecting…" in teal Mono', () => {
+    listWorkspacesMock.mockReturnValue(new Promise(() => {}))
+
+    renderPage()
+
+    expect(screen.getByText('Redirecting…')).toBeTruthy()
+  })
+
   it('happy: the waiting screen does not mention chat', () => {
     listWorkspacesMock.mockReturnValue(new Promise(() => {}))
 
     renderPage()
 
     expect(screen.getByText('Opening your workspace')).toBeTruthy()
+    expect(screen.getByText('Picking your first available workspace and redirecting you there.')).toBeTruthy()
     expect(screen.queryByText(/chat/i)).toBeNull()
   })
 })
