@@ -2,11 +2,11 @@
 
 ## Coverage
 
-- Detected source files: 1050
-- Source files represented by graph nodes: 1050
+- Detected source files: 1052
+- Source files represented by graph nodes: 1052
 - Semantic files represented: 131
-- Raw extracted relationships retained: 14627
-- Interactive unique endpoint-pair edges: 14252
+- Raw extracted relationships retained: 14682
+- Interactive unique endpoint-pair edges: 14307
 - Collapsed edge groups preserved in ledger: 273
 - Zero-symbol files materialized as artifacts: 44
 - Unresolved endpoint IDs materialized as placeholders: 294
@@ -69,7 +69,7 @@ Parallel variants are retained in `collapsed-edge-variants.json`; the interactiv
 
 ## Excluded External Symlinks
 
-64 paths were excluded because their symlink targets are outside the scan root. They are tooling links, not application corpus files.
+65 paths were excluded because their symlink targets are outside the scan root. They are tooling links, not application corpus files.
 
 - `.claude/skills/_gstack-command/SKILL.md [symlink target outside scan root]`
 - `.claude/skills/autoplan/SKILL.md [symlink target outside scan root]`
@@ -135,3 +135,4 @@ Parallel variants are retained in `collapsed-edge-variants.json`; the interactiv
 - `.claude/skills/spec/SKILL.md [symlink target outside scan root]`
 - `.claude/skills/sync-gbrain/SKILL.md [symlink target outside scan root]`
 - `.claude/skills/unfreeze/SKILL.md [symlink target outside scan root]`
+- `apps/e2e/fixtures/po.xlsx [office conversion failed - pip install graphifyy[office]]`
