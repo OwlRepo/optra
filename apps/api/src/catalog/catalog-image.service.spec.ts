@@ -112,4 +112,21 @@ describe('CatalogImageService', () => {
     expect(key).toContain('ws-1/catalogs/cat-1/images/')
     expect(storage.save).toHaveBeenCalledWith(key, Buffer.from(bytes), 'image/png')
   })
+  describe('launch hardening', () => {
+    it('error: a redirect is not followed and nothing is stored', async () => {
+      fetchMock.mockResolvedValue(
+        fakeResponse({ ok: false, status: 302, contentType: 'image/png', chunks: [new Uint8Array([0x89, 0x50, 0x4e, 0x47])] }),
+      )
+
+      const result = await service.fetchAndStore('ws-1', 'cat-1', 'https://vendor.example.com/moved.png')
+
+      expect(result).toBeNull()
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+      expect(fetchMock).toHaveBeenCalledWith(
+        'https://vendor.example.com/moved.png',
+        expect.objectContaining({ redirect: 'manual' }),
+      )
+      expect(storage.save).not.toHaveBeenCalled()
+    })
+  })
 })

@@ -281,4 +281,142 @@ describe('CatalogParseProcessor', () => {
     expect(extraction.extractFromImage).toHaveBeenCalledTimes(1)
     expect(extraction.extractFromImage).toHaveBeenCalledWith(expect.any(Buffer), workspace.id)
   })
+  describe('real-world catalogs (launch hardening)', () => {
+    it('edge: a semicolon-delimited catalog with extra columns parses every item', async () => {
+      const { workspace, vendor } = await seedWorkspaceAndVendor(`${prefix}semicolon@example.com`, 'Catalog Semicolon')
+      const csv = [
+        'Item Code;Item Name;Pack Size;Unit Price',
+        'A1;Widget;10;1,50',
+        'B2;Gadget;5;12,00',
+        'C3;Gizmo, large;1;99,99',
+      ].join('\n')
+      const catalog = await seedCatalog(workspace.id, vendor.id, 'catalog.csv', csv)
+
+      await processor.handleParse({ id: 'job-semicolon', data: { id: catalog.id } } as any)
+
+      const [updated] = await db.select().from(catalogs).where(eq(catalogs.id, catalog.id))
+      expect(updated.status).toBe('done')
+      expect(updated.rowCount).toBe(3)
+
+      const items = await db
+        .select()
+        .from(catalogItems)
+        .where(eq(catalogItems.catalogId, catalog.id))
+        .orderBy(catalogItems.lineNumber)
+      expect(items.map((item) => [item.lineNumber, item.sku, item.description])).toEqual([
+        [1, 'A1', 'Widget'],
+        [2, 'B2', 'Gadget'],
+        [3, 'C3', 'Gizmo, large'],
+      ])
+      expect(items[0].rawRow).toEqual({ 'Item Code': 'A1', 'Item Name': 'Widget', 'Pack Size': '10', 'Unit Price': '1,50' })
+      expect(images.fetchAndStore).not.toHaveBeenCalled()
+    })
+
+    it('edge: a UTF-8 byte-order mark before the header still maps the sku column', async () => {
+      const { workspace, vendor } = await seedWorkspaceAndVendor(`${prefix}bom@example.com`, 'Catalog BOM')
+      const catalog = await seedCatalog(workspace.id, vendor.id, 'catalog.csv', '﻿sku,description\nA1,Widget\n')
+
+      await processor.handleParse({ id: 'job-bom', data: { id: catalog.id } } as any)
+
+      const [updated] = await db.select().from(catalogs).where(eq(catalogs.id, catalog.id))
+      expect(updated.status).toBe('done')
+      expect(updated.rowCount).toBe(1)
+
+      const items = await db.select().from(catalogItems).where(eq(catalogItems.catalogId, catalog.id))
+      expect(items).toHaveLength(1)
+      expect(items[0]).toMatchObject({ sku: 'A1', description: 'Widget' })
+      expect(items[0].rawRow).toEqual({ sku: 'A1', description: 'Widget' })
+    })
+
+    it('edge: an XLSX catalog is read from its first sheet only', async () => {
+      const { workspace, vendor } = await seedWorkspaceAndVendor(`${prefix}xlsx-sheets@example.com`, 'Catalog Sheets')
+      const workbook = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet([{ sku: 'A1', description: 'Widget' }]), 'Catalog')
+      XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet([{ sku: 'Z9', description: 'Archived item' }]), 'Archive')
+      const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' }) as Buffer
+      const filePath = join(dir, `${randomUUID()}.xlsx`)
+      writeFileSync(filePath, buffer)
+      storage.getToTempFile.mockResolvedValue(filePath)
+
+      const [catalog] = await db
+        .insert(catalogs)
+        .values({ workspaceId: workspace.id, vendorId: vendor.id, name: 'catalog.xlsx', storageKey: `k/${randomUUID()}`, status: 'pending' })
+        .returning()
+
+      await processor.handleParse({ id: 'job-xlsx-sheets', data: { id: catalog.id } } as any)
+
+      const [updated] = await db.select().from(catalogs).where(eq(catalogs.id, catalog.id))
+      expect(updated.status).toBe('done')
+      expect(updated.rowCount).toBe(1)
+
+      const items = await db.select().from(catalogItems).where(eq(catalogItems.catalogId, catalog.id))
+      expect(items.map((item) => item.sku)).toEqual(['A1'])
+    })
+
+    it('edge: a row whose photo cannot be fetched is kept with no photo', async () => {
+      const { workspace, vendor } = await seedWorkspaceAndVendor(`${prefix}photo-null@example.com`, 'Catalog Photo Null')
+      const csv = [
+        'sku,description,photo_url',
+        'A1,Widget,https://vendor.example.com/a1.png',
+        'B2,Gadget,https://vendor.example.com/b2.png',
+      ].join('\n')
+      const catalog = await seedCatalog(workspace.id, vendor.id, 'catalog.csv', csv)
+      images.fetchAndStore
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(`${workspace.id}/catalogs/${catalog.id}/images/b2.png`)
+
+      await processor.handleParse({ id: 'job-photo-null', data: { id: catalog.id } } as any)
+
+      const [updated] = await db.select().from(catalogs).where(eq(catalogs.id, catalog.id))
+      expect(updated.status).toBe('done')
+      expect(updated.rowCount).toBe(2)
+
+      const items = await db
+        .select()
+        .from(catalogItems)
+        .where(eq(catalogItems.catalogId, catalog.id))
+        .orderBy(catalogItems.lineNumber)
+      expect(items[0]).toMatchObject({ lineNumber: 1, sku: 'A1', photoStorageKey: null })
+      expect(items[1]).toMatchObject({
+        lineNumber: 2,
+        sku: 'B2',
+        photoStorageKey: `${workspace.id}/catalogs/${catalog.id}/images/b2.png`,
+      })
+      expect(images.fetchAndStore).toHaveBeenNthCalledWith(1, workspace.id, catalog.id, 'https://vendor.example.com/a1.png')
+    })
+
+    it('happy: a CSV catalog with sku, description and photo url stores its items in file order, numbered from 1', async () => {
+      const { workspace, vendor } = await seedWorkspaceAndVendor(`${prefix}order@example.com`, 'Catalog Order')
+      const urls = [
+        'https://vendor.example.com/a1.png',
+        'https://vendor.example.com/b2.png',
+        'https://vendor.example.com/c3.png',
+      ]
+      const csv = ['SKU,Description,Photo URL', `A1,Widget,${urls[0]}`, `B2,Gadget,${urls[1]}`, `C3,Gizmo,${urls[2]}`].join('\n')
+      const catalog = await seedCatalog(workspace.id, vendor.id, 'catalog.csv', csv)
+      images.fetchAndStore.mockImplementation(
+        async (workspaceId: string, catalogId: string, url: string) =>
+          `${workspaceId}/catalogs/${catalogId}/images/${url.split('/').pop()}`,
+      )
+
+      await processor.handleParse({ id: 'job-order', data: { id: catalog.id } } as any)
+
+      const [updated] = await db.select().from(catalogs).where(eq(catalogs.id, catalog.id))
+      expect(updated.status).toBe('done')
+      expect(updated.rowCount).toBe(3)
+
+      const items = await db
+        .select()
+        .from(catalogItems)
+        .where(eq(catalogItems.catalogId, catalog.id))
+        .orderBy(catalogItems.lineNumber)
+      const base = `${workspace.id}/catalogs/${catalog.id}/images`
+      expect(items.map((item) => [item.lineNumber, item.sku, item.description, item.photoStorageKey])).toEqual([
+        [1, 'A1', 'Widget', `${base}/a1.png`],
+        [2, 'B2', 'Gadget', `${base}/b2.png`],
+        [3, 'C3', 'Gizmo', `${base}/c3.png`],
+      ])
+      expect(images.fetchAndStore.mock.calls.map((call) => call[2])).toEqual(urls)
+    })
+  })
 })
