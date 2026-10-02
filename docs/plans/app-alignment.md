@@ -17580,7 +17580,7 @@ Every commit touching a `page.tsx` also changes `apps/e2e/tests/workspace-alignm
 | Frame | Route / state | Result |
 |---|---|---|
 | 2.1 | `/procurement`, owner | done — differences are seed data only |
-| 2.2 | `/procurement` Invoices, member | done; NOTE frame copy "Members can pick documents to preview the pair" no longer true after the owner dropped member pickers — owner decision pending |
+| 2.2 | `/procurement` Invoices, member | done; frame copy trimmed to "Running a comparison needs an owner or admin." (owner decision, members have no pickers) |
 | 2.4 | PO details modal | done — height and gaps equal the frame (543px) |
 | 2.7 | `/discrepancies?pair` | done — signed delta fixed |
 | 2.9 | review modal | done — citation rows fixed (96px); "units" suffix not derivable |
