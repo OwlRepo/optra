@@ -15,7 +15,8 @@ import {
 } from '@repo/ui'
 import { PackageSearch } from 'lucide-react'
 import { logout } from '@/lib/api/auth'
-import { isUnauthorized } from '@/lib/api/handle-unauthorized'
+import { isForbidden, isUnauthorized } from '@/lib/api/handle-unauthorized'
+import { WorkspaceAccessDenied } from '@/components/workspace-access-denied'
 import { getWorkspace, listWorkspaces } from '@/lib/api/workspaces'
 import {
   dismissCatalogMatch,
@@ -79,6 +80,9 @@ export default function CatalogMatchesPage({ params }: { params: { id: string } 
   const [vendors, setVendors] = React.useState<VendorDetail[]>([])
   const [matches, setMatches] = React.useState<CatalogMatch[]>([])
   const [isLoading, setIsLoading] = React.useState(true)
+  // B18. Set when the first load answers 403; the page then shows only the
+  // no-access state instead of empty content.
+  const [accessDenied, setAccessDenied] = React.useState(false)
   const [vendorFilter, setVendorFilter] = React.useState('')
   const [statusFilter, setStatusFilter] = React.useState<CatalogMatchStatus | ''>('')
   const [isSearching, setIsSearching] = React.useState(false)
@@ -142,6 +146,10 @@ export default function CatalogMatchesPage({ params }: { params: { id: string } 
     } catch (err) {
       if (isUnauthorized(err)) {
         router.push('/login')
+        return
+      }
+      if (isForbidden(err)) {
+        setAccessDenied(true)
         return
       }
       toastRef.current({
@@ -304,101 +312,105 @@ export default function CatalogMatchesPage({ params }: { params: { id: string } 
       onLogout={handleLogout}
     >
       <div className="mx-auto w-full max-w-5xl space-y-8 px-6 py-10">
-        <Card variant="elevated" className="space-y-4 p-6">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-            <Select
-              aria-label="Filter by vendor"
-              className="sm:w-56"
-              value={vendorFilter}
-              onChange={(event) => handleVendorFilterChange(event.target.value)}
-            >
-              <option value="">All vendors</option>
-              {vendors.map((vendor) => (
-                <option key={vendor.id} value={vendor.id}>
-                  {vendor.name}
-                </option>
-              ))}
-            </Select>
-            <Select
-              aria-label="Filter by status"
-              className="sm:w-48"
-              value={statusFilter}
-              onChange={(event) => handleStatusFilterChange(event.target.value as CatalogMatchStatus | '')}
-            >
-              <option value="">All statuses</option>
-              <option value="open">Open</option>
-              <option value="dismissed">Dismissed</option>
-            </Select>
-          </div>
+        {accessDenied ? (
+          <WorkspaceAccessDenied />
+        ) : (
+          <Card variant="elevated" className="space-y-4 p-6">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+              <Select
+                aria-label="Filter by vendor"
+                className="sm:w-56"
+                value={vendorFilter}
+                onChange={(event) => handleVendorFilterChange(event.target.value)}
+              >
+                <option value="">All vendors</option>
+                {vendors.map((vendor) => (
+                  <option key={vendor.id} value={vendor.id}>
+                    {vendor.name}
+                  </option>
+                ))}
+              </Select>
+              <Select
+                aria-label="Filter by status"
+                className="sm:w-48"
+                value={statusFilter}
+                onChange={(event) => handleStatusFilterChange(event.target.value as CatalogMatchStatus | '')}
+              >
+                <option value="">All statuses</option>
+                <option value="open">Open</option>
+                <option value="dismissed">Dismissed</option>
+              </Select>
+            </div>
 
-          {isLoading ? (
-            <div className="space-y-4">
-              <Skeleton className="h-12 w-full" />
-              <Skeleton className="h-12 w-full" />
-            </div>
-          ) : matches.length === 0 ? (
-            <EmptyState
-              icon={<PackageSearch className="size-5" />}
-              title={hasSearched ? 'No matches found' : 'No catalog matches yet'}
-              description={
-                hasSearched
-                  ? 'Try a different vendor or line item.'
-                  : 'Search for matches from the Discrepancies page, or adjust the filters above.'
-              }
-            />
-          ) : (
-            <div className="space-y-4">
-              {matches.map((match) => (
-                <Card key={match.id} variant="subtle" className="space-y-4 p-6">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-2">
-                      <Badge variant="outline">{match.matchType === 'sourcing' ? 'Sourcing' : 'Compliance'}</Badge>
-                      <Badge variant={match.status === 'open' ? 'secondary' : 'outline'}>
-                        {match.status === 'open' ? 'Open' : 'Dismissed'}
-                      </Badge>
+            {isLoading ? (
+              <div className="space-y-4">
+                <Skeleton className="h-12 w-full" />
+                <Skeleton className="h-12 w-full" />
+              </div>
+            ) : matches.length === 0 ? (
+              <EmptyState
+                icon={<PackageSearch className="size-5" />}
+                title={hasSearched ? 'No matches found' : 'No catalog matches yet'}
+                description={
+                  hasSearched
+                    ? 'Try a different vendor or line item.'
+                    : 'Search for matches from the Discrepancies page, or adjust the filters above.'
+                }
+              />
+            ) : (
+              <div className="space-y-4">
+                {matches.map((match) => (
+                  <Card key={match.id} variant="subtle" className="space-y-4 p-6">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline">{match.matchType === 'sourcing' ? 'Sourcing' : 'Compliance'}</Badge>
+                        <Badge variant={match.status === 'open' ? 'secondary' : 'outline'}>
+                          {match.status === 'open' ? 'Open' : 'Dismissed'}
+                        </Badge>
+                      </div>
+                      {canManage && match.status === 'open' ? (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          aria-label={`Dismiss match ${match.id}`}
+                          onClick={() => void handleDismiss(match.id)}
+                          isLoading={dismissingId === match.id}
+                          loadingText="Dismissing"
+                        >
+                          {dismissingId === match.id ? null : 'Dismiss'}
+                        </Button>
+                      ) : null}
                     </div>
-                    {canManage && match.status === 'open' ? (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        aria-label={`Dismiss match ${match.id}`}
-                        onClick={() => void handleDismiss(match.id)}
-                        isLoading={dismissingId === match.id}
-                        loadingText="Dismissing"
-                      >
-                        {dismissingId === match.id ? null : 'Dismiss'}
-                      </Button>
-                    ) : null}
-                  </div>
-                  <PhotoCompare
-                    query={{
-                      sku: match.queryItem?.sku ?? null,
-                      // Falls back to the truncated id only when the referenced
-                      // line item no longer exists.
-                      description:
-                        match.queryItem?.description ??
-                        `Query item ${(match.queryPoLineItemId ?? match.queryInvoiceLineItemId ?? '').slice(0, 8)}...`,
-                    }}
-                    candidate={{
-                      sku: match.catalogItem?.sku ?? null,
-                      description:
-                        match.catalogItem?.description ?? `Catalog item ${match.catalogItemId.slice(0, 8)}...`,
-                      photoSrc: match.catalogItem?.photoStorageKey
-                        ? catalogItemPhotoUrl(workspaceId, match.catalogItemId)
-                        : null,
-                      vendorName: vendors.find((vendor) => vendor.id === match.vendorId)?.name,
-                    }}
-                    verdict={{
-                      score: match.score !== null ? Number(match.score) : null,
-                      isMatch: match.isMatch,
-                      reason: match.reason,
-                    }}
-                  />
-                </Card>
-              ))}
-            </div>
-          )}
-        </Card>
+                    <PhotoCompare
+                      query={{
+                        sku: match.queryItem?.sku ?? null,
+                        // Falls back to the truncated id only when the referenced
+                        // line item no longer exists.
+                        description:
+                          match.queryItem?.description ??
+                          `Query item ${(match.queryPoLineItemId ?? match.queryInvoiceLineItemId ?? '').slice(0, 8)}...`,
+                      }}
+                      candidate={{
+                        sku: match.catalogItem?.sku ?? null,
+                        description:
+                          match.catalogItem?.description ?? `Catalog item ${match.catalogItemId.slice(0, 8)}...`,
+                        photoSrc: match.catalogItem?.photoStorageKey
+                          ? catalogItemPhotoUrl(workspaceId, match.catalogItemId)
+                          : null,
+                        vendorName: vendors.find((vendor) => vendor.id === match.vendorId)?.name,
+                      }}
+                      verdict={{
+                        score: match.score !== null ? Number(match.score) : null,
+                        isMatch: match.isMatch,
+                        reason: match.reason,
+                      }}
+                    />
+                  </Card>
+                ))}
+              </div>
+            )}
+          </Card>
+        )}
       </div>
     </AppShell>
   )

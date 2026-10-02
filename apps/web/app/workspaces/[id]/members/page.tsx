@@ -8,7 +8,8 @@ import { z } from 'zod'
 import { AppShell, Badge, Button, Card, EmptyState, Input, Modal, PageSection, Pagination, Select, Skeleton, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, useToast } from '@repo/ui'
 import { Mail, Search, Trash2 } from 'lucide-react'
 import { getCurrentUser, logout } from '@/lib/api/auth'
-import { isUnauthorized } from '@/lib/api/handle-unauthorized'
+import { isForbidden, isUnauthorized } from '@/lib/api/handle-unauthorized'
+import { WorkspaceAccessDenied } from '@/components/workspace-access-denied'
 import { getWorkspace, inviteMember, listMembers, listWorkspaces, removeMember } from '@/lib/api/workspaces'
 import { WorkspaceNav, workspacePrimaryTabItems } from '@/components/workspace-nav'
 import { MobileTabBar } from '@/components/mobile-tab-bar'
@@ -37,6 +38,9 @@ export default function MembersPage({ params }: { params: { id: string } }) {
   const [debouncedSearch, setDebouncedSearch] = React.useState('')
   const [roleFilter, setRoleFilter] = React.useState<RoleFilter>('')
   const [isLoading, setIsLoading] = React.useState(true)
+  // B18. Set when the first load answers 403; the page then shows only the
+  // no-access state instead of empty content.
+  const [accessDenied, setAccessDenied] = React.useState(false)
   const [isMembersLoading, setIsMembersLoading] = React.useState(false)
   const [pendingRemove, setPendingRemove] = React.useState<Member | null>(null)
   const [currentUserId, setCurrentUserId] = React.useState<string | null>(null)
@@ -76,6 +80,10 @@ export default function MembersPage({ params }: { params: { id: string } }) {
         router.push('/login')
         return
       }
+      if (isForbidden(err)) {
+        setAccessDenied(true)
+        return
+      }
       toast({
         variant: 'error',
         title: 'Failed to load workspace',
@@ -105,6 +113,10 @@ export default function MembersPage({ params }: { params: { id: string } }) {
     } catch (err) {
       if (isUnauthorized(err)) {
         router.push('/login')
+        return
+      }
+      if (isForbidden(err)) {
+        setAccessDenied(true)
         return
       }
       toast({
@@ -193,98 +205,104 @@ export default function MembersPage({ params }: { params: { id: string } }) {
       onLogout={handleLogout}
     >
       <div className="mx-auto w-full max-w-5xl space-y-8 px-6 py-10">
-        <PageSection eyebrow={<Badge variant="outline">Collaborators</Badge>} title="Invite members" description="Backend still enforces permissions. This page only shows owner and admin controls when your role is known.">
-          <Card variant="elevated" className="p-6">
-            {canManage ? (
-              <form className="grid gap-4 md:grid-cols-[1fr_auto]" onSubmit={submitInvite}>
-                <div className="space-y-2">
-                  <label htmlFor="member-email" className="text-sm font-medium">Member email</label>
-                  <Input id="member-email" type="email" placeholder="teammate@example.com" {...inviteForm.register('email')} />
-                  {inviteForm.formState.errors.email ? <p className="text-sm text-destructive">{inviteForm.formState.errors.email.message}</p> : null}
-                </div>
-                <div className="flex items-end">
-                  <Button type="submit" isLoading={inviteForm.formState.isSubmitting} loadingText="Sending"><Mail className="size-4" />Send invite</Button>
-                </div>
-              </form>
-            ) : (
-              <EmptyState icon={<Mail className="size-5" />} title="Invite controls hidden" description="Only owners and admins can invite members to this workspace." />
-            )}
-          </Card>
-        </PageSection>
+        {accessDenied ? (
+          <WorkspaceAccessDenied />
+        ) : (
+          <>
+          <PageSection eyebrow={<Badge variant="outline">Collaborators</Badge>} title="Invite members" description="Backend still enforces permissions. This page only shows owner and admin controls when your role is known.">
+            <Card variant="elevated" className="p-6">
+              {canManage ? (
+                <form className="grid gap-4 md:grid-cols-[1fr_auto]" onSubmit={submitInvite}>
+                  <div className="space-y-2">
+                    <label htmlFor="member-email" className="text-sm font-medium">Member email</label>
+                    <Input id="member-email" type="email" placeholder="teammate@example.com" {...inviteForm.register('email')} />
+                    {inviteForm.formState.errors.email ? <p className="text-sm text-destructive">{inviteForm.formState.errors.email.message}</p> : null}
+                  </div>
+                  <div className="flex items-end">
+                    <Button type="submit" isLoading={inviteForm.formState.isSubmitting} loadingText="Sending"><Mail className="size-4" />Send invite</Button>
+                  </div>
+                </form>
+              ) : (
+                <EmptyState icon={<Mail className="size-5" />} title="Invite controls hidden" description="Only owners and admins can invite members to this workspace." />
+              )}
+            </Card>
+          </PageSection>
 
-        <PageSection eyebrow={<Badge variant="outline">Roster</Badge>} title="Members" description="Everyone with access to this workspace.">
-          <Card variant="elevated" className="space-y-4 p-6">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-              <div className="relative flex-1">
-                <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  aria-label="Search members"
-                  placeholder="Search by email"
-                  className="pl-9"
-                  value={search}
-                  onChange={(event) => setSearch(event.target.value)}
-                />
+          <PageSection eyebrow={<Badge variant="outline">Roster</Badge>} title="Members" description="Everyone with access to this workspace.">
+            <Card variant="elevated" className="space-y-4 p-6">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                <div className="relative flex-1">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    aria-label="Search members"
+                    placeholder="Search by email"
+                    className="pl-9"
+                    value={search}
+                    onChange={(event) => setSearch(event.target.value)}
+                  />
+                </div>
+                <Select
+                  aria-label="Filter by role"
+                  className="sm:w-48"
+                  value={roleFilter}
+                  onChange={(event) => setRoleFilter(event.target.value as RoleFilter)}
+                >
+                  <option value="">All roles</option>
+                  <option value="owner">Owner</option>
+                  <option value="admin">Admin</option>
+                  <option value="member">Member</option>
+                </Select>
               </div>
-              <Select
-                aria-label="Filter by role"
-                className="sm:w-48"
-                value={roleFilter}
-                onChange={(event) => setRoleFilter(event.target.value as RoleFilter)}
-              >
-                <option value="">All roles</option>
-                <option value="owner">Owner</option>
-                <option value="admin">Admin</option>
-                <option value="member">Member</option>
-              </Select>
-            </div>
 
-            {isLoading ? (
-              <div className="space-y-4">
-                <Skeleton className="h-12 w-full" />
-                <Skeleton className="h-12 w-full" />
-              </div>
-            ) : members.length === 0 ? (
-              <EmptyState icon={<Search className="size-5" />} title="No members found" description="Try a different search or role filter." />
-            ) : (
-              <>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Email</TableHead>
-                      <TableHead>Role</TableHead>
-                      <TableHead>Joined</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {members.map((member) => (
-                      <TableRow key={member.id}>
-                        <TableCell className="font-medium">{member.email}</TableCell>
-                        <TableCell><Badge variant={member.role === 'member' ? 'secondary' : 'success'}>{member.role}</Badge></TableCell>
-                        <TableCell>{new Date(member.joinedAt).toLocaleDateString()}</TableCell>
-                        <TableCell className="text-right">
-                          {membership?.role === 'owner' && member.userId !== currentUserId ? (
-                            <Button variant="ghost" size="sm" aria-label={`Remove ${member.email}`} onClick={() => setPendingRemove(member)}><Trash2 className="size-4" />Remove</Button>
-                          ) : null}
-                        </TableCell>
+              {isLoading ? (
+                <div className="space-y-4">
+                  <Skeleton className="h-12 w-full" />
+                  <Skeleton className="h-12 w-full" />
+                </div>
+              ) : members.length === 0 ? (
+                <EmptyState icon={<Search className="size-5" />} title="No members found" description="Try a different search or role filter." />
+              ) : (
+                <>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Email</TableHead>
+                        <TableHead>Role</TableHead>
+                        <TableHead>Joined</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                    </TableHeader>
+                    <TableBody>
+                      {members.map((member) => (
+                        <TableRow key={member.id}>
+                          <TableCell className="font-medium">{member.email}</TableCell>
+                          <TableCell><Badge variant={member.role === 'member' ? 'secondary' : 'success'}>{member.role}</Badge></TableCell>
+                          <TableCell>{new Date(member.joinedAt).toLocaleDateString()}</TableCell>
+                          <TableCell className="text-right">
+                            {membership?.role === 'owner' && member.userId !== currentUserId ? (
+                              <Button variant="ghost" size="sm" aria-label={`Remove ${member.email}`} onClick={() => setPendingRemove(member)}><Trash2 className="size-4" />Remove</Button>
+                            ) : null}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
 
-                <Pagination
-                  page={meta.page}
-                  pageSize={meta.pageSize}
-                  total={meta.total}
-                  totalPages={meta.totalPages}
-                  onPageChange={setPage}
-                  onPageSizeChange={setPageSize}
-                  isLoading={isMembersLoading}
-                />
-              </>
-            )}
-          </Card>
-        </PageSection>
+                  <Pagination
+                    page={meta.page}
+                    pageSize={meta.pageSize}
+                    total={meta.total}
+                    totalPages={meta.totalPages}
+                    onPageChange={setPage}
+                    onPageSizeChange={setPageSize}
+                    isLoading={isMembersLoading}
+                  />
+                </>
+              )}
+            </Card>
+          </PageSection>
+          </>
+        )}
       </div>
 
       <Modal open={pendingRemove !== null} onClose={() => setPendingRemove(null)} title="Remove member">
