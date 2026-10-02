@@ -89,36 +89,6 @@
     },
     {
       "endpoints": [
-        "apps_api_src_bootstrap_configureapp",
-        "apps_api_src_common_trust_proxy_trustproxysetting"
-      ],
-      "variants": [
-        {
-          "source": "apps_api_src_bootstrap_configureapp",
-          "target": "apps_api_src_common_trust_proxy_trustproxysetting",
-          "relation": "calls",
-          "context": "call",
-          "confidence": "EXTRACTED",
-          "confidence_score": 1.0,
-          "source_file": "apps/api/src/bootstrap.ts",
-          "source_location": "L18",
-          "weight": 1.0,
-          "_origin": "ast"
-        },
-        {
-          "source": "apps_api_src_bootstrap_configureapp",
-          "target": "apps_api_src_common_trust_proxy_trustproxysetting",
-          "relation": "calls",
-          "confidence": "INFERRED",
-          "confidence_score": 0.95,
-          "source_file": "docs/ai/file-index/repository-map.md",
-          "source_location": "L132",
-          "weight": 1.0
-        }
-      ]
-    },
-    {
-      "endpoints": [
         "apps_api_src_catalog_catalog_controller_catalogcontroller_catalogitemphoto",
         "apps_api_src_catalog_catalog_controller_ts_param"
       ],
@@ -3389,6 +3359,37 @@
     {
       "endpoints": [
         "apps_e2e_support_db_closedb",
+        "apps_e2e_tests_matching_alignment_spec"
+      ],
+      "variants": [
+        {
+          "source": "apps_e2e_tests_matching_alignment_spec",
+          "target": "apps_e2e_support_db_closedb",
+          "relation": "imports",
+          "context": "import",
+          "confidence": "EXTRACTED",
+          "source_file": "apps/e2e/tests/matching-alignment.spec.ts",
+          "source_location": "L2",
+          "weight": 1.0,
+          "_origin": "ast"
+        },
+        {
+          "source": "apps_e2e_tests_matching_alignment_spec",
+          "target": "apps_e2e_support_db_closedb",
+          "relation": "indirect_call",
+          "context": "argument",
+          "confidence": "INFERRED",
+          "confidence_score": 0.8,
+          "source_file": "apps/e2e/tests/matching-alignment.spec.ts",
+          "source_location": "L59",
+          "weight": 1.0,
+          "_origin": "ast"
+        }
+      ]
+    },
+    {
+      "endpoints": [
+        "apps_e2e_support_db_closedb",
         "apps_e2e_tests_procurement_spec"
       ],
       "variants": [
@@ -3461,7 +3462,7 @@
           "context": "import",
           "confidence": "EXTRACTED",
           "source_file": "apps/web/app/workspaces/[id]/vendors/[vendorId]/page.tsx",
-          "source_location": "L28",
+          "source_location": "L30",
           "weight": 1.0,
           "_origin": "ast"
         },
@@ -3472,7 +3473,7 @@
           "context": "import",
           "confidence": "EXTRACTED",
           "source_file": "apps/web/app/workspaces/[id]/vendors/[vendorId]/page.tsx",
-          "source_location": "L29",
+          "source_location": "L31",
           "weight": 1.0,
           "_origin": "ast"
         }
@@ -3480,60 +3481,28 @@
     },
     {
       "endpoints": [
-        "apps_web_src_components_workspace_nav_workspacenav",
-        "apps_web_src_lib_api_events_getunreadcount"
+        "docs_ai_file_index_repository_map_faq_cluster",
+        "docs_ai_file_index_repository_map_usage_service"
       ],
       "variants": [
         {
-          "source": "apps_web_src_components_workspace_nav_workspacenav",
-          "target": "apps_web_src_lib_api_events_getunreadcount",
-          "relation": "calls",
-          "context": "call",
-          "confidence": "EXTRACTED",
-          "confidence_score": 1.0,
-          "source_file": "apps/web/src/components/workspace-nav.tsx",
-          "source_location": "L51",
-          "weight": 1.0,
-          "_origin": "ast"
-        },
-        {
-          "source": "apps_web_src_components_workspace_nav_workspacenav",
-          "target": "apps_web_src_lib_api_events_getunreadcount",
+          "source": "docs_ai_file_index_repository_map_faq_cluster",
+          "target": "docs_ai_file_index_repository_map_usage_service",
           "relation": "calls",
           "confidence": "EXTRACTED",
           "confidence_score": 1.0,
           "source_file": "docs/ai/file-index/repository-map.md",
           "source_location": null,
           "weight": 1.0
-        }
-      ]
-    },
-    {
-      "endpoints": [
-        "apps_web_src_lib_http_auth_proxy_proxyjson",
-        "apps_web_src_lib_http_client_ip_clientipheaders"
-      ],
-      "variants": [
-        {
-          "source": "apps_web_src_lib_http_auth_proxy_proxyjson",
-          "target": "apps_web_src_lib_http_client_ip_clientipheaders",
-          "relation": "calls",
-          "context": "call",
-          "confidence": "EXTRACTED",
-          "confidence_score": 1.0,
-          "source_file": "apps/web/src/lib/http/auth-proxy.ts",
-          "source_location": "L27",
-          "weight": 1.0,
-          "_origin": "ast"
         },
         {
-          "source": "apps_web_src_lib_http_auth_proxy_proxyjson",
-          "target": "apps_web_src_lib_http_client_ip_clientipheaders",
+          "source": "docs_ai_file_index_repository_map_faq_cluster",
+          "target": "docs_ai_file_index_repository_map_usage_service",
           "relation": "calls",
           "confidence": "EXTRACTED",
           "confidence_score": 1.0,
           "source_file": "docs/ai/file-index/repository-map.md",
-          "source_location": "L149",
+          "source_location": null,
           "weight": 1.0
         }
       ]
@@ -3589,6 +3558,62 @@
           "confidence": "EXTRACTED",
           "confidence_score": 1.0,
           "source_file": "docs/PRODUCTION-READINESS.md",
+          "source_location": null,
+          "weight": 1.0
+        }
+      ]
+    },
+    {
+      "endpoints": [
+        "docs_plans_app_alignment_docs_sync",
+        "docs_plans_app_alignment_plan"
+      ],
+      "variants": [
+        {
+          "source": "docs_plans_app_alignment_plan",
+          "target": "docs_plans_app_alignment_docs_sync",
+          "relation": "conceptually_related_to",
+          "confidence": "EXTRACTED",
+          "confidence_score": 1.0,
+          "source_file": "docs/plans/app-alignment.md",
+          "source_location": null,
+          "weight": 1.0
+        },
+        {
+          "source": "docs_plans_app_alignment_docs_sync",
+          "target": "docs_plans_app_alignment_plan",
+          "relation": "conceptually_related_to",
+          "confidence": "EXTRACTED",
+          "confidence_score": 1.0,
+          "source_file": "docs/plans/app-alignment.md",
+          "source_location": null,
+          "weight": 1.0
+        }
+      ]
+    },
+    {
+      "endpoints": [
+        "docs_plans_app_alignment_one_pr_decision",
+        "docs_plans_app_alignment_plan"
+      ],
+      "variants": [
+        {
+          "source": "docs_plans_app_alignment_plan",
+          "target": "docs_plans_app_alignment_one_pr_decision",
+          "relation": "conceptually_related_to",
+          "confidence": "EXTRACTED",
+          "confidence_score": 1.0,
+          "source_file": "docs/plans/app-alignment.md",
+          "source_location": null,
+          "weight": 1.0
+        },
+        {
+          "source": "docs_plans_app_alignment_one_pr_decision",
+          "target": "docs_plans_app_alignment_plan",
+          "relation": "rationale_for",
+          "confidence": "EXTRACTED",
+          "confidence_score": 1.0,
+          "source_file": "docs/plans/app-alignment.md",
           "source_location": null,
           "weight": 1.0
         }
@@ -4151,36 +4176,6 @@
           "source_location": "L3",
           "weight": 1.0,
           "_origin": "ast"
-        }
-      ]
-    },
-    {
-      "endpoints": [
-        "packages_ai_src_chains_procurement_extraction_extractlineitemsfrompdf",
-        "packages_ai_src_loaders_pdf_render_renderpdftoimages"
-      ],
-      "variants": [
-        {
-          "source": "packages_ai_src_chains_procurement_extraction_extractlineitemsfrompdf",
-          "target": "packages_ai_src_loaders_pdf_render_renderpdftoimages",
-          "relation": "calls",
-          "context": "call",
-          "confidence": "EXTRACTED",
-          "confidence_score": 1.0,
-          "source_file": "packages/ai/src/chains/procurement-extraction.ts",
-          "source_location": "L135",
-          "weight": 1.0,
-          "_origin": "ast"
-        },
-        {
-          "source": "packages_ai_src_chains_procurement_extraction_extractlineitemsfrompdf",
-          "target": "packages_ai_src_loaders_pdf_render_renderpdftoimages",
-          "relation": "calls",
-          "confidence": "INFERRED",
-          "confidence_score": 0.75,
-          "source_file": "docs/ai/file-index/repository-map.md",
-          "source_location": "L318",
-          "weight": 1.0
         }
       ]
     },
@@ -6535,6 +6530,36 @@
     },
     {
       "endpoints": [
+        "packages_ui_src_components_ui_definition_row",
+        "packages_ui_src_index"
+      ],
+      "variants": [
+        {
+          "source": "packages_ui_src_index",
+          "target": "packages_ui_src_components_ui_definition_row",
+          "relation": "imports_from",
+          "context": "re-export",
+          "confidence": "EXTRACTED",
+          "source_file": "packages/ui/src/index.ts",
+          "source_location": "L29",
+          "weight": 1.0,
+          "_origin": "ast"
+        },
+        {
+          "source": "packages_ui_src_index",
+          "target": "packages_ui_src_components_ui_definition_row",
+          "relation": "re_exports",
+          "context": "export",
+          "confidence": "EXTRACTED",
+          "source_file": "packages/ui/src/index.ts",
+          "source_location": "L29",
+          "weight": 1.0,
+          "_origin": "ast"
+        }
+      ]
+    },
+    {
+      "endpoints": [
         "packages_ui_src_components_ui_empty_state",
         "packages_ui_src_index"
       ],
@@ -6558,6 +6583,36 @@
           "confidence": "EXTRACTED",
           "source_file": "packages/ui/src/index.ts",
           "source_location": "L17",
+          "weight": 1.0,
+          "_origin": "ast"
+        }
+      ]
+    },
+    {
+      "endpoints": [
+        "packages_ui_src_components_ui_history_row",
+        "packages_ui_src_index"
+      ],
+      "variants": [
+        {
+          "source": "packages_ui_src_index",
+          "target": "packages_ui_src_components_ui_history_row",
+          "relation": "imports_from",
+          "context": "re-export",
+          "confidence": "EXTRACTED",
+          "source_file": "packages/ui/src/index.ts",
+          "source_location": "L28",
+          "weight": 1.0,
+          "_origin": "ast"
+        },
+        {
+          "source": "packages_ui_src_index",
+          "target": "packages_ui_src_components_ui_history_row",
+          "relation": "re_exports",
+          "context": "export",
+          "confidence": "EXTRACTED",
+          "source_file": "packages/ui/src/index.ts",
+          "source_location": "L28",
           "weight": 1.0,
           "_origin": "ast"
         }
@@ -6985,6 +7040,36 @@
     },
     {
       "endpoints": [
+        "packages_ui_src_components_ui_switch",
+        "packages_ui_src_index"
+      ],
+      "variants": [
+        {
+          "source": "packages_ui_src_index",
+          "target": "packages_ui_src_components_ui_switch",
+          "relation": "imports_from",
+          "context": "re-export",
+          "confidence": "EXTRACTED",
+          "source_file": "packages/ui/src/index.ts",
+          "source_location": "L30",
+          "weight": 1.0,
+          "_origin": "ast"
+        },
+        {
+          "source": "packages_ui_src_index",
+          "target": "packages_ui_src_components_ui_switch",
+          "relation": "re_exports",
+          "context": "export",
+          "confidence": "EXTRACTED",
+          "source_file": "packages/ui/src/index.ts",
+          "source_location": "L30",
+          "weight": 1.0,
+          "_origin": "ast"
+        }
+      ]
+    },
+    {
+      "endpoints": [
         "packages_ui_src_components_ui_table",
         "packages_ui_src_index"
       ],
@@ -7116,7 +7201,7 @@
           "context": "re-export",
           "confidence": "EXTRACTED",
           "source_file": "packages/ui/src/index.ts",
-          "source_location": "L28",
+          "source_location": "L31",
           "weight": 1.0,
           "_origin": "ast"
         },
@@ -7127,7 +7212,7 @@
           "context": "export",
           "confidence": "EXTRACTED",
           "source_file": "packages/ui/src/index.ts",
-          "source_location": "L28",
+          "source_location": "L31",
           "weight": 1.0,
           "_origin": "ast"
         }
