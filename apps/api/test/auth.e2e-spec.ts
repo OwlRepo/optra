@@ -154,4 +154,18 @@ describe('Auth flow (e2e)', () => {
       await cleanupUser(meEmail)
     }
   })
+
+  // Flake root cause (2026-10-03): supertest listens on a fresh port per
+  // request and closes the server after it. With Node 19+'s keep-alive global
+  // agent, a pooled socket to a closed server could be reused when a later
+  // request drew the same ephemeral port, and that request died as
+  // "socket hang up" (about 1 full run in 6). jest-e2e.setup.ts turns
+  // keep-alive off for the harness; this pins it.
+  describe('e2e harness connections', () => {
+    it('edge: every request opens a fresh connection (no keep-alive pool to go stale)', () => {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const { globalAgent } = require('http') as typeof import('http')
+      expect((globalAgent as unknown as { keepAlive: boolean }).keepAlive).toBe(false)
+    })
+  })
 })
