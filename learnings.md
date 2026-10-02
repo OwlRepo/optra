@@ -413,3 +413,12 @@ And one rule the owner made standing: every change now ships with its tests for 
 **Actual:** graphify's semantic cache is keyed by content hash inside per-prompt `p{fingerprint}/` namespaces, and the skill never prunes it. The old `semantic_cache()` picked one namespace and loaded every entry in it, so it replayed stale drafts of edited docs (82 entries for 77 docs) and missed docs cached only under an older prompt. The fix resolves exactly one entry per doc: hash the file as it is now with `graphify.cache.file_hash`, look that hash up in every namespace, take the newest (`scripts/graphify-complete.py` `semantic_cache`), and fail loudly naming any doc with no entry. Separately, `/graphify . --update` on its own rewrites `graph.json` without the completer's `coverage` block, so the completer must run after it.
 
 **Why different:** a content-addressed cache looks self-cleaning, but only a lookup by the *current* hash benefits from that; enumerating a directory treats every historical draft as live. **A cache keyed by content is only as fresh as the key you ask it for.**
+
+## 2026-10-02 — One process, one copy of pdfjs
+*Learning Contract: the plan's design is the prediction; the diff is below. No live prediction solicited.*
+
+**Predicted (from the approved plan):** the version-mismatch failures came from two pdfjs copies sharing `globalThis.pdfjsWorker`; reading text and rendering pages through one copy (`loadPdfjs()`) would make either order work, on Node and on the production Bun runtime.
+
+**Actual:** confirmed. The new cross-load spec failed in all three cases with the exact production error before the fix and passed after it. A Bun 1.2.22 run, matching the production image, succeeded in both orders. pdfjs 6 destroys through the loading task (`task.destroy()`), not the document; the first attempt called `doc.destroy()` and failed.
+
+**Why different:** not different. The general lesson: **a library that bundles its own copy of a dependency is not "just a wrapper"; two copies of anything that writes a process-wide global will fight.** Check `node_modules/<pkg>/node_modules` for nested copies before adding a convenience wrapper.

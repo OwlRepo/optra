@@ -144,7 +144,6 @@
         "mammoth": "^1.12.0",
         "officeparser": "^7.2.2",
         "papaparse": "^5.5.4",
-        "pdf-parse": "^2.4.5",
         "pdfjs-dist": "^6.1.200",
         "robots-parser": "^3.0.1",
         "tiktoken": "^1.0.22",
@@ -155,7 +154,6 @@
         "@types/jsdom": "^21.1.7",
         "@types/mailparser": "^3.4.6",
         "@types/papaparse": "^5.5.2",
-        "@types/pdf-parse": "^1.1.5",
         "docx": "^9.7.1",
         "pdf-lib": "^1.17.1",
         "pptxgenjs": "^4.0.1",
@@ -1048,8 +1046,6 @@
     "@types/passport-jwt": ["@types/passport-jwt@4.0.1", "", { "dependencies": { "@types/jsonwebtoken": "*", "@types/passport-strategy": "*" } }, "sha512-Y0Ykz6nWP4jpxgEUYq8NoVZeCQPo1ZndJLfapI249g1jHChvRfZRO/LS3tqu26YgAS/laI1qx98sYGz0IalRXQ=="],
 
     "@types/passport-strategy": ["@types/passport-strategy@0.2.38", "", { "dependencies": { "@types/express": "*", "@types/passport": "*" } }, "sha512-GC6eMqqojOooq993Tmnmp7AUTbbQSgilyvpCYQjT+H6JfG/g6RGc7nXEniZlp0zyKJ0WUdOiZWLBZft9Yug1uA=="],
-
-    "@types/pdf-parse": ["@types/pdf-parse@1.1.5", "", { "dependencies": { "@types/node": "*" } }, "sha512-kBfrSXsloMnUJOKi25s3+hRmkycHfLK6A09eRGqF/N8BkQoPUmaCr+q8Cli5FnfohEz/rsv82zAiPz/LXtOGhA=="],
 
     "@types/pg": ["@types/pg@8.20.0", "", { "dependencies": { "@types/node": "*", "pg-protocol": "*", "pg-types": "^2.2.0" } }, "sha512-bEPFOaMAHTEP1EzpvHTbmwR8UsFyHSKsRisLIHVMXnpNefSbGA1bD6CVy+qKjGSqmZqNqBDV2azOBo8TgkcVow=="],
 
