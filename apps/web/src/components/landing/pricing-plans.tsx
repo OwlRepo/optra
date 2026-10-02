@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { CONTACT_EMAIL } from '@/lib/legal-facts'
 import { Check } from 'lucide-react'
 import { Reveal } from '@/components/motion/reveal'
 
@@ -6,6 +7,7 @@ import { Reveal } from '@/components/motion/reveal'
 // measured usage. The metering that enforces them -- counting *matched line
 // items* per comparison run, idempotent across re-comparisons of the same
 // PO/invoice pair -- is a separate backend task; this section is copy only.
+// A photo check is one PO line verified against up to 8 catalog photos.
 const PLANS = [
   {
     name: 'Solo',
@@ -14,12 +16,14 @@ const PLANS = [
     blurb: 'For an owner or single buyer checking their own vendors.',
     features: [
       '400 matched line items / month',
+      '100 photo checks / month',
       'Unlimited vendors and catalogs',
       'Photo-level catalog matching',
       'Full order and price history',
       'Extra lines at $0.04 each',
     ],
     cta: 'Start free trial',
+    href: '#trial',
     featured: false,
     tag: null,
   },
@@ -30,12 +34,14 @@ const PLANS = [
     blurb: 'For a procurement team sharing one approved catalog.',
     features: [
       '2,000 matched line items per buyer, pooled',
+      '300 photo checks per buyer, pooled',
       'Shared workspace, roles, and flag history',
       'Scanned and photo-only PDFs included',
       'Exportable evidence trail',
       'Extra lines at $0.03 each',
     ],
     cta: 'Start free trial',
+    href: '#trial',
     featured: true,
     tag: 'Most buyers',
   },
@@ -50,7 +56,9 @@ const PLANS = [
       'Custom retention and deletion',
       'Onboarding for existing archives',
     ],
-    cta: 'Contact sales',
+    cta: 'Email us about Scale',
+    href: `mailto:${CONTACT_EMAIL}?subject=Optra%20Scale`,
+    external: true,
     featured: false,
     tag: null,
   },
@@ -71,8 +79,7 @@ export function PricingPlans() {
               </h2>
             </div>
             <p className="max-w-[42ch] text-sm leading-[1.7] text-muted-foreground">
-              Priced per matched line item, not per document. Every plan starts with a 14-day trial
-              — no card, no onboarding call.
+              Priced per matched line item, not per document. Every plan starts with a 14-day trial.
             </p>
           </div>
         </Reveal>
@@ -119,7 +126,7 @@ export function PricingPlans() {
                 </ul>
 
                 <Link
-                  href="#trial"
+                  href={plan.href}
                   className={`mt-7 block rounded-xl px-4 py-3 text-center text-[15px] font-semibold transition-colors duration-200 ${
                     plan.featured
                       ? 'bg-primary-strong text-primary-strong-foreground hover:bg-primary-strong-hover'
@@ -127,6 +134,9 @@ export function PricingPlans() {
                   }`}
                 >
                   {plan.cta}
+                  {'external' in plan && plan.external && (
+                    <span className="sr-only"> (opens email)</span>
+                  )}
                 </Link>
               </article>
             </Reveal>

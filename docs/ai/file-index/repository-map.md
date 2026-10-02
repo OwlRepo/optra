@@ -390,7 +390,7 @@ Rows are verified against the code they cite as of their last dated note; code w
 | `apps/web/app/umami-script.ts` (+ `umami-script.spec.ts`) | `getUmamiScriptProps()` — returns `{src, websiteId}` only when both `NEXT_PUBLIC_UMAMI_SCRIPT_URL` and `NEXT_PUBLIC_UMAMI_WEBSITE_ID` are set, else `null` | Marketing / Analytics | Standard | Consumed by `layout.tsx`. |
 | `apps/web/app/layout.tsx` | Root layout: `metadata` (`metadataBase` from `WEB_URL`, fallback `https://optra.example.com`, `layout.tsx:33`) and a `<script async src data-website-id>` for Umami when `getUmamiScriptProps()` is non-null (`:70`) | Marketing / Shared Frontend | Standard | Spec `layout.spec.ts`. |
 | `apps/web/app/{error,not-found}.tsx` | Client `GlobalError` boundary with `reset()`, and the 404 page linking to `/` and `/chat` | Shared Frontend | Tiny | — |
-| `apps/web/app/{robots,sitemap,manifest}.ts` | Metadata routes: robots disallows `/chat`, `/workspaces`, `/invite`, `/api` and points at `${WEB_URL}/sitemap.xml`; sitemap lists `WEB_URL`; web manifest (`name: 'Optra'`) | Marketing / SEO | Tiny | Each has a sibling spec. |
+| `apps/web/app/{robots,sitemap,manifest}.ts` | Metadata routes: robots disallows `/chat`, `/workspaces`, `/invite`, `/api` and points at `${WEB_URL}/sitemap.xml`; sitemap lists `WEB_URL` plus `/terms`, `/privacy`, `/refund`; web manifest (`name: 'Optra'`) | Marketing / SEO | Tiny | Each has a sibling spec. |
 | `apps/web/src/lib/api/{datasets,digest-settings,events,insights,search}.ts` | Client libs: `listDatasets`/`uploadDataset`/`deleteDataset`; `getDigestSettings`/`updateDigestSettings`/`previewDigest`; events list/unread-count/mark-seen; `listFreshnessFlags`/`dismissFreshnessFlag`/`listFaqDrafts`/`approveFaqDraft`/`rejectFaqDraft`/`getCoverage`; `searchWorkspace` | Web API Client | Standard | Same-origin `/api/workspaces/:id/*` only. |
 | `apps/web/src/lib/auth.ts` | `markLoggedIn`/`isLoggedIn`/`clearLoggedIn` — a boolean `mnemra_session_active` flag in `sessionStorage`, never a token | Auth Frontend | Standard | Spec `auth.spec.ts`. |
 | `apps/web/src/lib/http/set-cookie.ts` | `accessCookie(value)` — `mnemra_at` HttpOnly, `Path=/`, 15-minute `Max-Age`, `SameSite=Lax`, `Secure` in production; `forwardSetCookies(response, backend)` copies every backend `Set-Cookie` | Auth / BFF | Deep | Used by the auth BFF routes and `middleware.ts`. |
@@ -417,16 +417,18 @@ Rows are verified against the code they cite as of their last dated note; code w
 | `LandingNav` | `apps/web/src/components/landing/landing-nav.tsx` | Sticky blurred header; nav anchors + "Start free trial" |
 | `Hero` | `apps/web/src/components/landing/hero.tsx` | Hero copy column; renders `HeroMatchDemo` |
 | `HeroMatchDemo` | `apps/web/src/components/landing/hero-match-demo.tsx` | **client** — scanning/verdict state machine over `DEMO_DOCS`; pauses off-screen and under reduced motion |
-| `MetricsStrip` | `apps/web/src/components/landing/metrics-strip.tsx` | Three illustrative metrics + vendor wordmarks (`src` slot awaits real logo files) |
+| `MetricsStrip` | `apps/web/src/components/landing/metrics-strip.tsx` | Three code-verified capability facts (formats read, every line checked, a person decides); no placeholder metrics or vendor slots since 2026-10-02 |
 | `ProductCards` | `apps/web/src/components/landing/product-cards.tsx` | Three "how an invoice costs you" cards |
 | `ProductTour` | `apps/web/src/components/landing/product-tour.tsx` | **client** — four animated app-screen vignettes; replaces the old `/chat` demo link. Has a visible pause control (WCAG 2.2.2) |
 | `WorkspaceModes` | `apps/web/src/components/landing/workspace-modes.tsx` | **client** — Personal/Team segmented control + value cards (replaces `workspace-tabs.tsx`, adds the missing `tabpanel` wiring) |
 | `WorkflowSteps` | `apps/web/src/components/landing/workflow-steps.tsx` | Three numbered steps; step 3 is amber |
 | `UseCaseGrid` | `apps/web/src/components/landing/use-case-grid.tsx` | Six audience cards |
 | `FilesTrust` | `apps/web/src/components/landing/files-trust.tsx` | File-type chips + 4-row trust table (claims must stay true to the deployment) |
-| `PricingPlans` | `apps/web/src/components/landing/pricing-plans.tsx` | Solo / Team / Scale. Copy only — line-item metering is not implemented |
+| `PricingPlans` | `apps/web/src/components/landing/pricing-plans.tsx` | Solo / Team / Scale with line-item and photo-check quotas (`docs/business/unit-economics.md`). Copy only — metering is not implemented; Scale CTA is a mailto |
 | `FinalCta` | `apps/web/src/components/landing/final-cta.tsx` | Inverted `--cta-surface` block |
-| `SiteFooter` | `apps/web/src/components/landing/site-footer.tsx` | Brand + three link columns + disclaimer bar |
+| `SiteFooter` | `apps/web/src/components/landing/site-footer.tsx` | Brand + link columns incl. Legal (Terms/Privacy/Refunds/Contact) + seller line + sample-data disclaimer |
+| `SELLER_NAME`, `CONTACT_EMAIL`, `HOSTING_COUNTRY`, `OFFSITE_BACKUP_RETENTION_DAYS`, `LANGSMITH_TRACING_IN_PROD`, … | `apps/web/src/lib/legal-facts.ts` | Single source of business/legal facts used by footer, legal pages, FAQ and trust rows. `null` renders an "on request" fallback, never a guess |
+| `LegalPage` | `apps/web/src/components/legal/legal-page.tsx` | Shared prose layout for `/terms`, `/privacy`, `/refund` (`apps/web/app/{terms,privacy,refund}/page.tsx`) |
 | `DEMO_DOCS`, `DEMO_SCANNING`, `TOUR_VIGNETTES`, `TOUR_CHAT_EXCHANGE`, `DEMO_HISTORY_ROWS`, `DEMO_CATALOG_PHOTO` | `apps/web/src/lib/landing-demo-docs.ts` | Static demo scenarios. **L05's row price ($2.05) intentionally differs from its `poPrice` ($1.80)** — that disagreement is the flag |
 | `Accordion`, `AccordionItem` | `apps/web/src/components/accordion.tsx` | **client** — FAQ disclosure list on the landing page (`defaultOpenIndex`) |
 | `ComparisonTable`, `ComparisonRow` | `apps/web/src/components/comparison-table.tsx` | Before/after comparison rows on the landing page |

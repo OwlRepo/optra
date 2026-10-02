@@ -44,7 +44,7 @@ const faqItems = [
   {
     question: 'What documents can it read?',
     answer:
-      'Vendor catalogs including product photos, purchase orders, invoices, and price lists — PDF, scanned PDF, spreadsheet, or image. If a person could read it, Optra can extract line items from it.',
+      'Vendor catalogs with product photos, purchase orders and invoices as PDF (scanned too), CSV or XLSX, and goods receipts as CSV or XLSX.',
   },
   {
     question: "Does it replace a buyer's approval?",
@@ -59,7 +59,7 @@ const faqItems = [
   {
     question: 'What happens to my files?',
     answer:
-      'They live in your workspace and are used only to answer your matches. Delete the workspace and the files, matches, and history go with it.',
+      "They live in your workspace and are used only to run your matches. To read line items and compare product photos, document text and page images are sent to OpenAI's API, which does not train on them. Email us and we delete your workspace data, including uploaded files, within 30 days. Backups expire on the schedule in the privacy policy.",
   },
 ]
 
