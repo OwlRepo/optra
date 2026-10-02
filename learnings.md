@@ -467,3 +467,12 @@ And one rule the owner made standing: every change now ships with its tests for 
 **Actual:** confirmed — 7 new browser tests; the whole Playwright suite green three runs in a row (45 passed, 7 parked); no product code touched. Getting there exposed environment problems, not test problems: a stale primary `node_modules` with no `@playwright/test`, bun extracting packages empty until `--force`, and a 98%-full disk killing the Next build.
 
 **Why different:** not different for the tests. **A browser suite is only as reproducible as the install under it — verify `node_modules/.bin/playwright` exists before blaming a spec.**
+
+## 2026-10-02 — Fix B2/B3: a file with no readable rows is a failure, not an empty success
+*Learning Contract: the plan's design is the prediction; the diff is below. No live prediction solicited.*
+
+**Predicted (from the approved plan):** one zero-row guard plus a two-pass delimiter guess fixes both bugs with every existing procurement spec green and unedited.
+
+**Actual:** confirmed — 9 of 10 new unit cases failed first (the tenth is a deliberate over-reach guard), all pass after a 25-line change; full api unit 780/780 with no existing test edited.
+
+**Why different:** not different. **Two code paths that do the same job must share the same failure rules: the PDF path already refused an empty result, the spreadsheet path silently accepted one.**
