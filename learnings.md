@@ -485,3 +485,12 @@ And one rule the owner made standing: every change now ships with its tests for 
 **Actual:** confirmed — both unit regressions red then green, a citation proven over HTTP, full api unit 782/782 and API e2e 94/94. One RCA sub-claim (data starting at row 2) was withdrawn: it held only for an in-memory sheet.
 
 **Why different:** **probe file formats through the same write/read path production uses; an in-memory object is not a file.**
+
+## 2026-10-02 — Fix B12: search and list must scope to the same thing
+*Learning Contract: the plan's design is the prediction; the diff is below. No live prediction solicited.*
+
+**Predicted (from the approved plan):** making the list scope mirror the search query fixes the empty list with no API change.
+
+**Actual:** confirmed — two web unit cases red then green, the page spec 15/15 three times, full web suite 669/669, and a browser test that follows the real flag link.
+
+**Why different:** not different. **When a page runs a write and then a read, derive both from one value; two hand-built filters drift.** A test that works around a bug (S4 opened the page with one id) hides it — follow the real link.

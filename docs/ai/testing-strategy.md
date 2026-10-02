@@ -397,6 +397,8 @@ Environment traps hit while verifying (they are execution preflight, not test lo
 
 **2026-10-02 — fix B1 (XLSX source rows).** `procurement-parse.processor.spec.ts` `describe('XLSX source rows (B1)')` (2) and `procurement.e2e-spec.ts` `describe('XLSX citations (B1)')` (1). **Build XLSX fixtures through a real write/read round trip:** an in-memory sheet with a hand-set `!ref` behaved differently from a written workbook (SheetJS re-anchors written sheets at A1), and a claim based on the in-memory probe had to be withdrawn.
 
+**2026-10-02 — fix B12 (catalog matches from a flag).** Web unit `catalog-matches/page.spec.ts` `describe('line scope (B12)')` (2) asserts the exact list scope shape, and Playwright `catalog-core.spec.ts` now follows the flag's real "Find catalog matches" link instead of building the URL with one id — the S4 test had deliberately side-stepped this bug, so the browser layer is where it now gets proven.
+
 ## Infrastructure / Docker / Deployment Verification
 
 Infra/config/script changes (Dockerfiles, compose files, CI workflows, deploy shell scripts) are not
