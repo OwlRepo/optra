@@ -31,64 +31,6 @@
     },
     {
       "endpoints": [
-        "apps_api_src_auth_auth_controller",
-        "apps_api_src_auth_auth_service"
-      ],
-      "variants": [
-        {
-          "source": "apps_api_src_auth_auth_controller",
-          "target": "apps_api_src_auth_auth_service",
-          "relation": "imports_from",
-          "context": "import",
-          "confidence": "EXTRACTED",
-          "source_file": "apps/api/src/auth/auth.controller.ts",
-          "source_location": "L15",
-          "weight": 1.0,
-          "_origin": "ast"
-        },
-        {
-          "source": "apps_api_src_auth_auth_controller",
-          "target": "apps_api_src_auth_auth_service",
-          "relation": "calls",
-          "confidence": "INFERRED",
-          "confidence_score": 0.75,
-          "source_file": "docs/ai/file-index/repository-map.md",
-          "source_location": null,
-          "weight": 1.0
-        }
-      ]
-    },
-    {
-      "endpoints": [
-        "apps_api_src_auth_auth_limits_service",
-        "apps_api_src_auth_auth_service"
-      ],
-      "variants": [
-        {
-          "source": "apps_api_src_auth_auth_service",
-          "target": "apps_api_src_auth_auth_limits_service",
-          "relation": "imports_from",
-          "context": "import",
-          "confidence": "EXTRACTED",
-          "source_file": "apps/api/src/auth/auth.service.ts",
-          "source_location": "L19",
-          "weight": 1.0,
-          "_origin": "ast"
-        },
-        {
-          "source": "apps_api_src_auth_auth_service",
-          "target": "apps_api_src_auth_auth_limits_service",
-          "relation": "calls",
-          "confidence": "INFERRED",
-          "confidence_score": 0.75,
-          "source_file": "docs/ai/file-index/repository-map.md",
-          "source_location": null,
-          "weight": 1.0
-        }
-      ]
-    },
-    {
-      "endpoints": [
         "apps_api_src_auth_auth_service_spec",
         "apps_api_src_auth_auth_service_spec_registerandverify"
       ],
@@ -142,180 +84,6 @@
           "weight": 1.0,
           "context": "decorator",
           "_origin": "ast"
-        }
-      ]
-    },
-    {
-      "endpoints": [
-        "apps_api_src_auth_guards_roles_guard",
-        "apps_api_src_auth_guards_workspace_member_guard"
-      ],
-      "variants": [
-        {
-          "source": "apps_api_src_auth_guards_roles_guard",
-          "target": "apps_api_src_auth_guards_workspace_member_guard",
-          "relation": "imports_from",
-          "context": "import",
-          "confidence": "EXTRACTED",
-          "source_file": "apps/api/src/auth/guards/roles.guard.ts",
-          "source_location": "L4",
-          "weight": 1.0,
-          "_origin": "ast"
-        },
-        {
-          "source": "apps_api_src_auth_guards_roles_guard",
-          "target": "apps_api_src_auth_guards_workspace_member_guard",
-          "relation": "references",
-          "confidence": "INFERRED",
-          "confidence_score": 0.85,
-          "source_file": "docs/ai/file-index/repository-map.md",
-          "source_location": null,
-          "weight": 1.0
-        }
-      ]
-    },
-    {
-      "endpoints": [
-        "apps_api_src_auth_guards_workspace_member_guard",
-        "apps_api_src_workspaces_workspaces_controller"
-      ],
-      "variants": [
-        {
-          "source": "apps_api_src_workspaces_workspaces_controller",
-          "target": "apps_api_src_auth_guards_workspace_member_guard",
-          "relation": "imports_from",
-          "context": "import",
-          "confidence": "EXTRACTED",
-          "source_file": "apps/api/src/workspaces/workspaces.controller.ts",
-          "source_location": "L19",
-          "weight": 1.0,
-          "_origin": "ast"
-        },
-        {
-          "source": "apps_api_src_workspaces_workspaces_controller",
-          "target": "apps_api_src_auth_guards_workspace_member_guard",
-          "relation": "calls",
-          "confidence": "INFERRED",
-          "confidence_score": 0.75,
-          "source_file": "docs/ai/file-index/repository-map.md",
-          "source_location": null,
-          "weight": 1.0
-        }
-      ]
-    },
-    {
-      "endpoints": [
-        "apps_api_src_cache_cache_service",
-        "apps_api_src_chat_chat_service"
-      ],
-      "variants": [
-        {
-          "source": "apps_api_src_chat_chat_service",
-          "target": "apps_api_src_cache_cache_service",
-          "relation": "imports_from",
-          "context": "import",
-          "confidence": "EXTRACTED",
-          "source_file": "apps/api/src/chat/chat.service.ts",
-          "source_location": "L15",
-          "weight": 1.0,
-          "_origin": "ast"
-        },
-        {
-          "source": "apps_api_src_chat_chat_service",
-          "target": "apps_api_src_cache_cache_service",
-          "relation": "calls",
-          "confidence": "INFERRED",
-          "confidence_score": 0.75,
-          "source_file": "docs/ai/file-index/repository-map.md",
-          "source_location": null,
-          "weight": 1.0
-        }
-      ]
-    },
-    {
-      "endpoints": [
-        "apps_api_src_catalog_catalog_controller",
-        "apps_api_src_catalog_catalog_documents_service"
-      ],
-      "variants": [
-        {
-          "source": "apps_api_src_catalog_catalog_controller",
-          "target": "apps_api_src_catalog_catalog_documents_service",
-          "relation": "imports_from",
-          "context": "import",
-          "confidence": "EXTRACTED",
-          "source_file": "apps/api/src/catalog/catalog.controller.ts",
-          "source_location": "L25",
-          "weight": 1.0,
-          "_origin": "ast"
-        },
-        {
-          "source": "apps_api_src_catalog_catalog_controller",
-          "target": "apps_api_src_catalog_catalog_documents_service",
-          "relation": "calls",
-          "confidence": "INFERRED",
-          "confidence_score": 0.75,
-          "source_file": "docs/ai/file-index/repository-map.md",
-          "source_location": null,
-          "weight": 1.0
-        }
-      ]
-    },
-    {
-      "endpoints": [
-        "apps_api_src_catalog_catalog_controller",
-        "apps_api_src_catalog_catalog_match_service"
-      ],
-      "variants": [
-        {
-          "source": "apps_api_src_catalog_catalog_controller",
-          "target": "apps_api_src_catalog_catalog_match_service",
-          "relation": "imports_from",
-          "context": "import",
-          "confidence": "EXTRACTED",
-          "source_file": "apps/api/src/catalog/catalog.controller.ts",
-          "source_location": "L30",
-          "weight": 1.0,
-          "_origin": "ast"
-        },
-        {
-          "source": "apps_api_src_catalog_catalog_controller",
-          "target": "apps_api_src_catalog_catalog_match_service",
-          "relation": "calls",
-          "confidence": "INFERRED",
-          "confidence_score": 0.75,
-          "source_file": "docs/ai/file-index/repository-map.md",
-          "source_location": null,
-          "weight": 1.0
-        }
-      ]
-    },
-    {
-      "endpoints": [
-        "apps_api_src_catalog_catalog_controller",
-        "apps_api_src_catalog_vendors_service"
-      ],
-      "variants": [
-        {
-          "source": "apps_api_src_catalog_catalog_controller",
-          "target": "apps_api_src_catalog_vendors_service",
-          "relation": "imports_from",
-          "context": "import",
-          "confidence": "EXTRACTED",
-          "source_file": "apps/api/src/catalog/catalog.controller.ts",
-          "source_location": "L36",
-          "weight": 1.0,
-          "_origin": "ast"
-        },
-        {
-          "source": "apps_api_src_catalog_catalog_controller",
-          "target": "apps_api_src_catalog_vendors_service",
-          "relation": "calls",
-          "confidence": "INFERRED",
-          "confidence_score": 0.75,
-          "source_file": "docs/ai/file-index/repository-map.md",
-          "source_location": null,
-          "weight": 1.0
         }
       ]
     },
@@ -687,122 +455,6 @@
           "weight": 1.0,
           "context": "decorator",
           "_origin": "ast"
-        }
-      ]
-    },
-    {
-      "endpoints": [
-        "apps_api_src_catalog_catalog_documents_service",
-        "apps_api_src_storage_storage_service"
-      ],
-      "variants": [
-        {
-          "source": "apps_api_src_catalog_catalog_documents_service",
-          "target": "apps_api_src_storage_storage_service",
-          "relation": "imports_from",
-          "context": "import",
-          "confidence": "EXTRACTED",
-          "source_file": "apps/api/src/catalog/catalog-documents.service.ts",
-          "source_location": "L5",
-          "weight": 1.0,
-          "_origin": "ast"
-        },
-        {
-          "source": "apps_api_src_catalog_catalog_documents_service",
-          "target": "apps_api_src_storage_storage_service",
-          "relation": "calls",
-          "confidence": "INFERRED",
-          "confidence_score": 0.75,
-          "source_file": "docs/ai/file-index/repository-map.md",
-          "source_location": null,
-          "weight": 1.0
-        }
-      ]
-    },
-    {
-      "endpoints": [
-        "apps_api_src_catalog_catalog_extraction_service",
-        "apps_api_src_limits_usage_service"
-      ],
-      "variants": [
-        {
-          "source": "apps_api_src_catalog_catalog_extraction_service",
-          "target": "apps_api_src_limits_usage_service",
-          "relation": "imports_from",
-          "context": "import",
-          "confidence": "EXTRACTED",
-          "source_file": "apps/api/src/catalog/catalog-extraction.service.ts",
-          "source_location": "L9",
-          "weight": 1.0,
-          "_origin": "ast"
-        },
-        {
-          "source": "apps_api_src_catalog_catalog_extraction_service",
-          "target": "apps_api_src_limits_usage_service",
-          "relation": "calls",
-          "confidence": "INFERRED",
-          "confidence_score": 0.75,
-          "source_file": "docs/ai/file-index/repository-map.md",
-          "source_location": null,
-          "weight": 1.0
-        }
-      ]
-    },
-    {
-      "endpoints": [
-        "apps_api_src_catalog_catalog_match_service",
-        "apps_api_src_limits_usage_service"
-      ],
-      "variants": [
-        {
-          "source": "apps_api_src_catalog_catalog_match_service",
-          "target": "apps_api_src_limits_usage_service",
-          "relation": "imports_from",
-          "context": "import",
-          "confidence": "EXTRACTED",
-          "source_file": "apps/api/src/catalog/catalog-match.service.ts",
-          "source_location": "L5",
-          "weight": 1.0,
-          "_origin": "ast"
-        },
-        {
-          "source": "apps_api_src_catalog_catalog_match_service",
-          "target": "apps_api_src_limits_usage_service",
-          "relation": "calls",
-          "confidence": "INFERRED",
-          "confidence_score": 0.75,
-          "source_file": "docs/ai/file-index/repository-map.md",
-          "source_location": null,
-          "weight": 1.0
-        }
-      ]
-    },
-    {
-      "endpoints": [
-        "apps_api_src_catalog_catalog_parse_processor",
-        "apps_api_src_catalog_catalog_parse_service"
-      ],
-      "variants": [
-        {
-          "source": "apps_api_src_catalog_catalog_parse_processor",
-          "target": "apps_api_src_catalog_catalog_parse_service",
-          "relation": "imports_from",
-          "context": "import",
-          "confidence": "EXTRACTED",
-          "source_file": "apps/api/src/catalog/catalog-parse.processor.ts",
-          "source_location": "L18",
-          "weight": 1.0,
-          "_origin": "ast"
-        },
-        {
-          "source": "apps_api_src_catalog_catalog_parse_processor",
-          "target": "apps_api_src_catalog_catalog_parse_service",
-          "relation": "calls",
-          "confidence": "INFERRED",
-          "confidence_score": 0.75,
-          "source_file": "docs/ai/file-index/repository-map.md",
-          "source_location": null,
-          "weight": 1.0
         }
       ]
     },
@@ -1289,35 +941,6 @@
           "weight": 1.0,
           "context": "decorator",
           "_origin": "ast"
-        }
-      ]
-    },
-    {
-      "endpoints": [
-        "apps_api_src_chat_chat_service",
-        "apps_api_src_limits_usage_service"
-      ],
-      "variants": [
-        {
-          "source": "apps_api_src_chat_chat_service",
-          "target": "apps_api_src_limits_usage_service",
-          "relation": "imports_from",
-          "context": "import",
-          "confidence": "EXTRACTED",
-          "source_file": "apps/api/src/chat/chat.service.ts",
-          "source_location": "L16",
-          "weight": 1.0,
-          "_origin": "ast"
-        },
-        {
-          "source": "apps_api_src_chat_chat_service",
-          "target": "apps_api_src_limits_usage_service",
-          "relation": "calls",
-          "confidence": "INFERRED",
-          "confidence_score": 0.75,
-          "source_file": "docs/ai/file-index/repository-map.md",
-          "source_location": null,
-          "weight": 1.0
         }
       ]
     },
@@ -2188,93 +1811,6 @@
     },
     {
       "endpoints": [
-        "apps_api_src_limits_chat_rate_limit_guard",
-        "apps_api_src_limits_rate_limit_service"
-      ],
-      "variants": [
-        {
-          "source": "apps_api_src_limits_chat_rate_limit_guard",
-          "target": "apps_api_src_limits_rate_limit_service",
-          "relation": "imports_from",
-          "context": "import",
-          "confidence": "EXTRACTED",
-          "source_file": "apps/api/src/limits/chat-rate-limit.guard.ts",
-          "source_location": "L2",
-          "weight": 1.0,
-          "_origin": "ast"
-        },
-        {
-          "source": "apps_api_src_limits_chat_rate_limit_guard",
-          "target": "apps_api_src_limits_rate_limit_service",
-          "relation": "calls",
-          "confidence": "INFERRED",
-          "confidence_score": 0.75,
-          "source_file": "docs/ai/file-index/repository-map.md",
-          "source_location": null,
-          "weight": 1.0
-        }
-      ]
-    },
-    {
-      "endpoints": [
-        "apps_api_src_limits_usage_service",
-        "apps_api_src_procurement_procurement_extraction_service"
-      ],
-      "variants": [
-        {
-          "source": "apps_api_src_procurement_procurement_extraction_service",
-          "target": "apps_api_src_limits_usage_service",
-          "relation": "imports_from",
-          "context": "import",
-          "confidence": "EXTRACTED",
-          "source_file": "apps/api/src/procurement/procurement-extraction.service.ts",
-          "source_location": "L3",
-          "weight": 1.0,
-          "_origin": "ast"
-        },
-        {
-          "source": "apps_api_src_procurement_procurement_extraction_service",
-          "target": "apps_api_src_limits_usage_service",
-          "relation": "calls",
-          "confidence": "INFERRED",
-          "confidence_score": 0.75,
-          "source_file": "docs/ai/file-index/repository-map.md",
-          "source_location": null,
-          "weight": 1.0
-        }
-      ]
-    },
-    {
-      "endpoints": [
-        "apps_api_src_procurement_comparison_service",
-        "apps_api_src_procurement_procurement_controller"
-      ],
-      "variants": [
-        {
-          "source": "apps_api_src_procurement_procurement_controller",
-          "target": "apps_api_src_procurement_comparison_service",
-          "relation": "imports_from",
-          "context": "import",
-          "confidence": "EXTRACTED",
-          "source_file": "apps/api/src/procurement/procurement.controller.ts",
-          "source_location": "L25",
-          "weight": 1.0,
-          "_origin": "ast"
-        },
-        {
-          "source": "apps_api_src_procurement_procurement_controller",
-          "target": "apps_api_src_procurement_comparison_service",
-          "relation": "calls",
-          "confidence": "INFERRED",
-          "confidence_score": 0.75,
-          "source_file": "docs/ai/file-index/repository-map.md",
-          "source_location": null,
-          "weight": 1.0
-        }
-      ]
-    },
-    {
-      "endpoints": [
         "apps_api_src_procurement_dto_compare_documents_dto_comparedocumentsdto",
         "apps_api_src_procurement_dto_compare_documents_dto_ts_isuuid"
       ],
@@ -2469,122 +2005,6 @@
     },
     {
       "endpoints": [
-        "apps_api_src_procurement_procurement_compare_processor",
-        "apps_api_src_procurement_procurement_compare_service"
-      ],
-      "variants": [
-        {
-          "source": "apps_api_src_procurement_procurement_compare_processor",
-          "target": "apps_api_src_procurement_procurement_compare_service",
-          "relation": "imports_from",
-          "context": "import",
-          "confidence": "EXTRACTED",
-          "source_file": "apps/api/src/procurement/procurement-compare.processor.ts",
-          "source_location": "L8",
-          "weight": 1.0,
-          "_origin": "ast"
-        },
-        {
-          "source": "apps_api_src_procurement_procurement_compare_processor",
-          "target": "apps_api_src_procurement_procurement_compare_service",
-          "relation": "calls",
-          "confidence": "INFERRED",
-          "confidence_score": 0.75,
-          "source_file": "docs/ai/file-index/repository-map.md",
-          "source_location": null,
-          "weight": 1.0
-        }
-      ]
-    },
-    {
-      "endpoints": [
-        "apps_api_src_procurement_procurement_compare_service",
-        "apps_api_src_procurement_procurement_parse_service"
-      ],
-      "variants": [
-        {
-          "source": "apps_api_src_procurement_procurement_compare_service",
-          "target": "apps_api_src_procurement_procurement_parse_service",
-          "relation": "imports_from",
-          "context": "import",
-          "confidence": "EXTRACTED",
-          "source_file": "apps/api/src/procurement/procurement-compare.service.ts",
-          "source_location": "L9",
-          "weight": 1.0,
-          "_origin": "ast"
-        },
-        {
-          "source": "apps_api_src_procurement_procurement_parse_service",
-          "target": "apps_api_src_procurement_procurement_compare_service",
-          "relation": "calls",
-          "confidence": "INFERRED",
-          "confidence_score": 0.65,
-          "source_file": "docs/ai/file-index/repository-map.md",
-          "source_location": null,
-          "weight": 1.0
-        }
-      ]
-    },
-    {
-      "endpoints": [
-        "apps_api_src_procurement_procurement_controller",
-        "apps_api_src_procurement_procurement_documents_service"
-      ],
-      "variants": [
-        {
-          "source": "apps_api_src_procurement_procurement_controller",
-          "target": "apps_api_src_procurement_procurement_documents_service",
-          "relation": "imports_from",
-          "context": "import",
-          "confidence": "EXTRACTED",
-          "source_file": "apps/api/src/procurement/procurement.controller.ts",
-          "source_location": "L35",
-          "weight": 1.0,
-          "_origin": "ast"
-        },
-        {
-          "source": "apps_api_src_procurement_procurement_controller",
-          "target": "apps_api_src_procurement_procurement_documents_service",
-          "relation": "calls",
-          "confidence": "INFERRED",
-          "confidence_score": 0.75,
-          "source_file": "docs/ai/file-index/repository-map.md",
-          "source_location": null,
-          "weight": 1.0
-        }
-      ]
-    },
-    {
-      "endpoints": [
-        "apps_api_src_procurement_procurement_controller",
-        "apps_api_src_procurement_procurement_module"
-      ],
-      "variants": [
-        {
-          "source": "apps_api_src_procurement_procurement_module",
-          "target": "apps_api_src_procurement_procurement_controller",
-          "relation": "imports_from",
-          "context": "import",
-          "confidence": "EXTRACTED",
-          "source_file": "apps/api/src/procurement/procurement.module.ts",
-          "source_location": "L3",
-          "weight": 1.0,
-          "_origin": "ast"
-        },
-        {
-          "source": "apps_api_src_procurement_procurement_module",
-          "target": "apps_api_src_procurement_procurement_controller",
-          "relation": "calls",
-          "confidence": "INFERRED",
-          "confidence_score": 0.75,
-          "source_file": "docs/ai/file-index/repository-map.md",
-          "source_location": null,
-          "weight": 1.0
-        }
-      ]
-    },
-    {
-      "endpoints": [
         "apps_api_src_procurement_procurement_controller_procurementcontroller_dismiss",
         "apps_api_src_procurement_procurement_controller_ts_param"
       ],
@@ -2765,35 +2185,6 @@
     },
     {
       "endpoints": [
-        "apps_api_src_procurement_procurement_documents_service",
-        "apps_api_src_storage_storage_service"
-      ],
-      "variants": [
-        {
-          "source": "apps_api_src_procurement_procurement_documents_service",
-          "target": "apps_api_src_storage_storage_service",
-          "relation": "imports_from",
-          "context": "import",
-          "confidence": "EXTRACTED",
-          "source_file": "apps/api/src/procurement/procurement-documents.service.ts",
-          "source_location": "L14",
-          "weight": 1.0,
-          "_origin": "ast"
-        },
-        {
-          "source": "apps_api_src_procurement_procurement_documents_service",
-          "target": "apps_api_src_storage_storage_service",
-          "relation": "calls",
-          "confidence": "INFERRED",
-          "confidence_score": 0.75,
-          "source_file": "docs/ai/file-index/repository-map.md",
-          "source_location": null,
-          "weight": 1.0
-        }
-      ]
-    },
-    {
-      "endpoints": [
         "apps_api_src_procurement_procurement_kind",
         "apps_api_src_procurement_procurement_parse_service"
       ],
@@ -2819,45 +2210,6 @@
           "source_location": "L6",
           "weight": 1.0,
           "_origin": "ast"
-        },
-        {
-          "source": "apps_api_src_procurement_procurement_kind",
-          "target": "apps_api_src_procurement_procurement_parse_service",
-          "relation": "references",
-          "confidence": "INFERRED",
-          "confidence_score": 0.75,
-          "source_file": "docs/ai/file-index/repository-map.md",
-          "source_location": null,
-          "weight": 1.0
-        }
-      ]
-    },
-    {
-      "endpoints": [
-        "apps_api_src_procurement_procurement_parse_processor",
-        "apps_api_src_procurement_procurement_parse_service"
-      ],
-      "variants": [
-        {
-          "source": "apps_api_src_procurement_procurement_parse_processor",
-          "target": "apps_api_src_procurement_procurement_parse_service",
-          "relation": "imports_from",
-          "context": "import",
-          "confidence": "EXTRACTED",
-          "source_file": "apps/api/src/procurement/procurement-parse.processor.ts",
-          "source_location": "L22",
-          "weight": 1.0,
-          "_origin": "ast"
-        },
-        {
-          "source": "apps_api_src_procurement_procurement_parse_processor",
-          "target": "apps_api_src_procurement_procurement_parse_service",
-          "relation": "calls",
-          "confidence": "INFERRED",
-          "confidence_score": 0.75,
-          "source_file": "docs/ai/file-index/repository-map.md",
-          "source_location": null,
-          "weight": 1.0
         }
       ]
     },
@@ -3207,35 +2559,6 @@
           "weight": 1.0,
           "context": "decorator",
           "_origin": "ast"
-        }
-      ]
-    },
-    {
-      "endpoints": [
-        "apps_api_src_storage_storage_errors",
-        "apps_api_src_storage_storage_service"
-      ],
-      "variants": [
-        {
-          "source": "apps_api_src_storage_storage_service",
-          "target": "apps_api_src_storage_storage_errors",
-          "relation": "imports_from",
-          "context": "import",
-          "confidence": "EXTRACTED",
-          "source_file": "apps/api/src/storage/storage.service.ts",
-          "source_location": "L18",
-          "weight": 1.0,
-          "_origin": "ast"
-        },
-        {
-          "source": "apps_api_src_storage_storage_service",
-          "target": "apps_api_src_storage_storage_errors",
-          "relation": "calls",
-          "confidence": "INFERRED",
-          "confidence_score": 0.75,
-          "source_file": "docs/ai/file-index/repository-map.md",
-          "source_location": null,
-          "weight": 1.0
         }
       ]
     },
@@ -3819,35 +3142,6 @@
     },
     {
       "endpoints": [
-        "apps_api_src_workspaces_workspaces_controller",
-        "apps_api_src_workspaces_workspaces_service"
-      ],
-      "variants": [
-        {
-          "source": "apps_api_src_workspaces_workspaces_controller",
-          "target": "apps_api_src_workspaces_workspaces_service",
-          "relation": "imports_from",
-          "context": "import",
-          "confidence": "EXTRACTED",
-          "source_file": "apps/api/src/workspaces/workspaces.controller.ts",
-          "source_location": "L25",
-          "weight": 1.0,
-          "_origin": "ast"
-        },
-        {
-          "source": "apps_api_src_workspaces_workspaces_controller",
-          "target": "apps_api_src_workspaces_workspaces_service",
-          "relation": "calls",
-          "confidence": "INFERRED",
-          "confidence_score": 0.75,
-          "source_file": "docs/ai/file-index/repository-map.md",
-          "source_location": null,
-          "weight": 1.0
-        }
-      ]
-    },
-    {
-      "endpoints": [
         "apps_api_src_workspaces_workspaces_controller_ts_param",
         "apps_api_src_workspaces_workspaces_controller_workspacescontroller_remove"
       ],
@@ -4065,6 +3359,37 @@
     {
       "endpoints": [
         "apps_e2e_support_db_closedb",
+        "apps_e2e_tests_matching_alignment_spec"
+      ],
+      "variants": [
+        {
+          "source": "apps_e2e_tests_matching_alignment_spec",
+          "target": "apps_e2e_support_db_closedb",
+          "relation": "imports",
+          "context": "import",
+          "confidence": "EXTRACTED",
+          "source_file": "apps/e2e/tests/matching-alignment.spec.ts",
+          "source_location": "L2",
+          "weight": 1.0,
+          "_origin": "ast"
+        },
+        {
+          "source": "apps_e2e_tests_matching_alignment_spec",
+          "target": "apps_e2e_support_db_closedb",
+          "relation": "indirect_call",
+          "context": "argument",
+          "confidence": "INFERRED",
+          "confidence_score": 0.8,
+          "source_file": "apps/e2e/tests/matching-alignment.spec.ts",
+          "source_location": "L59",
+          "weight": 1.0,
+          "_origin": "ast"
+        }
+      ]
+    },
+    {
+      "endpoints": [
+        "apps_e2e_support_db_closedb",
         "apps_e2e_tests_procurement_spec"
       ],
       "variants": [
@@ -4126,122 +3451,6 @@
     },
     {
       "endpoints": [
-        "apps_web_app_workspaces_id_catalog_matches_page",
-        "apps_web_src_lib_api_catalog"
-      ],
-      "variants": [
-        {
-          "source": "apps_web_app_workspaces_id_catalog_matches_page",
-          "target": "apps_web_src_lib_api_catalog",
-          "relation": "imports_from",
-          "context": "import",
-          "confidence": "EXTRACTED",
-          "source_file": "apps/web/app/workspaces/[id]/catalog-matches/page.tsx",
-          "source_location": "L21",
-          "weight": 1.0,
-          "_origin": "ast"
-        },
-        {
-          "source": "apps_web_app_workspaces_id_catalog_matches_page",
-          "target": "apps_web_src_lib_api_catalog",
-          "relation": "calls",
-          "confidence": "INFERRED",
-          "confidence_score": 0.75,
-          "source_file": "docs/ai/file-index/repository-map.md",
-          "source_location": null,
-          "weight": 1.0
-        }
-      ]
-    },
-    {
-      "endpoints": [
-        "apps_web_app_workspaces_id_discrepancies_page",
-        "apps_web_src_lib_api_procurement"
-      ],
-      "variants": [
-        {
-          "source": "apps_web_app_workspaces_id_discrepancies_page",
-          "target": "apps_web_src_lib_api_procurement",
-          "relation": "imports_from",
-          "context": "import",
-          "confidence": "EXTRACTED",
-          "source_file": "apps/web/app/workspaces/[id]/discrepancies/page.tsx",
-          "source_location": "L29",
-          "weight": 1.0,
-          "_origin": "ast"
-        },
-        {
-          "source": "apps_web_app_workspaces_id_discrepancies_page",
-          "target": "apps_web_src_lib_api_procurement",
-          "relation": "calls",
-          "confidence": "INFERRED",
-          "confidence_score": 0.75,
-          "source_file": "docs/ai/file-index/repository-map.md",
-          "source_location": null,
-          "weight": 1.0
-        }
-      ]
-    },
-    {
-      "endpoints": [
-        "apps_web_app_workspaces_id_procurement_page",
-        "apps_web_src_lib_api_procurement"
-      ],
-      "variants": [
-        {
-          "source": "apps_web_app_workspaces_id_procurement_page",
-          "target": "apps_web_src_lib_api_procurement",
-          "relation": "imports_from",
-          "context": "import",
-          "confidence": "EXTRACTED",
-          "source_file": "apps/web/app/workspaces/[id]/procurement/page.tsx",
-          "source_location": "L26",
-          "weight": 1.0,
-          "_origin": "ast"
-        },
-        {
-          "source": "apps_web_app_workspaces_id_procurement_page",
-          "target": "apps_web_src_lib_api_procurement",
-          "relation": "calls",
-          "confidence": "INFERRED",
-          "confidence_score": 0.75,
-          "source_file": "docs/ai/file-index/repository-map.md",
-          "source_location": null,
-          "weight": 1.0
-        }
-      ]
-    },
-    {
-      "endpoints": [
-        "apps_web_app_workspaces_id_vendors_page",
-        "apps_web_src_lib_api_catalog"
-      ],
-      "variants": [
-        {
-          "source": "apps_web_app_workspaces_id_vendors_page",
-          "target": "apps_web_src_lib_api_catalog",
-          "relation": "imports_from",
-          "context": "import",
-          "confidence": "EXTRACTED",
-          "source_file": "apps/web/app/workspaces/[id]/vendors/page.tsx",
-          "source_location": "L28",
-          "weight": 1.0,
-          "_origin": "ast"
-        },
-        {
-          "source": "apps_web_app_workspaces_id_vendors_page",
-          "target": "apps_web_src_lib_api_catalog",
-          "relation": "calls",
-          "confidence": "INFERRED",
-          "confidence_score": 0.75,
-          "source_file": "docs/ai/file-index/repository-map.md",
-          "source_location": null,
-          "weight": 1.0
-        }
-      ]
-    },
-    {
-      "endpoints": [
         "apps_web_app_workspaces_id_vendors_vendorid_page",
         "apps_web_src_lib_api_catalog"
       ],
@@ -4253,7 +3462,7 @@
           "context": "import",
           "confidence": "EXTRACTED",
           "source_file": "apps/web/app/workspaces/[id]/vendors/[vendorId]/page.tsx",
-          "source_location": "L29",
+          "source_location": "L31",
           "weight": 1.0,
           "_origin": "ast"
         },
@@ -4264,7 +3473,7 @@
           "context": "import",
           "confidence": "EXTRACTED",
           "source_file": "apps/web/app/workspaces/[id]/vendors/[vendorId]/page.tsx",
-          "source_location": "L30",
+          "source_location": "L32",
           "weight": 1.0,
           "_origin": "ast"
         }
@@ -4272,27 +3481,27 @@
     },
     {
       "endpoints": [
-        "docs_ai_file_index_repository_map",
-        "docs_ai_file_index_repository_map_map_only_rule"
+        "docs_ai_testing_strategy_lesson_pagination_tiebreak",
+        "learnings_s7_commit1"
       ],
       "variants": [
         {
-          "source": "docs_ai_file_index_repository_map",
-          "target": "docs_ai_file_index_repository_map_map_only_rule",
+          "source": "learnings_s7_commit1",
+          "target": "docs_ai_testing_strategy_lesson_pagination_tiebreak",
           "relation": "references",
           "confidence": "EXTRACTED",
           "confidence_score": 1.0,
-          "source_file": "docs/ai/file-index/repository-map.md",
+          "source_file": "learnings.md",
           "source_location": null,
           "weight": 1.0
         },
         {
-          "source": "docs_ai_file_index_repository_map_map_only_rule",
-          "target": "docs_ai_file_index_repository_map",
+          "source": "learnings_s7_commit1",
+          "target": "docs_ai_testing_strategy_lesson_pagination_tiebreak",
           "relation": "rationale_for",
-          "confidence": "EXTRACTED",
-          "confidence_score": 1.0,
-          "source_file": "docs/ai/file-index/repository-map.md",
+          "confidence": "INFERRED",
+          "confidence_score": 0.85,
+          "source_file": "learnings.md",
           "source_location": null,
           "weight": 1.0
         }
@@ -4300,27 +3509,83 @@
     },
     {
       "endpoints": [
-        "docs_ai_risk_register_comparison_run_integrity",
-        "docs_ai_risk_register_decision_audit_trail"
+        "docs_ai_testing_strategy_node22_bun_mismatch",
+        "learnings_s0e_env_deps"
       ],
       "variants": [
         {
-          "source": "docs_ai_risk_register_comparison_run_integrity",
-          "target": "docs_ai_risk_register_decision_audit_trail",
-          "relation": "conceptually_related_to",
-          "confidence": "INFERRED",
-          "confidence_score": 0.75,
-          "source_file": "docs/ai/risk-register.md",
+          "source": "learnings_s0e_env_deps",
+          "target": "docs_ai_testing_strategy_node22_bun_mismatch",
+          "relation": "references",
+          "confidence": "EXTRACTED",
+          "confidence_score": 1.0,
+          "source_file": "learnings.md",
           "source_location": null,
           "weight": 1.0
         },
         {
-          "source": "docs_ai_risk_register_decision_audit_trail",
-          "target": "docs_ai_risk_register_comparison_run_integrity",
-          "relation": "semantically_similar_to",
+          "source": "learnings_s0e_env_deps",
+          "target": "docs_ai_testing_strategy_node22_bun_mismatch",
+          "relation": "rationale_for",
           "confidence": "INFERRED",
-          "confidence_score": 0.75,
-          "source_file": "docs/ai/risk-register.md",
+          "confidence_score": 0.85,
+          "source_file": "learnings.md",
+          "source_location": null,
+          "weight": 1.0
+        }
+      ]
+    },
+    {
+      "endpoints": [
+        "docs_ai_testing_strategy_path_ids_spec",
+        "learnings_fix_b16"
+      ],
+      "variants": [
+        {
+          "source": "learnings_fix_b16",
+          "target": "docs_ai_testing_strategy_path_ids_spec",
+          "relation": "references",
+          "confidence": "EXTRACTED",
+          "confidence_score": 1.0,
+          "source_file": "learnings.md",
+          "source_location": null,
+          "weight": 1.0
+        },
+        {
+          "source": "learnings_fix_b16",
+          "target": "docs_ai_testing_strategy_path_ids_spec",
+          "relation": "rationale_for",
+          "confidence": "INFERRED",
+          "confidence_score": 0.85,
+          "source_file": "learnings.md",
+          "source_location": null,
+          "weight": 1.0
+        }
+      ]
+    },
+    {
+      "endpoints": [
+        "docs_ai_testing_strategy_tdd_gate",
+        "docs_ai_testing_strategy_tdd_runner"
+      ],
+      "variants": [
+        {
+          "source": "docs_ai_testing_strategy_tdd_runner",
+          "target": "docs_ai_testing_strategy_tdd_gate",
+          "relation": "conceptually_related_to",
+          "confidence": "EXTRACTED",
+          "confidence_score": 1.0,
+          "source_file": "docs/ai/testing-strategy.md",
+          "source_location": null,
+          "weight": 1.0
+        },
+        {
+          "source": "docs_ai_testing_strategy_tdd_gate",
+          "target": "docs_ai_testing_strategy_tdd_runner",
+          "relation": "calls",
+          "confidence": "EXTRACTED",
+          "confidence_score": 1.0,
+          "source_file": "docs/ai/testing-strategy.md",
           "source_location": null,
           "weight": 1.0
         }
@@ -4384,23 +3649,79 @@
     },
     {
       "endpoints": [
-        "learnings_goods_receipt_exhaustiveness",
-        "learnings_goods_receipt_status_guard"
+        "docs_plans_app_alignment_docs_sync",
+        "docs_plans_app_alignment_plan"
       ],
       "variants": [
         {
-          "source": "learnings_goods_receipt_status_guard",
-          "target": "learnings_goods_receipt_exhaustiveness",
-          "relation": "references",
+          "source": "docs_plans_app_alignment_plan",
+          "target": "docs_plans_app_alignment_docs_sync",
+          "relation": "conceptually_related_to",
+          "confidence": "EXTRACTED",
+          "confidence_score": 1.0,
+          "source_file": "docs/plans/app-alignment.md",
+          "source_location": null,
+          "weight": 1.0
+        },
+        {
+          "source": "docs_plans_app_alignment_docs_sync",
+          "target": "docs_plans_app_alignment_plan",
+          "relation": "conceptually_related_to",
+          "confidence": "EXTRACTED",
+          "confidence_score": 1.0,
+          "source_file": "docs/plans/app-alignment.md",
+          "source_location": null,
+          "weight": 1.0
+        }
+      ]
+    },
+    {
+      "endpoints": [
+        "docs_plans_app_alignment_one_pr_decision",
+        "docs_plans_app_alignment_plan"
+      ],
+      "variants": [
+        {
+          "source": "docs_plans_app_alignment_plan",
+          "target": "docs_plans_app_alignment_one_pr_decision",
+          "relation": "conceptually_related_to",
+          "confidence": "EXTRACTED",
+          "confidence_score": 1.0,
+          "source_file": "docs/plans/app-alignment.md",
+          "source_location": null,
+          "weight": 1.0
+        },
+        {
+          "source": "docs_plans_app_alignment_one_pr_decision",
+          "target": "docs_plans_app_alignment_plan",
+          "relation": "rationale_for",
+          "confidence": "EXTRACTED",
+          "confidence_score": 1.0,
+          "source_file": "docs/plans/app-alignment.md",
+          "source_location": null,
+          "weight": 1.0
+        }
+      ]
+    },
+    {
+      "endpoints": [
+        "learnings_fix_b13",
+        "learnings_fix_b16"
+      ],
+      "variants": [
+        {
+          "source": "learnings_fix_b16",
+          "target": "learnings_fix_b13",
+          "relation": "conceptually_related_to",
           "confidence": "INFERRED",
-          "confidence_score": 0.85,
+          "confidence_score": 0.75,
           "source_file": "learnings.md",
           "source_location": null,
           "weight": 1.0
         },
         {
-          "source": "learnings_goods_receipt_status_guard",
-          "target": "learnings_goods_receipt_exhaustiveness",
+          "source": "learnings_fix_b13",
+          "target": "learnings_fix_b16",
           "relation": "semantically_similar_to",
           "confidence": "INFERRED",
           "confidence_score": 0.85,
@@ -4412,28 +3733,27 @@
     },
     {
       "endpoints": [
-        "packages_ai_src_chains_catalog_match",
-        "packages_ai_src_chains_models"
+        "learnings_s9_commit1",
+        "learnings_s9_commit5"
       ],
       "variants": [
         {
-          "source": "packages_ai_src_chains_catalog_match",
-          "target": "packages_ai_src_chains_models",
-          "relation": "imports_from",
-          "context": "import",
-          "confidence": "EXTRACTED",
-          "source_file": "packages/ai/src/chains/catalog-match.ts",
-          "source_location": "L4",
-          "weight": 1.0,
-          "_origin": "ast"
-        },
-        {
-          "source": "packages_ai_src_chains_catalog_match",
-          "target": "packages_ai_src_chains_models",
-          "relation": "calls",
+          "source": "learnings_s9_commit1",
+          "target": "learnings_s9_commit5",
+          "relation": "conceptually_related_to",
           "confidence": "INFERRED",
           "confidence_score": 0.75,
-          "source_file": "docs/ai/file-index/repository-map.md",
+          "source_file": "learnings.md",
+          "source_location": null,
+          "weight": 1.0
+        },
+        {
+          "source": "learnings_s9_commit5",
+          "target": "learnings_s9_commit1",
+          "relation": "semantically_similar_to",
+          "confidence": "INFERRED",
+          "confidence_score": 0.75,
+          "source_file": "learnings.md",
           "source_location": null,
           "weight": 1.0
         }
@@ -4936,35 +4256,6 @@
           "source_location": "L5",
           "weight": 1.0,
           "_origin": "ast"
-        }
-      ]
-    },
-    {
-      "endpoints": [
-        "packages_ai_src_chains_models",
-        "packages_ai_src_chains_procurement_extraction"
-      ],
-      "variants": [
-        {
-          "source": "packages_ai_src_chains_procurement_extraction",
-          "target": "packages_ai_src_chains_models",
-          "relation": "imports_from",
-          "context": "import",
-          "confidence": "EXTRACTED",
-          "source_file": "packages/ai/src/chains/procurement-extraction.ts",
-          "source_location": "L7",
-          "weight": 1.0,
-          "_origin": "ast"
-        },
-        {
-          "source": "packages_ai_src_chains_procurement_extraction",
-          "target": "packages_ai_src_chains_models",
-          "relation": "calls",
-          "confidence": "INFERRED",
-          "confidence_score": 0.75,
-          "source_file": "docs/ai/file-index/repository-map.md",
-          "source_location": null,
-          "weight": 1.0
         }
       ]
     },
@@ -5876,93 +5167,6 @@
           "source_location": "L36",
           "weight": 1.0,
           "_origin": "ast"
-        }
-      ]
-    },
-    {
-      "endpoints": [
-        "packages_ai_src_loaders_pdf",
-        "packages_ai_src_loaders_pdfjs"
-      ],
-      "variants": [
-        {
-          "source": "packages_ai_src_loaders_pdf",
-          "target": "packages_ai_src_loaders_pdfjs",
-          "relation": "imports_from",
-          "context": "import",
-          "confidence": "EXTRACTED",
-          "source_file": "packages/ai/src/loaders/pdf.ts",
-          "source_location": "L3",
-          "weight": 1.0,
-          "_origin": "ast"
-        },
-        {
-          "source": "packages_ai_src_loaders_pdf",
-          "target": "packages_ai_src_loaders_pdfjs",
-          "relation": "calls",
-          "confidence": "INFERRED",
-          "confidence_score": 0.75,
-          "source_file": "docs/ai/file-index/repository-map.md",
-          "source_location": null,
-          "weight": 1.0
-        }
-      ]
-    },
-    {
-      "endpoints": [
-        "packages_ai_src_loaders_pdf_render",
-        "packages_ai_src_loaders_pdfjs"
-      ],
-      "variants": [
-        {
-          "source": "packages_ai_src_loaders_pdf_render",
-          "target": "packages_ai_src_loaders_pdfjs",
-          "relation": "imports_from",
-          "context": "import",
-          "confidence": "EXTRACTED",
-          "source_file": "packages/ai/src/loaders/pdf-render.ts",
-          "source_location": "L2",
-          "weight": 1.0,
-          "_origin": "ast"
-        },
-        {
-          "source": "packages_ai_src_loaders_pdf_render",
-          "target": "packages_ai_src_loaders_pdfjs",
-          "relation": "calls",
-          "confidence": "INFERRED",
-          "confidence_score": 0.75,
-          "source_file": "docs/ai/file-index/repository-map.md",
-          "source_location": null,
-          "weight": 1.0
-        }
-      ]
-    },
-    {
-      "endpoints": [
-        "packages_ai_src_web_crawl",
-        "packages_ai_src_web_ssrf"
-      ],
-      "variants": [
-        {
-          "source": "packages_ai_src_web_crawl",
-          "target": "packages_ai_src_web_ssrf",
-          "relation": "imports_from",
-          "context": "import",
-          "confidence": "EXTRACTED",
-          "source_file": "packages/ai/src/web/crawl.ts",
-          "source_location": "L6",
-          "weight": 1.0,
-          "_origin": "ast"
-        },
-        {
-          "source": "packages_ai_src_web_crawl",
-          "target": "packages_ai_src_web_ssrf",
-          "relation": "calls",
-          "confidence": "INFERRED",
-          "confidence_score": 0.75,
-          "source_file": "docs/ai/file-index/repository-map.md",
-          "source_location": null,
-          "weight": 1.0
         }
       ]
     },
@@ -7466,6 +6670,36 @@
     },
     {
       "endpoints": [
+        "packages_ui_src_components_ui_definition_row",
+        "packages_ui_src_index"
+      ],
+      "variants": [
+        {
+          "source": "packages_ui_src_index",
+          "target": "packages_ui_src_components_ui_definition_row",
+          "relation": "imports_from",
+          "context": "re-export",
+          "confidence": "EXTRACTED",
+          "source_file": "packages/ui/src/index.ts",
+          "source_location": "L29",
+          "weight": 1.0,
+          "_origin": "ast"
+        },
+        {
+          "source": "packages_ui_src_index",
+          "target": "packages_ui_src_components_ui_definition_row",
+          "relation": "re_exports",
+          "context": "export",
+          "confidence": "EXTRACTED",
+          "source_file": "packages/ui/src/index.ts",
+          "source_location": "L29",
+          "weight": 1.0,
+          "_origin": "ast"
+        }
+      ]
+    },
+    {
+      "endpoints": [
         "packages_ui_src_components_ui_empty_state",
         "packages_ui_src_index"
       ],
@@ -7489,6 +6723,36 @@
           "confidence": "EXTRACTED",
           "source_file": "packages/ui/src/index.ts",
           "source_location": "L17",
+          "weight": 1.0,
+          "_origin": "ast"
+        }
+      ]
+    },
+    {
+      "endpoints": [
+        "packages_ui_src_components_ui_history_row",
+        "packages_ui_src_index"
+      ],
+      "variants": [
+        {
+          "source": "packages_ui_src_index",
+          "target": "packages_ui_src_components_ui_history_row",
+          "relation": "imports_from",
+          "context": "re-export",
+          "confidence": "EXTRACTED",
+          "source_file": "packages/ui/src/index.ts",
+          "source_location": "L28",
+          "weight": 1.0,
+          "_origin": "ast"
+        },
+        {
+          "source": "packages_ui_src_index",
+          "target": "packages_ui_src_components_ui_history_row",
+          "relation": "re_exports",
+          "context": "export",
+          "confidence": "EXTRACTED",
+          "source_file": "packages/ui/src/index.ts",
+          "source_location": "L28",
           "weight": 1.0,
           "_origin": "ast"
         }
@@ -7916,6 +7180,36 @@
     },
     {
       "endpoints": [
+        "packages_ui_src_components_ui_switch",
+        "packages_ui_src_index"
+      ],
+      "variants": [
+        {
+          "source": "packages_ui_src_index",
+          "target": "packages_ui_src_components_ui_switch",
+          "relation": "imports_from",
+          "context": "re-export",
+          "confidence": "EXTRACTED",
+          "source_file": "packages/ui/src/index.ts",
+          "source_location": "L30",
+          "weight": 1.0,
+          "_origin": "ast"
+        },
+        {
+          "source": "packages_ui_src_index",
+          "target": "packages_ui_src_components_ui_switch",
+          "relation": "re_exports",
+          "context": "export",
+          "confidence": "EXTRACTED",
+          "source_file": "packages/ui/src/index.ts",
+          "source_location": "L30",
+          "weight": 1.0,
+          "_origin": "ast"
+        }
+      ]
+    },
+    {
+      "endpoints": [
         "packages_ui_src_components_ui_table",
         "packages_ui_src_index"
       ],
@@ -8047,7 +7341,7 @@
           "context": "re-export",
           "confidence": "EXTRACTED",
           "source_file": "packages/ui/src/index.ts",
-          "source_location": "L28",
+          "source_location": "L31",
           "weight": 1.0,
           "_origin": "ast"
         },
@@ -8058,38 +7352,9 @@
           "context": "export",
           "confidence": "EXTRACTED",
           "source_file": "packages/ui/src/index.ts",
-          "source_location": "L28",
+          "source_location": "L31",
           "weight": 1.0,
           "_origin": "ast"
-        }
-      ]
-    },
-    {
-      "endpoints": [
-        "scripts_ci_tdd_lib",
-        "scripts_hooks_tdd_red_guard"
-      ],
-      "variants": [
-        {
-          "source": "scripts_hooks_tdd_red_guard",
-          "target": "scripts_ci_tdd_lib",
-          "relation": "imports_from",
-          "context": "import",
-          "confidence": "EXTRACTED",
-          "source_file": "scripts/hooks/tdd-red-guard.mjs",
-          "source_location": "L10",
-          "weight": 1.0,
-          "_origin": "ast"
-        },
-        {
-          "source": "scripts_hooks_tdd_red_guard",
-          "target": "scripts_ci_tdd_lib",
-          "relation": "calls",
-          "confidence": "INFERRED",
-          "confidence_score": 0.75,
-          "source_file": "docs/ai/file-index/repository-map.md",
-          "source_location": null,
-          "weight": 1.0
         }
       ]
     },
@@ -8590,35 +7855,6 @@
           "source_location": "L9",
           "weight": 1.0,
           "_origin": "ast"
-        }
-      ]
-    },
-    {
-      "endpoints": [
-        "scripts_seed_config",
-        "scripts_seed_index"
-      ],
-      "variants": [
-        {
-          "source": "scripts_seed_index",
-          "target": "scripts_seed_config",
-          "relation": "imports_from",
-          "context": "import",
-          "confidence": "EXTRACTED",
-          "source_file": "scripts/seed/index.ts",
-          "source_location": "L17",
-          "weight": 1.0,
-          "_origin": "ast"
-        },
-        {
-          "source": "scripts_seed_index",
-          "target": "scripts_seed_config",
-          "relation": "calls",
-          "confidence": "INFERRED",
-          "confidence_score": 0.75,
-          "source_file": "docs/ai/file-index/repository-map.md",
-          "source_location": null,
-          "weight": 1.0
         }
       ]
     },
