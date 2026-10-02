@@ -455,6 +455,6 @@ And one rule the owner made standing: every change now ships with its tests for 
 
 **Predicted (from the approved plan):** test-only slices land green with zero guarded-source change.
 
-**Actual:** confirmed — 12 unit and 4 API e2e cases, each spec green three runs in a row (44/44 and 7/7), full api unit 770/770 and API e2e 91/91 once, no source file touched. The planned "model failure on one candidate rejects the search" case was dropped before it was written, because asserting it would have pinned bug B6.
+**Actual:** confirmed — 12 unit and 4 API e2e cases, each spec green three runs in a row (44/44 and 7/7), full api unit 770/770 and API e2e 91/91 once, no source file touched. The planned "a model failure on one of several candidates rejects the search" case was dropped before it was written, because asserting it would have pinned bug B6. The single-candidate "malformed model verdict rejects the search" case is kept and pins today's rejection; the B6 fix slice must update it explicitly.
 
 **Why different:** not different. **When the honest assertion for a case is a known bug, the right move is to drop the case and test the invariant next to it (here: the rollback), not to pin the bug.**
