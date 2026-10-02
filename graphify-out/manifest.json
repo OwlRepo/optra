@@ -195,9 +195,9 @@
     "semantic_hash": "33be459a9e4d2d62dbb8734cd76c5008"
   },
   "apps/api/src/catalog/catalog-parse.service.spec.ts": {
-    "mtime": 1790961638.7161443,
-    "ast_hash": "7f55a6f600ff4d6f8c0fe68396f7a26c",
-    "semantic_hash": "7f55a6f600ff4d6f8c0fe68396f7a26c"
+    "mtime": 1790963136.0430627,
+    "ast_hash": "422efd61c32b52721206b38037c4da79",
+    "semantic_hash": "422efd61c32b52721206b38037c4da79"
   },
   "apps/api/src/catalog/catalog-parse.service.ts": {
     "mtime": 1790961638.7164168,
@@ -1005,9 +1005,9 @@
     "semantic_hash": "bcca258c93be80a2f0e17e41b6b51964"
   },
   "apps/api/test/auth.e2e-spec.ts": {
-    "mtime": 1790961638.757395,
-    "ast_hash": "d1e4b8b949caa81dfa313f18e9a76c33",
-    "semantic_hash": "d1e4b8b949caa81dfa313f18e9a76c33"
+    "mtime": 1790963056.1125426,
+    "ast_hash": "412940f879e0e74dc35dd458836f0b32",
+    "semantic_hash": "412940f879e0e74dc35dd458836f0b32"
   },
   "apps/api/test/catalog.e2e-spec.ts": {
     "mtime": 1790962700.8983974,
@@ -1040,9 +1040,9 @@
     "semantic_hash": "a86d1d233c5694f98dee098cd8f9b1e4"
   },
   "apps/api/test/jest-e2e.setup.ts": {
-    "mtime": 1790961638.759243,
-    "ast_hash": "9ab241baa1d95311a04c30fb7d5c1d61",
-    "semantic_hash": "9ab241baa1d95311a04c30fb7d5c1d61"
+    "mtime": 1790963072.0320804,
+    "ast_hash": "c9c8ade9790ef64e48e8db4678b126e7",
+    "semantic_hash": "c9c8ade9790ef64e48e8db4678b126e7"
   },
   "apps/api/test/knowledge-bases.e2e-spec.ts": {
     "mtime": 1790961638.7596517,
@@ -2900,9 +2900,9 @@
     "semantic_hash": "7350adbfb8f542bb4dd49837332355f2"
   },
   "packages/db/drizzle/meta/_journal.json": {
-    "mtime": 1790961638.8975425,
-    "ast_hash": "5945d6354f0f4c9b990baed01bbf7383",
-    "semantic_hash": "5945d6354f0f4c9b990baed01bbf7383"
+    "mtime": 1790962893.1834779,
+    "ast_hash": "6526480268f94c59e0891e4e40c4edaf",
+    "semantic_hash": "6526480268f94c59e0891e4e40c4edaf"
   },
   "packages/db/package.json": {
     "mtime": 1790961638.8976724,
@@ -3465,9 +3465,9 @@
     "semantic_hash": "b36f8dc5ef53348d1c6f62911293140e"
   },
   "docs/ai/architecture-manifest.md": {
-    "mtime": 1790961638.843119,
-    "ast_hash": "64405ebe069a1b06c7b41d56b0153fcd",
-    "semantic_hash": "64405ebe069a1b06c7b41d56b0153fcd"
+    "mtime": 1790963466.1134217,
+    "ast_hash": "a8e35147c5bd78eb51d487815a15f6b4",
+    "semantic_hash": "a8e35147c5bd78eb51d487815a15f6b4"
   },
   "docs/ai/claude-bootstrap-template.md": {
     "mtime": 1790961638.8438478,
@@ -3530,9 +3530,9 @@
     "semantic_hash": "c1702e5aeeb16da9c1c08ace17fcdf3d"
   },
   "docs/ai/risk-register.md": {
-    "mtime": 1790962745.5446362,
-    "ast_hash": "76350e8ba4509a6e1cf7edcb69ece1de",
-    "semantic_hash": "76350e8ba4509a6e1cf7edcb69ece1de"
+    "mtime": 1790963454.3491092,
+    "ast_hash": "cbf84af516f52b2ff8b7207613dc4fbd",
+    "semantic_hash": "cbf84af516f52b2ff8b7207613dc4fbd"
   },
   "docs/ai/task-router.md": {
     "mtime": 1790961638.8534648,
@@ -3540,9 +3540,9 @@
     "semantic_hash": "98c8c9754dd69f6ce447a665510a2896"
   },
   "docs/ai/testing-strategy.md": {
-    "mtime": 1790962745.5455782,
-    "ast_hash": "04b50353ede8c38b152fece4c24d9eb9",
-    "semantic_hash": "04b50353ede8c38b152fece4c24d9eb9"
+    "mtime": 1790963454.3493385,
+    "ast_hash": "fdb232adb85d53f31213d973d4c45578",
+    "semantic_hash": "fdb232adb85d53f31213d973d4c45578"
   },
   "docs/designs/elid-ticket-copilot.md": {
     "mtime": 1790961638.8546326,
@@ -3550,9 +3550,9 @@
     "semantic_hash": "22fd13b287c37dfd16da69ed22733b2b"
   },
   "learnings.md": {
-    "mtime": 1790962745.5459163,
-    "ast_hash": "626d0ded94785385e258390a518ffb46",
-    "semantic_hash": "626d0ded94785385e258390a518ffb46"
+    "mtime": 1790963454.3497183,
+    "ast_hash": "c8edd6485a84ae1aea457611c119d7fb",
+    "semantic_hash": "c8edd6485a84ae1aea457611c119d7fb"
   },
   "scripts/eval/README.md": {
     "mtime": 1790961638.9172726,
@@ -5363,5 +5363,25 @@
     "mtime": 1790962745.5460293,
     "ast_hash": "e1367c008d56f99b42ed5b7573b47f9d",
     "semantic_hash": "e1367c008d56f99b42ed5b7573b47f9d"
+  },
+  "apps/api/src/common/http/upload-filename-backfill.spec.ts": {
+    "mtime": 1790962966.7134519,
+    "ast_hash": "37276b2c52a76ec586115e08e1e106d2",
+    "semantic_hash": "37276b2c52a76ec586115e08e1e106d2"
+  },
+  "packages/db/drizzle/0035_white_ricochet.sql": {
+    "mtime": 1790962954.6417818,
+    "ast_hash": "a79f85484c09b21d4e010050fb725201",
+    "semantic_hash": "a79f85484c09b21d4e010050fb725201"
+  },
+  "packages/db/drizzle/meta/0035_snapshot.json": {
+    "mtime": 1790962893.1826584,
+    "ast_hash": "070bdd9115fc62395081328aed36f0e6",
+    "semantic_hash": "070bdd9115fc62395081328aed36f0e6"
+  },
+  "docs/plans/fix-name-backfill-and-flakes.md": {
+    "mtime": 1790963454.3498256,
+    "ast_hash": "1a276c2c1ee488c8eab4b2837d94e608",
+    "semantic_hash": "1a276c2c1ee488c8eab4b2837d94e608"
   }
 }
