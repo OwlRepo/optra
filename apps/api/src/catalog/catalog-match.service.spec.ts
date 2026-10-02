@@ -15,6 +15,8 @@ import {
 import { CatalogMatchService } from './catalog-match.service'
 import { StorageService } from '../storage/storage.service'
 import { CatalogExtractionService } from './catalog-extraction.service'
+import { CatalogExtractionParseError } from '@repo/ai'
+import { UsageService, isBudgetExceeded } from '../limits/usage.service'
 
 async function cleanupFixtures(prefix: string) {
   const testUsers = await db.select({ id: users.id }).from(users).where(like(users.email, `${prefix}%`))
@@ -322,5 +324,127 @@ describe('CatalogMatchService', () => {
 
     expect(extraction.compare).toHaveBeenCalledTimes(6)
     expect(maxInFlight).toBeLessThanOrEqual(3)
+  })
+  describe('launch hardening', () => {
+    it('error: an exhausted token budget refuses the search and keeps the previous open match', async () => {
+      const workspace = await seedWorkspace(`${prefix}budget@example.com`, 'Budget WS')
+      const poItem = await seedPoLineItem(workspace.id, 'A1', 'Widget')
+      await seedVendorWithCatalogItem(workspace.id, 'Acme', { sku: 'A1', description: 'Widget' })
+      await service.search(workspace.id, { purchaseOrderLineItemId: poItem.id })
+      const [previous] = await service.listMatches(workspace.id, { status: 'open' })
+
+      // The real enforcement path, not a mocked compare: CatalogExtractionService.compare
+      // -> UsageService.metered -> assertWithinBudget, with this month's counter at the cap.
+      const redis = { get: jest.fn().mockResolvedValue('5000000'), incrby: jest.fn(), expire: jest.fn() }
+      const config = { get: jest.fn((_key: string, fallback: string) => fallback) }
+      const budgeted = new CatalogMatchService(
+        storage as unknown as StorageService,
+        new CatalogExtractionService(new UsageService(redis as never, config as never)),
+      )
+
+      const error = await budgeted
+        .search(workspace.id, { purchaseOrderLineItemId: poItem.id })
+        .catch((caught: unknown) => caught)
+
+      expect(isBudgetExceeded(error)).toBe(true)
+      expect((error as Error).message).toBe('Workspace monthly token budget reached')
+      expect(redis.get).toHaveBeenCalledWith(expect.stringMatching(new RegExp(`^usage:tok:${workspace.id}:\\d{6}$`)))
+      expect(redis.incrby).not.toHaveBeenCalled()
+      const open = await service.listMatches(workspace.id, { status: 'open' })
+      expect(open.map((match) => match.id)).toEqual([previous.id])
+    })
+
+    it('error: a malformed model verdict rejects the search and leaves the previous open match untouched', async () => {
+      const workspace = await seedWorkspace(`${prefix}malformed@example.com`, 'Malformed WS')
+      const poItem = await seedPoLineItem(workspace.id, 'A1', 'Widget')
+      await seedVendorWithCatalogItem(workspace.id, 'Acme', { sku: 'A1', description: 'Widget' })
+      await service.search(workspace.id, { purchaseOrderLineItemId: poItem.id })
+      const [previous] = await service.listMatches(workspace.id, { status: 'open' })
+      extraction.compare.mockRejectedValueOnce(new CatalogExtractionParseError())
+
+      await expect(service.search(workspace.id, { purchaseOrderLineItemId: poItem.id })).rejects.toThrow(
+        'Model returned malformed catalog extraction JSON',
+      )
+
+      const rows = await db.select().from(catalogMatches).where(eq(catalogMatches.queryPoLineItemId, poItem.id))
+      expect(rows).toHaveLength(1)
+      expect(rows[0]).toMatchObject({ id: previous.id, status: 'open', reason: 'Same widget.' })
+    })
+
+    it('edge: an underscore in a SKU is a literal, not a single-character wildcard', async () => {
+      const workspace = await seedWorkspace(`${prefix}underscore@example.com`, 'Underscore WS')
+      const poItem = await seedPoLineItem(workspace.id, 'A_1', 'Widget')
+      const { catalogItem: literal } = await seedVendorWithCatalogItem(workspace.id, 'Acme', {
+        sku: 'A_1',
+        description: 'Widget',
+      })
+      await seedVendorWithCatalogItem(workspace.id, 'Beta', { sku: 'AZ1', description: 'Unrelated part' })
+
+      const result = await service.search(workspace.id, { purchaseOrderLineItemId: poItem.id })
+
+      expect(result.matches).toHaveLength(1)
+      expect(result.matches[0].catalogItemId).toBe(literal.id)
+    })
+
+    it('edge: a backslash in a SKU is a literal, not an escape character', async () => {
+      const workspace = await seedWorkspace(`${prefix}backslash@example.com`, 'Backslash WS')
+      const poItem = await seedPoLineItem(workspace.id, 'A\\1', 'Widget')
+      const { catalogItem: literal } = await seedVendorWithCatalogItem(workspace.id, 'Acme', {
+        sku: 'A\\1',
+        description: 'Widget',
+      })
+      await seedVendorWithCatalogItem(workspace.id, 'Beta', { sku: 'A1', description: 'Unrelated part' })
+
+      const result = await service.search(workspace.id, { purchaseOrderLineItemId: poItem.id })
+
+      expect(result.matches).toHaveLength(1)
+      expect(result.matches[0].catalogItemId).toBe(literal.id)
+    })
+
+    it('edge: a line with no SKU searches by its description', async () => {
+      const workspace = await seedWorkspace(`${prefix}desc-only@example.com`, 'Desc Only WS')
+      const [po] = await db
+        .insert(purchaseOrders)
+        .values({ workspaceId: workspace.id, name: 'po.csv', status: 'done' })
+        .returning()
+      const [poItem] = await db
+        .insert(poLineItems)
+        .values({ workspaceId: workspace.id, purchaseOrderId: po.id, sku: null, description: 'Stainless Widget' })
+        .returning()
+      const { catalogItem: byDescription } = await seedVendorWithCatalogItem(workspace.id, 'Acme', {
+        sku: 'SW-9',
+        description: 'Stainless Widget 40mm',
+      })
+      await seedVendorWithCatalogItem(workspace.id, 'Beta', { sku: 'GD-1', description: 'Gadget' })
+
+      const result = await service.search(workspace.id, { purchaseOrderLineItemId: poItem.id })
+
+      expect(result.matches).toHaveLength(1)
+      expect(result.matches[0].catalogItemId).toBe(byDescription.id)
+      expect(extraction.compare).toHaveBeenCalledWith(
+        expect.objectContaining({
+          queryText: 'Description: Stainless Widget',
+          candidateText: 'SKU: SW-9\nDescription: Stainless Widget 40mm',
+        }),
+        workspace.id,
+      )
+    })
+
+    it('regression: an insert that fails after the delete rolls back, so the previous open match survives', async () => {
+      const workspace = await seedWorkspace(`${prefix}rollback@example.com`, 'Rollback WS')
+      const poItem = await seedPoLineItem(workspace.id, 'A1', 'Widget')
+      await seedVendorWithCatalogItem(workspace.id, 'Acme', { sku: 'A1', description: 'Widget' })
+      await service.search(workspace.id, { purchaseOrderLineItemId: poItem.id })
+      const [previous] = await service.listMatches(workspace.id, { status: 'open' })
+      // catalog_matches.reason is NOT NULL, so this verdict fails the insert
+      // inside the transaction, after the scoped delete has already run.
+      extraction.compare.mockResolvedValueOnce({ isMatch: true, score: 0.9, reason: null })
+
+      await expect(service.search(workspace.id, { purchaseOrderLineItemId: poItem.id })).rejects.toThrow()
+
+      const rows = await db.select().from(catalogMatches).where(eq(catalogMatches.queryPoLineItemId, poItem.id))
+      expect(rows).toHaveLength(1)
+      expect(rows[0]).toMatchObject({ id: previous.id, status: 'open' })
+    })
   })
 })
