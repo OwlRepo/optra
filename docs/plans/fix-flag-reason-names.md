@@ -10,7 +10,7 @@ Owner instruction 2026-10-02: continue through the bug list without waiting; pul
 - **Root cause, B10:** `buildReason` used `poLine?.sku ?? invoiceLine?.sku ?? '(unknown)'`. A line matched by description (no SKU) always read "Item (unknown) …", and with two such lines the reviewer could not tell them apart.
 - **Root cause, B11:** the UOM reason printed `row.po_uom` / `row.inv_uom` / `row.grn_uom`. Those are the engine's normalized units (`normalizeUom`: trimmed, lower-cased), while the flag's `poValue` / `invoiceValue` / `receivedValue` keep the document text.
 - **Fix:**
-  - `lineName()` returns the SKU, else the quoted, trimmed description. Past 80 characters the description is shortened to 79 characters plus `…`.
+  - `lineName()` returns the SKU, else the quoted, trimmed description. Past 80 characters the description is shortened to 79 characters plus `…`, counted in characters (`Array.from`) so an emoji is never cut in half (review follow-up, its own RED).
   - The UOM reason prints each side's stated unit from its representative line, which is the one the flag values use. It falls back to the normalized unit only if that line is missing.
   - `buildReason` now receives the goods-receipt line for that.
 - **Not changed:** flags already written keep their reasons, because runs are append-only. A re-compare writes the new text.
