@@ -1710,4 +1710,67 @@ describe('Procurement flow (e2e)', () => {
       expect(run.flagCount).toBe(0)
     })
   })
+  // B2/B3 over HTTP: the upload is accepted, then the document fails at parse
+  // with an authored reason instead of finishing `done` with no lines.
+  describe('unreadable files (B2/B3)', () => {
+    const NO_LINE_ITEMS =
+      'No line items were found in this file. Its first row must hold column headers such as SKU, Description, Qty and Unit price, and it must be saved as a UTF-8 CSV or an XLSX workbook.'
+
+    async function waitForPoTerminal(id: string, timeoutMs = 15_000) {
+      const deadline = Date.now() + timeoutMs
+      while (Date.now() < deadline) {
+        const [row] = await db.select().from(purchaseOrders).where(eq(purchaseOrders.id, id)).limit(1)
+        if (row?.status === 'done' || row?.status === 'failed') return row
+        await new Promise((resolve) => setTimeout(resolve, 200))
+      }
+      throw new Error(`Purchase order ${id} did not finish within ${timeoutMs}ms`)
+    }
+
+    it('error: a header-only purchase order is accepted, then fails with the no-line-items reason and is listed with it', async () => {
+      const owner = await seedOwnerWithWorkspace(app, `${prefix}zr-http-owner@example.com`, 'ZR Http')
+      const vendorId = await createVendor(app, owner.workspaceId, owner.accessToken)
+
+      const upload = await request(app.getHttpServer())
+        .post(`/workspaces/${owner.workspaceId}/procurement/purchase-orders`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .field('vendorId', vendorId)
+        .field('poNumber', 'PO-ZR-HEADERS')
+        .field('currency', 'USD')
+        .attach('file', Buffer.from('sku,description,qty,unit price\n'), 'po-headers-only.csv')
+        .expect(201)
+
+      const row = await waitForPoTerminal(upload.body.id)
+      expect(row.status).toBe('failed')
+      expect(row.lastError).toBe(NO_LINE_ITEMS)
+
+      const list = await request(app.getHttpServer())
+        .get(`/workspaces/${owner.workspaceId}/procurement/purchase-orders`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .expect(200)
+      expect(list.body.find((doc: { id: string }) => doc.id === upload.body.id)).toMatchObject({
+        status: 'failed',
+        lastError: NO_LINE_ITEMS,
+      })
+    })
+
+    it('edge: a two-column semicolon goods receipt uploaded over HTTP parses both lines', async () => {
+      const owner = await seedOwnerWithWorkspace(app, `${prefix}zr-http-grn@example.com`, 'ZR Http Grn')
+      const [po] = await db
+        .insert(purchaseOrders)
+        .values({ workspaceId: owner.workspaceId, name: 'po.csv', status: 'done', rowCount: 0 })
+        .returning()
+
+      const upload = await request(app.getHttpServer())
+        .post(`/workspaces/${owner.workspaceId}/procurement/goods-receipts`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .field('purchaseOrderId', po.id)
+        .field('grnNumber', 'GRN-ZR-SEMI')
+        .attach('file', Buffer.from('sku;qty received\nA1;5\nB2;7\n'), 'grn-semicolon.csv')
+        .expect(201)
+      await waitForGoodsReceiptDone(upload.body.id)
+
+      const [receipt] = await db.select().from(goodsReceipts).where(eq(goodsReceipts.id, upload.body.id))
+      expect(receipt.rowCount).toBe(2)
+    })
+  })
 })

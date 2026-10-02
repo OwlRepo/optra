@@ -1074,4 +1074,148 @@ describe('ProcurementParseProcessor', () => {
       expect(await fieldsOf(xlsxPo.id)).toEqual(expected)
     })
   })
+  // B2/B3. A spreadsheet whose rows all map to nothing used to finish `done`
+  // with 0 rows and fail only at compare; it must fail at parse with a reason,
+  // the way an empty PDF does. A two-column semicolon file used to be read with
+  // a comma because the trailing empty record skewed Papa's delimiter guess.
+  describe('files with no readable line items (B2/B3)', () => {
+    const NO_LINE_ITEMS =
+      'No line items were found in this file. Its first row must hold column headers such as SKU, Description, Qty and Unit price, and it must be saved as a UTF-8 CSV or an XLSX workbook.'
+
+    async function expectFailedWithNoLines(poId: string) {
+      const [row] = await db.select().from(purchaseOrders).where(eq(purchaseOrders.id, poId))
+      expect(row.status).toBe('failed')
+      expect(row.lastError).toBe(NO_LINE_ITEMS)
+      const items = await db.select().from(poLineItems).where(eq(poLineItems.purchaseOrderId, poId))
+      expect(items).toHaveLength(0)
+    }
+
+    it('error: a header-only CSV fails at once with the no-line-items message and stores no lines', async () => {
+      const workspace = await seedWorkspace(`${prefix}zr-header-only@example.com`, prefix)
+      const po = await seedPo('sku,description,qty,unit price\n', workspace.id)
+
+      await processor.handleParse(job('job-zr-header-only', { kind: 'purchase_order', id: po.id }))
+
+      await expectFailedWithNoLines(po.id)
+    })
+
+    it('error: an empty file fails with the no-line-items message', async () => {
+      const workspace = await seedWorkspace(`${prefix}zr-empty@example.com`, prefix)
+      const po = await seedPoBuffer(Buffer.alloc(0), workspace.id, 'po.csv')
+
+      await processor.handleParse(job('job-zr-empty', { kind: 'purchase_order', id: po.id }))
+
+      await expectFailedWithNoLines(po.id)
+    })
+
+    it('error: a UTF-16 CSV fails with the no-line-items message', async () => {
+      const workspace = await seedWorkspace(`${prefix}zr-utf16@example.com`, prefix)
+      const bytes = Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from('sku,qty\r\nA1,5\r\n', 'utf16le')])
+      const po = await seedPoBuffer(bytes, workspace.id, 'po.csv')
+
+      await processor.handleParse(job('job-zr-utf16', { kind: 'purchase_order', id: po.id }))
+
+      await expectFailedWithNoLines(po.id)
+    })
+
+    it('error: a CSV whose headers match no known column fails with the no-line-items message', async () => {
+      const workspace = await seedWorkspace(`${prefix}zr-unknown@example.com`, prefix)
+      const po = await seedPo(['Foo,Bar', 'x,1', 'y,2'].join('\n'), workspace.id)
+
+      await processor.handleParse(job('job-zr-unknown', { kind: 'purchase_order', id: po.id }))
+
+      await expectFailedWithNoLines(po.id)
+    })
+
+    it('error: an XLSX with a title row above the header fails with the no-line-items message', async () => {
+      const workspace = await seedWorkspace(`${prefix}zr-title-row@example.com`, prefix)
+      const sheet = XLSX.utils.aoa_to_sheet([
+        ['Purchase order 4471'],
+        ['sku', 'qty', 'unit price'],
+        ['A1', 10, 5],
+      ])
+      const book = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(book, sheet, 'Sheet1')
+      const po = await seedPoBuffer(XLSX.write(book, { type: 'buffer', bookType: 'xlsx' }) as Buffer, workspace.id, 'po.xlsx')
+
+      await processor.handleParse(job('job-zr-title-row', { kind: 'purchase_order', id: po.id }))
+
+      await expectFailedWithNoLines(po.id)
+    })
+
+    it('error: the failure is permanent, so the first of three attempts records it and Bull is not asked to retry', async () => {
+      const workspace = await seedWorkspace(`${prefix}zr-permanent@example.com`, prefix)
+      const po = await seedPo('sku,qty\n', workspace.id)
+
+      await expect(
+        processor.handleParse(job('job-zr-permanent', { kind: 'purchase_order', id: po.id }, 0, 3)),
+      ).resolves.toBeUndefined()
+
+      await expectFailedWithNoLines(po.id)
+    })
+
+    it('edge: a two-column semicolon goods receipt ending in a newline parses both lines', async () => {
+      const workspace = await seedWorkspace(`${prefix}zr-semi-grn@example.com`, prefix)
+      const grn = await seedGoodsReceipt('sku;qty received\nA1;5\nB2;7\n', workspace.id)
+
+      await processor.handleParse(job('job-zr-semi-grn', { kind: 'goods_receipt', id: grn.id }))
+
+      const [updated] = await db.select().from(goodsReceipts).where(eq(goodsReceipts.id, grn.id))
+      expect(updated.status).toBe('done')
+      expect(updated.rowCount).toBe(2)
+      const lines = await db
+        .select()
+        .from(goodsReceiptLineItems)
+        .where(eq(goodsReceiptLineItems.goodsReceiptId, grn.id))
+        .orderBy(goodsReceiptLineItems.lineNumber)
+      expect(lines.map((line) => [line.sku, line.quantityReceived])).toEqual([
+        ['A1', '5'],
+        ['B2', '7'],
+      ])
+    })
+
+    it('edge: a two-column semicolon file with CRLF line endings parses', async () => {
+      const workspace = await seedWorkspace(`${prefix}zr-semi-crlf@example.com`, prefix)
+      const po = await seedPo('sku;qty\r\nA1;5\r\nB2;7\r\n', workspace.id)
+
+      await processor.handleParse(job('job-zr-semi-crlf', { kind: 'purchase_order', id: po.id }))
+
+      const items = await db
+        .select()
+        .from(poLineItems)
+        .where(eq(poLineItems.purchaseOrderId, po.id))
+        .orderBy(poLineItems.lineNumber)
+      expect(items.map((item) => [item.sku, item.quantity])).toEqual([
+        ['A1', '5'],
+        ['B2', '7'],
+      ])
+    })
+
+    it('regression: a blank line inside a two-column semicolon file still records the true source row', async () => {
+      const workspace = await seedWorkspace(`${prefix}zr-semi-blank@example.com`, prefix)
+      const po = await seedPo('sku;qty\n\nA1;5\n', workspace.id)
+
+      await processor.handleParse(job('job-zr-semi-blank', { kind: 'purchase_order', id: po.id }))
+
+      const [item] = await db.select().from(poLineItems).where(eq(poLineItems.purchaseOrderId, po.id))
+      expect(item).toMatchObject({ sku: 'A1', quantity: '5', sourceRow: 3 })
+    })
+
+    it('regression: a comma file whose descriptions contain semicolons still splits on commas', async () => {
+      const workspace = await seedWorkspace(`${prefix}zr-comma-semi@example.com`, prefix)
+      const po = await seedPo(['sku,description,qty', 'A1,"Bolt; M8; zinc",10', 'B2,Nut;M8,4'].join('\n'), workspace.id)
+
+      await processor.handleParse(job('job-zr-comma-semi', { kind: 'purchase_order', id: po.id }))
+
+      const items = await db
+        .select()
+        .from(poLineItems)
+        .where(eq(poLineItems.purchaseOrderId, po.id))
+        .orderBy(poLineItems.lineNumber)
+      expect(items.map((item) => [item.sku, item.description, item.quantity])).toEqual([
+        ['A1', 'Bolt; M8; zinc', '10'],
+        ['B2', 'Nut;M8', '4'],
+      ])
+    })
+  })
 })

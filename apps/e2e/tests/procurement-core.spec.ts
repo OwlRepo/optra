@@ -1,7 +1,7 @@
 import { expect, test, type Browser, type Page } from '@playwright/test'
 import { uploadGoodsReceiptFile, uploadInvoiceFile, uploadPurchaseOrder, uploadPurchaseOrderFile } from '../support/flows'
 import { loadState, storageStateFor, type Role, type SeedState } from '../support/state'
-import { bff, fixture, rowFor, toast } from '../support/ui'
+import { bff, chooseFile, fixture, rowFor, toast, waitForRow } from '../support/ui'
 
 // The procurement paths a launch rests on, driven as a person drives them.
 // Mutating flows run as owner B in workspace B (docs/ai/testing-strategy.md,
@@ -251,6 +251,40 @@ test.describe('procurement core', () => {
       actorRole: 'owner',
       actorEmail: state.ownerB.email,
     })
+    await page.context().close()
+  })
+})
+
+// B2/B3: a file whose rows all map to nothing fails at parse with a reason the
+// owner can act on, instead of showing "Ready" with no lines.
+test.describe('procurement core: unreadable files', () => {
+  test('error: a purchase order with headers but no lines shows Failed with the reason in its row', async ({ browser }) => {
+    const page = await pageAs(browser, 'ownerB')
+    const ws = state.ownerB.workspaceId
+    const file = fixture('po-headers-only.csv', `core-headers-only-${state.run}.csv`)
+
+    await page.goto(`/workspaces/${ws}/procurement`)
+    await chooseFile(page, 'Upload purchase order', file)
+    const dialog = page.getByRole('dialog')
+    await dialog.locator('#po-vendor').selectOption(state.ownerB.vendorId)
+    await dialog.locator('#po-number').fill(`PO-CORE-EMPTY-${state.run}`)
+    await dialog.getByRole('button', { name: 'Upload', exact: true }).click()
+    await expect(toast(page, 'Purchase order uploaded')).toBeVisible()
+
+    const failed = await waitForRow<{ id: string; name: string; status: string; lastError: string | null }>(
+      page,
+      `/api/workspaces/${ws}/procurement/purchase-orders`,
+      (row) => row.name === file.name,
+      'failed',
+    )
+    expect(failed.lastError).toBe(
+      'No line items were found in this file. Its first row must hold column headers such as SKU, Description, Qty and Unit price, and it must be saved as a UTF-8 CSV or an XLSX workbook.',
+    )
+
+    await page.reload()
+    const row = rowFor(page, file.name)
+    await expect(row.getByText('Failed', { exact: true })).toBeVisible()
+    await expect(row.getByText(/^No line items were found in this file\./)).toBeVisible()
     await page.context().close()
   })
 })
