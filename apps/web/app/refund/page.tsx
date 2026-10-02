@@ -10,7 +10,7 @@ import {
 const WEB_URL = process.env.WEB_URL ?? 'https://optra.example.com'
 
 export const metadata: Metadata = {
-  title: 'Refund Policy — Optra',
+  title: 'Refund Policy',
   description: 'How cancellation and refunds work for Optra subscriptions.',
   alternates: { canonical: `${WEB_URL}/refund` },
 }
@@ -20,7 +20,7 @@ export default function RefundPage() {
     <LegalPage title="Refund Policy">
       <LegalSection title="Who this applies to">
         <p>
-          Optra is sold by {SELLER_NAME}, an individual based in {SELLER_COUNTRY}. Payments are
+          Optra is sold by {SELLER_NAME}, an individual based in the {SELLER_COUNTRY}. Payments are
           processed by Lemon Squeezy, our Merchant of Record.
         </p>
       </LegalSection>

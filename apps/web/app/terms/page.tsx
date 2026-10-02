@@ -11,7 +11,7 @@ import {
 const WEB_URL = process.env.WEB_URL ?? 'https://optra.example.com'
 
 export const metadata: Metadata = {
-  title: 'Terms of Service — Optra',
+  title: 'Terms of Service',
   description:
     'The terms for using Optra: who sells it, how billing works, acceptable use and limits of liability.',
   alternates: { canonical: `${WEB_URL}/terms` },
@@ -22,7 +22,7 @@ export default function TermsPage() {
     <LegalPage title="Terms of Service">
       <LegalSection title="Who we are">
         <p>
-          Optra is provided by {SELLER_NAME}, an individual based in {SELLER_COUNTRY}. Contact:{' '}
+          Optra is provided by {SELLER_NAME}, an individual based in the {SELLER_COUNTRY}. Contact:{' '}
           <LegalLink href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</LegalLink>. By creating an
           account or using Optra you agree to these terms.
         </p>
@@ -45,8 +45,9 @@ export default function TermsPage() {
       <LegalSection title="Subscription and trial">
         <p>
           Optra is a subscription. Every plan starts with a {TRIAL_DAYS}-day trial. Plans include a
-          number of matched line items and photo checks, as shown on the pricing page. Usage above
-          the included amount is charged at the overage rate shown for your plan. Refunds are
+          number of matched line items and photo checks, as shown on the pricing page. Extra
+          matched line items are charged at the overage rate shown for your plan. Photo checks
+          stop at your plan&apos;s cap. Refunds are
           covered in the{' '}
           <LegalLink href="/refund">refund policy</LegalLink>; the full refund window is{' '}
           {REFUND_WINDOW_DAYS} days.

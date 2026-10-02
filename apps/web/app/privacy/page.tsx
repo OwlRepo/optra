@@ -15,7 +15,7 @@ import {
 const WEB_URL = process.env.WEB_URL ?? 'https://optra.example.com'
 
 export const metadata: Metadata = {
-  title: 'Privacy Policy — Optra',
+  title: 'Privacy Policy',
   description:
     'What personal data Optra collects, who processes it, which cookies it sets and how to exercise your rights.',
   alternates: { canonical: `${WEB_URL}/privacy` },
@@ -59,7 +59,7 @@ export default function PrivacyPage() {
     <LegalPage title="Privacy Policy">
       <LegalSection title="Who is responsible">
         <p>
-          {SELLER_NAME}, an individual based in {SELLER_COUNTRY}, is the controller of your personal
+          {SELLER_NAME}, an individual based in the {SELLER_COUNTRY}, is the controller of your personal
           data. Contact: <LegalLink href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</LegalLink>.
         </p>
       </LegalSection>
@@ -95,7 +95,7 @@ export default function PrivacyPage() {
           rows={processors}
         />
         <p>
-          Uploaded files and backups are stored in the United States ({FILE_STORAGE_REGION}). The
+          Uploaded files and backups are stored in the {FILE_STORAGE_REGION}. The
           application server runs in {HOSTING_COUNTRY ?? 'a location available on request'}.
         </p>
       </LegalSection>
@@ -123,7 +123,7 @@ export default function PrivacyPage() {
         <p>
           We keep your data while your workspace exists. Email us and we delete your workspace data,
           including uploaded files, within {DELETION_SLA_DAYS} days. Backups expire on the schedule
-          in the privacy policy.
+          below.
         </p>
         <p>
           Backups: the {VPS_BACKUP_COUNT} newest database backups are kept on the server. {offsite}{' '}
