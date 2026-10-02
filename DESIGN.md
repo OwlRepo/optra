@@ -36,7 +36,7 @@ Replaces the current pattern where every one of the 6 authenticated pages (dashb
 
 - **Structure:** persistent, collapsible left sidebar (248px expanded, icon-only collapsed) containing:
   1. Workspace switcher at top (avatar + name, links back to `/workspaces` to switch — no inline dropdown-menu primitive exists in `packages/ui` yet, deferred)
-  2. Search entry point (`⌘K` style — ties to the "Search" proactive API feature)
+  2. Search entry point (`⌘K` style — ties to the "Search" proactive API feature) *(2026-10-02: not rendered while the support surfaces are disabled — it only searched documents, tickets and chat; `[support-surfaces-off]`.)*
   3. Primary nav: Overview, Members, Settings, Vendors, Purchase Orders, Discrepancies, Catalog Matches — one shared nav-items model, not per-page ad-hoc links. *(2026-10-02: Knowledge Bases, Datasets, Chat, Tickets and Insights are disabled — nav entries commented out under `[support-surfaces-off]` in `apps/web/src/components/workspace-nav.tsx`, routes answer the not-found screen.)*
   4. Active section indicated by a filled dot + lighter card-colored background — not a color change
   5. Collapse toggle + current-user chip pinned to the bottom

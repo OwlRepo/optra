@@ -490,36 +490,6 @@
     },
     {
       "endpoints": [
-        "apps_api_src_catalog_catalog_match_service",
-        "packages_ai_src_web_limit_createlimit"
-      ],
-      "variants": [
-        {
-          "source": "apps_api_src_catalog_catalog_match_service",
-          "target": "packages_ai_src_web_limit_createlimit",
-          "relation": "imports",
-          "context": "import",
-          "confidence": "EXTRACTED",
-          "source_file": "apps/api/src/catalog/catalog-match.service.ts",
-          "source_location": "L3",
-          "weight": 1.0,
-          "_origin": "ast"
-        },
-        {
-          "source": "apps_api_src_catalog_catalog_match_service",
-          "target": "packages_ai_src_web_limit_createlimit",
-          "relation": "imports",
-          "context": "import",
-          "confidence": "EXTRACTED",
-          "source_file": "apps/api/src/catalog/catalog-match.service.ts",
-          "source_location": "L3",
-          "weight": 1.0,
-          "_origin": "ast"
-        }
-      ]
-    },
-    {
-      "endpoints": [
         "apps_api_src_catalog_dto_catalog_match_dto_catalogmatchdto",
         "apps_api_src_catalog_dto_catalog_match_dto_ts_isoptional"
       ],
@@ -3202,36 +3172,6 @@
     },
     {
       "endpoints": [
-        "apps_api_src_tickets_tickets_service_ticketsservice_mergefieldconfidence",
-        "packages_db_src_schema_tickets_ticketfieldconfidence"
-      ],
-      "variants": [
-        {
-          "source": "apps_api_src_tickets_tickets_service_ticketsservice_mergefieldconfidence",
-          "target": "packages_db_src_schema_tickets_ticketfieldconfidence",
-          "relation": "references",
-          "context": "parameter_type",
-          "confidence": "EXTRACTED",
-          "source_file": "apps/api/src/tickets/tickets.service.ts",
-          "source_location": "L435",
-          "weight": 1.0,
-          "_origin": "ast"
-        },
-        {
-          "source": "apps_api_src_tickets_tickets_service_ticketsservice_mergefieldconfidence",
-          "target": "packages_db_src_schema_tickets_ticketfieldconfidence",
-          "relation": "references",
-          "context": "return_type",
-          "confidence": "EXTRACTED",
-          "source_file": "apps/api/src/tickets/tickets.service.ts",
-          "source_location": "L435",
-          "weight": 1.0,
-          "_origin": "ast"
-        }
-      ]
-    },
-    {
-      "endpoints": [
         "apps_api_src_workspaces_workspaces_controller_ts_param",
         "apps_api_src_workspaces_workspaces_controller_workspacescontroller_remove"
       ],
@@ -3378,7 +3318,7 @@
           "confidence": "INFERRED",
           "confidence_score": 0.8,
           "source_file": "apps/e2e/tests/datasets.spec.ts",
-          "source_location": "L19",
+          "source_location": "L22",
           "weight": 1.0,
           "_origin": "ast"
         }
@@ -3409,7 +3349,7 @@
           "confidence": "INFERRED",
           "confidence_score": 0.8,
           "source_file": "apps/e2e/tests/knowledge-base.spec.ts",
-          "source_location": "L20",
+          "source_location": "L23",
           "weight": 1.0,
           "_origin": "ast"
         }
@@ -3540,6 +3480,36 @@
     },
     {
       "endpoints": [
+        "apps_web_src_components_workspace_nav_workspacenav",
+        "apps_web_src_lib_api_events_getunreadcount"
+      ],
+      "variants": [
+        {
+          "source": "apps_web_src_components_workspace_nav_workspacenav",
+          "target": "apps_web_src_lib_api_events_getunreadcount",
+          "relation": "calls",
+          "context": "call",
+          "confidence": "EXTRACTED",
+          "confidence_score": 1.0,
+          "source_file": "apps/web/src/components/workspace-nav.tsx",
+          "source_location": "L51",
+          "weight": 1.0,
+          "_origin": "ast"
+        },
+        {
+          "source": "apps_web_src_components_workspace_nav_workspacenav",
+          "target": "apps_web_src_lib_api_events_getunreadcount",
+          "relation": "calls",
+          "confidence": "EXTRACTED",
+          "confidence_score": 1.0,
+          "source_file": "docs/ai/file-index/repository-map.md",
+          "source_location": null,
+          "weight": 1.0
+        }
+      ]
+    },
+    {
+      "endpoints": [
         "apps_web_src_lib_http_auth_proxy_proxyjson",
         "apps_web_src_lib_http_client_ip_clientipheaders"
       ],
@@ -3564,62 +3534,6 @@
           "confidence_score": 1.0,
           "source_file": "docs/ai/file-index/repository-map.md",
           "source_location": "L149",
-          "weight": 1.0
-        }
-      ]
-    },
-    {
-      "endpoints": [
-        "docs_ai_risk_register_backup_restore",
-        "docs_ai_risk_register_umami_analytics"
-      ],
-      "variants": [
-        {
-          "source": "docs_ai_risk_register_umami_analytics",
-          "target": "docs_ai_risk_register_backup_restore",
-          "relation": "references",
-          "confidence": "EXTRACTED",
-          "confidence_score": 1.0,
-          "source_file": "docs/ai/risk-register.md",
-          "source_location": "L85",
-          "weight": 1.0
-        },
-        {
-          "source": "docs_ai_risk_register_backup_restore",
-          "target": "docs_ai_risk_register_umami_analytics",
-          "relation": "references",
-          "confidence": "EXTRACTED",
-          "confidence_score": 1.0,
-          "source_file": "docs/ai/risk-register.md",
-          "source_location": "L83",
-          "weight": 1.0
-        }
-      ]
-    },
-    {
-      "endpoints": [
-        "docs_ai_risk_register_client_side_session_refresh",
-        "docs_ai_risk_register_post_login_redirect_target"
-      ],
-      "variants": [
-        {
-          "source": "docs_ai_risk_register_client_side_session_refresh",
-          "target": "docs_ai_risk_register_post_login_redirect_target",
-          "relation": "references",
-          "confidence": "EXTRACTED",
-          "confidence_score": 1.0,
-          "source_file": "docs/ai/risk-register.md",
-          "source_location": "L37",
-          "weight": 1.0
-        },
-        {
-          "source": "docs_ai_risk_register_post_login_redirect_target",
-          "target": "docs_ai_risk_register_client_side_session_refresh",
-          "relation": "references",
-          "confidence": "EXTRACTED",
-          "confidence_score": 1.0,
-          "source_file": "docs/ai/risk-register.md",
-          "source_location": "L36",
           "weight": 1.0
         }
       ]
@@ -3675,62 +3589,6 @@
           "confidence": "EXTRACTED",
           "confidence_score": 1.0,
           "source_file": "docs/PRODUCTION-READINESS.md",
-          "source_location": null,
-          "weight": 1.0
-        }
-      ]
-    },
-    {
-      "endpoints": [
-        "learnings_case_label_vs_evidence",
-        "learnings_contract_price_flags"
-      ],
-      "variants": [
-        {
-          "source": "learnings_contract_price_flags",
-          "target": "learnings_case_label_vs_evidence",
-          "relation": "references",
-          "confidence": "EXTRACTED",
-          "confidence_score": 1.0,
-          "source_file": "learnings.md",
-          "source_location": null,
-          "weight": 1.0
-        },
-        {
-          "source": "learnings_case_label_vs_evidence",
-          "target": "learnings_contract_price_flags",
-          "relation": "semantically_similar_to",
-          "confidence": "INFERRED",
-          "confidence_score": 0.85,
-          "source_file": "learnings.md",
-          "source_location": null,
-          "weight": 1.0
-        }
-      ]
-    },
-    {
-      "endpoints": [
-        "learnings_entry_format",
-        "learnings_log"
-      ],
-      "variants": [
-        {
-          "source": "learnings_log",
-          "target": "learnings_entry_format",
-          "relation": "references",
-          "confidence": "EXTRACTED",
-          "confidence_score": 1.0,
-          "source_file": "learnings.md",
-          "source_location": null,
-          "weight": 1.0
-        },
-        {
-          "source": "learnings_log",
-          "target": "learnings_entry_format",
-          "relation": "references",
-          "confidence": "EXTRACTED",
-          "confidence_score": 1.0,
-          "source_file": "learnings.md",
           "source_location": null,
           "weight": 1.0
         }
