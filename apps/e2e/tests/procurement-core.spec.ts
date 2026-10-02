@@ -68,17 +68,22 @@ test.describe('procurement core', () => {
     await page.context().close()
   })
 
-  test("error: owner B opening workspace A's procurement page is told they are not a member and gets no controls", async ({
+  // B14 changed what this pins: the error toast and empty lists became one
+  // no-access state with a way back.
+  test("error: owner B opening workspace A's procurement page sees the no-access state and gets no controls", async ({
     browser,
   }) => {
     const page = await pageAs(browser, 'ownerB')
     const ws = state.ownerA.workspaceId
     await page.goto(`/workspaces/${ws}/procurement`)
 
-    await expect(toast(page, 'Failed to load procurement documents')).toBeVisible()
-    await expect(page.getByText('Not a member of this workspace', { exact: true })).toBeVisible()
+    await expect(page.getByRole('heading', { name: "You don't have access to this workspace" })).toBeVisible()
+    await expect(toast(page, 'Failed to load procurement documents')).toHaveCount(0)
+    await expect(page.getByText('No purchase orders yet')).toHaveCount(0)
     await expect(page.getByRole('button', { name: 'Upload purchase order' })).toHaveCount(0)
     await expect(page.getByRole('button', { name: 'Run comparison' })).toHaveCount(0)
+    await page.getByRole('button', { name: 'Go to your workspaces' }).click()
+    await expect(page).toHaveURL(/\/workspaces$/)
 
     for (const url of [`/api/workspaces/${ws}`, `/api/workspaces/${ws}/procurement/purchase-orders`]) {
       const response = await bff(page, url)

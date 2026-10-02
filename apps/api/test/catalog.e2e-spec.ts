@@ -717,4 +717,30 @@ describe('Catalog flow (e2e)', () => {
       )
     })
   })
+
+  describe('blank catalog rows (B4)', () => {
+    it('regression: a CSV catalog ending in ",," rows lists only its real items', async () => {
+      const owner = await seedOwnerWithWorkspace(app, `${prefix}b4-blank@example.com`, 'B4 Blank')
+      const auth = `Bearer ${owner.accessToken}`
+      const vendor = await request(app.getHttpServer())
+        .post(`/workspaces/${owner.workspaceId}/vendors`)
+        .set('Authorization', auth)
+        .send({ name: 'B4 Vendor' })
+        .expect(201)
+      const base = `/workspaces/${owner.workspaceId}/vendors/${vendor.body.id}/catalogs`
+
+      const upload = await request(app.getHttpServer())
+        .post(base)
+        .set('Authorization', auth)
+        .attach('file', Buffer.from('sku,description\nA1,Widget\n,,\nB2,Gadget\n,,\n,,\n'), 'catalog.csv')
+        .expect(201)
+      await waitForCatalogDone(upload.body.id)
+
+      const items = await request(app.getHttpServer())
+        .get(`${base}/${upload.body.id}/items`)
+        .set('Authorization', auth)
+        .expect(200)
+      expect((items.body as { sku: string | null }[]).map((item) => item.sku)).toEqual(['A1', 'B2'])
+    })
+  })
 })
