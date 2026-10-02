@@ -181,9 +181,17 @@ describe('CatalogParseService', () => {
     await service.reconcile()
 
     expect(queue.add).not.toHaveBeenCalledWith({ id: catalog.id }, expect.anything())
+    // Only what the PARSE reconciler did is asserted. The scrape reconciler
+    // sweeps every stale scrape catalog in the database, and a parallel Jest
+    // worker running catalog-scrape.service.spec may legitimately fail this
+    // row with its own reason (the flake seen 2026-10-03). The parse
+    // reconciler's own reasons all start "Parsing"; none may appear here.
     const [row] = await db.select().from(catalogs).where(eq(catalogs.id, catalog.id))
-    expect(row.status).toBe('processing')
-    expect(row.lastError).toBeNull()
+    const untouched = row.status === 'processing' && row.lastError === null
+    const failedByScrapeReconciler =
+      row.status === 'failed' && (row.lastError ?? '').startsWith('Queue reconciliation marked catalog scrape as failed')
+    expect(row.lastError ?? '').not.toMatch(/^Parsing/)
+    expect(untouched || failedByScrapeReconciler).toBe(true)
   })
 
   it('reconcile leaves a fresh pending row untouched', async () => {
