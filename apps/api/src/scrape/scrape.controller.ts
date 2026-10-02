@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query, Res, UseGuards } from '@nestjs/common'
+import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query, Res, UseGuards } from '@nestjs/common'
 import type { Response } from 'express'
 import { Roles } from '../auth/decorators/roles.decorator'
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard'
@@ -17,7 +17,7 @@ export class ScrapeController {
   @Roles('owner', 'admin')
   async start(
     @Param('workspaceId') workspaceId: string,
-    @Param('kbId') kbId: string,
+    @Param('kbId', new ParseUUIDPipe()) kbId: string,
     @Body() dto: ScrapeDto,
     @Res({ passthrough: true }) response: Response,
   ) {
@@ -30,7 +30,7 @@ export class ScrapeController {
   @UseGuards(JwtAuthGuard, WorkspaceMemberGuard)
   list(
     @Param('workspaceId') workspaceId: string,
-    @Param('kbId') kbId: string,
+    @Param('kbId', new ParseUUIDPipe()) kbId: string,
     @Query() query: ListScrapeRunsQueryDto,
   ) {
     return this.scrapeService.listRuns(workspaceId, kbId, query)

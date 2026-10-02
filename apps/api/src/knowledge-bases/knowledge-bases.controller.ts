@@ -6,6 +6,7 @@ import {
   HttpCode,
   HttpStatus,
   Param,
+  ParseUUIDPipe,
   Post,
   Query,
   UseGuards,
@@ -44,7 +45,7 @@ export class KnowledgeBasesController {
   @Roles('owner', 'admin')
   remove(
     @Param('workspaceId') workspaceId: string,
-    @Param('kbId') kbId: string,
+    @Param('kbId', new ParseUUIDPipe()) kbId: string,
   ) {
     return this.knowledgeBasesService.remove(workspaceId, kbId)
   }

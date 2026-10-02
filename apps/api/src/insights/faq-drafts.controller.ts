@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Patch, UseGuards } from '@nestjs/common'
+import { Controller, Get, Param, ParseUUIDPipe, Patch, UseGuards } from '@nestjs/common'
 import { CurrentUser, type CurrentUserContext } from '../auth/decorators/current-user.decorator'
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard'
 import { Roles } from '../auth/decorators/roles.decorator'
@@ -24,7 +24,7 @@ export class FaqDraftsController {
   @Roles('owner', 'admin')
   approve(
     @Param('workspaceId') workspaceId: string,
-    @Param('draftId') draftId: string,
+    @Param('draftId', new ParseUUIDPipe()) draftId: string,
     @CurrentUser() user: CurrentUserContext,
   ) {
     return this.faqDraftsService.approve(workspaceId, draftId, user.userId)
@@ -35,7 +35,7 @@ export class FaqDraftsController {
   @Roles('owner', 'admin')
   reject(
     @Param('workspaceId') workspaceId: string,
-    @Param('draftId') draftId: string,
+    @Param('draftId', new ParseUUIDPipe()) draftId: string,
     @CurrentUser() user: CurrentUserContext,
   ) {
     return this.faqDraftsService.reject(workspaceId, draftId, user.userId)

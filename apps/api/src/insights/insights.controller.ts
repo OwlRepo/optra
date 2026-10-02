@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Patch, UseGuards } from '@nestjs/common'
+import { Controller, Get, Param, ParseUUIDPipe, Patch, UseGuards } from '@nestjs/common'
 import { CurrentUser, type CurrentUserContext } from '../auth/decorators/current-user.decorator'
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard'
 import { WorkspaceMemberGuard } from '../auth/guards/workspace-member.guard'
@@ -33,7 +33,7 @@ export class InsightsController {
   @Patch('freshness-flags/:flagId/dismiss')
   dismissFlag(
     @Param('workspaceId') workspaceId: string,
-    @Param('flagId') flagId: string,
+    @Param('flagId', new ParseUUIDPipe()) flagId: string,
     @CurrentUser() user: CurrentUserContext,
   ) {
     return this.insightsService.dismissFlag(workspaceId, flagId, user.userId)
