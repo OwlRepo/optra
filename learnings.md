@@ -521,3 +521,12 @@ And one rule the owner made standing: every change now ships with its tests for 
 **Actual:** confirmed — the CSV and PDF cases and the HTTP upload red then green; full api unit 789/789 three times, API e2e 97/97 twice (one unrelated auth `socket hang up` on the other run).
 
 **Why different:** not different. **When two import paths share a table, enforce its column limits where they meet the insert, not in each parser — and reuse the limit the other domain already exports instead of restating 200.**
+
+## 2026-10-03 — Fix B6 + B15: one bad verdict failed a paid search
+*Learning Contract: the plan's design is the prediction; the diff is below. No live prediction solicited.*
+
+**Predicted (from the approved plan):** catching each candidate's failure keeps the verdicts already paid for, and a counted skip tells the user what is missing.
+
+**Actual:** confirmed — unit, `packages/ai`, API e2e, web and browser cases red then green; full api unit 794/794 and API e2e 99/99 three times, web 673/673, ai 190/190, browser suite 48 passed / 7 parked three times.
+
+**Why different:** not different. **`Promise.all` over paid calls is all-or-nothing: one rejection discards every result already bought. Settle each call, save what came back, and when a write replaces old results, leave out the items this run could not judge.**
