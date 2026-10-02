@@ -1431,4 +1431,283 @@ describe('Procurement flow (e2e)', () => {
       expect(price.poLine).toMatchObject({ sourceRow: null, sourceSheet: null })
     })
   })
+
+  // Launch hardening. Each answer is the one the route gives today. Guard
+  // order is ThrottlerGuard (global) → JwtAuthGuard → WorkspaceMemberGuard →
+  // RolesGuard, then FileInterceptor / ParseUUIDPipe / ValidationPipe, then the
+  // service. No case here calls /auth/register.
+  describe('launch hardening: HTTP error answers', () => {
+    // Well-formed ids that name nothing: a 401 must come from the missing
+    // token, never from whatever the id points at.
+    const anyId = '00000000-0000-4000-8000-000000000000'
+
+    type Method = 'get' | 'post' | 'patch'
+
+    async function answersWithoutToken(routes: [Method, string][]) {
+      const answers: { route: string; status: number; message: unknown }[] = []
+      for (const [method, path] of routes) {
+        const res = await request(app.getHttpServer())[method](`/workspaces/${anyId}/procurement/${path}`)
+        answers.push({ route: `${method.toUpperCase()} ${path}`, status: res.status, message: res.body.message })
+      }
+      return answers
+    }
+
+    const unauthorized = (routes: [Method, string][]) =>
+      routes.map(([method, path]) => ({ route: `${method.toUpperCase()} ${path}`, status: 401, message: 'Unauthorized' }))
+
+    // `done` with no line items, inserted directly: every refusal below happens
+    // before compare() reads a single line.
+    async function seedDoneDocs(workspaceId: string) {
+      const [po] = await db
+        .insert(purchaseOrders)
+        .values({ workspaceId, name: 'po.csv', status: 'done', rowCount: 0 })
+        .returning()
+      const [invoice] = await db
+        .insert(invoices)
+        .values({ workspaceId, name: 'invoice.csv', status: 'done', rowCount: 0 })
+        .returning()
+      return { po, invoice }
+    }
+
+    it('error: every upload route answers 401 without a token', async () => {
+      const routes: [Method, string][] = [
+        ['post', 'purchase-orders'],
+        ['post', 'invoices'],
+        ['post', 'goods-receipts'],
+      ]
+
+      expect(await answersWithoutToken(routes)).toEqual(unauthorized(routes))
+    })
+
+    it('error: every list route answers 401 without a token', async () => {
+      const routes: [Method, string][] = [
+        ['get', 'purchase-orders'],
+        ['get', 'invoices'],
+        ['get', 'goods-receipts'],
+        ['get', 'discrepancies'],
+        ['get', 'comparison-runs'],
+      ]
+
+      expect(await answersWithoutToken(routes)).toEqual(unauthorized(routes))
+    })
+
+    it('error: every download route answers 401 without a token', async () => {
+      const routes: [Method, string][] = [
+        ['get', `purchase-orders/${anyId}/download`],
+        ['get', `invoices/${anyId}/download`],
+        ['get', `goods-receipts/${anyId}/download`],
+      ]
+
+      expect(await answersWithoutToken(routes)).toEqual(unauthorized(routes))
+    })
+
+    it('error: every discrepancy action answers 401 without a token', async () => {
+      const routes: [Method, string][] = [
+        ['post', 'discrepancies/compare'],
+        ['patch', `discrepancies/${anyId}/dismiss`],
+        ['post', `discrepancies/${anyId}/decisions`],
+        ['get', `discrepancies/${anyId}/decisions`],
+      ]
+
+      expect(await answersWithoutToken(routes)).toEqual(unauthorized(routes))
+    })
+
+    it('error: a malformed id on the invoice and receipt downloads and both decision routes answers 400', async () => {
+      const owner = await seedOwnerWithWorkspace(app, `${prefix}lh-uuid@example.com`, 'LH Uuid')
+      const base = `/workspaces/${owner.workspaceId}/procurement`
+      const auth = `Bearer ${owner.accessToken}`
+
+      const answers = [
+        await request(app.getHttpServer()).get(`${base}/invoices/not-a-uuid/download`).set('Authorization', auth),
+        await request(app.getHttpServer()).get(`${base}/goods-receipts/not-a-uuid/download`).set('Authorization', auth),
+        // A valid body, so the only thing wrong is the id.
+        await request(app.getHttpServer())
+          .post(`${base}/discrepancies/not-a-uuid/decisions`)
+          .set('Authorization', auth)
+          .send({ outcome: 'resolved', note: 'Checked against the source.' }),
+        await request(app.getHttpServer()).get(`${base}/discrepancies/not-a-uuid/decisions`).set('Authorization', auth),
+      ].map((res) => ({ status: res.status, message: res.body.message }))
+
+      expect(answers).toEqual([
+        { status: 400, message: 'Validation failed (uuid is expected)' },
+        { status: 400, message: 'Validation failed (uuid is expected)' },
+        { status: 400, message: 'Validation failed (uuid is expected)' },
+        { status: 400, message: 'Validation failed (uuid is expected)' },
+      ])
+    })
+
+    it('error: compare answers 404 for a purchase order or invoice from another workspace and records no run', async () => {
+      const owner = await seedOwnerWithWorkspace(app, `${prefix}lh-cross-mine@example.com`, 'LH Cross Mine')
+      const stranger = await seedOwnerWithWorkspace(app, `${prefix}lh-cross-other@example.com`, 'LH Cross Other')
+      const mine = await seedDoneDocs(owner.workspaceId)
+      const theirs = await seedDoneDocs(stranger.workspaceId)
+
+      const foreignPo = await request(app.getHttpServer())
+        .post(`/workspaces/${owner.workspaceId}/procurement/discrepancies/compare`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .send({ purchaseOrderId: theirs.po.id, invoiceId: mine.invoice.id })
+        .expect(404)
+      expect(foreignPo.body.message).toBe('Purchase order not found')
+
+      const foreignInvoice = await request(app.getHttpServer())
+        .post(`/workspaces/${owner.workspaceId}/procurement/discrepancies/compare`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .send({ purchaseOrderId: mine.po.id, invoiceId: theirs.invoice.id })
+        .expect(404)
+      expect(foreignInvoice.body.message).toBe('Invoice not found')
+
+      const runs = await db.select().from(comparisonRuns).where(eq(comparisonRuns.workspaceId, owner.workspaceId))
+      expect(runs).toHaveLength(0)
+    })
+
+    it('error: a member is refused compare and every upload with 403 on role alone', async () => {
+      const owner = await seedOwnerWithWorkspace(app, `${prefix}lh-role-owner@example.com`, 'LH Role Owner')
+      const member = await seedMemberOfWorkspace(app, owner.workspaceId, `${prefix}lh-role-member@example.com`)
+      const vendorId = await createVendor(app, owner.workspaceId, owner.accessToken)
+      const { po, invoice } = await seedDoneDocs(owner.workspaceId)
+      const base = `/workspaces/${owner.workspaceId}/procurement`
+      const auth = `Bearer ${member.accessToken}`
+      const lines = 'sku,description,qty,unit price\nA1,Widget,10,5.00'
+
+      const answers = [
+        await request(app.getHttpServer())
+          .post(`${base}/discrepancies/compare`)
+          .set('Authorization', auth)
+          .send({ purchaseOrderId: po.id, invoiceId: invoice.id }),
+        await request(app.getHttpServer())
+          .post(`${base}/purchase-orders`)
+          .set('Authorization', auth)
+          .field('vendorId', vendorId)
+          .field('poNumber', 'PO-LH-MEMBER')
+          .field('currency', 'USD')
+          .attach('file', Buffer.from(lines), 'po.csv'),
+        await request(app.getHttpServer())
+          .post(`${base}/invoices`)
+          .set('Authorization', auth)
+          .field('purchaseOrderId', po.id)
+          .field('invoiceNumber', 'INV-LH-MEMBER')
+          .field('currency', 'USD')
+          .attach('file', Buffer.from(lines), 'invoice.csv'),
+        await request(app.getHttpServer())
+          .post(`${base}/goods-receipts`)
+          .set('Authorization', auth)
+          .field('purchaseOrderId', po.id)
+          .field('grnNumber', 'GRN-LH-MEMBER')
+          .attach('file', Buffer.from('sku,qty received,qty accepted\nA1,10,10'), 'grn.csv'),
+      ].map((res) => ({ status: res.status, message: res.body.message }))
+
+      expect(answers).toEqual([
+        { status: 403, message: 'Insufficient workspace role' },
+        { status: 403, message: 'Insufficient workspace role' },
+        { status: 403, message: 'Insufficient workspace role' },
+        { status: 403, message: 'Insufficient workspace role' },
+      ])
+      // Refused before the service ran: nothing was compared or stored.
+      expect(await db.select().from(comparisonRuns).where(eq(comparisonRuns.workspaceId, owner.workspaceId))).toHaveLength(0)
+      expect(await db.select().from(purchaseOrders).where(eq(purchaseOrders.workspaceId, owner.workspaceId))).toHaveLength(1)
+      expect(await db.select().from(invoices).where(eq(invoices.workspaceId, owner.workspaceId))).toHaveLength(1)
+      expect(await db.select().from(goodsReceipts).where(eq(goodsReceipts.workspaceId, owner.workspaceId))).toHaveLength(0)
+    })
+
+    it('error: an oversized invoice or goods receipt answers 413 naming the 25MB limit', async () => {
+      const owner = await seedOwnerWithWorkspace(app, `${prefix}lh-too-big@example.com`, 'LH Too Big')
+      const { po } = await seedDoneDocs(owner.workspaceId)
+      const tooBig = Buffer.alloc(26 * 1024 * 1024, 'a')
+
+      const invoiceRes = await request(app.getHttpServer())
+        .post(`/workspaces/${owner.workspaceId}/procurement/invoices`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .field('purchaseOrderId', po.id)
+        .field('invoiceNumber', 'INV-LH-BIG')
+        .field('currency', 'USD')
+        .attach('file', tooBig, 'too-big.csv')
+        .expect(413)
+      expect(invoiceRes.body).toEqual({ statusCode: 413, message: 'File exceeds 25MB upload limit' })
+
+      const receiptRes = await request(app.getHttpServer())
+        .post(`/workspaces/${owner.workspaceId}/procurement/goods-receipts`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .field('purchaseOrderId', po.id)
+        .field('grnNumber', 'GRN-LH-BIG')
+        .attach('file', tooBig, 'too-big.csv')
+        .expect(413)
+      expect(receiptRes.body).toEqual({ statusCode: 413, message: 'File exceeds 25MB upload limit' })
+
+      // Refused in the interceptor, before the service stored anything.
+      expect(await db.select().from(invoices).where(eq(invoices.workspaceId, owner.workspaceId))).toHaveLength(1)
+      expect(await db.select().from(goodsReceipts).where(eq(goodsReceipts.workspaceId, owner.workspaceId))).toHaveLength(0)
+    })
+
+    it('happy: a three-way match over HTTP with the delivery split across two receipts raises no flag', async () => {
+      const owner = await seedOwnerWithWorkspace(app, `${prefix}lh-split@example.com`, 'LH Split')
+      const vendorId = await createVendor(app, owner.workspaceId, owner.accessToken)
+      const base = `/workspaces/${owner.workspaceId}/procurement`
+      const auth = `Bearer ${owner.accessToken}`
+
+      const poUpload = await request(app.getHttpServer())
+        .post(`${base}/purchase-orders`)
+        .set('Authorization', auth)
+        .field('vendorId', vendorId)
+        .field('poNumber', 'PO-LH-SPLIT')
+        .field('currency', 'USD')
+        .attach('file', Buffer.from('sku,description,qty,unit price\nA1,Widget,10,5.00\nB2,Gadget,4,12.50'), 'po.csv')
+        .expect(201)
+      await waitForPoDone(poUpload.body.id)
+
+      const firstReceipt = await request(app.getHttpServer())
+        .post(`${base}/goods-receipts`)
+        .set('Authorization', auth)
+        .field('purchaseOrderId', poUpload.body.id)
+        .field('grnNumber', 'GRN-LH-1')
+        .attach('file', Buffer.from('sku,qty received,qty accepted\nA1,6,6\nB2,4,4'), 'grn-1.csv')
+        .expect(201)
+      await waitForGoodsReceiptDone(firstReceipt.body.id)
+
+      const secondReceipt = await request(app.getHttpServer())
+        .post(`${base}/goods-receipts`)
+        .set('Authorization', auth)
+        .field('purchaseOrderId', poUpload.body.id)
+        .field('grnNumber', 'GRN-LH-2')
+        .attach('file', Buffer.from('sku,qty received,qty accepted\nA1,4,4'), 'grn-2.csv')
+        .expect(201)
+      await waitForGoodsReceiptDone(secondReceipt.body.id)
+
+      const invoiceUpload = await request(app.getHttpServer())
+        .post(`${base}/invoices`)
+        .set('Authorization', auth)
+        .field('purchaseOrderId', poUpload.body.id)
+        .field('invoiceNumber', 'INV-LH-SPLIT')
+        .field('currency', 'USD')
+        .attach('file', Buffer.from('sku,description,qty,unit price\nB2,Gadget,4,12.50\nA1,Widget,10,5.00'), 'invoice.csv')
+        .expect(201)
+      await waitForInvoiceDone(invoiceUpload.body.id)
+
+      const compareRes = await request(app.getHttpServer())
+        .post(`${base}/discrepancies/compare`)
+        .set('Authorization', auth)
+        .send({ purchaseOrderId: poUpload.body.id, invoiceId: invoiceUpload.body.id })
+        .expect(201)
+
+      expect(compareRes.body.flags).toEqual([])
+      expect(compareRes.body.counts).toEqual({
+        quantity_mismatch: 0,
+        price_mismatch: 0,
+        missing_on_invoice: 0,
+        missing_on_po: 0,
+        short_receipt: 0,
+        invoice_exceeds_received: 0,
+        uom_mismatch: 0,
+        currency_mismatch: 0,
+        contract_price_variance: 0,
+        contract_price_unavailable: 0,
+      })
+      // Neither receipt alone covers A1, and a two-way engine also returns no
+      // flags for this pair, so the run itself must prove three-way happened.
+      const [run] = await db.select().from(comparisonRuns).where(eq(comparisonRuns.id, compareRes.body.runId))
+      expect(run.status).toBe('succeeded')
+      expect(run.mode).toBe('three_way')
+      expect(run.goodsReceiptLineCount).toBe(3)
+      expect(run.flagCount).toBe(0)
+    })
+  })
 })

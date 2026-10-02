@@ -384,6 +384,8 @@ sit inside the job's grace period, or assert only on rows the spec owns.
 
 Environment traps hit while verifying (they are execution preflight, not test logic): `bun install` can extract packages empty (`chalk/` with no files) — `bun install --frozen-lockfile --force` repairs it; a near-full disk (98%) made the Next build worker exit 1; and `turbo` appends an agent-guidance block to `AGENTS.md` when it detects an AI agent — restore it before committing.
 
+**2026-10-02 — launch hardening S2 (real-world AP matching + HTTP error answers).** `comparison.service.spec.ts` gained `describe('real-world AP scenarios (launch hardening)')` (13 cases, real `DuckDbQueryService`) and `procurement.e2e-spec.ts` gained `describe('launch hardening: HTTP error answers')` (9 cases, seed helpers only, no `/auth/register`). Expected values came from running `COMPARISON_SQL` itself in an in-memory DuckDB over CSVs built by copies of the service's own serializers, which is why two outcomes are pinned that intuition gets wrong: a credit line is *netted* into the billed quantity (one `quantity_mismatch` 10 vs 8, not a separate flag), and over-delivery raises nothing (D14). Two engine outputs were deliberately left unasserted because they are bugs, not policy: a sub-cent price flag stores `delta '0'` (B9) and description-keyed flags read "Item (unknown)" (B10). The 401 sweep is the first test in the repo that hits every procurement route without a token.
+
 ## Infrastructure / Docker / Deployment Verification
 
 Infra/config/script changes (Dockerfiles, compose files, CI workflows, deploy shell scripts) are not
