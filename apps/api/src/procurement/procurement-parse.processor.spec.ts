@@ -748,4 +748,330 @@ describe('ProcurementParseProcessor', () => {
     expect(row.status).toBe('failed')
     expect(row.lastError).toBe('Workspace monthly token budget reached')
   })
+
+  // Launch hardening (S1). Files the way vendors and spreadsheet apps actually
+  // save them. Every expected value was observed by replaying this processor's
+  // own calls on the same bytes: Papa.parse(text, { header: true,
+  // skipEmptyLines: false }), XLSX.read -> sheet_to_json({ defval: '' }) ->
+  // Papa.unparse, file read as utf-8, sourceRow = record index + 2.
+  describe('real-world files (launch hardening)', () => {
+    it('error: fails a truncated .xlsx at once with the spreadsheet message and stores no lines', async () => {
+      const workspace = await seedWorkspace(`${prefix}rw-corrupt-xlsx@example.com`, prefix)
+      const book = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(book, XLSX.utils.json_to_sheet([{ sku: 'A1', qty: 5 }]), 'Sheet1')
+      const whole = XLSX.write(book, { type: 'buffer', bookType: 'xlsx' }) as Buffer
+      // Half a zip: what an interrupted download or a broken sync leaves behind.
+      const po = await seedPoBuffer(whole.subarray(0, Math.floor(whole.length / 2)), workspace.id, 'po.xlsx')
+
+      await expect(
+        processor.handleParse(job('job-rw-corrupt', { kind: 'purchase_order', id: po.id }, 0, 3)),
+      ).resolves.toBeUndefined()
+
+      const [updated] = await db.select().from(purchaseOrders).where(eq(purchaseOrders.id, po.id))
+      expect(updated.status).toBe('failed')
+      expect(updated.lastError).toBe('Could not read this spreadsheet — it may be corrupt or password-protected')
+      const items = await db.select().from(poLineItems).where(eq(poLineItems.purchaseOrderId, po.id))
+      expect(items).toHaveLength(0)
+    })
+
+    // XLSX.read does not reject text bytes: it reads them as a one-sheet
+    // workbook. Pinned so a change to that behaviour is a visible decision.
+    it('edge: reads an .xlsx whose bytes are plain CSV text as a one-sheet workbook', async () => {
+      const workspace = await seedWorkspace(`${prefix}rw-text-xlsx@example.com`, prefix)
+      const po = await seedPoBuffer(Buffer.from(['sku,qty', 'A1,10'].join('\n')), workspace.id, 'po.xlsx')
+
+      await processor.handleParse(job('job-rw-text-xlsx', { kind: 'purchase_order', id: po.id }))
+
+      const [updated] = await db.select().from(purchaseOrders).where(eq(purchaseOrders.id, po.id))
+      expect(updated.status).toBe('done')
+      const items = await db.select().from(poLineItems).where(eq(poLineItems.purchaseOrderId, po.id))
+      expect(items).toHaveLength(1)
+      expect(items[0]).toMatchObject({
+        sku: 'A1',
+        quantity: '10',
+        sourceKind: 'xlsx',
+        sourceSheet: 'Sheet1',
+        sourceRow: 2,
+      })
+    })
+
+    it('edge: parses every row of a four-column semicolon-delimited CSV ending in a newline', async () => {
+      const workspace = await seedWorkspace(`${prefix}rw-semicolon@example.com`, prefix)
+      const po = await seedPo(
+        'sku;description;qty;unit price\nA1;Widget;10;5.00\nB2;Gadget;3;9.99\n',
+        workspace.id,
+      )
+
+      await processor.handleParse(job('job-rw-semicolon', { kind: 'purchase_order', id: po.id }))
+
+      const [updated] = await db.select().from(purchaseOrders).where(eq(purchaseOrders.id, po.id))
+      expect(updated.status).toBe('done')
+      expect(updated.rowCount).toBe(2)
+      const items = await db
+        .select()
+        .from(poLineItems)
+        .where(eq(poLineItems.purchaseOrderId, po.id))
+        .orderBy(poLineItems.lineNumber)
+      expect(items[0]).toMatchObject({ sku: 'A1', description: 'Widget', quantity: '10', unitPrice: '5.00', sourceRow: 2 })
+      expect(items[1]).toMatchObject({ sku: 'B2', description: 'Gadget', quantity: '3', unitPrice: '9.99', sourceRow: 3 })
+    })
+
+    it('edge: parses every row of a tab-delimited file', async () => {
+      const workspace = await seedWorkspace(`${prefix}rw-tab@example.com`, prefix)
+      const po = await seedPo(
+        ['sku\tdescription\tqty\tunit price', 'A1\tWidget\t10\t5.00', 'B2\tGadget\t3\t9.99'].join('\n'),
+        workspace.id,
+      )
+
+      await processor.handleParse(job('job-rw-tab', { kind: 'purchase_order', id: po.id }))
+
+      const [updated] = await db.select().from(purchaseOrders).where(eq(purchaseOrders.id, po.id))
+      expect(updated.status).toBe('done')
+      expect(updated.rowCount).toBe(2)
+      const items = await db
+        .select()
+        .from(poLineItems)
+        .where(eq(poLineItems.purchaseOrderId, po.id))
+        .orderBy(poLineItems.lineNumber)
+      expect(items[0]).toMatchObject({ sku: 'A1', description: 'Widget', quantity: '10', unitPrice: '5.00' })
+      expect(items[1]).toMatchObject({ sku: 'B2', description: 'Gadget', quantity: '3', unitPrice: '9.99' })
+    })
+
+    it('edge: maps the first column of a CSV saved with a UTF-8 byte order mark', async () => {
+      const workspace = await seedWorkspace(`${prefix}rw-bom@example.com`, prefix)
+      const po = await seedPo('﻿sku,description,qty,unit price\nA1,Widget,10,5.00', workspace.id)
+
+      await processor.handleParse(job('job-rw-bom', { kind: 'purchase_order', id: po.id }))
+
+      const [item] = await db.select().from(poLineItems).where(eq(poLineItems.purchaseOrderId, po.id))
+      expect(item.sku).toBe('A1')
+      // Papa strips the BOM, so the audit copy's header is clean too.
+      expect(item.rawRow).toEqual({ sku: 'A1', description: 'Widget', qty: '10', 'unit price': '5.00' })
+    })
+
+    // sourceRow counts records, not physical lines: B2 sits on line 4 of the
+    // file because A1's description spans two lines, yet it records 3 (D13).
+    it('edge: keeps a quoted description with an embedded newline and doubled quotes in a CRLF file', async () => {
+      const workspace = await seedWorkspace(`${prefix}rw-crlf@example.com`, prefix)
+      const po = await seedPo(
+        [
+          'sku,description,qty,unit price',
+          'A1,"Widget, 10"" blue\nsecond line",10,5.00',
+          'B2,Gadget,3,9.99',
+          'C3,Gizmo,1,1.00',
+        ].join('\r\n'),
+        workspace.id,
+      )
+
+      await processor.handleParse(job('job-rw-crlf', { kind: 'purchase_order', id: po.id }))
+
+      const [updated] = await db.select().from(purchaseOrders).where(eq(purchaseOrders.id, po.id))
+      expect(updated.status).toBe('done')
+      expect(updated.rowCount).toBe(3)
+      const items = await db
+        .select()
+        .from(poLineItems)
+        .where(eq(poLineItems.purchaseOrderId, po.id))
+        .orderBy(poLineItems.lineNumber)
+      expect(items[0]).toMatchObject({ sku: 'A1', description: 'Widget, 10" blue\nsecond line', sourceRow: 2 })
+      expect(items[1]).toMatchObject({ sku: 'B2', description: 'Gadget', sourceRow: 3 })
+      expect(items[2]).toMatchObject({ sku: 'C3', description: 'Gizmo', sourceRow: 4 })
+    })
+
+    it('edge: parses rows with trailing commas and rows with missing cells without failing', async () => {
+      const workspace = await seedWorkspace(`${prefix}rw-ragged@example.com`, prefix)
+      const po = await seedPo(
+        ['sku,description,qty,unit price', 'A1,Widget,10,5.00,,', 'B2,Gadget,3'].join('\n'),
+        workspace.id,
+      )
+
+      await processor.handleParse(job('job-rw-ragged', { kind: 'purchase_order', id: po.id }))
+
+      const [updated] = await db.select().from(purchaseOrders).where(eq(purchaseOrders.id, po.id))
+      expect(updated.status).toBe('done')
+      expect(updated.rowCount).toBe(2)
+      const items = await db
+        .select()
+        .from(poLineItems)
+        .where(eq(poLineItems.purchaseOrderId, po.id))
+        .orderBy(poLineItems.lineNumber)
+      expect(items[0]).toMatchObject({ sku: 'A1', quantity: '10', unitPrice: '5.00' })
+      // Papa files the surplus cells under __parsed_extra; the audit copy keeps them.
+      expect(items[0].rawRow).toEqual({
+        sku: 'A1',
+        description: 'Widget',
+        qty: '10',
+        'unit price': '5.00',
+        __parsed_extra: ['', ''],
+      })
+      expect(items[1]).toMatchObject({ sku: 'B2', quantity: '3', unitPrice: null })
+      expect(items[1].rawRow).toEqual({ sku: 'B2', description: 'Gadget', qty: '3' })
+    })
+
+    // The file is read as UTF-8, so a Windows-1252 byte decodes to U+FFFD.
+    // Pinned, not endorsed (D10): the line still lands, with a visible replacement.
+    it('edge: stores a Windows-1252 accented byte as the Unicode replacement character', async () => {
+      const workspace = await seedWorkspace(`${prefix}rw-cp1252@example.com`, prefix)
+      const bytes = Buffer.concat([
+        Buffer.from('sku,description,qty,unit price\nA1,Caf', 'latin1'),
+        Buffer.from([0xe9]),
+        Buffer.from(' au lait,10,5.00', 'latin1'),
+      ])
+      const po = await seedPoBuffer(bytes, workspace.id, 'po.csv')
+
+      await processor.handleParse(job('job-rw-cp1252', { kind: 'purchase_order', id: po.id }))
+
+      const [item] = await db.select().from(poLineItems).where(eq(poLineItems.purchaseOrderId, po.id))
+      expect(item.description).toBe('Caf� au lait')
+      expect(item.quantity).toBe('10')
+    })
+
+    it('edge: keeps lines whose quantity or unit price is zero', async () => {
+      const workspace = await seedWorkspace(`${prefix}rw-zero@example.com`, prefix)
+      const po = await seedPo(
+        ['sku,description,qty,unit price', 'A1,Free sample,0,5.00', 'B2,Widget,5,0'].join('\n'),
+        workspace.id,
+      )
+
+      await processor.handleParse(job('job-rw-zero', { kind: 'purchase_order', id: po.id }))
+
+      const items = await db
+        .select()
+        .from(poLineItems)
+        .where(eq(poLineItems.purchaseOrderId, po.id))
+        .orderBy(poLineItems.lineNumber)
+      expect(items).toHaveLength(2)
+      expect(items[0]).toMatchObject({ sku: 'A1', quantity: '0', unitPrice: '5.00' })
+      expect(items[1]).toMatchObject({ sku: 'B2', quantity: '5', unitPrice: '0' })
+    })
+
+    it('edge: keeps two lines with the same SKU as separate rows', async () => {
+      const workspace = await seedWorkspace(`${prefix}rw-dup-sku@example.com`, prefix)
+      const po = await seedPo(
+        ['sku,description,qty,unit price', 'A1,Widget,10,5.00', 'A1,Widget,2,5.00'].join('\n'),
+        workspace.id,
+      )
+
+      await processor.handleParse(job('job-rw-dup-sku', { kind: 'purchase_order', id: po.id }))
+
+      const items = await db
+        .select()
+        .from(poLineItems)
+        .where(eq(poLineItems.purchaseOrderId, po.id))
+        .orderBy(poLineItems.lineNumber)
+      expect(items).toHaveLength(2)
+      expect(items[0]).toMatchObject({ sku: 'A1', quantity: '10', lineNumber: 1, sourceRow: 2 })
+      expect(items[1]).toMatchObject({ sku: 'A1', quantity: '2', lineNumber: 2, sourceRow: 3 })
+    })
+
+    it('edge: parses only the first sheet of a two-sheet workbook', async () => {
+      const workspace = await seedWorkspace(`${prefix}rw-two-sheets@example.com`, prefix)
+      const book = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(book, XLSX.utils.json_to_sheet([{ sku: 'A1', qty: 10 }]), 'Lines')
+      XLSX.utils.book_append_sheet(book, XLSX.utils.json_to_sheet([{ sku: 'Z9', qty: 99 }]), 'Notes')
+      const po = await seedPoBuffer(XLSX.write(book, { type: 'buffer', bookType: 'xlsx' }) as Buffer, workspace.id, 'po.xlsx')
+
+      await processor.handleParse(job('job-rw-two-sheets', { kind: 'purchase_order', id: po.id }))
+
+      const items = await db.select().from(poLineItems).where(eq(poLineItems.purchaseOrderId, po.id))
+      expect(items).toHaveLength(1)
+      expect(items[0]).toMatchObject({ sku: 'A1', quantity: '10', sourceSheet: 'Lines', sourceRow: 2 })
+    })
+
+    it('edge: stores a numeric SKU cell as its text', async () => {
+      const workspace = await seedWorkspace(`${prefix}rw-numeric-sku@example.com`, prefix)
+      const book = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(book, XLSX.utils.json_to_sheet([{ sku: 501, qty: 2 }]), 'Sheet1')
+      const po = await seedPoBuffer(XLSX.write(book, { type: 'buffer', bookType: 'xlsx' }) as Buffer, workspace.id, 'po.xlsx')
+
+      await processor.handleParse(job('job-rw-numeric-sku', { kind: 'purchase_order', id: po.id }))
+
+      const [item] = await db.select().from(poLineItems).where(eq(poLineItems.purchaseOrderId, po.id))
+      expect(item.sku).toBe('501')
+      expect(item.quantity).toBe('2')
+    })
+
+    it('edge: stores the cached value of a formula cell', async () => {
+      const workspace = await seedWorkspace(`${prefix}rw-formula@example.com`, prefix)
+      const sheet = XLSX.utils.aoa_to_sheet([
+        ['sku', 'qty', 'unit price', 'total'],
+        ['A1', 3, 5, 0],
+      ])
+      sheet['D2'] = { t: 'n', v: 15, f: 'B2*C2' }
+      const book = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(book, sheet, 'Sheet1')
+      const po = await seedPoBuffer(XLSX.write(book, { type: 'buffer', bookType: 'xlsx' }) as Buffer, workspace.id, 'po.xlsx')
+
+      await processor.handleParse(job('job-rw-formula', { kind: 'purchase_order', id: po.id }))
+
+      const [item] = await db.select().from(poLineItems).where(eq(poLineItems.purchaseOrderId, po.id))
+      expect(item).toMatchObject({ sku: 'A1', quantity: '3', unitPrice: '5', lineTotal: '15' })
+    })
+
+    it('edge: gives a merged cell value only to the top-left row', async () => {
+      const workspace = await seedWorkspace(`${prefix}rw-merged@example.com`, prefix)
+      const sheet = XLSX.utils.aoa_to_sheet([
+        ['sku', 'description', 'qty', 'unit price'],
+        ['A1', 'Widget', 10, 5],
+        ['B2', '', 3, 9.99],
+      ])
+      sheet['!merges'] = [{ s: { r: 1, c: 1 }, e: { r: 2, c: 1 } }]
+      const book = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(book, sheet, 'Sheet1')
+      const po = await seedPoBuffer(XLSX.write(book, { type: 'buffer', bookType: 'xlsx' }) as Buffer, workspace.id, 'po.xlsx')
+
+      await processor.handleParse(job('job-rw-merged', { kind: 'purchase_order', id: po.id }))
+
+      const items = await db
+        .select()
+        .from(poLineItems)
+        .where(eq(poLineItems.purchaseOrderId, po.id))
+        .orderBy(poLineItems.lineNumber)
+      expect(items).toHaveLength(2)
+      expect(items[0]).toMatchObject({ sku: 'A1', description: 'Widget', sourceRow: 2 })
+      expect(items[1]).toMatchObject({ sku: 'B2', description: null, quantity: '3', unitPrice: '9.99', sourceRow: 3 })
+      expect(items[1].rawRow).toMatchObject({ description: '' })
+    })
+
+    it('happy: yields the same lines from a CSV and an XLSX holding the same rows', async () => {
+      const workspace = await seedWorkspace(`${prefix}rw-parity@example.com`, prefix)
+      const csvPo = await seedPo(
+        ['sku,description,qty,unit price', 'A1,Widget,10,9.99', 'B2,Gadget,3,2.5'].join('\n'),
+        workspace.id,
+      )
+      await processor.handleParse(job('job-rw-parity-csv', { kind: 'purchase_order', id: csvPo.id }))
+
+      const book = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(
+        book,
+        XLSX.utils.json_to_sheet([
+          { sku: 'A1', description: 'Widget', qty: 10, 'unit price': 9.99 },
+          { sku: 'B2', description: 'Gadget', qty: 3, 'unit price': 2.5 },
+        ]),
+        'Sheet1',
+      )
+      const xlsxPo = await seedPoBuffer(
+        XLSX.write(book, { type: 'buffer', bookType: 'xlsx' }) as Buffer,
+        workspace.id,
+        'po.xlsx',
+      )
+      await processor.handleParse(job('job-rw-parity-xlsx', { kind: 'purchase_order', id: xlsxPo.id }))
+
+      const fieldsOf = async (purchaseOrderId: string) =>
+        (
+          await db
+            .select()
+            .from(poLineItems)
+            .where(eq(poLineItems.purchaseOrderId, purchaseOrderId))
+            .orderBy(poLineItems.lineNumber)
+        ).map(({ sku, description, quantity, unitPrice }) => ({ sku, description, quantity, unitPrice }))
+
+      const expected = [
+        { sku: 'A1', description: 'Widget', quantity: '10', unitPrice: '9.99' },
+        { sku: 'B2', description: 'Gadget', quantity: '3', unitPrice: '2.5' },
+      ]
+      expect(await fieldsOf(csvPo.id)).toEqual(expected)
+      expect(await fieldsOf(xlsxPo.id)).toEqual(expected)
+    })
+  })
 })
