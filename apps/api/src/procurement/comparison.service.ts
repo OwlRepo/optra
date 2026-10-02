@@ -401,7 +401,10 @@ function lineName(line?: { sku: string | null; description: string | null }): st
   if (sku) return line!.sku
   const description = line?.description?.trim()
   if (!description) return null
-  const shown = description.length > REASON_NAME_MAX ? `${description.slice(0, REASON_NAME_MAX - 1)}…` : description
+  // Counted in characters, not UTF-16 units, so an emoji is never cut in half.
+  const characters = Array.from(description)
+  const shown =
+    characters.length > REASON_NAME_MAX ? `${characters.slice(0, REASON_NAME_MAX - 1).join('')}…` : description
   return `"${shown}"`
 }
 
