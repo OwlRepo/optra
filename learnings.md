@@ -449,3 +449,12 @@ And one rule the owner made standing: every change now ships with its tests for 
 **Actual:** confirmed — 13 unit and 9 API e2e cases, each spec green three runs in a row (113/113 and 34/34), no source file touched.
 
 **Why different:** not different. The lesson sits in what was left out: two engine outputs (sub-cent `delta '0'`, "Item (unknown)" reasons) would have been easy to pin and would have turned bugs into "expected behaviour". **A characterization suite is only honest if it refuses to assert what is wrong.**
+
+## 2026-10-02 — Launch hardening S3: catalogs under failure
+*Learning Contract: the plan's design is the prediction; the diff is below. No live prediction solicited.*
+
+**Predicted (from the approved plan):** test-only slices land green with zero guarded-source change.
+
+**Actual:** confirmed — 12 unit and 4 API e2e cases, each spec green three runs in a row (44/44 and 7/7), full api unit 770/770 and API e2e 91/91 once, no source file touched. The planned "a model failure on one of several candidates rejects the search" case was dropped before it was written, because asserting it would have pinned bug B6. The single-candidate "malformed model verdict rejects the search" case is kept and pins today's rejection; the B6 fix slice must update it explicitly.
+
+**Why different:** not different. **When the honest assertion for a case is a known bug, the right move is to drop the case and test the invariant next to it (here: the rollback), not to pin the bug.**
