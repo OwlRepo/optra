@@ -3530,9 +3530,9 @@
     "semantic_hash": "c1702e5aeeb16da9c1c08ace17fcdf3d"
   },
   "docs/ai/risk-register.md": {
-    "mtime": 1790952194.044326,
-    "ast_hash": "85c166482b7ecf8fbaf802916b794782",
-    "semantic_hash": "85c166482b7ecf8fbaf802916b794782"
+    "mtime": 1790952483.1837516,
+    "ast_hash": "1f6de07e485f2a7e6644ab88f492ec58",
+    "semantic_hash": "1f6de07e485f2a7e6644ab88f492ec58"
   },
   "docs/ai/task-router.md": {
     "mtime": 1790952194.044903,
@@ -3540,9 +3540,9 @@
     "semantic_hash": "98c8c9754dd69f6ce447a665510a2896"
   },
   "docs/ai/testing-strategy.md": {
-    "mtime": 1790952337.7166,
-    "ast_hash": "8db18968d7ce879d29f44e66039ae71d",
-    "semantic_hash": "8db18968d7ce879d29f44e66039ae71d"
+    "mtime": 1790952483.1833556,
+    "ast_hash": "21315ef4ea1019a86a26b4958b2fa85c",
+    "semantic_hash": "21315ef4ea1019a86a26b4958b2fa85c"
   },
   "docs/designs/elid-ticket-copilot.md": {
     "mtime": 1790952194.0456662,
@@ -3550,9 +3550,9 @@
     "semantic_hash": "22fd13b287c37dfd16da69ed22733b2b"
   },
   "learnings.md": {
-    "mtime": 1790952337.7169025,
-    "ast_hash": "78653ed5bd2f81b8ee07a090960a8d2f",
-    "semantic_hash": "78653ed5bd2f81b8ee07a090960a8d2f"
+    "mtime": 1790952483.1829603,
+    "ast_hash": "895bd0ddeabffbdef37055004e2a32a2",
+    "semantic_hash": "895bd0ddeabffbdef37055004e2a32a2"
   },
   "scripts/eval/README.md": {
     "mtime": 1790952194.1157901,
