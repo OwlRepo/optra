@@ -440,3 +440,12 @@ And one rule the owner made standing: every change now ships with its tests for 
 **Actual:** confirmed — 25 new cases; the two touched specs green three runs in a row (78/78 each) and the full api unit suite green once (745/745); no source file touched. The planning probes changed two expectations before any test was written: SheetJS reads a plain-text `.xlsx` instead of refusing it, and a numeric `5.00` cell becomes `"5"`.
 
 **Why different:** not different, because the expectations were measured rather than assumed. **When a test pins today's behaviour, replay the library on the exact bytes first; intuition about parsers is wrong often enough to matter.**
+
+## 2026-10-02 — Launch hardening S2: the engine meets real AP documents
+*Learning Contract: the plan's design is the prediction; the diff is below. No live prediction solicited.*
+
+**Predicted (from the approved plan):** test-only slices land green with zero guarded-source change.
+
+**Actual:** confirmed — 13 unit and 9 API e2e cases, each spec green three runs in a row (113/113 and 34/34), no source file touched.
+
+**Why different:** not different. The lesson sits in what was left out: two engine outputs (sub-cent `delta '0'`, "Item (unknown)" reasons) would have been easy to pin and would have turned bugs into "expected behaviour". **A characterization suite is only honest if it refuses to assert what is wrong.**
