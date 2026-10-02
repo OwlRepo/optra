@@ -1,3 +1,5 @@
+import http from 'http'
+
 // dotenv (used by @nestjs/config) never overrides a var already present in
 // process.env, so setting this here — before any spec's AppModule boots —
 // forces every e2e test onto the console-log OTP/invite fallback instead of
@@ -19,3 +21,10 @@ process.env.BULL_PREFIX = `bull-e2e-${process.pid}`
 // runs in UTC. A non-UTC host would read fresh rows as hours old and let the
 // services' stale-job sweeps act on them.
 process.env.TZ = 'UTC'
+
+// supertest listens on a fresh ephemeral port per request and closes the
+// server after it. Node 19+'s global agent keeps sockets alive, so when a later
+// request drew a port an earlier, already-closed server had used, the pooled
+// socket was reused and the request died as "socket hang up" (about one full
+// run in six). A fresh connection per request removes the stale pool.
+http.globalAgent = new http.Agent({ keepAlive: false })
