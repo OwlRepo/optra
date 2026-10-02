@@ -4,7 +4,7 @@
 // The API reaches it through OPENAI_BASE_URL, which openai@4 reads in its
 // constructor and @langchain/openai passes through. It answers only what the
 // storage paths need: embeddings for knowledge-base ingest and dataset
-// profiling, and chat completions for catalog page extraction. Anything else
+// profiling, and chat completions for catalog page extraction and match comparison. Anything else
 // is a 404, so a new model call shows up as a failing test, not a silent pass.
 //
 // Run: `bun stubs/openai-stub.ts` (PORT defaults to 4010).
@@ -61,9 +61,14 @@ function promptText(messages: any[]): string {
 
 function chatCompletion(body: any): unknown {
   const prompt = promptText(body.messages ?? [])
-  const content = /catalog product entries/i.test(prompt)
-    ? JSON.stringify({ items: CATALOG_STUB_ITEMS })
-    : 'e2e stub response'
+  // Catalog match comparison: keyed on CATALOG_COMPARE_SYSTEM_PROMPT's own
+  // wording (packages/ai/src/chains/catalog-match.ts), which the page-extraction
+  // prompt never contains. Checked first so the two can never cross.
+  const content = /candidate product from a vendor catalog/i.test(prompt)
+    ? JSON.stringify({ isMatch: true, score: 0.9, reason: 'E2E stub match' })
+    : /catalog product entries/i.test(prompt)
+      ? JSON.stringify({ items: CATALOG_STUB_ITEMS })
+      : 'e2e stub response'
   return {
     id: `chatcmpl-e2e-${Date.now()}`,
     object: 'chat.completion',
