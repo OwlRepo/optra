@@ -1,3 +1,6 @@
+import { ParseUUIDPipe } from '@nestjs/common'
+import { ROUTE_ARGS_METADATA } from '@nestjs/common/constants'
+import { RouteParamtypes } from '@nestjs/common/enums/route-paramtypes.enum'
 import type { Response } from 'express'
 import { CatalogController } from './catalog.controller'
 import type { CatalogDocumentsService } from './catalog-documents.service'
@@ -39,5 +42,42 @@ describe('CatalogController photo', () => {
       'X-Content-Type-Options': 'nosniff',
     })
     expect(res.send).toHaveBeenCalledWith(Buffer.from('png'))
+  })
+})
+
+// B13. A path param gets no class-validator pass, so a malformed :vendorId or
+// :catalogId reached a uuid query and Postgres answered 22P02, which surfaced
+// as a 500. Every id the catalog routes take from the path must be parsed as a
+// UUID first, the way :itemId, :matchId and the verify route's :vendorId are.
+describe('CatalogController path ids (B13)', () => {
+  // Walks every handler rather than a hand-kept list, so a route added later
+  // with a bare id param fails here too. :workspaceId is left to
+  // WorkspaceMemberGuard, which rejects a malformed one with 403 first.
+  function pathIds() {
+    const found: { route: string; parsed: boolean }[] = []
+    for (const handler of Object.getOwnPropertyNames(CatalogController.prototype)) {
+      const args = Reflect.getMetadata(ROUTE_ARGS_METADATA, CatalogController, handler) as
+        | Record<string, { data?: unknown; pipes?: unknown[] }>
+        | undefined
+      for (const [key, arg] of Object.entries(args ?? {})) {
+        const isPathParam = Number(key.split(':')[0]) === RouteParamtypes.PARAM
+        if (!isPathParam || typeof arg.data !== 'string' || !arg.data.endsWith('Id') || arg.data === 'workspaceId') {
+          continue
+        }
+        const parsed = arg.pipes?.some((pipe) => pipe instanceof ParseUUIDPipe || pipe === ParseUUIDPipe) ?? false
+        found.push({ route: `${handler}(:${arg.data})`, parsed })
+      }
+    }
+    return found
+  }
+
+  it('error: every id taken from the path is parsed as a UUID before the handler runs', () => {
+    const ids = pathIds()
+
+    // Guard against a vacuous pass: the walk must see the ids these routes take.
+    expect(ids.map((id) => id.route)).toEqual(
+      expect.arrayContaining(['getVendor(:vendorId)', 'listCatalogItems(:catalogId)', 'dismissMatch(:matchId)']),
+    )
+    expect(ids.filter((id) => !id.parsed).map((id) => id.route)).toEqual([])
   })
 })

@@ -7,6 +7,7 @@ import { tmpdir } from 'os'
 import { join } from 'path'
 import { and, eq, like } from 'drizzle-orm'
 import request from 'supertest'
+import * as XLSX from 'xlsx'
 import {
   comparisonRuns,
   db,
@@ -1771,6 +1772,160 @@ describe('Procurement flow (e2e)', () => {
 
       const [receipt] = await db.select().from(goodsReceipts).where(eq(goodsReceipts.id, upload.body.id))
       expect(receipt.rowCount).toBe(2)
+    })
+  })
+
+  // B1 over HTTP: a flag on an XLSX line that sits below a blank row cites the
+  // row a reviewer finds when they open the file.
+  describe('XLSX citations (B1)', () => {
+    it('regression: a price flag on an XLSX line below a blank row cites its true spreadsheet row', async () => {
+      const owner = await seedOwnerWithWorkspace(app, `${prefix}b1-http@example.com`, 'B1 Http')
+      const vendorId = await createVendor(app, owner.workspaceId, owner.accessToken)
+      const book = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(
+        book,
+        XLSX.utils.aoa_to_sheet([['sku', 'description', 'qty', 'unit price'], ['A1', 'Widget', 10, 5], [], ['B2', 'Gadget', 4, 12.5]]),
+        'Order Lines',
+      )
+
+      const po = await request(app.getHttpServer())
+        .post(`/workspaces/${owner.workspaceId}/procurement/purchase-orders`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .field('vendorId', vendorId)
+        .field('poNumber', 'PO-B1-XLSX')
+        .field('currency', 'USD')
+        .attach('file', XLSX.write(book, { type: 'buffer', bookType: 'xlsx' }) as Buffer, 'po.xlsx')
+        .expect(201)
+      const invoice = await request(app.getHttpServer())
+        .post(`/workspaces/${owner.workspaceId}/procurement/invoices`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .field('purchaseOrderId', po.body.id)
+        .field('invoiceNumber', 'INV-B1-XLSX')
+        .field('currency', 'USD')
+        .attach('file', Buffer.from('sku,description,qty,unit price\nA1,Widget,10,5.00\nB2,Gadget,4,13.00'), 'invoice.csv')
+        .expect(201)
+      await waitForPoDone(po.body.id)
+      await waitForInvoiceDone(invoice.body.id)
+      await request(app.getHttpServer())
+        .post(`/workspaces/${owner.workspaceId}/procurement/discrepancies/compare`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .send({ purchaseOrderId: po.body.id, invoiceId: invoice.body.id })
+        .expect(201)
+
+      const res = await request(app.getHttpServer())
+        .get(`/workspaces/${owner.workspaceId}/procurement/discrepancies`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .expect(200)
+
+      const price = res.body.items.find((flag: { flagType: string }) => flag.flagType === 'price_mismatch')
+      expect(price.sku).toBe('B2')
+      expect(price.poLine).toMatchObject({ sourceRow: 4, sourceSheet: 'Order Lines', documentId: po.body.id })
+      expect(price.invoiceLine).toMatchObject({ sourceRow: 3, documentId: invoice.body.id })
+    })
+  })
+
+  describe('non-ASCII filenames (B8)', () => {
+    it('regression: a purchase order uploaded as façture-日本.csv is listed and downloaded under that name', async () => {
+      const owner = await seedOwnerWithWorkspace(app, `${prefix}b8-name@example.com`, 'B8 Name')
+      const vendorId = await createVendor(app, owner.workspaceId, owner.accessToken)
+      const base = `/workspaces/${owner.workspaceId}/procurement`
+      const auth = `Bearer ${owner.accessToken}`
+
+      const upload = await request(app.getHttpServer())
+        .post(`${base}/purchase-orders`)
+        .set('Authorization', auth)
+        .field('vendorId', vendorId)
+        .field('poNumber', 'PO-B8')
+        .field('currency', 'USD')
+        .attach('file', Buffer.from('sku,description,qty,unit price\nA1,Widget,10,5.00'), 'façture-日本.csv')
+        .expect(201)
+      expect(upload.body.name).toBe('façture-日本.csv')
+
+      const listed = await request(app.getHttpServer()).get(`${base}/purchase-orders`).set('Authorization', auth).expect(200)
+      const rows = (Array.isArray(listed.body) ? listed.body : listed.body.items) as { id: string; name: string }[]
+      expect(rows.find((row) => row.id === upload.body.id)?.name).toBe('façture-日本.csv')
+
+      const download = await request(app.getHttpServer())
+        .get(`${base}/purchase-orders/${upload.body.id}/download`)
+        .set('Authorization', auth)
+        .expect(200)
+      expect(download.headers['content-disposition']).toBe(
+        "attachment; filename=\"fa_ture-__.csv\"; filename*=UTF-8''fa%C3%A7ture-%E6%97%A5%E6%9C%AC.csv",
+      )
+    })
+  })
+
+  describe('exact flag deltas (B9)', () => {
+    it('regression: a sub-cent price mismatch compared over HTTP carries its real delta', async () => {
+      const owner = await seedOwnerWithWorkspace(app, `${prefix}b9-delta@example.com`, 'B9 Delta')
+      const vendorId = await createVendor(app, owner.workspaceId, owner.accessToken)
+      const base = `/workspaces/${owner.workspaceId}/procurement`
+      const auth = `Bearer ${owner.accessToken}`
+
+      const po = await request(app.getHttpServer())
+        .post(`${base}/purchase-orders`)
+        .set('Authorization', auth)
+        .field('vendorId', vendorId)
+        .field('poNumber', 'PO-B9')
+        .field('currency', 'USD')
+        .attach('file', Buffer.from('sku,description,qty,unit price\nA1,Washer,300,0.3333'), 'po.csv')
+        .expect(201)
+      await waitForPoDone(po.body.id)
+      const invoice = await request(app.getHttpServer())
+        .post(`${base}/invoices`)
+        .set('Authorization', auth)
+        .field('purchaseOrderId', po.body.id)
+        .field('invoiceNumber', 'INV-B9')
+        .field('currency', 'USD')
+        .attach('file', Buffer.from('sku,description,qty,unit price\nA1,Washer,300,0.33'), 'invoice.csv')
+        .expect(201)
+      await waitForInvoiceDone(invoice.body.id)
+
+      const compared = await request(app.getHttpServer())
+        .post(`${base}/discrepancies/compare`)
+        .set('Authorization', auth)
+        .send({ purchaseOrderId: po.body.id, invoiceId: invoice.body.id })
+        .expect(201)
+
+      expect(compared.body.flags).toHaveLength(1)
+      expect(compared.body.flags[0]).toMatchObject({ flagType: 'price_mismatch', delta: '-0.0033' })
+    })
+  })
+
+  describe('line names in flag reasons (B10)', () => {
+    it('regression: a compare over HTTP names a line without a SKU by its description', async () => {
+      const owner = await seedOwnerWithWorkspace(app, `${prefix}b10-name@example.com`, 'B10 Name')
+      const vendorId = await createVendor(app, owner.workspaceId, owner.accessToken)
+      const base = `/workspaces/${owner.workspaceId}/procurement`
+      const auth = `Bearer ${owner.accessToken}`
+
+      const po = await request(app.getHttpServer())
+        .post(`${base}/purchase-orders`)
+        .set('Authorization', auth)
+        .field('vendorId', vendorId)
+        .field('poNumber', 'PO-B10')
+        .field('currency', 'USD')
+        .attach('file', Buffer.from('description,qty,unit price\nBolt M8x20,100,0.12'), 'po.csv')
+        .expect(201)
+      await waitForPoDone(po.body.id)
+      const invoice = await request(app.getHttpServer())
+        .post(`${base}/invoices`)
+        .set('Authorization', auth)
+        .field('purchaseOrderId', po.body.id)
+        .field('invoiceNumber', 'INV-B10')
+        .field('currency', 'USD')
+        .attach('file', Buffer.from('description,qty,unit price\nBolt M8x20,90,0.12'), 'invoice.csv')
+        .expect(201)
+      await waitForInvoiceDone(invoice.body.id)
+
+      const compared = await request(app.getHttpServer())
+        .post(`${base}/discrepancies/compare`)
+        .set('Authorization', auth)
+        .send({ purchaseOrderId: po.body.id, invoiceId: invoice.body.id })
+        .expect(201)
+
+      expect(compared.body.flags).toHaveLength(1)
+      expect(compared.body.flags[0].reason).toBe('Quantity mismatch for "Bolt M8x20": PO=100 Invoice=90')
     })
   })
 })

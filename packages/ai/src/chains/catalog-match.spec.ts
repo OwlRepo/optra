@@ -171,3 +171,23 @@ describe('compareLineItemToCatalogImage', () => {
     ).rejects.toThrow(CatalogExtractionRefusalError)
   })
 })
+
+describe('compareLineItemToCatalogImage errors (B15)', () => {
+  beforeEach(() => {
+    invokeMock.mockReset()
+  })
+
+  // B15. The compare path reused the extraction error's default text, so a
+  // broken comparison was logged as "malformed catalog extraction JSON".
+  it('error: a malformed comparison payload is reported as a comparison, not an extraction (B15)', async () => {
+    invokeMock.mockResolvedValue({ content: 'not json at all' })
+
+    const { compareLineItemToCatalogImage, CatalogExtractionParseError } = await import('./catalog-match')
+
+    const error = await compareLineItemToCatalogImage({ queryText: 'q', candidateText: 'c', candidateImageBase64: null }).catch(
+      (caught: unknown) => caught,
+    )
+    expect(error).toBeInstanceOf(CatalogExtractionParseError)
+    expect((error as Error).message).toBe('Model returned malformed catalog comparison JSON')
+  })
+})

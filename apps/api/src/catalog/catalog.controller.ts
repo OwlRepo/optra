@@ -106,7 +106,7 @@ export class CatalogController {
   // by scanning the whole list array client-side.
   @Get('vendors/:vendorId')
   @UseGuards(JwtAuthGuard, WorkspaceMemberGuard)
-  getVendor(@Param('workspaceId') workspaceId: string, @Param('vendorId') vendorId: string) {
+  getVendor(@Param('workspaceId') workspaceId: string, @Param('vendorId', new ParseUUIDPipe()) vendorId: string) {
     return this.history.get(workspaceId, vendorId)
   }
 
@@ -116,7 +116,7 @@ export class CatalogController {
   @UseGuards(JwtAuthGuard, WorkspaceMemberGuard)
   vendorPriceHistory(
     @Param('workspaceId') workspaceId: string,
-    @Param('vendorId') vendorId: string,
+    @Param('vendorId', new ParseUUIDPipe()) vendorId: string,
     @Query() query: VendorPriceHistoryQueryDto,
   ) {
     return this.history.priceHistory(workspaceId, vendorId, query)
@@ -124,7 +124,7 @@ export class CatalogController {
 
   @Get('vendors/:vendorId/exception-summary')
   @UseGuards(JwtAuthGuard, WorkspaceMemberGuard)
-  vendorExceptionSummary(@Param('workspaceId') workspaceId: string, @Param('vendorId') vendorId: string) {
+  vendorExceptionSummary(@Param('workspaceId') workspaceId: string, @Param('vendorId', new ParseUUIDPipe()) vendorId: string) {
     return this.history.exceptionSummary(workspaceId, vendorId)
   }
 
@@ -136,7 +136,7 @@ export class CatalogController {
   @Roles('owner', 'admin')
   createPriceTerm(
     @Param('workspaceId') workspaceId: string,
-    @Param('vendorId') vendorId: string,
+    @Param('vendorId', new ParseUUIDPipe()) vendorId: string,
     @Body() body: CreatePriceTermDto,
     @CurrentUser() user: CurrentUserContext,
   ) {
@@ -145,7 +145,7 @@ export class CatalogController {
 
   @Get('vendors/:vendorId/price-terms')
   @UseGuards(JwtAuthGuard, WorkspaceMemberGuard)
-  listPriceTerms(@Param('workspaceId') workspaceId: string, @Param('vendorId') vendorId: string) {
+  listPriceTerms(@Param('workspaceId') workspaceId: string, @Param('vendorId', new ParseUUIDPipe()) vendorId: string) {
     return this.priceTerms.list(workspaceId, vendorId)
   }
 
@@ -155,7 +155,7 @@ export class CatalogController {
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: MAX_UPLOAD_BYTES }, fileFilter }))
   uploadCatalog(
     @Param('workspaceId') workspaceId: string,
-    @Param('vendorId') vendorId: string,
+    @Param('vendorId', new ParseUUIDPipe()) vendorId: string,
     @UploadedFile() file?: Express.Multer.File,
   ) {
     if (!file) {
@@ -169,7 +169,7 @@ export class CatalogController {
   @Roles('owner', 'admin')
   scrapeCatalog(
     @Param('workspaceId') workspaceId: string,
-    @Param('vendorId') vendorId: string,
+    @Param('vendorId', new ParseUUIDPipe()) vendorId: string,
     @Body() body: ScrapeCatalogDto,
   ) {
     if (!catalogEnabled()) {
@@ -180,7 +180,7 @@ export class CatalogController {
 
   @Get('vendors/:vendorId/catalogs')
   @UseGuards(JwtAuthGuard, WorkspaceMemberGuard)
-  listCatalogs(@Param('workspaceId') workspaceId: string, @Param('vendorId') vendorId: string) {
+  listCatalogs(@Param('workspaceId') workspaceId: string, @Param('vendorId', new ParseUUIDPipe()) vendorId: string) {
     return this.documents.listCatalogs(workspaceId, vendorId)
   }
 
@@ -188,8 +188,8 @@ export class CatalogController {
   @UseGuards(JwtAuthGuard, WorkspaceMemberGuard)
   listCatalogItems(
     @Param('workspaceId') workspaceId: string,
-    @Param('vendorId') vendorId: string,
-    @Param('catalogId') catalogId: string,
+    @Param('vendorId', new ParseUUIDPipe()) vendorId: string,
+    @Param('catalogId', new ParseUUIDPipe()) catalogId: string,
   ) {
     return this.documents.listItems(workspaceId, vendorId, catalogId)
   }

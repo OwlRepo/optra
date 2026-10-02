@@ -161,7 +161,12 @@ describe('Catalog flow (e2e)', () => {
     // catalog-parse.processor.spec.ts (real processor logic, mocked render).
     const extraction = {
       extractFromImage: jest.fn(async () => ({ items: [] })),
-      compare: jest.fn(async () => ({ isMatch: true, score: 0.9, reason: 'Same product.' })),
+      // A candidate described with E2E-UNJUDGED stands in for a model call that
+      // fails (B6); every other candidate gets the fixed verdict.
+      compare: jest.fn(async (input: { candidateText: string }) => {
+        if (input.candidateText.includes('E2E-UNJUDGED')) throw new Error('E2E model failure')
+        return { isMatch: true, score: 0.9, reason: 'Same product.' }
+      }),
     }
     const images = {
       fetchAndStore: jest.fn(async (workspaceId: string, catalogId: string) => `${workspaceId}/catalogs/${catalogId}/images/fake.png`),
@@ -557,6 +562,185 @@ describe('Catalog flow (e2e)', () => {
       for (const res of [photo, dismiss, verify]) {
         expect(res.body.message).toBe('Validation failed (uuid is expected)')
       }
+    })
+  })
+
+  // B13: a malformed :vendorId or :catalogId used to reach a uuid query and
+  // answer 500. It must be a 400 before any query runs, on every route.
+  describe('malformed vendor and catalog ids (B13)', () => {
+    it('error: every catalog route answers 400 for a malformed vendor id', async () => {
+      const owner = await seedOwnerWithWorkspace(app, `${prefix}b13-vendor@example.com`, 'B13 Vendor')
+      const ws = `/workspaces/${owner.workspaceId}/vendors/not-a-uuid`
+      const auth = `Bearer ${owner.accessToken}`
+
+      const answers = [
+        await request(app.getHttpServer()).get(ws).set('Authorization', auth),
+        await request(app.getHttpServer()).get(`${ws}/price-history`).set('Authorization', auth),
+        await request(app.getHttpServer()).get(`${ws}/exception-summary`).set('Authorization', auth),
+        await request(app.getHttpServer()).get(`${ws}/price-terms`).set('Authorization', auth),
+        await request(app.getHttpServer())
+          .post(`${ws}/price-terms`)
+          .set('Authorization', auth)
+          .send({ sku: 'A1', unitPrice: '5.00', currency: 'USD', effectiveFrom: '2026-01-01' }),
+        await request(app.getHttpServer()).get(`${ws}/catalogs`).set('Authorization', auth),
+        await request(app.getHttpServer())
+          .post(`${ws}/catalogs`)
+          .set('Authorization', auth)
+          .attach('file', Buffer.from('sku,description\nA1,Widget'), 'catalog.csv'),
+        await request(app.getHttpServer())
+          .post(`${ws}/catalogs/scrape`)
+          .set('Authorization', auth)
+          .send({ seedUrl: 'https://vendor.example.com/' }),
+        await request(app.getHttpServer()).get(`${ws}/catalogs/${randomUUID()}/items`).set('Authorization', auth),
+      ].map((res) => ({ status: res.status, message: res.body.message }))
+
+      expect(answers).toEqual(Array(9).fill({ status: 400, message: 'Validation failed (uuid is expected)' }))
+    })
+
+    it('error: listing a catalog\'s items answers 400 for a malformed catalog id', async () => {
+      const owner = await seedOwnerWithWorkspace(app, `${prefix}b13-catalog@example.com`, 'B13 Catalog')
+
+      const res = await request(app.getHttpServer())
+        .get(`/workspaces/${owner.workspaceId}/vendors/${randomUUID()}/catalogs/not-a-uuid/items`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .expect(400)
+
+      expect(res.body.message).toBe('Validation failed (uuid is expected)')
+    })
+  })
+
+  describe('over-long catalog SKUs (B5)', () => {
+    it('regression: a CSV catalog with one SKU over 200 characters parses to done, with that item stored without a SKU', async () => {
+      const owner = await seedOwnerWithWorkspace(app, `${prefix}b5-long-sku@example.com`, 'B5 Long Sku')
+      const auth = `Bearer ${owner.accessToken}`
+      const vendor = await request(app.getHttpServer())
+        .post(`/workspaces/${owner.workspaceId}/vendors`)
+        .set('Authorization', auth)
+        .send({ name: 'B5 Vendor' })
+        .expect(201)
+      const base = `/workspaces/${owner.workspaceId}/vendors/${vendor.body.id}/catalogs`
+      const longSku = 'X'.repeat(201)
+
+      const upload = await request(app.getHttpServer())
+        .post(base)
+        .set('Authorization', auth)
+        .attach('file', Buffer.from(`sku,description\nA1,Widget\n${longSku},Gadget\n`), 'catalog.csv')
+        .expect(201)
+      await waitForCatalogDone(upload.body.id)
+
+      const items = await request(app.getHttpServer())
+        .get(`${base}/${upload.body.id}/items`)
+        .set('Authorization', auth)
+        .expect(200)
+      const rows = items.body as { sku: string | null; description: string | null }[]
+      expect(rows.map((row) => [row.sku, row.description])).toEqual([
+        ['A1', 'Widget'],
+        [null, 'Gadget'],
+      ])
+    })
+  })
+
+  describe('partial catalog search failures (B6)', () => {
+    async function seedLineAndCandidates(email: string, candidates: { sku: string; description: string }[]) {
+      const owner = await seedOwnerWithWorkspace(app, email, 'B6 Search')
+      const [vendor] = await db.insert(vendors).values({ workspaceId: owner.workspaceId, name: 'B6 Vendor' }).returning()
+      const [catalog] = await db
+        .insert(catalogs)
+        .values({ workspaceId: owner.workspaceId, vendorId: vendor.id, name: 'catalog.csv', status: 'done' })
+        .returning()
+      await db
+        .insert(catalogItems)
+        .values(candidates.map((item) => ({ workspaceId: owner.workspaceId, catalogId: catalog.id, ...item })))
+      const [po] = await db
+        .insert(purchaseOrders)
+        .values({ workspaceId: owner.workspaceId, name: 'po.csv', status: 'done' })
+        .returning()
+      const [line] = await db
+        .insert(poLineItems)
+        .values({ workspaceId: owner.workspaceId, purchaseOrderId: po.id, sku: 'B6A', description: 'Widget' })
+        .returning()
+      return { owner, lineId: line.id }
+    }
+
+    it('error: a search where no candidate can be compared answers 503 in plain words', async () => {
+      const { owner, lineId } = await seedLineAndCandidates(`${prefix}b6-none@example.com`, [
+        { sku: 'B6A-1', description: 'E2E-UNJUDGED widget' },
+      ])
+
+      const res = await request(app.getHttpServer())
+        .post(`/workspaces/${owner.workspaceId}/catalog-matches/search`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .send({ purchaseOrderLineItemId: lineId })
+        .expect(503)
+
+      expect(res.body.message).toBe('No catalog item could be compared right now. Try the search again.')
+    })
+
+    it('regression: a search where one candidate cannot be compared answers 201 with the rest and counts it', async () => {
+      const { owner, lineId } = await seedLineAndCandidates(`${prefix}b6-one@example.com`, [
+        { sku: 'B6A', description: 'Widget' },
+        { sku: 'B6A-2', description: 'E2E-UNJUDGED widget' },
+      ])
+
+      const res = await request(app.getHttpServer())
+        .post(`/workspaces/${owner.workspaceId}/catalog-matches/search`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .send({ purchaseOrderLineItemId: lineId })
+        .expect(201)
+
+      expect(res.body.matches).toHaveLength(1)
+      expect(res.body.matches[0]).toMatchObject({ isMatch: true, reason: 'Same product.' })
+      expect(res.body.unjudged).toBe(1)
+    })
+  })
+
+  describe('non-ASCII catalog filenames (B8)', () => {
+    it('regression: a catalog uploaded as catálogo-日本.csv is listed under that name', async () => {
+      const owner = await seedOwnerWithWorkspace(app, `${prefix}b8-name@example.com`, 'B8 Catalog Name')
+      const auth = `Bearer ${owner.accessToken}`
+      const vendor = await request(app.getHttpServer())
+        .post(`/workspaces/${owner.workspaceId}/vendors`)
+        .set('Authorization', auth)
+        .send({ name: 'B8 Vendor' })
+        .expect(201)
+      const base = `/workspaces/${owner.workspaceId}/vendors/${vendor.body.id}/catalogs`
+
+      const upload = await request(app.getHttpServer())
+        .post(base)
+        .set('Authorization', auth)
+        .attach('file', Buffer.from('sku,description\nA1,Widget\n'), 'catálogo-日本.csv')
+        .expect(201)
+
+      const listed = await request(app.getHttpServer()).get(base).set('Authorization', auth).expect(200)
+      expect((listed.body as { id: string; name: string }[]).find((row) => row.id === upload.body.id)?.name).toBe(
+        'catálogo-日本.csv',
+      )
+    })
+  })
+
+  describe('blank catalog rows (B4)', () => {
+    it('regression: a CSV catalog ending in ",," rows lists only its real items', async () => {
+      const owner = await seedOwnerWithWorkspace(app, `${prefix}b4-blank@example.com`, 'B4 Blank')
+      const auth = `Bearer ${owner.accessToken}`
+      const vendor = await request(app.getHttpServer())
+        .post(`/workspaces/${owner.workspaceId}/vendors`)
+        .set('Authorization', auth)
+        .send({ name: 'B4 Vendor' })
+        .expect(201)
+      const base = `/workspaces/${owner.workspaceId}/vendors/${vendor.body.id}/catalogs`
+
+      const upload = await request(app.getHttpServer())
+        .post(base)
+        .set('Authorization', auth)
+        .attach('file', Buffer.from('sku,description\nA1,Widget\n,,\nB2,Gadget\n,,\n,,\n'), 'catalog.csv')
+        .expect(201)
+      await waitForCatalogDone(upload.body.id)
+
+      const items = await request(app.getHttpServer())
+        .get(`${base}/${upload.body.id}/items`)
+        .set('Authorization', auth)
+        .expect(200)
+      expect((items.body as { sku: string | null }[]).map((item) => item.sku)).toEqual(['A1', 'B2'])
     })
   })
 })

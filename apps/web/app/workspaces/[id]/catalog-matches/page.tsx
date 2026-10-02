@@ -64,11 +64,13 @@ export default function CatalogMatchesPage({ params }: { params: { id: string } 
   // page listed every match in the workspace, which is not what "Find catalog
   // matches" on a single discrepancy row means. Empty when opened from the
   // sidebar, which keeps the workspace-wide listing for that entry point.
+  //
+  // It is the same line matchQuery searches by. A flag's link carries both its
+  // PO and its invoice line ids, a search stores matches under the PO line
+  // only, and the API ANDs the two filters, so scoping to both listed nothing
+  // right after "1 match found".
   const lineScope = React.useMemo(
-    () => ({
-      poLineItemId: poLineItemId ?? undefined,
-      invoiceLineItemId: invoiceLineItemId ?? undefined,
-    }),
+    () => (poLineItemId ? { poLineItemId } : invoiceLineItemId ? { invoiceLineItemId } : {}),
     [poLineItemId, invoiceLineItemId],
   )
 
@@ -174,6 +176,21 @@ export default function CatalogMatchesPage({ params }: { params: { id: string } 
     void refetchMatches(vendorFilter, value)
   }
 
+  // A search saves the verdicts it got; candidates the model could not compare
+  // are skipped and counted (B6). Said in its own toast so the success summary
+  // keeps its wording and the skip cannot be missed.
+  const notifyUnjudged = React.useCallback(
+    (unjudged: number) => {
+      if (unjudged > 0) {
+        toast({
+          title: 'Some catalog items were not compared',
+          description: `${unjudged} catalog item${unjudged === 1 ? '' : 's'} could not be compared. Search again to retry.`,
+        })
+      }
+    },
+    [toast],
+  )
+
   const handleSearch = React.useCallback(async () => {
     if (!matchQuery) return
     try {
@@ -185,6 +202,7 @@ export default function CatalogMatchesPage({ params }: { params: { id: string } 
         title: 'Search complete',
         description: `${count} match${count === 1 ? '' : 'es'} found.`,
       })
+      notifyUnjudged(result.unjudged)
       setHasSearched(true)
       await refetchMatches(vendorFilter, statusFilter)
     } catch (err) {
@@ -200,7 +218,7 @@ export default function CatalogMatchesPage({ params }: { params: { id: string } 
     } finally {
       setIsSearching(false)
     }
-  }, [matchQuery, refetchMatches, router, statusFilter, toast, vendorFilter, workspaceId])
+  }, [matchQuery, notifyUnjudged, refetchMatches, router, statusFilter, toast, vendorFilter, workspaceId])
 
   const handleVerify = React.useCallback(async () => {
     if (!matchQuery || !verifyVendorId) return
@@ -213,6 +231,7 @@ export default function CatalogMatchesPage({ params }: { params: { id: string } 
         title: 'Verification complete',
         description: `${count} match${count === 1 ? '' : 'es'} found.`,
       })
+      notifyUnjudged(result.unjudged)
       setHasSearched(true)
       await refetchMatches(vendorFilter, statusFilter)
     } catch (err) {
@@ -228,7 +247,7 @@ export default function CatalogMatchesPage({ params }: { params: { id: string } 
     } finally {
       setIsVerifying(false)
     }
-  }, [matchQuery, refetchMatches, router, statusFilter, toast, vendorFilter, verifyVendorId, workspaceId])
+  }, [matchQuery, notifyUnjudged, refetchMatches, router, statusFilter, toast, vendorFilter, verifyVendorId, workspaceId])
 
   const handleDismiss = React.useCallback(
     async (matchId: string) => {

@@ -6,6 +6,7 @@ import { StorageService } from '../storage/storage.service'
 import { readOrNotFound } from '../storage/storage.errors'
 import { SERVABLE_PHOTO_TYPES, mediaTypeOf } from './catalog-photo-types'
 import { CatalogParseService } from './catalog-parse.service'
+import { decodeUploadFilename } from '../common/http/upload-filename'
 
 const EXTENSION_CONTENT_TYPES: Record<string, string> = {
   '.png': 'image/png',
@@ -59,7 +60,8 @@ export class CatalogDocumentsService {
     // key behind whenever the save failed, and nothing ever cleaned it up.
     // The id is minted here so the key can still carry it.
     const catalogId = randomUUID()
-    const storageKey = `${workspaceId}/catalogs/${catalogId}/${randomUUID()}-${file.originalname}`
+    const name = decodeUploadFilename(file.originalname)
+    const storageKey = `${workspaceId}/catalogs/${catalogId}/${randomUUID()}-${name}`
     await this.storage.save(storageKey, file.buffer, file.mimetype)
 
     let catalog: typeof catalogs.$inferSelect
@@ -70,7 +72,7 @@ export class CatalogDocumentsService {
           id: catalogId,
           workspaceId,
           vendorId,
-          name: file.originalname,
+          name,
           sourceKind: 'upload',
           status: 'pending',
           storageKey,

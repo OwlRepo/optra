@@ -17,6 +17,9 @@ const mockRenderPdfToImages = jest.fn()
 
 jest.mock('@repo/ai', () => ({
   renderPdfToImages: (...args: unknown[]) => mockRenderPdfToImages(...args),
+  // The real limiter, loaded from its own file so the rest of @repo/ai stays mocked.
+  createLimit: (concurrency: number) =>
+    jest.requireActual('../../../../packages/ai/src/web/limit').createLimit(concurrency),
 }))
 
 async function cleanupFixtures(prefix: string) {
@@ -417,6 +420,248 @@ describe('CatalogParseProcessor', () => {
         [3, 'C3', 'Gizmo', `${base}/c3.png`],
       ])
       expect(images.fetchAndStore.mock.calls.map((call) => call[2])).toEqual(urls)
+    })
+  })
+
+  // B7. Photos were fetched one at a time, 20 s each at worst, inside a
+  // 5-minute Bull attempt; a catalog whose photo host hangs outlived the
+  // attempt, Bull started a retry beside the still-running one, and both
+  // rewrote the items. Photo fetching is now bounded in both concurrency and
+  // total time, so the job always finishes inside its attempt.
+  describe('photo fetching budget (B7)', () => {
+    function csvWithPhotos(count: number) {
+      const lines = ['sku,description,photo_url']
+      for (let i = 1; i <= count; i++) lines.push(`P${i},Item ${i},https://vendor.example.com/p${i}.png`)
+      return lines.join('\n')
+    }
+
+    it('edge: fetches several photos at once, never more than four', async () => {
+      const { workspace, vendor } = await seedWorkspaceAndVendor(`${prefix}b7-concurrency@example.com`, 'B7 Concurrency')
+      const catalog = await seedCatalog(workspace.id, vendor.id, 'catalog.csv', csvWithPhotos(10))
+      let inFlight = 0
+      let maxInFlight = 0
+      images.fetchAndStore.mockImplementation(async () => {
+        inFlight += 1
+        maxInFlight = Math.max(maxInFlight, inFlight)
+        await new Promise((resolve) => setTimeout(resolve, 5))
+        inFlight -= 1
+        return null
+      })
+
+      await processor.handleParse({ id: 'job-b7-concurrency', data: { id: catalog.id } } as any)
+
+      expect(images.fetchAndStore).toHaveBeenCalledTimes(10)
+      expect(maxInFlight).toBeGreaterThan(1)
+      expect(maxInFlight).toBeLessThanOrEqual(4)
+    })
+
+    it('regression: a catalog whose photo host hangs stops fetching at the budget and still finishes with every row', async () => {
+      const { workspace, vendor } = await seedWorkspaceAndVendor(`${prefix}b7-hang@example.com`, 'B7 Hang')
+      const catalog = await seedCatalog(workspace.id, vendor.id, 'catalog.csv', csvWithPhotos(16))
+      // Each fetch hits the 20 s timeout and fails; a controlled clock stands in for the wait.
+      let clock = Date.now()
+      const nowSpy = jest.spyOn(Date, 'now').mockImplementation(() => clock)
+      images.fetchAndStore.mockImplementation(async () => {
+        clock += 20_000
+        return null
+      })
+
+      try {
+        await processor.handleParse({ id: 'job-b7-hang', data: { id: catalog.id } } as any)
+      } finally {
+        nowSpy.mockRestore()
+      }
+
+      const [updated] = await db.select().from(catalogs).where(eq(catalogs.id, catalog.id))
+      expect(updated.status).toBe('done')
+      expect(updated.rowCount).toBe(16)
+      expect(images.fetchAndStore.mock.calls.length).toBeLessThan(16)
+      const items = await db
+        .select()
+        .from(catalogItems)
+        .where(eq(catalogItems.catalogId, catalog.id))
+        .orderBy(catalogItems.lineNumber)
+      expect(items).toHaveLength(16)
+      expect(items.every((item) => item.photoStorageKey === null)).toBe(true)
+    })
+
+    it('regression: photos fetched out of order still land on their own rows', async () => {
+      const { workspace, vendor } = await seedWorkspaceAndVendor(`${prefix}b7-order@example.com`, 'B7 Order')
+      const catalog = await seedCatalog(workspace.id, vendor.id, 'catalog.csv', csvWithPhotos(6))
+      images.fetchAndStore.mockImplementation(async (workspaceId: string, catalogId: string, url: string) => {
+        const n = Number(url.match(/p(\d+)\.png$/)![1])
+        await new Promise((resolve) => setTimeout(resolve, (7 - n) * 3))
+        return `${workspaceId}/catalogs/${catalogId}/images/p${n}.png`
+      })
+
+      await processor.handleParse({ id: 'job-b7-order', data: { id: catalog.id } } as any)
+
+      const items = await db
+        .select()
+        .from(catalogItems)
+        .where(eq(catalogItems.catalogId, catalog.id))
+        .orderBy(catalogItems.lineNumber)
+      expect(items.map((item) => [item.sku, item.photoStorageKey?.split('/').pop()])).toEqual([
+        ['P1', 'p1.png'],
+        ['P2', 'p2.png'],
+        ['P3', 'p3.png'],
+        ['P4', 'p4.png'],
+        ['P5', 'p5.png'],
+        ['P6', 'p6.png'],
+      ])
+    })
+  })
+
+  // B5. catalog_items.sku is varchar(200). A longer SKU used to reach the insert
+  // as written, Postgres refused the whole batch, and after three attempts the
+  // catalog failed with the raw database message. Procurement already keeps the
+  // row and drops only the SKU the column cannot hold (validateLineItem); a
+  // catalog does the same, and rawRow keeps what the vendor wrote.
+  describe('over-long SKUs (B5)', () => {
+    const longSku = 'X'.repeat(201)
+
+    it('edge: a SKU of exactly 200 characters is stored as written', async () => {
+      const { workspace, vendor } = await seedWorkspaceAndVendor(`${prefix}b5-200@example.com`, 'B5 Exact')
+      const sku = 'S'.repeat(200)
+      const catalog = await seedCatalog(workspace.id, vendor.id, 'catalog.csv', `sku,description\n${sku},Widget\n`)
+
+      await processor.handleParse({ id: 'job-b5-200', data: { id: catalog.id } } as any)
+
+      const [item] = await db.select().from(catalogItems).where(eq(catalogItems.catalogId, catalog.id))
+      expect(item.sku).toBe(sku)
+    })
+
+    it('regression: one SKU over 200 characters no longer fails the catalog; that item keeps no SKU and its row keeps the text', async () => {
+      const { workspace, vendor } = await seedWorkspaceAndVendor(`${prefix}b5-csv@example.com`, 'B5 CSV')
+      const csv = ['sku,description', 'A1,Widget', `${longSku},Gadget with a pasted-in spec sheet`, 'C3,Gizmo'].join('\n')
+      const catalog = await seedCatalog(workspace.id, vendor.id, 'catalog.csv', csv)
+
+      await expect(
+        processor.handleParse({ id: 'job-b5-csv', data: { id: catalog.id }, attemptsMade: 2, opts: { attempts: 3 } } as any),
+      ).resolves.toBeUndefined()
+
+      const [updated] = await db.select().from(catalogs).where(eq(catalogs.id, catalog.id))
+      expect(updated.status).toBe('done')
+      expect(updated.rowCount).toBe(3)
+      expect(updated.lastError).toBeNull()
+      const items = await db
+        .select()
+        .from(catalogItems)
+        .where(eq(catalogItems.catalogId, catalog.id))
+        .orderBy(catalogItems.lineNumber)
+      expect(items.map((item) => [item.lineNumber, item.sku, item.description])).toEqual([
+        [1, 'A1', 'Widget'],
+        [2, null, 'Gadget with a pasted-in spec sheet'],
+        [3, 'C3', 'Gizmo'],
+      ])
+      expect(items[1].rawRow).toEqual({ sku: longSku, description: 'Gadget with a pasted-in spec sheet' })
+    })
+
+    it('regression: a PDF item whose extracted SKU is over 200 characters is stored with no SKU', async () => {
+      const { workspace, vendor } = await seedWorkspaceAndVendor(`${prefix}b5-pdf@example.com`, 'B5 PDF')
+      const catalog = await seedCatalog(workspace.id, vendor.id, 'catalog.pdf', 'fake pdf bytes')
+      mockRenderPdfToImages.mockResolvedValue({ pages: [Buffer.from([0x01])], total: 1, truncated: false })
+      extraction.extractFromImage.mockResolvedValueOnce({
+        items: [
+          { sku: 'A1', description: 'Widget', confidence: 0.9 },
+          { sku: longSku, description: 'Gadget', confidence: 0.4 },
+        ],
+      })
+
+      await processor.handleParse({ id: 'job-b5-pdf', data: { id: catalog.id } } as any)
+
+      const [updated] = await db.select().from(catalogs).where(eq(catalogs.id, catalog.id))
+      expect(updated.status).toBe('done')
+      const items = await db
+        .select()
+        .from(catalogItems)
+        .where(eq(catalogItems.catalogId, catalog.id))
+        .orderBy(catalogItems.lineNumber)
+      expect(items.map((item) => [item.sku, item.description])).toEqual([
+        ['A1', 'Widget'],
+        [null, 'Gadget'],
+      ])
+      expect(items[1].rawRow).toMatchObject({ sku: longSku, sourcePageNumber: 1 })
+    })
+  })
+
+  // B4. Spreadsheet exports end in ",,"-only rows (formatted-but-empty cells),
+  // and Papa's skipEmptyLines keeps them: each became a blank catalog item in
+  // the list and its counts. An item now needs a SKU or a description.
+  describe('blank rows (B4)', () => {
+    it('edge: a row with a description and no SKU is kept', async () => {
+      const { workspace, vendor } = await seedWorkspaceAndVendor(`${prefix}b4-desc@example.com`, 'B4 Desc')
+      const catalog = await seedCatalog(workspace.id, vendor.id, 'catalog.csv', 'sku,description\n,Loose washers\n')
+
+      await processor.handleParse({ id: 'job-b4-desc', data: { id: catalog.id } } as any)
+
+      const items = await db.select().from(catalogItems).where(eq(catalogItems.catalogId, catalog.id))
+      expect(items.map((item) => [item.lineNumber, item.sku, item.description])).toEqual([[1, null, 'Loose washers']])
+    })
+
+    it('edge: a PDF item the model read with neither SKU nor description is dropped', async () => {
+      const { workspace, vendor } = await seedWorkspaceAndVendor(`${prefix}b4-pdf@example.com`, 'B4 PDF')
+      const catalog = await seedCatalog(workspace.id, vendor.id, 'catalog.pdf', 'fake pdf bytes')
+      mockRenderPdfToImages.mockResolvedValue({ pages: [Buffer.from([0x01])], total: 1, truncated: false })
+      extraction.extractFromImage.mockResolvedValueOnce({
+        items: [
+          { sku: null, description: null, confidence: 0.2 },
+          { sku: 'A1', description: 'Widget', confidence: 0.9 },
+        ],
+      })
+
+      await processor.handleParse({ id: 'job-b4-pdf', data: { id: catalog.id } } as any)
+
+      const [updated] = await db.select().from(catalogs).where(eq(catalogs.id, catalog.id))
+      expect(updated.rowCount).toBe(1)
+      const items = await db.select().from(catalogItems).where(eq(catalogItems.catalogId, catalog.id))
+      expect(items.map((item) => [item.lineNumber, item.sku])).toEqual([[1, 'A1']])
+    })
+
+    it('regression: ",," rows and rows with only unmapped columns become no items, and the rest are numbered 1..n', async () => {
+      const { workspace, vendor } = await seedWorkspaceAndVendor(`${prefix}b4-blank@example.com`, 'B4 Blank')
+      const csv = ['sku,description,pack size', 'A1,Widget,10', ',,', ',,5', 'B2,Gadget,2', ',,', ''].join('\n')
+      const catalog = await seedCatalog(workspace.id, vendor.id, 'catalog.csv', csv)
+
+      await processor.handleParse({ id: 'job-b4-blank', data: { id: catalog.id } } as any)
+
+      const [updated] = await db.select().from(catalogs).where(eq(catalogs.id, catalog.id))
+      expect(updated.status).toBe('done')
+      expect(updated.rowCount).toBe(2)
+      const items = await db
+        .select()
+        .from(catalogItems)
+        .where(eq(catalogItems.catalogId, catalog.id))
+        .orderBy(catalogItems.lineNumber)
+      expect(items.map((item) => [item.lineNumber, item.sku, item.description])).toEqual([
+        [1, 'A1', 'Widget'],
+        [2, 'B2', 'Gadget'],
+      ])
+    })
+
+    // With B5 a SKU over 200 characters is stored as no SKU; a row with nothing
+    // else would still become an empty item, so it is dropped like a blank row.
+    it('regression: a row whose only value is an over-long SKU becomes no item', async () => {
+      const { workspace, vendor } = await seedWorkspaceAndVendor(`${prefix}b4-longsku@example.com`, 'B4 Long Sku')
+      const csv = ['sku,description', `${'X'.repeat(201)},`, 'A1,Widget'].join('\n')
+      const catalog = await seedCatalog(workspace.id, vendor.id, 'catalog.csv', csv)
+
+      await processor.handleParse({ id: 'job-b4-longsku', data: { id: catalog.id } } as any)
+
+      const items = await db.select().from(catalogItems).where(eq(catalogItems.catalogId, catalog.id))
+      expect(items.map((item) => [item.lineNumber, item.sku])).toEqual([[1, 'A1']])
+    })
+
+    it('regression: a blank row with a photo URL fetches no photo', async () => {
+      const { workspace, vendor } = await seedWorkspaceAndVendor(`${prefix}b4-photo@example.com`, 'B4 Photo')
+      const csv = ['sku,description,photo_url', ',,https://vendor.example.com/orphan.png', 'A1,Widget,'].join('\n')
+      const catalog = await seedCatalog(workspace.id, vendor.id, 'catalog.csv', csv)
+
+      await processor.handleParse({ id: 'job-b4-photo', data: { id: catalog.id } } as any)
+
+      expect(images.fetchAndStore).not.toHaveBeenCalled()
+      const items = await db.select().from(catalogItems).where(eq(catalogItems.catalogId, catalog.id))
+      expect(items.map((item) => item.sku)).toEqual(['A1'])
     })
   })
 })

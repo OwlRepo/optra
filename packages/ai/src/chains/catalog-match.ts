@@ -284,7 +284,7 @@ function parseCompareJson(content: unknown): RawCompareResult {
   try {
     return JSON.parse(stripCodeFence(text)) as RawCompareResult
   } catch {
-    throw new CatalogExtractionParseError()
+    throw new CatalogExtractionParseError('Model returned malformed catalog comparison JSON')
   }
 }
 

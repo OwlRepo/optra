@@ -712,4 +712,25 @@ describe('ProcurementDocumentsService', () => {
     // told, the other is when it happened.
     expect(stored.createdAt).not.toBeNull()
   })
+
+  // B8. busboy reads a browser's UTF-8 filename as latin1; the stored name and
+  // key used to keep that mojibake.
+  describe('non-ASCII filenames (B8)', () => {
+    it('regression: stores a UTF-8 filename the multipart parser read as latin1 under its real name', async () => {
+      const workspace = await seedWorkspace(`${prefix}b8-name@example.com`, 'B8 Name')
+      const file = {
+        originalname: Buffer.from('façture-日本.csv', 'utf8').toString('latin1'),
+        mimetype: 'text/csv',
+        buffer: Buffer.from('sku,qty\nA,1'),
+      } as Express.Multer.File
+
+      const result = await service.upload(workspace.id, 'purchase_order', file, await poHeader(workspace.id))
+
+      expect(result.name).toBe('façture-日本.csv')
+      const [row] = await db.select().from(purchaseOrders).where(eq(purchaseOrders.id, result.id))
+      expect(row.name).toBe('façture-日本.csv')
+      expect(row.storageKey).toMatch(/-façture-日本\.csv$/)
+      expect(row.sourceKind).toBe('csv')
+    })
+  })
 })

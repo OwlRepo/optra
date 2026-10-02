@@ -283,4 +283,114 @@ describe('CatalogMatchesPage', () => {
       expect(pushMock).toHaveBeenCalledWith('/login')
     })
   })
+
+  // B12. A discrepancy flag's "Find catalog matches" link carries both its PO
+  // and its invoice line ids. The page searches by the PO line, so the list
+  // must be scoped to that same line: the API ANDs both filters, and matches
+  // stored under the PO line have no invoice line, so the list came back empty
+  // right after "1 match found".
+  describe('line scope (B12)', () => {
+    it('edge: opened with only an invoice line id, lists matches for that invoice line', async () => {
+      mockSearchParams = new URLSearchParams({ invoiceLineItemId: 'inv-line-98765432' })
+      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+      listCatalogMatchesMock.mockResolvedValue([])
+
+      renderPage()
+
+      await waitFor(() => {
+        expect(listCatalogMatchesMock).toHaveBeenCalled()
+      })
+      for (const call of listCatalogMatchesMock.mock.calls) {
+        expect(call[1]).toMatchObject({ invoiceLineItemId: 'inv-line-98765432' })
+        expect(call[1]).not.toHaveProperty('poLineItemId')
+      }
+    })
+
+    it('regression: after a search from a flag with both line ids, the refreshed list is scoped to the PO line it searched', async () => {
+      mockSearchParams = new URLSearchParams({ poLineItemId: 'po-line-12345678', invoiceLineItemId: 'inv-line-98765432' })
+      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+      listCatalogMatchesMock.mockResolvedValueOnce([]).mockResolvedValue([baseMatch])
+      searchCatalogMatchesMock.mockResolvedValue({ matches: [baseMatch] })
+
+      renderPage()
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Search all vendors' }))
+
+      await waitFor(() => {
+        expect(searchCatalogMatchesMock).toHaveBeenCalledWith('ws-1', { purchaseOrderLineItemId: 'po-line-12345678' })
+        expect(screen.getByText(/Query item po-line-/)).toBeDefined()
+      })
+      const lastScope = listCatalogMatchesMock.mock.calls.at(-1)?.[1]
+      expect(lastScope).toMatchObject({ poLineItemId: 'po-line-12345678' })
+      expect(lastScope).not.toHaveProperty('invoiceLineItemId')
+    })
+
+    it('regression: opened from a flag with both line ids, lists matches for the PO line it searches', async () => {
+      mockSearchParams = new URLSearchParams({ poLineItemId: 'po-line-12345678', invoiceLineItemId: 'inv-line-98765432' })
+      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+      listCatalogMatchesMock.mockResolvedValue([baseMatch])
+
+      renderPage()
+
+      await waitFor(() => {
+        expect(listCatalogMatchesMock).toHaveBeenCalled()
+      })
+      for (const call of listCatalogMatchesMock.mock.calls) {
+        expect(call[1]).toMatchObject({ poLineItemId: 'po-line-12345678' })
+        expect(call[1]).not.toHaveProperty('invoiceLineItemId')
+      }
+      expect(await screen.findByText(/Query item po-line-/)).toBeDefined()
+    })
+  })
+
+  // B6. A search now saves the verdicts it got and counts the candidates the
+  // model could not compare (`unjudged`). The success summary keeps its exact
+  // wording; the skipped count gets its own warning so it cannot be missed.
+  describe('unjudged candidates (B6)', () => {
+    it('edge: a search with candidates left uncompared says how many in a separate warning', async () => {
+      mockSearchParams = new URLSearchParams({ poLineItemId: 'po-line-12345678' })
+      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+      listCatalogMatchesMock.mockResolvedValue([baseMatch])
+      searchCatalogMatchesMock.mockResolvedValue({ matches: [baseMatch], unjudged: 2 })
+
+      renderPage()
+      fireEvent.click(await screen.findByRole('button', { name: 'Search all vendors' }))
+
+      await waitFor(() => {
+        expect(screen.getByText('1 match found.')).toBeDefined()
+        expect(screen.getByText('Some catalog items were not compared')).toBeDefined()
+        expect(screen.getByText('2 catalog items could not be compared. Search again to retry.')).toBeDefined()
+      })
+    })
+
+    it('edge: a verification with one candidate left uncompared says so in the singular', async () => {
+      mockSearchParams = new URLSearchParams({ invoiceLineItemId: 'inv-line-98765432', vendorId: 'vendor-1' })
+      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+      listCatalogMatchesMock.mockResolvedValue([])
+      verifyCatalogMatchesMock.mockResolvedValue({ matches: [], unjudged: 1 })
+
+      renderPage()
+      fireEvent.click(await screen.findByRole('button', { name: 'Verify against this vendor' }))
+
+      await waitFor(() => {
+        expect(screen.getByText('Verification complete')).toBeDefined()
+        expect(screen.getByText('1 catalog item could not be compared. Search again to retry.')).toBeDefined()
+      })
+    })
+
+    it('happy: a search with every candidate compared shows no warning', async () => {
+      mockSearchParams = new URLSearchParams({ poLineItemId: 'po-line-12345678' })
+      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+      listCatalogMatchesMock.mockResolvedValue([baseMatch])
+      searchCatalogMatchesMock.mockResolvedValue({ matches: [baseMatch], unjudged: 0 })
+
+      renderPage()
+      fireEvent.click(await screen.findByRole('button', { name: 'Search all vendors' }))
+
+      await waitFor(() => {
+        expect(screen.getByText('Search complete')).toBeDefined()
+      })
+      expect(screen.queryByText('Some catalog items were not compared')).toBeNull()
+    })
+  })
 })

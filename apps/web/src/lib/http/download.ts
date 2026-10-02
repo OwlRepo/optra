@@ -1,4 +1,17 @@
-function filenameFromDisposition(header: string | null, fallback: string) {
+/**
+ * The download's name. The API sends a non-ASCII name as RFC 5987
+ * `filename*=UTF-8''…` beside an ASCII-only `filename` (B8); the real name
+ * wins when it decodes, the quoted one otherwise.
+ */
+export function filenameFromDisposition(header: string | null, fallback: string) {
+  const encoded = header?.match(/filename\*=UTF-8''([^;]+)/i)?.[1]
+  if (encoded) {
+    try {
+      return decodeURIComponent(encoded.trim())
+    } catch {
+      // Malformed percent-encoding: fall through to the quoted name.
+    }
+  }
   const match = header?.match(/filename="?([^";]+)"?/i)
   return match?.[1] ?? fallback
 }

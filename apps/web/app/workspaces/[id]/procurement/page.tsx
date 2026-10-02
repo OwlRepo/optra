@@ -37,7 +37,8 @@ import {
   type ProcurementDocStatus,
 } from '@/lib/api/procurement'
 import { listVendors, type VendorDetail } from '@/lib/api/catalog'
-import { isUnauthorized } from '@/lib/api/handle-unauthorized'
+import { isForbidden, isUnauthorized } from '@/lib/api/handle-unauthorized'
+import { WorkspaceAccessDenied } from '@/components/workspace-access-denied'
 import { getWorkspace, listWorkspaces } from '@/lib/api/workspaces'
 import { WorkspaceNav, workspacePrimaryTabItems } from '@/components/workspace-nav'
 import { MobileTabBar } from '@/components/mobile-tab-bar'
@@ -128,6 +129,10 @@ export default function ProcurementPage({ params }: { params: { id: string } }) 
   const [grnPoId, setGrnPoId] = React.useState('')
   const [grnNumber, setGrnNumber] = React.useState('')
 
+  // B14. Set when the first load answers 403; the page then shows only the
+  // no-access state instead of empty lists.
+  const [accessDenied, setAccessDenied] = React.useState(false)
+
   const canManage = membership?.role === 'owner' || membership?.role === 'admin'
 
   React.useEffect(() => {
@@ -187,6 +192,10 @@ export default function ProcurementPage({ params }: { params: { id: string } }) 
     } catch (err) {
       if (isUnauthorized(err)) {
         router.push('/login')
+        return
+      }
+      if (isForbidden(err)) {
+        setAccessDenied(true)
         return
       }
       toastRef.current({
@@ -477,6 +486,8 @@ export default function ProcurementPage({ params }: { params: { id: string } }) 
             <Skeleton className="h-12 w-full" />
             <Skeleton className="h-12 w-full" />
           </Card>
+        ) : accessDenied ? (
+          <WorkspaceAccessDenied />
         ) : (
           <>
             <Tabs

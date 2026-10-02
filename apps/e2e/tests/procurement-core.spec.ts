@@ -68,17 +68,22 @@ test.describe('procurement core', () => {
     await page.context().close()
   })
 
-  test("error: owner B opening workspace A's procurement page is told they are not a member and gets no controls", async ({
+  // B14 changed what this pins: the error toast and empty lists became one
+  // no-access state with a way back.
+  test("error: owner B opening workspace A's procurement page sees the no-access state and gets no controls", async ({
     browser,
   }) => {
     const page = await pageAs(browser, 'ownerB')
     const ws = state.ownerA.workspaceId
     await page.goto(`/workspaces/${ws}/procurement`)
 
-    await expect(toast(page, 'Failed to load procurement documents')).toBeVisible()
-    await expect(page.getByText('Not a member of this workspace', { exact: true })).toBeVisible()
+    await expect(page.getByRole('heading', { name: "You don't have access to this workspace" })).toBeVisible()
+    await expect(toast(page, 'Failed to load procurement documents')).toHaveCount(0)
+    await expect(page.getByText('No purchase orders yet')).toHaveCount(0)
     await expect(page.getByRole('button', { name: 'Upload purchase order' })).toHaveCount(0)
     await expect(page.getByRole('button', { name: 'Run comparison' })).toHaveCount(0)
+    await page.getByRole('button', { name: 'Go to your workspaces' }).click()
+    await expect(page).toHaveURL(/\/workspaces$/)
 
     for (const url of [`/api/workspaces/${ws}`, `/api/workspaces/${ws}/procurement/purchase-orders`]) {
       const response = await bff(page, url)
@@ -285,6 +290,24 @@ test.describe('procurement core: unreadable files', () => {
     const row = rowFor(page, file.name)
     await expect(row.getByText('Failed', { exact: true })).toBeVisible()
     await expect(row.getByText(/^No line items were found in this file\./)).toBeVisible()
+    await page.context().close()
+  })
+
+  // B8. A browser sends the filename as UTF-8; it used to be stored and shown
+  // as latin1 mojibake, and the download carried the same garbled name.
+  test('regression: a purchase order named with accents and CJK characters is listed and downloaded under that name', async ({
+    browser,
+  }) => {
+    const page = await pageAs(browser, 'ownerB')
+    const file = fixture('po.csv', `façture-日本-${state.run}.csv`)
+    await uploadPurchaseOrderFile(page, state.ownerB, file, `PO-CORE-B8-${state.run}`)
+
+    await page.reload()
+    await expect(rowFor(page, file.name).getByText('Ready')).toBeVisible()
+
+    const downloaded = page.waitForEvent('download')
+    await page.getByRole('button', { name: `Download ${file.name}`, exact: true }).click()
+    expect((await downloaded).suggestedFilename()).toBe(file.name)
     await page.context().close()
   })
 })
