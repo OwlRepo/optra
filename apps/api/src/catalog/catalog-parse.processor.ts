@@ -67,8 +67,11 @@ function findValue(row: Record<string, string>, aliases: string[]): string | nul
 
 // An item needs something to match on: catalog matching searches by SKU or
 // description, so a row with neither is not an item (B4).
+// A SKU too long for the column counts as none: replaceItems stores it as
+// null (B5), so a row with nothing else would still be an empty item.
 function describesAnItem(row: { sku: string | null; description: string | null }): boolean {
-  return Boolean(row.sku?.trim() || row.description?.trim())
+  const sku = row.sku?.trim()
+  return Boolean((sku && row.sku!.length <= MAX_SKU_LENGTH) || row.description?.trim())
 }
 
 function mapRowToCatalogRow(row: Record<string, string>): MappedCatalogRow {
