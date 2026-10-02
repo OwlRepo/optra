@@ -712,7 +712,7 @@ export default function ProcurementPage({ params }: { params: { id: string } }) 
           <Eyebrow>Compare</Eyebrow>
           <h2 className="mt-[10px] text-[22px]">Run a comparison</h2>
           <p className="mt-2 text-[14px] text-ink-body">
-            Members can pick documents to preview the pair; running it needs an owner or admin.
+            Running a comparison needs an owner or admin.
           </p>
         </div>
         {/* Frame 2.2: state the rule instead of letting the button vanish. */}

@@ -151,3 +151,16 @@ test('happy: Find catalog matches opens the list scoped to the line, named by a 
   await expect(page).not.toHaveURL(/poLineItemId=/)
   await expect(page.getByRole('button', { name: 'Clear line scope' })).toHaveCount(0)
 })
+
+test.describe('member', () => {
+  test.use({ storageState: storageStateFor('memberA') })
+
+  test('edge: a member is told who runs comparisons, without pickers or a Run button', async ({ page }) => {
+    await page.goto(procurementPage())
+
+    await expect(page.getByText('Owners & admins run comparisons', { exact: true })).toBeVisible()
+    await expect(page.getByText('Running a comparison needs an owner or admin.', { exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Run comparison' })).toHaveCount(0)
+    await expect(page.getByRole('combobox', { name: 'Purchase order', exact: true })).toHaveCount(0)
+  })
+})

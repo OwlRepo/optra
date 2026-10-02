@@ -329,6 +329,9 @@ describe('ProcurementPage', () => {
       expect(screen.queryByRole('button', { name: 'Run comparison' })).toBeNull()
       expect(screen.queryByLabelText('Purchase order')).toBeNull()
       expect(screen.queryByLabelText('Invoice')).toBeNull()
+      // Members have no pickers (owner decision), so the copy must not offer them.
+      expect(screen.getByText('Running a comparison needs an owner or admin.')).toBeDefined()
+      expect(screen.queryByText(/Members can pick documents/)).toBeNull()
     })
 
     it('edge: with nothing Ready the compare panel is faded, explains why, and offers no pickers', async () => {
