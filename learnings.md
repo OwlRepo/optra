@@ -566,3 +566,12 @@ And one rule the owner made standing: every change now ships with its tests for 
 **Actual:** confirmed — page, helper and component cases red then green; web 684/684, browser 49 passed three times, including the S4 test whose old expectation changed on purpose.
 
 **Why different:** not different. **A page that renders its empty state after a failed load tells the user something false ("you have none") instead of something true ("you can't see this"). Branch on the failure kind before rendering defaults; keep the toast for failures the user can retry.**
+
+## 2026-10-03 — Fix B4: a row is an item only if it names one
+*Learning Contract: the plan's design is the prediction; the diff is below. No live prediction solicited.*
+
+**Predicted (from the approved plan):** dropping rows with neither SKU nor description, in both parse paths and before photo fetching, removes blank items without touching real ones.
+
+**Actual:** confirmed — the PDF, blank-row and stray-photo cases red then green; full api unit 823/823 and API e2e 104/104 three times.
+
+**Why different:** not different. **"Empty line" is a parser's idea; "describes nothing we can use" is the domain's. Filter on the fields the product matches on, after mapping, not on raw text — and before any paid or slow work (a photo fetch) runs for the row.**
