@@ -1,203 +1,201 @@
 # Graph Report - .  (2026-10-03)
 
 ## Corpus Check
-- Large corpus: 1068 files · ~797,230 words. Semantic extraction will be expensive (many Claude tokens). Consider running on a subfolder.
+- Large corpus: 1069 files · ~798,249 words. Semantic extraction will be expensive (many Claude tokens). Consider running on a subfolder.
 
 ## Summary
-- 6494 nodes · 14415 edges · 471 communities (333 shown, 138 thin omitted)
-- Extraction: 97% EXTRACTED · 3% INFERRED · 0% AMBIGUOUS · INFERRED: 461 edges (avg confidence: 0.81)
+- 6498 nodes · 14422 edges · 466 communities (328 shown, 138 thin omitted)
+- Extraction: 97% EXTRACTED · 3% INFERRED · 0% AMBIGUOUS · INFERRED: 463 edges (avg confidence: 0.81)
 - Token cost: none for this rebuild (it replays cached extractions; per-run semantic tokens are in graphify-out/cost.json)
 
 ## Community Hubs (Navigation)
-- API Module
 - API Auth Service
-- Web Login Page
-- Web Kb Id Page
-- API Procurement Comparison Service
+- Docs Repository Map
 - API Storage Service
-- API Catalog Extraction Service
-- API Auth Service
-- API Module
+- Web Login Page
+- Web Client
+- Web Tickets Page
+- API Limits Usage Service
 - Web Procurement Page
-- Web Auth
+- API Auth Workspace Member Guard
+- API Auth Current User Decorator
+- API Insights Topic Gap Processor
 - Web Chat Page
 - API Catalog Controller
-- API Auth Dtos
-- API Tickets Service
-- Web Client
-- Web Discrepancies Page
+- Web Login Page
+- API Module
+- Web Settings Page
 - Docs Lemon Squeezy S1 Truthful
 - Docs Risk Register
 - Docs Testing Strategy
+- API Tickets Service
+- Web Kb Id Page
+- API Auth Dtos
+- API Procurement Controller
 - API Workspaces Service
 - Docs Db Contracts
-- API Limits Rate Limit Service
-- Web Vendor Id Page
 - Scripts Config
-- Web Http Auth Proxy
 - Scripts Module
+- Web Http Client Ip
+- Web Http Auth Proxy
 - Dev Dependencies
 - Ui Package
 - Scripts Ci Workflows
 - Dependencies Module
+- API Procurement Column Mapping
+- Ai Package Text To Sql
+- API Auth Roles Decorator
+- API Procurement Comparison Service
+- Scripts Tdd Runner Mjs
+- Web Change Password Route
 - Ai Package Crawl
-- Db Package Workspaces
-- Path Module
 - Scripts Procurement
-- API Documents Controller
-- Scripts Tdd Lib Mjs
-- Db Package Discrepancy Flags
+- Path Module
+- API Catalog Match Service
 - API Scrape Service
 - Web Legal Facts
-- Web Http Client Ip
-- Web Login Page
 - Ai Package
-- Db Module
-- Web Change Password Route
+- Ai Package
+- Db Package Discrepancy Flags
 - Global Env
-- Web Http Auth Proxy
+- Docs Hide Support Surfaces
 - Ai Package Catalog Match
+- API Cache Service
 - Db Package
 - Ai Package Procurement Extraction
-- API Catalog Parse Processor
 - Web Landing Demo Docs
-- API Common List Query Dto
+- Ai Package
+- Ui Module
 - Web Http Auth Proxy
+- Web Workspace Search
 - Scripts Graphify Complete
-- Ai Package Text To Sql
 - Scripts Data
-- Docs Hide Support Surfaces
+- Db Package Workspaces
+- API Common List Query Dto
+- Db Package Pagination
+- Web Http Auth Proxy
 - Ignore Patterns
 - Ai Package Ticket Extraction
-- Scripts Tdd Runner Mjs
 - Global Policy Applies To Every
-- API Procurement Controller
+- API Datasets Dataset Profiling Service
+- Db Module
 - Docs Claude Bootstrap Template
-- Procurement E2E
-- API Procurement Comparison Service
 - Dev Dependencies
 - Ai Package Graph
 - Db Package Chunks
-- Db Package
 - API Catalog Controller
 - Web Page
-- Web Tickets Page
+- Docs Module Ownership Map
 - API Auth Controller
 - CI And Deploy Quality Gate
-- Flows Module
-- Web Motion Reveal
-- Scripts Generate Agent Defs Mjs
 - Scripts Tdd Gate Mjs
 - Compiler Options
-- Procurement Module
 - Docs Architecture Manifest
-- Docs Module Ownership Map
 - Docs User Prompt Rag Flow
-- Ci Job Quality Gate
-- Ai Package Pdf
-- Db Package Catalog Matches
+- Claude Runtime Rules
+- Scripts Tdd Lib Mjs
 - Scripts Datasets
 - API Chat Service
-- Ai Package
 - Env Module
-- Docs Storage E2E Playwright Reliability
+- Web Auth
 - Scripts Ci Workflows
+- Db Package Workspaces
+- API Procurement Comparison Service
 - Compiler Options
-- API Chat Controller
-- API Documents Controller
-- API Procurement Column Mapping
-- API Procurement Compare Service
-- Db Package Pagination
+- API Insights Digest Renderers
 - Web Chat Page
 - Web Package
+- Web Motion Reveal
 - Docs Graphify Coverage Refresh
+- Deployment Guide
 - Docs Infra Ai Workflow Port
+- Ai Package Pdf
 - Feature Workflow
 - API Catalog Scrape Service
-- Scripts Images
-- Docs OPTRA DEVELOPMENT PLAN
-- Claude Runtime Rules
+- API Documents Controller
 - Daily Backup Database
 - Web Package
 - API Auth Controller
-- API Datasets Service
 - Types Package
 - Ui Package Toaster
 - Web Procurement Page
 - Web Components
 - Web Tsconfig
-- Ai Package
 - Docs Planning
-- Deployment Guide
+- Ai Package
 - Ai Package
 - Primary Engineering Loop
-- Docs Repository Map
-- Web Chat Layout
+- API Structured Query Service
+- Procurement Module
+- Docs Api Contracts
 - Docs Bugfix Plan
 - Scripts Chat
+- API Auth Service
 - API Catalog Match Service
-- API Procurement Kind
+- API Limits Rate Limit Service
+- Scripts Generate Agent Defs Mjs
+- Docs Storage E2E Playwright Reliability
+- Docs Risk Register
 - Project Review Checklist
 - Jest Module
-- API Auth Service
 - API Catalog Documents Service
-- API Insights Faq Drafts Service
 - Compiler Options
 - Web Kb Id Page
 - Web Vendor Id Page
 - Docker Guide
 - Docs User Prompt Rag Flow
 - Docs V2 Features
-- Scripts Catalog
 - Bootstrap Validation Workflow
-- API Events Controller
-- API Ingest Processor
+- API Storage Service
+- API Insights Controller
 - Web Discrepancies Page
-- Calm Utility Design System
-- Docs Api Contracts
+- Db Package
+- Scripts Tdd Runner Mjs
 - Scripts Embeddings
+- Scripts Catalog
+- Implementer Agent
 - Canonical Task Flow
 - Scripts Module
+- API Documents Service
+- API Catalog Parse Processor
 - API Catalog Create Price Term
-- API Procurement Parse Service
-- API Search Service
+- API Structured Query Service
 - Web Catalog Matches Page
-- Docs Risk Register
-- Ai Package
+- Docs Api Contracts
+- Docs Repository Map
 - Ai Package Tsconfig
 - Db Package Tickets
 - Db Package Tsconfig
 - Ui Package Components
 - Scripts Ci Workflows
-- Implementer Agent
-- Docs PRODUCTION READINESS
-- API Auth Limits Service
-- API Documents Service
-- API Catalog Parse Service
-- API Catalog Parse Processor
-- API Structured Query Duckdb Service
-- API Structured Query Service
+- Docs OPTRA DEVELOPMENT PLAN
+- API Limits Usage Service
 - Scripts Evaluate
+- Calm Utility Design System
 - Docs Module Ownership Map
+- Deploy Job VPS PROD Over
 - Ignore Patterns
-- API Insights Controller
-- API Procurement Parse Service
+- API Auth Limits Service
+- API Catalog Parse Service
+- API Structured Query Duckdb Service
 - Web Layout
 - Web Insights Page
 - Web Settings Page
 - Scripts Backup
+- Docs Risk Register
 - Docs Api Contracts
 - Docs Module Ownership Map
 - Ai Package Classify
 - Types Package
 - Scripts Graphify Complete
 - Blocker Handling
+- Ci Job Quality Gate
 - Strict TDD Red Gate
 - API Catalog Create Vendor Dto
+- API Search Service
 - Web Members Page
 - Docs Context Refresh
-- Docs Module Ownership Map
-- Ai Package Refine
+- Docs OPTRA DEVELOPMENT PLAN
 - Ai Package
 - Ai Package
 - Ui Package Eslintrc
@@ -210,22 +208,20 @@
 - Web Tickets Page
 - Docs OPTRA DEVELOPMENT PLAN
 - Scripts Check Prod Env
-- Docs Repository Map
-- Docs Risk Register
-- Frontend Phase 2 Tabs Confidence
 - Db Package 0000 Reflective Blade
-- API Datasets Dataset Profiling Service
-- API Procurement Upload Purchase Order
 - Web Datasets Page
 - Web Vendors Page
 - Web Eslintrc
 - Web Procurement Discrepancy Review Modal
 - Optra Prod Api Service
+- Docs PRODUCTION READINESS
 - Docs Api Contracts
 - S8 Commit 2 Freshness Skip
 - V2 F7A Coverage Dashboard
+- Frontend Phase 2 Tabs Confidence
 - Ui Package Tsconfig
 - Scripts Evaluate Extraction
+- Scripts Images
 - Scheduler Rules
 - API Insights Digest Tick Processor
 - API Insights Faq Cluster Tick
@@ -233,48 +229,52 @@
 - API Insights Topic Gap Tick
 - Web Package
 - Web Public Optra Mark Svg
-- Docs Api Contracts
+- Docs Module Ownership Map
+- Optra Learnings Md Predict Verify
 - S6 Three Way Comparison Empty
 - A2 PDF Vision Mupdf Swapped
 - Ai Package Eslintrc
 - Db Package Eslintrc
 - Types Package Eslintrc
 - Types Package Tsconfig
-- Scripts Storage
 - Workflow Cases
 - Docs Autonomous Engineering
 - Nest Cli
 - API Auth Limits Service
+- API Auth Jwt Strategy
 - API Catalog Vendor History Service
-- API Procurement Upload Invoice Dto
+- Storage State For
 - Required For Every Layer Touched
-- Optra Learnings Md Predict Verify
 - Run Comparison 500 Duck DB
+- Scripts Storage
 - Ui Ux Designer Agent Generated
-- API Health Controller
-- API Procurement Record Decision Dto
-- API Procurement Upload Goods Receipt
+- API Chat Dto
+- API Common Upload Filename
 - Web Decisions Route
+- Web Login Page
 - Web Opengraph Image Png
 - Web Vitest Config
-- Docs Api Contracts
 - Docs Elid Ticket Copilot
 - Db Package 0020 Bumpy Energizer
+- Db Package Discrepancy Decisions
 - Optra README
 - Bootstrap Setup
-- Non Bypassable Graphify Gate
 - Architecture Decision Record
 - Review Report
 - Backup Job Production Concurrency
-- API Catalog Controller
+- API Catalog Scrape Processor
+- API Common Client Bucket
+- API Refine Dto
+- API Refine Save Refined Message
 - Web Digest Settings Route
+- Web Saved Route
 - Web Tickets Route
-- Web Vendors Route
 - Web Price History Route
 - Web Workspaces Route
 - Web Apple Icon Png
+- Web Register Page
 - Web Icon Png
-- Web Landing Product Cards
+- Web Landing Workflow Steps
 - CI CD Deploy Integration
 - Db Package 0021 Dear Speed
 - EOD Engineering Report
@@ -282,43 +282,39 @@
 - Layers Module
 - Web Change Password Route
 - Web Dismiss Route
-- Web Search Route
-- Web Messages Route
+- Web Catalog Matches Route
 - Web Dataset Id Route
 - Web Preview Route
 - Web Mark Seen Route
-- Web Unread Count Route
-- Web Approve Route
-- Web Dismiss Route
+- Web Events Route
+- Web Insights Route
 - Web Scrape Route
 - Web Scrape Runs Route
+- Web Members Route
 - Web Comparison Runs Route
 - Web Compare Route
+- Web Discrepancies Route
 - Web Refine Route
 - Web Status Route
-- Web Search Route
-- Web Scrape Route
 - Web Package
-- Web Workspace Nav
-- Verify Deployment Services Health Endpoints
+- Web Landing Pricing Plans
 - Api Dev Entrypoint
 - Docs Api Contracts
 - Web Mcp
 - Embedding Dimension 1536 Text 3
 - Web Dev Entrypoint
-- Docs Module Ownership Map
 - Docs ROADMAP
 - S7 Commit 2 Decision Routes
 - Db Package 0003 Shallow Iron
 - Db Package 0017 Minor Captain
 - Db Package 0026 Nostalgic Black
 - Decision Framework
-- Archiver Module
 - Drizzle Orm
 - Ioredis Module
 - Nestjs Common
 - Nestjs Core
 - Nestjs Passport
+- Nestjs Throttler
 - Papaparse Module
 - Repo Db
 - Resend Module
@@ -335,13 +331,13 @@
 - Web Package
 - Web Package
 - Web Landing Example
+- Ai Package
 - Check Gstack
 - Check Plan Gate
 - Docs ENVIRONMENT SETUP
 - Seed Demo If Enabled
 - Docs Api Contracts
 - Docs Execution
-- Ai Package
 - Ai Package
 - Ai Package
 - Ai Package
@@ -514,1095 +510,1079 @@
 - **Goods-receipt three-way comparison and automation chain** — learnings_goods_receipt_exhaustiveness, learnings_three_way_comparison, learnings_s6_needs_review_flags, learnings_goods_receipt_status_guard, learnings_auto_compare_idempotency_key, learnings_case_label_vs_evidence [INFERRED 0.85]
 - **PDF read/render pipeline decisions** — learnings_mupdf_agpl_license_check, learnings_pdfjs_napi_canvas_swap, learnings_one_copy_of_pdfjs, learnings_jest_esm_pdfjs_limitation [INFERRED 0.85]
 
-## Communities (471 total, 138 thin omitted)
+## Communities (466 total, 138 thin omitted)
 
-### Community 0 - "API Module"
-Cohesion: 0.03
-Nodes (95): EventsService, Injectable, WorkspaceEventType, BackgroundRunsService, Injectable, CoverageDashboardService, CoverageSummary, LOW_SCORE_THRESHOLD (+87 more)
-
-### Community 1 - "API Auth Service"
-Cohesion: 0.05
-Nodes (43): AppModule, Module, limits, notifications, IngestService, Injectable, InjectQueue, { generateFaqDraft } (+35 more)
-
-### Community 2 - "Web Login Page"
-Cohesion: 0.03
-Nodes (84): Accordion(), AccordionItem, items, JumpRailItem, MessageJumpRail(), truncate(), ScrollToBottomButton(), DEFAULT_ITEMS (+76 more)
-
-### Community 3 - "Web Kb Id Page"
-Cohesion: 0.06
-Nodes (89): ChatLoading(), RootLoading(), NotFound(), Dataset, DatasetStatus, statusLabel, statusVariant, Coverage (+81 more)
-
-### Community 4 - "API Procurement Comparison Service"
-Cohesion: 0.03
-Nodes (75): isBudgetExceeded(), ComparedLines, COMPARISON_SQL, COMPARISON_STRATEGY_VERSION, ComparisonRow, ContractFlagValues, DbTx, decimalDifference() (+67 more)
-
-### Community 5 - "API Storage Service"
+### Community 0 - "API Auth Service"
 Cohesion: 0.04
-Nodes (56): CatalogParseInputError, DESCRIPTION_ALIASES, findValue(), ItemToInsert, MappedCatalogRow, mapRowToCatalogRow(), normalizeHeader(), PHOTO_URL_ALIASES (+48 more)
+Nodes (74): limits, notifications, CachedAnswer, StaleCatalogRow, CatalogScrapeJob, mockCrawlSite, mockExtractProductImages, ScrapeJobData (+66 more)
 
-### Community 6 - "API Catalog Extraction Service"
-Cohesion: 0.04
-Nodes (48): CachedAnswer, CacheService, Inject, Injectable, CatalogExtractionService, mockCompareLineItemToCatalogImage, mockExtractCatalogItemsFromImage, Injectable (+40 more)
+### Community 1 - "Docs Repository Map"
+Cohesion: 0.03
+Nodes (92): AGENTS.md, apps/api/Dockerfile, EMPTY_COUNTS, ComparedLines, COMPARISON_SQL, COMPARISON_STRATEGY_VERSION, ComparisonRow, ContractFlagValues (+84 more)
 
-### Community 7 - "API Auth Service"
+### Community 2 - "API Storage Service"
+Cohesion: 0.03
+Nodes (74): AppModule, Module, EXTENSION_CONTENT_TYPES, resolvePhotoContentType(), seedItemWithPhoto(), seedWorkspaceAndVendor(), CatalogImageService, maxImageBytes() (+66 more)
+
+### Community 3 - "Web Login Page"
+Cohesion: 0.03
+Nodes (86): Accordion(), AccordionItem, items, JumpRailItem, MessageJumpRail(), truncate(), ScrollToBottomButton(), DEFAULT_ITEMS (+78 more)
+
+### Community 4 - "Web Client"
 Cohesion: 0.05
-Nodes (37): EXTENSION_CONTENT_TYPES, resolvePhotoContentType(), seedItemWithPhoto(), seedWorkspaceAndVendor(), CatalogImageService, maxImageBytes(), Injectable, CATALOG_COMPARE_UNAVAILABLE_MESSAGE (+29 more)
+Nodes (92): LoginPage(), ChatRedirectPage(), InvitePage(), CatalogMatchesPage(), Workspace, WorkspaceMembership, WorkspaceDatasetsPage(), DiscrepanciesPage() (+84 more)
 
-### Community 8 - "API Module"
+### Community 5 - "Web Tickets Page"
 Cohesion: 0.06
-Nodes (51): AuthModule, Module, JwtPayload, JwtStrategy, Injectable, CacheModule, Module, CatalogModule (+43 more)
+Nodes (77): FormData, schema, FormData, schema, FormData, schema, ChatLoading(), RootLoading() (+69 more)
 
-### Community 9 - "Web Procurement Page"
+### Community 6 - "API Limits Usage Service"
 Cohesion: 0.05
-Nodes (60): DocTab, documentNumber(), numberColumnLabel, ProcurementPage(), statusLabel, statusVariant, tabItems, Workspace (+52 more)
+Nodes (42): EventsService, Injectable, WorkspaceEventType, IngestService, Injectable, InjectQueue, FaqClusterProcessor, { generateFaqDraft } (+34 more)
 
-### Community 10 - "Web Auth"
+### Community 7 - "Web Procurement Page"
 Cohesion: 0.05
-Nodes (52): FormData, LoginPage(), schema, loginMock, markLoggedInMock, pushMock, refreshMock, routerMock (+44 more)
+Nodes (65): catalogMatchesHref(), EMPTY_COUNTS, flagTypeLabel, flagTypeVariant, NEEDS_REVIEW_TYPES, RECEIVING_TYPES, StatusFilterValue, sumOf() (+57 more)
+
+### Community 8 - "API Auth Workspace Member Guard"
+Cohesion: 0.08
+Nodes (35): AuthModule, Module, CurrentWorkspaceMember, ROLES_KEY, JwtAuthGuard, Injectable, RolesGuard, Injectable (+27 more)
+
+### Community 9 - "API Auth Current User Decorator"
+Cohesion: 0.05
+Nodes (39): CurrentUser, CurrentUserContext, ChatController, Body, Controller, Get, Param, Post (+31 more)
+
+### Community 10 - "API Insights Topic Gap Processor"
+Cohesion: 0.05
+Nodes (39): BackgroundRunsService, Injectable, CoverageDashboardService, CoverageSummary, LOW_SCORE_THRESHOLD, SUMMARY_WINDOW_DAYS, TopicGap, topicGapsRedisKey() (+31 more)
 
 ### Community 11 - "Web Chat Page"
 Cohesion: 0.05
 Nodes (48): ChatMessageList, ChatSession, ChatSessionList, ChatSource, markdownComponents, MessageStructuredMeta, MessageTemplate, messageTemplates (+40 more)
 
 ### Community 12 - "API Catalog Controller"
-Cohesion: 0.10
-Nodes (32): CurrentUser, CurrentUserContext, CurrentWorkspaceMember, Roles(), ROLES_KEY, JwtAuthGuard, Injectable, RolesGuard (+24 more)
-
-### Community 13 - "API Auth Dtos"
 Cohesion: 0.05
-Nodes (43): CatalogMatchDto, IsOptional, IsUUID, ListCatalogMatchesQueryDto, IsIn, IsOptional, IsUUID, IsOptional (+35 more)
+Nodes (41): catalogEnabled(), fileFilter(), MAX_UPLOAD_BYTES, SUPPORTED_EXTENSIONS, SUPPORTED_MIME_TYPES, CatalogMatchDto, IsOptional, IsUUID (+33 more)
 
-### Community 14 - "API Tickets Service"
-Cohesion: 0.05
-Nodes (31): MockResponse, CreateTicketDto, IsNotEmpty, IsString, MaxLength, editStateValues, severityValues, IsOptional (+23 more)
+### Community 13 - "Web Login Page"
+Cohesion: 0.04
+Nodes (26): GET(), GET(), POST(), metadata, manifest(), robots(), sitemap(), metadata (+18 more)
 
-### Community 15 - "Web Client"
+### Community 14 - "API Module"
 Cohesion: 0.07
-Nodes (42): WorkspaceInsightsPage(), getScrapeCountLabel(), getScrapeProgressLabel(), getScrapeStatusLabel(), KnowledgeBasePage(), createVendor(), listVendorPriceTerms(), apiFetch() (+34 more)
+Nodes (29): configureApp(), CatalogModule, Module, ChatModule, Module, defaultThrottleLimit(), trustProxySetting(), DatasetsModule (+21 more)
 
-### Community 16 - "Web Discrepancies Page"
-Cohesion: 0.08
-Nodes (51): ChatRedirectPage(), InvitePage(), WorkspaceDatasetsPage(), catalogMatchesHref(), DiscrepanciesPage(), EMPTY_COUNTS, flagTypeLabel, flagTypeVariant (+43 more)
+### Community 15 - "Web Settings Page"
+Cohesion: 0.06
+Nodes (44): Dataset, DatasetStatus, statusLabel, statusVariant, EventListResponse, quickLinks(), Workspace, WorkspaceEvent (+36 more)
 
-### Community 17 - "Docs Lemon Squeezy S1 Truthful"
+### Community 16 - "Docs Lemon Squeezy S1 Truthful"
 Cohesion: 0.06
 Nodes (53): Going commercial via Lemon Squeezy (2026-10-02), LLM cost controls (rate limits + 5M token budget), mnemra_at / mnemra_rt / mnemra_session_active live cookie identifiers, One task, one worktree; never commit to main, Optra multi-tenant procurement SaaS, Plan gate (.claude/.plan-ack), Tightened public claims rule, Code is source of truth; CONTEXT DRIFT marking (+45 more)
 
-### Community 18 - "Docs Risk Register"
-Cohesion: 0.07
-Nodes (51): docker/Caddyfile, Risk Register, Altering A Postgres Enum, Auth / Permissions, Automations, Backup / Restore, Billing, Brand Assets / Logo (+43 more)
+### Community 17 - "Docs Risk Register"
+Cohesion: 0.06
+Nodes (53): docker/Caddyfile, Risk Register, Altering A Postgres Enum, Auth / Permissions, Automations, Backup / Restore, Billing, Brand Assets / Logo (+45 more)
 
-### Community 19 - "Docs Testing Strategy"
+### Community 18 - "Docs Testing Strategy"
 Cohesion: 0.05
 Nodes (51): Testing Strategy, Browser harness (apps/e2e Playwright), Case title order error > edge > regression > happy, check-test-layers.sh guard, Demo seeder (scripts/seed), DuckDB native-binding / Node ABI note, Never mock duckdb in sandbox/comparison specs, E2E queue isolation via BULL_PREFIX (+43 more)
 
-### Community 20 - "API Workspaces Service"
+### Community 19 - "API Tickets Service"
+Cohesion: 0.06
+Nodes (27): CreateTicketDto, IsNotEmpty, IsString, MaxLength, editStateValues, severityValues, IsOptional, IsString (+19 more)
+
+### Community 20 - "Web Kb Id Page"
 Cohesion: 0.07
+Nodes (38): DocumentListResponse, DocumentRow, DocumentStatusFilter, getScrapeCountLabel(), getScrapeProgressLabel(), getScrapeStatusLabel(), KnowledgeBasePage(), ScrapeRunListResponse (+30 more)
+
+### Community 21 - "API Auth Dtos"
+Cohesion: 0.06
+Nodes (34): IsOptional, IsString, MaxLength, VendorPriceHistoryQueryDto, OffsetQueryDto, IsIn, IsNumberString, IsOptional (+26 more)
+
+### Community 22 - "API Procurement Controller"
+Cohesion: 0.05
+Nodes (41): attachmentDisposition(), encodeRfc5987(), safeContentDispositionFilename(), RFC-5987, RFC-5987, CompareDocumentsDto, IsUUID, RecordDecisionDto (+33 more)
+
+### Community 23 - "API Workspaces Service"
+Cohesion: 0.06
 Nodes (26): CreateWorkspaceDto, IsString, MaxLength, MinLength, InviteMemberDto, IsEmail, ListMembersQueryDto, IsIn (+18 more)
 
-### Community 21 - "Docs Db Contracts"
+### Community 24 - "Docs Db Contracts"
 Cohesion: 0.09
 Nodes (49): Append-only audit pattern, background_runs table, catalog_items table, catalog_matches table, catalogs table, chat_cache table, chat_messages table, chat_query_metrics table (+41 more)
 
-### Community 22 - "API Limits Rate Limit Service"
-Cohesion: 0.06
-Nodes (25): ChatRateLimitGuard, Injectable, RateLimitService, Inject, Injectable, RefineDto, IsNotEmpty, IsString (+17 more)
-
-### Community 23 - "Web Vendor Id Page"
-Cohesion: 0.08
-Nodes (43): CatalogMatchesPage(), Workspace, WorkspaceMembership, sourceKindLabel, statusLabel, statusVariant, VendorDetailPage(), Workspace (+35 more)
-
-### Community 24 - "Scripts Config"
+### Community 25 - "Scripts Config"
 Cohesion: 0.09
-Nodes (39): ALLOWED_DB_HOSTS, daysAgo(), DEFAULT_DATABASE_URL, DEFAULT_REDIS_HOST, DEFAULT_REDIS_PORT, DEMO_PASSWORD, DEMO_TEAMMATE_EMAIL, DEMO_TEAMMATE_ID (+31 more)
-
-### Community 25 - "Web Http Auth Proxy"
-Cohesion: 0.07
-Nodes (20): POST(), GET(), POST(), DELETE(), DELETE(), GET(), POST(), DELETE() (+12 more)
+Nodes (40): bcrypt, ALLOWED_DB_HOSTS, daysAgo(), DEFAULT_DATABASE_URL, DEFAULT_REDIS_HOST, DEFAULT_REDIS_PORT, DEMO_PASSWORD, DEMO_TEAMMATE_EMAIL (+32 more)
 
 ### Community 26 - "Scripts Module"
-Cohesion: 0.05
-Nodes (43): eslint, eslint-config-next, dependencies, @types/node, devDependencies, eslint, eslint-config-next, turbo (+35 more)
+Cohesion: 0.04
+Nodes (44): eslint, eslint-config-next, dependencies, @types/node, devDependencies, eslint, eslint-config-next, turbo (+36 more)
 
-### Community 27 - "Dev Dependencies"
+### Community 27 - "Web Http Client Ip"
+Cohesion: 0.09
+Nodes (16): POST(), POST(), POST(), POST(), POST(), POST(), extractMessage(), IncomingChatMessage (+8 more)
+
+### Community 28 - "Web Http Auth Proxy"
+Cohesion: 0.07
+Nodes (20): GET(), POST(), POST(), DELETE(), DELETE(), GET(), POST(), DELETE() (+12 more)
+
+### Community 29 - "Dev Dependencies"
 Cohesion: 0.05
 Nodes (43): devDependencies, jest, @nestjs/cli, @nestjs/schematics, @nestjs/testing, run-script-webpack-plugin, supertest, @swc/jest (+35 more)
 
-### Community 28 - "Ui Package"
+### Community 30 - "Ui Package"
 Cohesion: 0.05
 Nodes (42): class-variance-authority, clsx, lucide-react, dependencies, class-variance-authority, clsx, lucide-react, @radix-ui/react-slot (+34 more)
 
-### Community 29 - "Scripts Ci Workflows"
+### Community 31 - "Scripts Ci Workflows"
 Cohesion: 0.10
 Nodes (40): re, edge(), extract(), extract_repo_paths(), file_node_id(), _indent(), is_identifiable(), _is_skippable() (+32 more)
 
-### Community 30 - "Dependencies Module"
+### Community 32 - "Dependencies Module"
 Cohesion: 0.05
-Nodes (41): dependencies, @aws-sdk/client-s3, bcrypt, bull, class-transformer, class-validator, cookie-parser, duckdb (+33 more)
+Nodes (41): dependencies, archiver, @aws-sdk/client-s3, bcrypt, bull, class-transformer, class-validator, cookie-parser (+33 more)
 
-### Community 31 - "Ai Package Crawl"
+### Community 33 - "API Procurement Column Mapping"
 Cohesion: 0.09
-Nodes (36): canonicalizeUrl(), clamp(), collapseWhitespace(), CrawledPage, CrawlOptions, crawlPage(), CrawlProgress, crawlSite() (+28 more)
+Nodes (25): DESCRIPTION_ALIASES, findValue(), isEmptyLineItem(), LINE_TOTAL_ALIASES, MappedLineItem, mapRowToLineItem(), MAX_SKU_LENGTH, normalizeHeader() (+17 more)
 
-### Community 32 - "Db Package Workspaces"
-Cohesion: 0.08
-Nodes (32): BackgroundRun, backgroundRuns, backgroundRunStatusEnum, NewBackgroundRun, Document, documents, documentStatusEnum, NewDocument (+24 more)
-
-### Community 33 - "Path Module"
+### Community 34 - "Ai Package Text To Sql"
 Cohesion: 0.07
+Nodes (30): buildTicketSummary(), FaqDraft, FaqDraftParseError, FaqSourceTicket, generateFaqDraft(), llm, invokeMock, TICKETS (+22 more)
+
+### Community 35 - "API Auth Roles Decorator"
+Cohesion: 0.14
+Nodes (17): Roles(), ProcurementController, Body, Controller, Get, Param, Patch, Post (+9 more)
+
+### Community 36 - "API Procurement Comparison Service"
+Cohesion: 0.08
+Nodes (13): ComparisonService, decimalDifference(), lineName(), matchKey(), normalizeUom(), serializeForCsv(), serializeGoodsReceiptForCsv(), toScaledDecimal() (+5 more)
+
+### Community 37 - "Scripts Tdd Runner Mjs"
+Cohesion: 0.11
+Nodes (20): strict, process, os, test, worktreeCount(), markerPath(), API_PACKAGE, git() (+12 more)
+
+### Community 38 - "Web Change Password Route"
+Cohesion: 0.08
+Nodes (11): POST(), GET(), GET(), PATCH(), PATCH(), GET(), PATCH(), POST() (+3 more)
+
+### Community 39 - "Ai Package Crawl"
+Cohesion: 0.09
+Nodes (35): canonicalizeUrl(), clamp(), collapseWhitespace(), CrawledPage, CrawlOptions, crawlPage(), CrawlProgress, crawlSite() (+27 more)
+
+### Community 40 - "Scripts Procurement"
+Cohesion: 0.13
+Nodes (39): buildCatalogMatchRows(), buildComparisonRunGoodsReceiptRows(), buildDiscrepancyFlagRows(), buildGoodsReceiptLineItemRows(), buildGoodsReceiptRows(), buildInvoiceLineItemRows(), buildInvoiceRows(), buildPoLineItemRows() (+31 more)
+
+### Community 41 - "Path Module"
+Cohesion: 0.08
 Nodes (25): dir, persona, dir, persona, dir, persona, dir, persona (+17 more)
 
-### Community 34 - "Scripts Procurement"
-Cohesion: 0.13
-Nodes (39): buildComparisonRunGoodsReceiptRows(), buildComparisonRunRows(), buildDiscrepancyFlagRows(), buildGoodsReceiptLineItemRows(), buildGoodsReceiptRows(), buildInvoiceLineItemRows(), buildInvoiceRows(), buildPoLineItemRows() (+31 more)
-
-### Community 35 - "API Documents Controller"
+### Community 42 - "API Catalog Match Service"
 Cohesion: 0.07
-Nodes (27): attachmentDisposition(), encodeRfc5987(), safeContentDispositionFilename(), RFC-5987, RFC-5987, Catch, UploadExceptionFilter, maxUploadBytes() (+19 more)
+Nodes (19): CatalogExtractionService, mockCompareLineItemToCatalogImage, mockExtractCatalogItemsFromImage, Injectable, CATALOG_COMPARE_UNAVAILABLE_MESSAGE, QueryLineItem, SearchInput, Fix B6 + B15 tests (catalog search partial failures) (+11 more)
 
-### Community 36 - "Scripts Tdd Lib Mjs"
-Cohesion: 0.11
-Nodes (34): e2e, codeMask(), extractTestTitles(), findBashWriteTargets(), GUARDED_ROOTS, isGuardedSource(), isPathArg(), judgeRed() (+26 more)
-
-### Community 37 - "Db Package Discrepancy Flags"
-Cohesion: 0.08
-Nodes (30): ComparisonRunGoodsReceipt, comparisonRunGoodsReceipts, NewComparisonRunGoodsReceipt, ComparisonRun, comparisonRuns, comparisonRunStatusEnum, NewComparisonRun, DiscrepancyFlag (+22 more)
-
-### Community 38 - "API Scrape Service"
+### Community 43 - "API Scrape Service"
 Cohesion: 0.08
 Nodes (21): ScrapeDto, IsArray, IsInt, IsOptional, IsString, IsUrl, Max, Min (+13 more)
 
-### Community 39 - "Web Legal Facts"
+### Community 44 - "Web Legal Facts"
 Cohesion: 0.12
 Nodes (26): metadata, PrivacyPage(), BASE_FACTS, renderWithFacts(), metadata, RefundPage(), metadata, TermsPage() (+18 more)
 
-### Community 40 - "Web Http Client Ip"
-Cohesion: 0.11
-Nodes (12): POST(), POST(), POST(), POST(), POST(), POST(), config, middleware() (+4 more)
-
-### Community 41 - "Web Login Page"
-Cohesion: 0.06
-Nodes (18): GET(), GET(), PATCH(), invokeMock, fromMock, selectMock, similaritySearchMock, streamMock (+10 more)
-
-### Community 42 - "Ai Package"
+### Community 45 - "Ai Package"
 Cohesion: 0.12
 Nodes (27): condenseQuestion(), extractText(), llm, invokeMock, buildEvidencePack(), EvidenceChunk, labelFor(), trimToTokens() (+19 more)
 
-### Community 43 - "Db Module"
-Cohesion: 0.13
-Nodes (21): addMember(), closeDb(), db(), latestOtp(), rowExists(), seedKnowledgeBase(), seedUser(), seedVendor() (+13 more)
+### Community 46 - "Ai Package"
+Cohesion: 0.10
+Nodes (29): ticket(), buildSplitter(), chunkDocument(), countTokens(), encoder, hashContent(), MARKDOWN_FILE_TYPES, TODO: implement section-aware splitter per file type (+21 more)
 
-### Community 44 - "Web Change Password Route"
+### Community 47 - "Db Package Discrepancy Flags"
 Cohesion: 0.09
-Nodes (10): GET(), PATCH(), GET(), GET(), POST(), GET(), GET(), GET() (+2 more)
+Nodes (27): ComparisonRunGoodsReceipt, comparisonRunGoodsReceipts, NewComparisonRunGoodsReceipt, ComparisonRun, comparisonRuns, comparisonRunStatusEnum, NewComparisonRun, DiscrepancyFlag (+19 more)
 
-### Community 45 - "Global Env"
+### Community 48 - "Global Env"
 Cohesion: 0.08
 Nodes (34): DATABASE_URL, DOMAIN, LANGSMITH_API_KEY, LANGSMITH_PROJECT, ^lint, NEXT_PUBLIC_API_URL, NODE_ENV, OPENAI_API_KEY (+26 more)
 
-### Community 46 - "Web Http Auth Proxy"
-Cohesion: 0.10
-Nodes (14): GET(), extractMessage(), IncomingChatMessage, POST(), runtime, GET(), POST(), GET() (+6 more)
+### Community 49 - "Docs Hide Support Surfaces"
+Cohesion: 0.07
+Nodes (22): ProcurementModule, Module, LAYOUTS, isolation, order, red, Hide the support surfaces plan (KB, Datasets, Chat, Tickets, Insights), Amendment 2026-10-02: disable routes via notFound() layout.tsx (+14 more)
 
-### Community 47 - "Ai Package Catalog Match"
+### Community 50 - "Ai Package Catalog Match"
 Cohesion: 0.10
 Nodes (29): CatalogExtractionParseError, CatalogExtractionRefusalError, CatalogExtractionTimeoutError, CatalogItemExtractionResult, CompareLineItemResult, compareLineItemToCatalogImage(), CompareLineItemToCatalogImageInput, extractCatalogItemsFromImage() (+21 more)
 
-### Community 48 - "Db Package"
+### Community 51 - "API Cache Service"
+Cohesion: 0.07
+Nodes (16): CacheService, Inject, Injectable, IngestProcessor, mockChunkDocument, mockEmbedChunks, mockLoadDocument, mockSyncChunks (+8 more)
+
+### Community 52 - "Db Package"
 Cohesion: 0.06
 Nodes (32): drizzle-kit, dependencies, dotenv, drizzle-orm, @nestjs/common, pg, devDependencies, drizzle-kit (+24 more)
 
-### Community 49 - "Ai Package Procurement Extraction"
+### Community 53 - "Ai Package Procurement Extraction"
 Cohesion: 0.09
 Nodes (26): ExtractedLineItem, EXTRACTION_HUMAN_PROMPT(), extractLineItemsFromPdf(), EXTRACTOR_VERSION, extractText(), invokeAndParse(), isRefusal(), isTimeoutError() (+18 more)
 
-### Community 50 - "API Catalog Parse Processor"
-Cohesion: 0.16
-Nodes (20): loadCSV(), loadDOCX(), loadEML(), loadHTML(), LoaderFn, LOADERS, loadJSON(), loadMSG() (+12 more)
-
-### Community 51 - "Web Landing Demo Docs"
+### Community 54 - "Web Landing Demo Docs"
 Cohesion: 0.13
 Nodes (20): HeroMatchDemo(), Phase, ProductTour(), prefersReducedMotion(), REVEAL_FALLBACK_MS, FakeIntersectionObserver, Probe(), SilentIntersectionObserver (+12 more)
 
-### Community 52 - "API Common List Query Dto"
-Cohesion: 0.08
-Nodes (21): ListQueryDto, IsNumberString, IsOptional, IsString, Matches, CreateKnowledgeBaseDto, IsString, MaxLength (+13 more)
+### Community 55 - "Ai Package"
+Cohesion: 0.12
+Nodes (19): loadCSV(), loadDOCX(), loadEML(), loadHTML(), LoaderFn, LOADERS, loadJSON(), loadMSG() (+11 more)
 
-### Community 53 - "Web Http Auth Proxy"
+### Community 56 - "Ui Module"
+Cohesion: 0.21
+Nodes (22): findOrCreate(), rowsOf(), Doc, uploadCatalogWithPhoto(), uploadGoodsReceiptFile(), uploadInvoiceFile(), uploadKnowledgeBaseDocument(), uploadPurchaseOrder() (+14 more)
+
+### Community 57 - "Web Http Auth Proxy"
 Cohesion: 0.10
 Nodes (13): GET(), POST(), GET(), POST(), GET(), POST(), GET(), POST() (+5 more)
 
-### Community 54 - "Scripts Graphify Complete"
+### Community 58 - "Web Workspace Search"
+Cohesion: 0.08
+Nodes (21): pushMock, WorkspaceAccessDenied(), ChatMessageResult, DocumentResult, emptyResults, SearchResponse, SearchStatus, downloadDocumentMock (+13 more)
+
+### Community 59 - "Scripts Graphify Complete"
 Cohesion: 0.11
 Nodes (30): argparse, collections, analyze, build, cli, cluster, detect, diagnostics (+22 more)
 
-### Community 55 - "Ai Package Text To Sql"
-Cohesion: 0.09
-Nodes (23): buildTicketSummary(), FaqDraft, FaqDraftParseError, FaqSourceTicket, generateFaqDraft(), llm, invokeMock, TICKETS (+15 more)
-
-### Community 56 - "Scripts Data"
+### Community 60 - "Scripts Data"
 Cohesion: 0.12
 Nodes (26): workspaceeventtypeenum, seedDocuments, buildEventRows(), buildScrapeRunRows(), EventType, SCRAPE_RUN_FAILED_ID, SCRAPE_RUN_OK_ID, buildBackgroundRunRows() (+18 more)
 
-### Community 57 - "Docs Hide Support Surfaces"
-Cohesion: 0.08
-Nodes (19): LAYOUTS, isolation, order, red, Hide the support surfaces plan (KB, Datasets, Chat, Tickets, Insights), Amendment 2026-10-02: disable routes via notFound() layout.tsx, API is not public (Caddy proxies only web:3000), Backward Compatibility Matrix (hide support surfaces) (+11 more)
+### Community 61 - "Db Package Workspaces"
+Cohesion: 0.09
+Nodes (24): CatalogItem, catalogItems, NewCatalogItem, CatalogMatch, catalogMatches, catalogMatchStatusEnum, catalogMatchTypeEnum, NewCatalogMatch (+16 more)
 
-### Community 58 - "Ignore Patterns"
+### Community 62 - "API Common List Query Dto"
+Cohesion: 0.09
+Nodes (21): ListQueryDto, IsNumberString, IsOptional, IsString, Matches, CreateKnowledgeBaseDto, IsString, MaxLength (+13 more)
+
+### Community 63 - "Db Package Pagination"
+Cohesion: 0.09
+Nodes (22): ALLOWED, target, Prepare API e2e database, Apply database migrations, main(), migrationsFolder, db, pool (+14 more)
+
+### Community 64 - "Web Http Auth Proxy"
+Cohesion: 0.12
+Nodes (11): GET(), GET(), POST(), GET(), GET(), GET(), GET(), getBearer() (+3 more)
+
+### Community 65 - "Ignore Patterns"
 Cohesion: 0.07
 Nodes (29): env, es2022, node, extends, ignorePatterns, build, coverage, dist (+21 more)
 
-### Community 59 - "Ai Package Ticket Extraction"
+### Community 66 - "Ai Package Ticket Extraction"
 Cohesion: 0.10
 Nodes (25): EXTRACTION_HUMAN_PROMPT(), ExtractionEmptyError, ExtractionParseError, ExtractionRefusalError, ExtractionTimeoutError, extractText(), extractTicketFromTranscript(), isRefusal() (+17 more)
 
-### Community 60 - "Scripts Tdd Runner Mjs"
-Cohesion: 0.16
-Nodes (17): strict, process, os, test, worktreeCount(), markerPath(), API_PACKAGE, git() (+9 more)
-
-### Community 61 - "Global Policy Applies To Every"
+### Community 67 - "Global Policy Applies To Every"
 Cohesion: 0.11
 Nodes (29): Approval gates (production, migrations, auth, rate limits, deploy, deps), Autonomy Levels, Level 2 Default Autonomy, Global Policy (applies to every persona), project-manager agent (generated), db-architect agent (generated), nextjs-frontend-dev agent (generated), code-reviewer agent (generated) (+21 more)
 
-### Community 62 - "API Procurement Controller"
-Cohesion: 0.21
-Nodes (13): ProcurementController, Body, Controller, Get, Param, Patch, Post, Query (+5 more)
+### Community 68 - "API Datasets Dataset Profiling Service"
+Cohesion: 0.09
+Nodes (15): DatasetProfilingService, Injectable, InjectQueue, DatasetsController, Controller, Delete, Get, Param (+7 more)
 
-### Community 63 - "Docs Claude Bootstrap Template"
+### Community 69 - "Db Module"
+Cohesion: 0.17
+Nodes (17): addMember(), closeDb(), db(), latestOtp(), photoKeysOfCatalog(), rowExists(), seedKnowledgeBase(), seedUser() (+9 more)
+
+### Community 70 - "Docs Claude Bootstrap Template"
 Cohesion: 0.10
 Nodes (29): Autonomous Bootstrap Sequence, Backward Compatibility Matrix, Narrow Spec / Blast Radius Rule, Bootstrap Command Contract, Bootstrap Source Contract, Bugfix RCA Contract, check-plan-gate.sh hook source, check-predict-verify.sh hook source (+21 more)
 
-### Community 64 - "Procurement E2E"
-Cohesion: 0.10
-Nodes (12): configureApp(), AllExceptionsFilter, Catch, trustProxySetting(), Citation, createVendor(), Method, seedOwnerPo() (+4 more)
-
-### Community 65 - "API Procurement Comparison Service"
-Cohesion: 0.13
-Nodes (7): ComparisonService, lineName(), matchKey(), normalizeUom(), serializeForCsv(), serializeGoodsReceiptForCsv(), Injectable
-
-### Community 66 - "Dev Dependencies"
+### Community 71 - "Dev Dependencies"
 Cohesion: 0.07
 Nodes (27): devDependencies, @aws-sdk/client-s3, bcrypt, dotenv, ioredis, pg, @playwright/test, @types/bcrypt (+19 more)
 
-### Community 67 - "Ai Package Graph"
+### Community 72 - "Ai Package Graph"
 Cohesion: 0.11
 Nodes (22): answerLlm, answerQuestionWithGraph(), buildContext(), buildSources(), collectAnswer(), generateNode(), gradeAnswerNode(), gradeLlm (+14 more)
 
-### Community 68 - "Db Package Chunks"
+### Community 73 - "Db Package Chunks"
 Cohesion: 0.09
 Nodes (23): chatCache, ChatCacheRow, NewChatCacheRow, ChatQueryMetric, chatQueryMetrics, NewChatQueryMetric, ChatMessage, chatMessageRoleEnum (+15 more)
 
-### Community 69 - "Db Package"
-Cohesion: 0.10
-Nodes (21): DiscrepancyDecision, discrepancyDecisionOutcomeEnum, discrepancyDecisions, NewDiscrepancyDecision, discrepancyFlags, NewOtp, Otp, otps (+13 more)
-
-### Community 70 - "API Catalog Controller"
+### Community 74 - "API Catalog Controller"
 Cohesion: 0.21
 Nodes (12): CatalogController, Body, Controller, Get, Param, Post, Query, Res (+4 more)
 
-### Community 71 - "Web Page"
+### Community 75 - "Web Page"
 Cohesion: 0.11
-Nodes (14): comparisons, faqItems, Home(), jsonLd, FinalCta(), LandingNav(), NAV_LINKS, METRICS (+6 more)
+Nodes (15): comparisons, faqItems, Home(), jsonLd, ComparisonRow, ComparisonTable(), rows, FinalCta() (+7 more)
 
-### Community 72 - "Web Tickets Page"
-Cohesion: 0.11
-Nodes (23): confidenceFields, countHighConfidenceFields(), EditorState, formatLinearMarkdown(), IndexedFilter, Severity, SeverityFilter, StatusFilter (+15 more)
+### Community 76 - "Docs Module Ownership Map"
+Cohesion: 0.09
+Nodes (27): contracts, marker, contract, contracts, contracts, contracts, AI workflow tooling domain, Backblaze B2 object storage and backups (+19 more)
 
-### Community 73 - "API Auth Controller"
+### Community 77 - "API Auth Controller"
 Cohesion: 0.11
 Nodes (18): ChangePasswordDto, IsString, MinLength, LoginDto, IsEmail, IsString, MinLength, RegisterDto (+10 more)
 
-### Community 74 - "CI And Deploy Quality Gate"
+### Community 78 - "CI And Deploy Quality Gate"
 Cohesion: 0.08
 Nodes (26): CI and Deploy: Quality gate, uses: actions/checkout@v4, Build typed workspace packages, TDD gate, Script tests, Type-check, Lint, Unit tests — apps/api (+18 more)
 
-### Community 75 - "Flows Module"
-Cohesion: 0.22
-Nodes (20): photoKeysOfCatalog(), Doc, uploadCatalogWithPhoto(), uploadGoodsReceiptFile(), uploadInvoiceFile(), uploadKnowledgeBaseDocument(), uploadPurchaseOrder(), uploadPurchaseOrderFile() (+12 more)
-
-### Community 76 - "Web Motion Reveal"
-Cohesion: 0.12
-Nodes (13): ComparisonRow, ComparisonTable(), rows, FILE_TYPES, FilesTrust(), TRUST_ROWS, Hero(), PLANS (+5 more)
-
-### Community 77 - "Scripts Generate Agent Defs Mjs"
-Cohesion: 0.12
-Nodes (18): Agent definitions lint, check(), CLAUDE_DIR, claudeFilePath(), computeTargets(), escapeDoubleQuoted(), findDuplicateOwnedGlobs(), generate() (+10 more)
-
-### Community 78 - "Scripts Tdd Gate Mjs"
+### Community 79 - "Scripts Tdd Gate Mjs"
 Cohesion: 0.17
 Nodes (23): changedEntries(), collectTitles(), GateError, git(), main(), prepareBase(), PROMOTION_REFS, report() (+15 more)
 
-### Community 79 - "Compiler Options"
+### Community 80 - "Compiler Options"
 Cohesion: 0.08
 Nodes (23): compilerOptions, allowSyntheticDefaultImports, declaration, emitDecoratorMetadata, experimentalDecorators, forceConsistentCasingInFileNames, incremental, module (+15 more)
-
-### Community 80 - "Procurement Module"
-Cohesion: 0.18
-Nodes (18): findOrCreate(), rowsOf(), storageKeyOf(), StoredTable, bff(), download(), FilePayload, MIME (+10 more)
 
 ### Community 81 - "Docs Architecture Manifest"
 Cohesion: 0.09
 Nodes (24): apiFetch/uploadFile Refresh-on-401, Architecture Manifest, JWT + Rotating Refresh Token Strategy, Backend: NestJS 10 + Bull 4 + Passport JWT/OTP, BFF Auth Proxy (cookie→Bearer), Bull Queues Inventory, Chat Cache Order: exact Redis → semantic pgvector → RAG, Cross-Cutting Services (Cache, Limits, Storage, DuckDB, BackgroundRuns) (+16 more)
 
-### Community 82 - "Docs Module Ownership Map"
-Cohesion: 0.10
-Nodes (24): contracts, marker, contract, contracts, contracts, AI workflow tooling domain, Backblaze B2 object storage and backups, Branding sync notes (+16 more)
-
-### Community 83 - "Docs User Prompt Rag Flow"
+### Community 82 - "Docs User Prompt Rag Flow"
 Cohesion: 0.10
 Nodes (24): Browser User, Chat Completion Persistence, ChatController, ChatService.answer(), Chunk and Embed, Context Builder, Corpus Feeders, Exact Cache (+16 more)
 
-### Community 84 - "Ci Job Quality Gate"
-Cohesion: 0.09
-Nodes (23): Agent definitions lint (bun run agents:lint), E2E — apps/api on optra_e2e, Backing services (postgres, redis, seaweedfs via docker compose), scripts/backup.sh --reason=deploy, Build typed workspace packages (@repo/db, @repo/ai), scripts/check-prod-env.sh, scripts/check-test-layers.sh, ci job (Quality gate) (+15 more)
+### Community 83 - "Claude Runtime Rules"
+Cohesion: 0.12
+Nodes (23): activation: PILOT_FROZEN, autonomy_level: 2, autonomous-engineering.yaml config, Verified validation commands per package, Allowed back-edges (the only legal ones), Canonical task path NEW to REPORTED, SKIPPED_ALREADY_IMPLEMENTED path, Task State Machine (+15 more)
 
-### Community 85 - "Ai Package Pdf"
-Cohesion: 0.15
-Nodes (16): pdfFile(), pdfWith(), PNG_MAGIC, loadPDF(), pageText(), RenderPdfOptions, RenderPdfResult, renderPdfToImages() (+8 more)
+### Community 84 - "Scripts Tdd Lib Mjs"
+Cohesion: 0.17
+Nodes (21): codeMask(), extractTestTitles(), findBashWriteTargets(), GUARDED_ROOTS, isGuardedSource(), isPathArg(), judgeRed(), kindsOf() (+13 more)
 
-### Community 86 - "Db Package Catalog Matches"
-Cohesion: 0.11
-Nodes (18): CatalogItem, catalogItems, NewCatalogItem, CatalogMatch, catalogMatches, catalogMatchStatusEnum, catalogMatchTypeEnum, NewCatalogMatch (+10 more)
-
-### Community 87 - "Scripts Datasets"
+### Community 85 - "Scripts Datasets"
 Cohesion: 0.20
 Nodes (22): buildDatasetFiles(), buildDatasetRows(), CHANNELS, CLIENTS, csvCell(), datasetCsv(), datasetId(), datasetStorageKey() (+14 more)
 
-### Community 89 - "Ai Package"
-Cohesion: 0.17
-Nodes (17): ticket(), Chunk, embedChunks(), embedQuery(), getEmbedder(), EmbeddedChunk, { executeMock, embedQueryMock }, backfillTicketEmbeddings() (+9 more)
-
-### Community 90 - "Env Module"
+### Community 87 - "Env Module"
 Cohesion: 0.16
 Nodes (19): API_PORT, API_URL, apiEnv(), DATABASE_URL, OPENAI_STUB_PORT, REDIS_HOST, REDIS_PORT, REPO_ROOT (+11 more)
 
-### Community 91 - "Docs Storage E2E Playwright Reliability"
-Cohesion: 0.10
-Nodes (22): tables, layer, Forwarded Visitor Address (Rate Limits), In-Memory Address Limits, Per-Account Auth Limits, Reconciler Ownership, Registration Reveals Existing Emails, register (+14 more)
+### Community 88 - "Web Auth"
+Cohesion: 0.14
+Nodes (17): markLoggedInMock, pushMock, refreshMock, resendOtpMock, routerMock, searchParamsMock, verifyOtpMock, VerifyOtpPage() (+9 more)
 
-### Community 92 - "Scripts Ci Workflows"
+### Community 89 - "Scripts Ci Workflows"
 Cohesion: 0.14
 Nodes (12): cache, util, json, os, pathlib, EvalHarnessSchemaTest, ExtractionEvalHarnessSchemaTest, Tests for scripts/graphify/ci_workflows.py (stdlib unittest, no third-party… (+4 more)
 
-### Community 93 - "Compiler Options"
+### Community 90 - "Db Package Workspaces"
+Cohesion: 0.12
+Nodes (17): Document, documents, documentStatusEnum, NewDocument, FaqDraft, faqDrafts, faqDraftStatusEnum, NewFaqDraft (+9 more)
+
+### Community 91 - "API Procurement Comparison Service"
+Cohesion: 0.13
+Nodes (17): NewOtp, Otp, otps, NewRefreshToken, RefreshToken, refreshTokens, NewSavedRefinedMessage, SavedRefinedMessage (+9 more)
+
+### Community 92 - "Compiler Options"
 Cohesion: 0.09
 Nodes (21): DOM, DOM.Iterable, ES2022, compilerOptions, allowJs, checkJs, esModuleInterop, forceConsistentCasingInFileNames (+13 more)
 
-### Community 94 - "API Chat Controller"
-Cohesion: 0.13
-Nodes (15): ChatController, Body, Controller, Get, Param, Post, Query, Res (+7 more)
-
-### Community 95 - "API Documents Controller"
-Cohesion: 0.18
-Nodes (14): DocumentsController, Body, Controller, Delete, Get, HttpCode, Param, Post (+6 more)
-
-### Community 96 - "API Procurement Column Mapping"
-Cohesion: 0.13
-Nodes (19): DESCRIPTION_ALIASES, findValue(), isEmptyLineItem(), LINE_TOTAL_ALIASES, MappedLineItem, mapRowToLineItem(), MAX_SKU_LENGTH, normalizeHeader() (+11 more)
-
-### Community 97 - "API Procurement Compare Service"
+### Community 93 - "API Insights Digest Renderers"
 Cohesion: 0.14
-Nodes (8): isPermanentCompareError(), ProcurementCompareProcessor, Process, Processor, jobIdFor(), ProcurementCompareService, Injectable, InjectQueue
+Nodes (14): buildLines(), EVENT_LABELS, isQuietWeek(), renderDigestEmailHtml(), renderDigestSlackPayload(), SlackPayload, DigestSettingsController, Body (+6 more)
 
-### Community 98 - "Db Package Pagination"
-Cohesion: 0.12
-Nodes (14): main(), db, pool, buildOffsetResult(), clampInt(), Cursor, decodeCursor(), encodeCursor() (+6 more)
-
-### Community 99 - "Web Chat Page"
+### Community 94 - "Web Chat Page"
 Cohesion: 0.10
 Nodes (20): downloadDocumentMock, downloadTicketTranscriptMock, getChatMessagesMock, getRefineStatusMock, getWorkspaceMock, handleSubmitMock, listChatSessionsMock, listSavedRefinedMessagesMock (+12 more)
 
-### Community 100 - "Web Package"
+### Community 95 - "Web Package"
 Cohesion: 0.10
 Nodes (21): devDependencies, jsdom, shadcn, tailwindcss, @tailwindcss/postcss, @types/node, @types/react, @types/react-dom (+13 more)
 
-### Community 101 - "Docs Graphify Coverage Refresh"
+### Community 96 - "Web Motion Reveal"
+Cohesion: 0.14
+Nodes (10): FILE_TYPES, FilesTrust(), TRUST_ROWS, Hero(), ProductCards(), USE_CASES, UseCaseGrid(), Reveal() (+2 more)
+
+### Community 97 - "Docs Graphify Coverage Refresh"
 Cohesion: 0.12
 Nodes (21): context, Graphify Closeout Refresh Procedure, Graph refresh without completer, Acceptance Map (1022/1022 coverage), Backward Compatibility Matrix, Canonical Closeout Procedure in planning.md, Root Cause: semantic_cache loads one whole namespace, Graphify 100% Coverage + Stale Docs Refresh Plan (+13 more)
 
-### Community 102 - "Docs Infra Ai Workflow Port"
+### Community 98 - "Deployment Guide"
+Cohesion: 0.10
+Nodes (20): Caddy SSL (COMPOSE_PROFILES=public), Deploy Directory Split (/home/deploy/apps/optra vs /opt/optra), Option A: deploy-remote.sh, Deployment Architecture (local + production), Deployment Guide, DNS Setup (apex + analytics A record), Hetzner VPS Setup, Local Docker Dev Stack (ports 3300/3301/3302) (+12 more)
+
+### Community 99 - "Docs Infra Ai Workflow Port"
 Cohesion: 0.11
 Nodes (21): AI Workflow Tooling, Phase Model/Reasoning Switch Stop, Port Tarraula Engineering Workflow into Optra, Backward Compatibility Matrix, Codex Stays Retired; only AGENTS.md ban lifted, Conflicts with Existing Optra Rules, Decisions 2026-09-23 (base branch, hooks, pacing, no Codex, graphify), Drop Predict-Verify Hook (+13 more)
 
-### Community 103 - "Feature Workflow"
+### Community 100 - "Ai Package Pdf"
+Cohesion: 0.16
+Nodes (15): pdfFile(), pdfWith(), PNG_MAGIC, loadPDF(), pageText(), RenderPdfOptions, RenderPdfResult, renderPdfToImages() (+7 more)
+
+### Community 101 - "Feature Workflow"
 Cohesion: 0.13
 Nodes (20): QA Report, Scenarios, Agent Contract Validation, Coordinator, Implementer, Input Output Contract, Product Manager, QA (+12 more)
 
-### Community 104 - "API Catalog Scrape Service"
+### Community 102 - "API Catalog Scrape Service"
 Cohesion: 0.14
 Nodes (10): CatalogScrapeService, Injectable, InjectQueue, ScrapeCatalogDto, IsInt, IsOptional, IsUrl, Max (+2 more)
 
-### Community 105 - "Scripts Images"
-Cohesion: 0.11
-Nodes (15): ALLOWED, target, Prepare API e2e database, Apply database migrations, migrationsFolder, migrator, pg, url (+7 more)
+### Community 103 - "API Documents Controller"
+Cohesion: 0.19
+Nodes (14): DocumentsController, Body, Controller, Delete, Get, HttpCode, Param, Post (+6 more)
 
-### Community 106 - "Docs OPTRA DEVELOPMENT PLAN"
-Cohesion: 0.14
-Nodes (20): invariant, B12 LLM paths bypass token budget, B1 Re-compare deletes human decisions, B3 Comparison output truncated at 500 rows, B9 Bull retries never fire, Defect register D1-D10, B1-B22, S0a Compare integrity, S0b Parse integrity (+12 more)
-
-### Community 107 - "Claude Runtime Rules"
-Cohesion: 0.15
-Nodes (19): Evidence Commands, activation: PILOT_FROZEN, autonomy_level: 2, autonomous-engineering.yaml config, Verified validation commands per package, Allowed back-edges (the only legal ones), Canonical task path NEW to REPORTED, SKIPPED_ALREADY_IMPLEMENTED path (+11 more)
-
-### Community 108 - "Daily Backup Database"
+### Community 104 - "Daily Backup Database"
 Cohesion: 0.12
 Nodes (17): Daily backup: Database backup, CI and Deploy: deploy, BACKUP_S3_ACCESS_KEY, BACKUP_S3_BUCKET, BACKUP_S3_ENDPOINT, BACKUP_S3_SECRET_KEY, VPS_HOST, VPS_PORT (+9 more)
 
-### Community 109 - "Web Package"
+### Community 105 - "Web Package"
 Cohesion: 0.11
 Nodes (19): ai, dependencies, ai, gsap, @gsap/react, motion, next, react-dom (+11 more)
 
-### Community 110 - "API Auth Controller"
+### Community 106 - "API Auth Controller"
 Cohesion: 0.26
 Nodes (10): AuthController, Body, Controller, Get, HttpCode, Post, Res, UseGuards (+2 more)
 
-### Community 111 - "API Datasets Service"
-Cohesion: 0.13
-Nodes (12): DatasetsController, Controller, Delete, Get, Param, Post, UploadedFile, UseFilters (+4 more)
-
-### Community 112 - "Types Package"
+### Community 107 - "Types Package"
 Cohesion: 0.13
 Nodes (17): listFlags(), invoice-mismatch.csv fixture, api-contracts.md, S2 Discrepancy Citations Plan, Discrepancy Line Citations (poLine/invoiceLine/receiptLine), Include receiptLine Citation Decision, Join Duplication Risk, UNVERIFIED sourceRow Base (1-based incl. header) (+9 more)
 
-### Community 113 - "Ui Package Toaster"
+### Community 108 - "Ui Package Toaster"
 Cohesion: 0.13
 Nodes (16): listWorkspacesMock, pushMock, renderPage(), routerMock, acceptInviteMock, pushMock, renderPage(), routerMock (+8 more)
 
-### Community 114 - "Web Procurement Page"
+### Community 109 - "Web Procurement Page"
 Cohesion: 0.11
 Nodes (17): compareDocumentsMock, doneInvoice, donePurchaseOrder, downloadProcurementDocumentMock, getWorkspaceMock, listGoodsReceiptsMock, listInvoicesMock, listPurchaseOrdersMock (+9 more)
 
-### Community 115 - "Web Components"
+### Community 110 - "Web Components"
 Cohesion: 0.11
 Nodes (18): aliases, components, hooks, lib, ui, utils, registries, @react-bits (+10 more)
 
-### Community 116 - "Web Tsconfig"
+### Community 111 - "Web Tsconfig"
 Cohesion: 0.11
 Nodes (18): compilerOptions, paths, plugins, exclude, extends, include, next-env.d.ts, node_modules (+10 more)
 
-### Community 117 - "Ai Package"
-Cohesion: 0.11
-Nodes (19): cheerio, ipaddr.js, @kenjiuno/msgreader, langchain, @langchain/openai, mammoth, @napi-rs/canvas, dependencies (+11 more)
-
-### Community 118 - "Docs Planning"
+### Community 112 - "Docs Planning"
 Cohesion: 0.11
 Nodes (19): routing, Database Migrations on API Start, Drizzle ORM on PostgreSQL 16 + pgvector, drizzle-kit quoted vector(1536) quirk, Key Models / Tenant Tables, Migrations 0000–0034 and non-additive list, Batch Scheduling (parallel groups, merge order), Closing Scans (optimisation, cache) (+11 more)
 
-### Community 119 - "Deployment Guide"
-Cohesion: 0.12
-Nodes (17): Caddy SSL (COMPOSE_PROFILES=public), Deploy Directory Split (/home/deploy/apps/optra vs /opt/optra), Option A: deploy-remote.sh, Option B: deploy.sh on server, Deployment Architecture (local + production), Deployment Guide, DNS Setup (apex + analytics A record), Hetzner VPS Setup (+9 more)
-
-### Community 120 - "Ai Package"
+### Community 113 - "Ai Package"
 Cohesion: 0.11
 Nodes (19): docx, devDependencies, docx, pdf-lib, pptxgenjs, @types/js-yaml, @types/jsdom, @types/mailparser (+11 more)
 
-### Community 121 - "Primary Engineering Loop"
+### Community 114 - "Ai Package"
+Cohesion: 0.11
+Nodes (19): ipaddr.js, @kenjiuno/msgreader, langchain, @langchain/openai, langsmith, mammoth, @napi-rs/canvas, dependencies (+11 more)
+
+### Community 115 - "Primary Engineering Loop"
 Cohesion: 0.13
 Nodes (18): Architect Agent, docs/ai/architecture-manifest.md, docs/ai/contracts, docs/ai/module-ownership-map.md, Coordinator Agent, SKIPPED_ALREADY_IMPLEMENTED, Acceptance Criteria, Product Manager Agent (+10 more)
 
-### Community 122 - "Docs Repository Map"
-Cohesion: 0.17
-Nodes (17): AGENTS.md, apps/api/Dockerfile, apps/web/Dockerfile, CLAUDE.md, docker-compose.yml, docker-compose.prod.yml, docs/ai/agent-orchestration.md, docs/ai/execution.md (+9 more)
-
-### Community 123 - "Web Chat Layout"
+### Community 116 - "API Structured Query Service"
 Cohesion: 0.14
-Nodes (6): metadata, manifest(), robots(), sitemap(), metadata, next
+Nodes (15): FORBIDDEN_KEYWORDS, SqlExecutionError, UnsafeSqlError, AMBIGUOUS_SCORE_GAP, COMPARISON_MIN_SCORE, CONFIDENT_MIN_SCORE, DatasetCandidateRow, StructuredQueryCandidate (+7 more)
 
-### Community 124 - "Docs Bugfix Plan"
+### Community 117 - "Procurement Module"
+Cohesion: 0.18
+Nodes (14): storageKeyOf(), StoredTable, objectExists(), download(), FilePayload, oversized(), rowFor(), DocumentRow (+6 more)
+
+### Community 118 - "Docs Api Contracts"
+Cohesion: 0.14
+Nodes (18): Compare PO <-> Invoice endpoint, comparison_runs table / runId, COMPARISON_SQL fixed template, COMPARISON_STRATEGY_VERSION, Contract price flags (contractPriceFlags), currency_mismatch header-level flag, currentFlagScope SQL predicate, DiscrepancyFlagCitations (poLine/invoiceLine/receiptLine) (+10 more)
+
+### Community 119 - "Docs Bugfix Plan"
 Cohesion: 0.14
 Nodes (18): Prompt Route Summary, PR Change Type, Evidence by Change Type, Approved RCA Requirement, Bugfix Implementation Plan Template, FE-BE Contract Check, Deep Task Gate (stop after RCA), RCA FE vs BE Contract Check (+10 more)
 
-### Community 125 - "Scripts Chat"
+### Community 120 - "Scripts Chat"
 Cohesion: 0.15
 Nodes (16): hoursAgo(), minutesAfter(), buildChatMessageRows(), buildChatSessionRows(), docBySlug(), docSource(), SeedChatMessage, SESSIONS (+8 more)
 
-### Community 126 - "API Catalog Match Service"
+### Community 121 - "API Auth Service"
+Cohesion: 0.21
+Nodes (3): AuthService, DbClient, Injectable
+
+### Community 122 - "API Catalog Match Service"
 Cohesion: 0.17
 Nodes (7): Patch, CatalogMatchService, escapeLikeLiteral(), matchConcurrency(), maxCandidates(), positiveIntEnv(), Injectable
 
-### Community 127 - "API Procurement Kind"
-Cohesion: 0.21
-Nodes (6): ProcurementDocumentsService, runReferencePredicate(), toListItem(), Injectable, assertUnreachable(), docLabel()
+### Community 123 - "API Limits Rate Limit Service"
+Cohesion: 0.17
+Nodes (7): ChatRateLimitGuard, Injectable, RateLimitService, Inject, Injectable, RefineRateLimitGuard, Injectable
 
-### Community 128 - "Project Review Checklist"
+### Community 124 - "Scripts Generate Agent Defs Mjs"
+Cohesion: 0.20
+Nodes (15): Agent definitions lint, check(), CLAUDE_DIR, claudeFilePath(), computeTargets(), escapeDoubleQuoted(), findDuplicateOwnedGlobs(), generate() (+7 more)
+
+### Community 125 - "Docs Storage E2E Playwright Reliability"
+Cohesion: 0.12
+Nodes (17): tables, layer, Forwarded Visitor Address (Rate Limits), register, Timestamps Without Time Zone, Backblaze B2 optra-prod-objects, playwright.prod.config.ts, Production Smoke Test (+9 more)
+
+### Community 126 - "Docs Risk Register"
+Cohesion: 0.12
+Nodes (17): Column-Alias Mapping, Launch-Hardening Bugs (B1-B15), Real-World Input Policy (D1-D15), Upload Parser Dependencies, Fix plan B4 (blank catalog rows), Fix plan B5 (over-long catalog SKU), Fix plan B12 (catalog matches list scope), Fix plan B13 (catalog path ids) (+9 more)
+
+### Community 127 - "Project Review Checklist"
 Cohesion: 0.21
 Nodes (16): CLAUDE.md Operating Contract, docs/ai/risk-register.md, Embedding Dimension 1536, Mandatory Activation Areas, Strict TDD, Workspace Isolation (workspaceId filtering), DESIGN.md Design Tokens, Job Status Integrity (queueJobId, status, lastError) (+8 more)
 
-### Community 129 - "Jest Module"
+### Community 128 - "Jest Module"
 Cohesion: 0.12
 Nodes (16): jest, collectCoverageFrom, coverageDirectory, globalSetup, moduleFileExtensions, moduleNameMapper, rootDir, testEnvironment (+8 more)
 
-### Community 130 - "API Auth Service"
-Cohesion: 0.23
-Nodes (3): AuthService, DbClient, Injectable
+### Community 129 - "API Catalog Documents Service"
+Cohesion: 0.16
+Nodes (4): CatalogDocumentsService, Injectable, constants, enum
 
-### Community 131 - "API Catalog Documents Service"
-Cohesion: 0.17
-Nodes (6): CatalogDocumentsService, Injectable, decodeUploadFilename(), RFC-7578, RFC-5987, RFC-7578
-
-### Community 132 - "API Insights Faq Drafts Service"
-Cohesion: 0.19
-Nodes (8): FaqDraftsController, Controller, Get, Param, Patch, UseGuards, FaqDraftsService, Injectable
-
-### Community 133 - "Compiler Options"
+### Community 130 - "Compiler Options"
 Cohesion: 0.12
 Nodes (15): compilerOptions, incremental, module, moduleResolution, noEmit, types, exclude, extends (+7 more)
 
-### Community 134 - "Web Kb Id Page"
+### Community 131 - "Web Kb Id Page"
 Cohesion: 0.12
 Nodes (14): deleteDocumentMock, deleteDocumentsMock, downloadDocumentMock, downloadDocumentsMock, getWorkspaceMock, listDocumentsMock, listScrapeRunsMock, listWorkspacesMock (+6 more)
 
-### Community 135 - "Web Vendor Id Page"
+### Community 132 - "Web Vendor Id Page"
 Cohesion: 0.12
 Nodes (15): getVendorExceptionSummaryMock, getVendorMock, getWorkspaceMock, listCatalogItemsMock, listCatalogsMock, listVendorPriceHistoryMock, listVendorsMock, listWorkspacesMock (+7 more)
 
-### Community 136 - "Docker Guide"
+### Community 133 - "Docker Guide"
 Cohesion: 0.16
 Nodes (16): optra-api Dev Service, optra-db (pgvector pg16), optra-redis, optra-seaweedfs (S3 dev store), optra-umami Service, optra-web Dev Service, Docker Guide, Local Dev Hot Reload in Containers (+8 more)
 
-### Community 137 - "Docs User Prompt Rag Flow"
+### Community 134 - "Docs User Prompt Rag Flow"
 Cohesion: 0.15
 Nodes (16): API Entry and Guards, Browser Chat UI, ChatService.answer(), Complex Query Graph Path, Corpus Feeders, Exact Cache, Frontend Response and Persistence, Indexed Result Used by Chat (+8 more)
 
-### Community 138 - "Docs V2 Features"
+### Community 135 - "Docs V2 Features"
 Cohesion: 0.15
 Nodes (16): F7 Coverage Dashboard, F5 Cross-file Compare, F1 CSV Querying, F6 Slack and Email Digest, F4 FAQ Generator, F3 Freshness Detector, Insights Read Models and Dashboard, Retrieval Quality Telemetry (+8 more)
 
-### Community 139 - "Scripts Catalog"
-Cohesion: 0.17
-Nodes (14): BASE_CATALOGS, buildCatalogItemRows(), buildCatalogMatchRows(), buildCatalogPhotoUploads(), buildCatalogRows(), buildVendorRows(), CATALOG_IDS, catalogAge() (+6 more)
-
-### Community 140 - "Bootstrap Validation Workflow"
+### Community 136 - "Bootstrap Validation Workflow"
 Cohesion: 0.16
 Nodes (15): BLOCKED_HUMAN Status, MANIFEST.md, Repair Scope Restriction, Validation Auto-Fix Prompt, Autonomous Engineering Validation Report, Bootstrap Validation Workflow, Canonical Inventory, Lifecycle Validation (+7 more)
 
-### Community 141 - "API Events Controller"
-Cohesion: 0.16
-Nodes (9): EventsController, Controller, Get, HttpCode, Param, Post, Query, UseGuards (+1 more)
+### Community 138 - "API Insights Controller"
+Cohesion: 0.18
+Nodes (8): InsightsController, Controller, Get, Param, Patch, UseGuards, InsightsService, Injectable
 
-### Community 142 - "API Ingest Processor"
-Cohesion: 0.13
-Nodes (7): IngestProcessor, Process, Processor, ScrapeProcessor, Process, Processor, Process
-
-### Community 143 - "Web Discrepancies Page"
+### Community 139 - "Web Discrepancies Page"
 Cohesion: 0.13
 Nodes (12): dismissDiscrepancyMock, getWorkspaceMock, listDecisionsMock, listDiscrepanciesMock, listRunsMock, listWorkspacesMock, logoutMock, mockSearchParams (+4 more)
 
-### Community 144 - "Calm Utility Design System"
-Cohesion: 0.19
-Nodes (15): Calm Utility design system, Design Decisions Log, oklch tokens in packages/ui/src/globals.css, Icon-in-colored-circle decoration dropped, Landing page Optra Refined rebuild, Minimal-functional motion + reduced-motion discipline, iOS-style mobile bottom tab bar below lg, Full-bleed mobile chat (mobileFullBleed) (+7 more)
+### Community 140 - "Db Package"
+Cohesion: 0.13
+Nodes (11): BackgroundRun, backgroundRuns, backgroundRunStatusEnum, NewBackgroundRun, Invitation, invitations, NewInvitation, NewWorkspaceEvent (+3 more)
 
-### Community 145 - "Docs Api Contracts"
-Cohesion: 0.16
-Nodes (15): Compare PO <-> Invoice endpoint, comparison_runs table / runId, COMPARISON_SQL fixed template, COMPARISON_STRATEGY_VERSION, currency_mismatch header-level flag, currentFlagScope SQL predicate, DiscrepancyFlagCitations (poLine/invoiceLine/receiptLine), DuckDbQueryService.runReadOnlyMultiTableQuery() (+7 more)
+### Community 141 - "Scripts Tdd Runner Mjs"
+Cohesion: 0.27
+Nodes (12): parseJsonReport(), parseTapFailures(), planRuns(), runnerArgs(), runnerFor(), hookSignals(), killGroup(), liveGroups (+4 more)
 
-### Community 146 - "Scripts Embeddings"
+### Community 142 - "Scripts Embeddings"
 Cohesion: 0.25
 Nodes (12): EMBEDDING_DIMENSION, CACHE_PATH, cacheKey(), currentModel(), defaultEmbed(), EmbedderOptions, EmbeddingCacheFile, getEmbeddings() (+4 more)
 
-### Community 147 - "Canonical Task Flow"
+### Community 143 - "Scripts Catalog"
+Cohesion: 0.18
+Nodes (13): BASE_CATALOGS, buildCatalogItemRows(), buildCatalogPhotoUploads(), buildCatalogRows(), buildVendorRows(), CATALOG_IDS, catalogAge(), catalogItemId() (+5 more)
+
+### Community 144 - "Implementer Agent"
+Cohesion: 0.15
+Nodes (14): Approved Plan File Scope, Documentation Sync (docs/ai + repository-map), Evidence Commands, Implementer Agent, No Secrets in Diff, Autonomous Engineering Constitution, Evidence Over Assumptions, Human Approval Controls Irreversible Actions (+6 more)
+
+### Community 145 - "Canonical Task Flow"
 Cohesion: 0.15
 Nodes (14): Canonical Task Flow, Caveman Ultra Communication Default, Plan Gate (.claude/.plan-ack), Senior Staff Full Stack AI Engineer Persona, Stop Conditions (node Z), GLOBAL_POLICY Block, Worktree and Branch Isolation (new-task-worktree.sh), Backward Compatibility Matrix (+6 more)
 
-### Community 148 - "Scripts Module"
+### Community 146 - "Scripts Module"
 Cohesion: 0.14
 Nodes (13): name, private, scripts, build, dev, lint, start, test (+5 more)
+
+### Community 148 - "API Catalog Parse Processor"
+Cohesion: 0.25
+Nodes (5): CatalogParseProcessor, convertXlsxToCsv(), describesAnItem(), Process, Processor
 
 ### Community 149 - "API Catalog Create Price Term"
 Cohesion: 0.16
 Nodes (10): CreatePriceTermDto, IsISO4217CurrencyCode, IsISO8601, IsOptional, IsString, Matches, MaxLength, MinLength (+2 more)
 
-### Community 150 - "API Procurement Parse Service"
-Cohesion: 0.32
-Nodes (5): convertXlsxToCsv(), ProcurementParseProcessor, Process, Processor, ProcurementDocKind
+### Community 150 - "API Structured Query Service"
+Cohesion: 0.24
+Nodes (3): StructuredQueryService, Injectable, web
 
-### Community 151 - "API Search Service"
-Cohesion: 0.19
-Nodes (8): SearchController, Controller, Get, Param, Query, UseGuards, SearchService, Injectable
-
-### Community 152 - "Web Catalog Matches Page"
+### Community 151 - "Web Catalog Matches Page"
 Cohesion: 0.14
 Nodes (13): baseMatch, dismissCatalogMatchMock, getWorkspaceMock, listCatalogMatchesMock, listVendorsMock, listWorkspacesMock, logoutMock, mockSearchParams (+5 more)
 
-### Community 153 - "Docs Risk Register"
-Cohesion: 0.14
-Nodes (14): Launch-Hardening Bugs (B1-B15), Fix plan B5 (over-long catalog SKU), Fix plan B12 (catalog matches list scope), Fix plan B13 (catalog path ids), Fix plan B7 (catalog photo budget), Fix plan B6 + B15 (catalog search partial failures), Fix plan B9 (exact flag deltas), Fix plan B10 + B11 (flag reason names) (+6 more)
+### Community 152 - "Docs Api Contracts"
+Cohesion: 0.15
+Nodes (14): API Contracts map, contracts, buildOffsetResult(), CONTRACT DRIFT marker, CONTRACT MISMATCH marker, Keyset cursor pagination {items, nextCursor}, Offset pagination convention (admin tables), OffsetQueryDto (+6 more)
 
-### Community 154 - "Ai Package"
-Cohesion: 0.22
-Nodes (12): buildSplitter(), chunkDocument(), countTokens(), encoder, hashContent(), MARKDOWN_FILE_TYPES, TODO: implement section-aware splitter per file type, resolveStrategy() (+4 more)
+### Community 153 - "Docs Repository Map"
+Cohesion: 0.15
+Nodes (14): Repository Map, Demo seeder symbols section, Hero, HeroMatchDemo, Landing page symbols section, LandingNav, LegalPage, Map is not proof; source code wins (CONTEXT DRIFT) (+6 more)
 
-### Community 155 - "Ai Package Tsconfig"
+### Community 154 - "Ai Package Tsconfig"
 Cohesion: 0.14
 Nodes (13): compilerOptions, declaration, declarationMap, incremental, module, moduleResolution, noEmit, outDir (+5 more)
 
-### Community 156 - "Db Package Tickets"
+### Community 155 - "Db Package Tickets"
 Cohesion: 0.15
 Nodes (12): DocumentReviewFlag, documentReviewFlags, documentReviewFlagStatusEnum, NewDocumentReviewFlag, NewTicket, Ticket, ticketEditStateEnum, TicketFieldConfidence (+4 more)
 
-### Community 157 - "Db Package Tsconfig"
+### Community 156 - "Db Package Tsconfig"
 Cohesion: 0.14
 Nodes (13): compilerOptions, declaration, declarationMap, incremental, module, moduleResolution, noEmit, outDir (+5 more)
 
-### Community 158 - "Ui Package Components"
+### Community 157 - "Ui Package Components"
 Cohesion: 0.14
 Nodes (13): aliases, components, utils, rsc, $schema, style, tailwind, baseColor (+5 more)
 
-### Community 159 - "Scripts Ci Workflows"
+### Community 158 - "Scripts Ci Workflows"
 Cohesion: 0.15
 Nodes (3): CiWorkflowsFragment, make_repo(), Path
 
-### Community 160 - "Implementer Agent"
-Cohesion: 0.17
-Nodes (13): Approved Plan File Scope, Documentation Sync (docs/ai + repository-map), Implementer Agent, No Secrets in Diff, Autonomous Engineering Constitution, Evidence Over Assumptions, Human Approval Controls Irreversible Actions, Engineering Rules (+5 more)
-
-### Community 161 - "Docs PRODUCTION READINESS"
+### Community 159 - "Docs OPTRA DEVELOPMENT PLAN"
 Cohesion: 0.18
-Nodes (13): CI and Deploy workflow, queues, B21 No CI quality gate, B22 Backups weak, S0d CI gate, C1 Backups, C4 Worker separation, D1 RAGAS evaluation (+5 more)
+Nodes (13): CI and Deploy workflow, invariant, B12 LLM paths bypass token budget, B21 No CI quality gate, B22 Backups weak, B3 Comparison output truncated at 500 rows, B9 Bull retries never fire, Defect register D1-D10, B1-B22 (+5 more)
 
-### Community 162 - "API Auth Limits Service"
-Cohesion: 0.28
-Nodes (3): AuthLimitsService, Inject, Injectable
-
-### Community 164 - "API Catalog Parse Service"
-Cohesion: 0.26
-Nodes (3): CatalogParseService, Injectable, InjectQueue
-
-### Community 165 - "API Catalog Parse Processor"
-Cohesion: 0.27
-Nodes (4): CatalogParseProcessor, convertXlsxToCsv(), Process, Processor
-
-### Community 167 - "API Structured Query Service"
-Cohesion: 0.27
-Nodes (3): StructuredQueryService, Injectable, web
-
-### Community 168 - "Scripts Evaluate"
+### Community 161 - "Scripts Evaluate"
 Cohesion: 0.31
 Nodes (12): datetime, build_ragas_dataset(), evaluate_rows(), load_dataset_rows(), lowest_metric(), main(), print_summary(), Any (+4 more)
 
-### Community 169 - "Docs Module Ownership Map"
+### Community 162 - "Calm Utility Design System"
+Cohesion: 0.21
+Nodes (13): Calm Utility design system, Design Decisions Log, oklch tokens in packages/ui/src/globals.css, Icon-in-colored-circle decoration dropped, Landing page Optra Refined rebuild, Minimal-functional motion + reduced-motion discipline, Full-bleed mobile chat (mobileFullBleed), Optra teal recolor (2026-07-10) (+5 more)
+
+### Community 163 - "Docs Module Ownership Map"
 Cohesion: 0.17
 Nodes (13): contracts, cache, template, match, contracts, Bull dataset-profiling-queue, Bull procurement-compare-queue, Bull procurement-parse-queue (+5 more)
 
-### Community 170 - "Ignore Patterns"
+### Community 164 - "Deploy Job VPS PROD Over"
+Cohesion: 0.17
+Nodes (12): scripts/backup.sh --reason=deploy, scripts/check-prod-env.sh, scripts/check-test-layers.sh, deploy job (VPS_PROD over SSH), docker-compose.prod.yml, ensureBucket, API /health and web health checks, main (S3 round trip) (+4 more)
+
+### Community 165 - "Ignore Patterns"
 Cohesion: 0.17
 Nodes (10): env, jest, node, extends, ignorePatterns, coverage, dist, ../../.eslintrc.base.json (+2 more)
 
-### Community 172 - "API Insights Controller"
-Cohesion: 0.21
-Nodes (6): InsightsController, Controller, Get, Param, Patch, UseGuards
+### Community 166 - "API Auth Limits Service"
+Cohesion: 0.32
+Nodes (3): AuthLimitsService, Inject, Injectable
 
-### Community 173 - "API Procurement Parse Service"
+### Community 167 - "API Catalog Parse Service"
 Cohesion: 0.29
-Nodes (3): ProcurementParseService, Injectable, InjectQueue
+Nodes (3): CatalogParseService, Injectable, InjectQueue
 
-### Community 174 - "Web Layout"
+### Community 169 - "Web Layout"
 Cohesion: 0.21
 Nodes (9): body, display, metadata, mono, RootLayout(), viewport, getUmamiScriptProps(), globals (+1 more)
 
-### Community 175 - "Web Insights Page"
+### Community 170 - "Web Insights Page"
 Cohesion: 0.17
 Nodes (11): approveFaqDraftMock, dismissFreshnessFlagMock, getCoverageMock, getWorkspaceMock, listFaqDraftsMock, listFreshnessFlagsMock, logoutMock, pushMock (+3 more)
 
-### Community 176 - "Web Settings Page"
+### Community 171 - "Web Settings Page"
 Cohesion: 0.17
 Nodes (11): changePasswordMock, getDigestSettingsMock, getWorkspaceMock, listWorkspacesMock, logoutMock, previewDigestMock, pushMock, renderPage() (+3 more)
 
-### Community 177 - "Scripts Backup"
+### Community 172 - "Scripts Backup"
 Cohesion: 0.21
 Nodes (11): Automatic Verified Backups (pre-deploy + daily 03:17 UTC), Umami Database Backup (UMAMI_MIN_TABLES=5), Verified Backups (scripts/backup.sh), Object Storage: B2 prod / SeaweedFS dev+CI, StorageService + StorageObjectNotFoundError, Self-Hosted Umami Analytics, .github/workflows/backup.yml, cleanup() (+3 more)
 
-### Community 178 - "Docs Api Contracts"
+### Community 173 - "Docs Risk Register"
+Cohesion: 0.23
+Nodes (9): Option B: deploy.sh on server, CI Quality Gate, Test-Layer Requirement (Canonical Workflow), Workflow enforcement (hooks + CI TDD gate), .github/workflows/deploy.yml, check-test-layers.sh script, touched(), COMPOSE_PROFILES (+1 more)
+
+### Community 174 - "Docs Api Contracts"
 Cohesion: 0.17
 Nodes (12): assertPublicUrl SSRF guard, Catalog match search/verify (sourcing/compliance), Chat / RAG Stream Answer endpoint, ChatRateLimitGuard, condenseQuestion() history-aware follow-up, limits, Refine message endpoints (refine/status/saved), RefineRateLimitGuard (+4 more)
 
-### Community 179 - "Docs Module Ownership Map"
+### Community 175 - "Docs Module Ownership Map"
 Cohesion: 0.18
 Nodes (12): contracts, contracts, contracts, Bull freshness-check-queue, Bull freshness-tick-queue, Bull ingest-queue, Bull scrape-queue, Documents Ingestion domain (+4 more)
 
-### Community 180 - "Ai Package Classify"
+### Community 176 - "Ai Package Classify"
 Cohesion: 0.30
 Nodes (10): classifyComparisonIntent(), classifyQuery(), classifyStructuredIntent(), classifyTicketIntent(), COMPARISON_SIGNALS, QueryClass, SIMPLE_STARTS, STRUCTURED_SIGNALS (+2 more)
 
-### Community 181 - "Types Package"
+### Community 177 - "Types Package"
 Cohesion: 0.17
 Nodes (11): devDependencies, typescript, typescript, main, name, scripts, build, lint (+3 more)
 
-### Community 183 - "Blocker Handling"
+### Community 179 - "Blocker Handling"
 Cohesion: 0.18
 Nodes (11): Acceptance Criteria, Already Implemented Evidence, Task Template, Unknowns, Blocker Handling, Business Decision Needed, Security Impact, Uncertain Architecture (+3 more)
 
-### Community 184 - "Strict TDD Red Gate"
+### Community 180 - "Ci Job Quality Gate"
+Cohesion: 0.18
+Nodes (11): Agent definitions lint (bun run agents:lint), E2E — apps/api on optra_e2e, Backing services (postgres, redis, seaweedfs via docker compose), Build typed workspace packages (@repo/db, @repo/ai), ci job (Quality gate), Apply database migrations (bun run db:migrate), E2E — Playwright (optra_pw), apps/e2e/scripts/prepare-db.ts (+3 more)
+
+### Community 181 - "Strict TDD Red Gate"
 Cohesion: 0.18
 Nodes (11): Automatic Agent Routing Default, Core Principles, Strict TDD (tdd:red / tdd:gate), Contract Lock (Round 1), QA Fan-out Roster (Round 4), Round Structure (0 → 1 → 1b → 2 → 3 → 4), Review Mode, Testing Requirements (three layers, RED first) (+3 more)
 
-### Community 185 - "API Catalog Create Vendor Dto"
+### Community 182 - "API Catalog Create Vendor Dto"
 Cohesion: 0.18
 Nodes (7): CreateVendorDto, IsOptional, IsString, MaxLength, MinLength, Injectable, VendorsService
 
-### Community 186 - "Web Members Page"
+### Community 183 - "API Search Service"
+Cohesion: 0.24
+Nodes (5): Get, Param, Query, SearchService, Injectable
+
+### Community 184 - "Web Members Page"
 Cohesion: 0.18
 Nodes (10): getCurrentUserMock, getWorkspaceMock, inviteMemberMock, listMembersMock, listWorkspacesMock, logoutMock, pushMock, removeMemberMock (+2 more)
 
-### Community 187 - "Docs Context Refresh"
+### Community 185 - "Docs Context Refresh"
 Cohesion: 0.22
 Nodes (11): File Ownership Rule, Persona Roster (01-09), Runtime Model Matrix (sonnet), Drift Markers (CONTEXT DRIFT / CONTRACT DRIFT / UNMAPPED), Context Refresh Procedure, Context Engineering (docs are maps), Context Load Order, Mandatory Graphify Closeout (+3 more)
 
-### Community 188 - "Docs Module Ownership Map"
-Cohesion: 0.18
-Nodes (11): compliance, Contract price flags (contractPriceFlags), contracts, Vendor Price History endpoint, Vendor price terms (record/list), Bull catalog-parse-queue, Bull catalog-scrape-queue, Vendor Catalog Price domain (+3 more)
-
-### Community 189 - "Ai Package Refine"
+### Community 186 - "Docs OPTRA DEVELOPMENT PLAN"
 Cohesion: 0.25
-Nodes (8): Refine / Saved Messages, extractText(), isRefusal(), llm, RefineEmptyError, refineMessage(), RefineRefusalError, stripWrappingQuotes()
+Nodes (11): B1 Re-compare deletes human decisions, S0e Env + dependencies, S1 Comparison runs (migration 0022), S2 Decisions + audit (migration 0023), S5 Goods Receipt domain, S6 Three-way comparison, S7 Review queue UI, S8 Auto orchestration (+3 more)
 
-### Community 190 - "Ai Package"
+### Community 187 - "Ai Package"
 Cohesion: 0.18
 Nodes (10): main, name, scripts, build, lint, test, test:watch, type-check (+2 more)
 
-### Community 191 - "Ai Package"
+### Community 188 - "Ai Package"
 Cohesion: 0.24
 Nodes (4): tracingEnabled, createLimit(), LimitFn, traceable
 
-### Community 192 - "Ui Package Eslintrc"
+### Community 189 - "Ui Package Eslintrc"
 Cohesion: 0.18
 Nodes (9): jsx, extends, ignorePatterns, dist, ../../.eslintrc.base.json, node_modules, parserOptions, ecmaFeatures (+1 more)
 
-### Community 193 - "Engineering Plan"
+### Community 190 - "Engineering Plan"
 Cohesion: 0.16
 Nodes (10): Commit, Evidence, Execution Report, Approvals, Engineering Plan, Rollback, State Transitions, No Automatic Merge (+2 more)
 
-### Community 194 - "Daily Autonomous Cycle"
+### Community 191 - "Daily Autonomous Cycle"
 Cohesion: 0.20
 Nodes (10): Existing Feature Test, SKIPPED_ALREADY_IMPLEMENTED, 08:00 Planning, 10:00 Engineering, 19:00 Reporting, Daily Autonomous Cycle, WAITING_APPROVAL, SKIPPED_ALREADY_IMPLEMENTED (+2 more)
 
-### Community 195 - "Ignore Patterns"
+### Community 192 - "Ignore Patterns"
 Cohesion: 0.20
 Nodes (8): extends, ignorePatterns, ../../.eslintrc.base.json, node_modules, playwright-report, test-results, root, .auth
 
-### Community 196 - "Openai Stub"
+### Community 193 - "Openai Stub"
 Cohesion: 0.24
 Nodes (7): CATALOG_STUB_ITEMS, chatCompletion(), embed(), embeddings(), port, promptText(), http
 
-### Community 197 - "Web Knowledge Bases Page"
+### Community 194 - "Web Knowledge Bases Page"
 Cohesion: 0.20
 Nodes (9): createKnowledgeBaseMock, deleteKnowledgeBaseMock, getWorkspaceMock, listKnowledgeBasesMock, listWorkspacesMock, logoutMock, pushMock, renderPage() (+1 more)
 
-### Community 198 - "Web Id Page"
+### Community 195 - "Web Id Page"
 Cohesion: 0.20
 Nodes (9): getUnreadCountMock, getWorkspaceMock, listEventsMock, listWorkspacesMock, logoutMock, markEventsSeenMock, pushMock, renderPage() (+1 more)
 
-### Community 199 - "Web Tickets Page"
+### Community 196 - "Web Tickets Page"
 Cohesion: 0.20
 Nodes (9): createTicketMock, getTicketMock, getWorkspaceMock, listTicketsMock, logoutMock, pushMock, renderPage(), routerMock (+1 more)
 
-### Community 200 - "Docs OPTRA DEVELOPMENT PLAN"
+### Community 197 - "Docs OPTRA DEVELOPMENT PLAN"
 Cohesion: 0.27
 Nodes (10): contract, migrations, Dark launch + additive migrations rule, Explicit non-goals (auto payment, ERP, tax, Telegram/Viber), Optra Development Plan rev 4, Procurement control spine (PO+GRN+invoice→match→decision→audit), Reference AP Policy v1, Synthetic hardware-supplier fixture set (+2 more)
 
-### Community 201 - "Scripts Check Prod Env"
+### Community 198 - "Scripts Check Prod Env"
 Cohesion: 0.29
 Nodes (9): B2 Write-Only Key Still Deletes, check-prod-env.sh Pre-Deploy .env Check, Option C: GitHub Actions deploy, GitHub Secrets (VPS_*, BACKUP_S3_*), example_of(), fail(), check-prod-env.sh script, unquote() (+1 more)
 
-### Community 202 - "Docs Repository Map"
-Cohesion: 0.22
-Nodes (10): Hero, HeroMatchDemo, Landing page symbols section, LandingNav, LegalPage, MetricsStrip, PricingPlans, ProductTour (+2 more)
-
-### Community 203 - "Docs Risk Register"
-Cohesion: 0.29
-Nodes (8): CI Quality Gate, Deploy dir split, Test-Layer Requirement (Canonical Workflow), Workflow enforcement (hooks + CI TDD gate), .github/workflows/deploy.yml, check-test-layers.sh script, touched(), deploy-remote.sh script
-
-### Community 204 - "Frontend Phase 2 Tabs Confidence"
-Cohesion: 0.22
-Nodes (10): S0f catalog integrity: scope of the delete, Catalog item photos: a schema field is not a feature, Catalog Matches page: first page-level PhotoCompare usage, Badge dark: variant dead code path, Frontend Phase 2: Tabs, ConfidenceMeter, ImageTile, PhotoGrid, PhotoCompare, Landing redesign: ReactBits components missing 'use client', Procurement page: loadPage vs refreshDocs split, Full /qa sweep: ogl WebGL crash, tree-kill needs procps, Mnemra branding surface (+2 more)
-
-### Community 205 - "Db Package 0000 Reflective Blade"
+### Community 199 - "Db Package 0000 Reflective Blade"
 Cohesion: 0.20
 Nodes (9): "chunks", "documents", "invitations", "knowledge_bases", "otps", "refresh_tokens", "users", "workspace_members" (+1 more)
 
-### Community 206 - "API Datasets Dataset Profiling Service"
-Cohesion: 0.31
-Nodes (3): DatasetProfilingService, Injectable, InjectQueue
-
-### Community 207 - "API Procurement Upload Purchase Order"
-Cohesion: 0.22
-Nodes (8): IsISO4217CurrencyCode, IsISO8601, IsOptional, IsString, IsUUID, MaxLength, MinLength, UploadPurchaseOrderDto
-
-### Community 208 - "Web Datasets Page"
+### Community 200 - "Web Datasets Page"
 Cohesion: 0.22
 Nodes (8): deleteDatasetMock, getWorkspaceMock, listDatasetsMock, logoutMock, pushMock, renderPage(), routerMock, uploadDatasetMock
 
-### Community 209 - "Web Vendors Page"
+### Community 201 - "Web Vendors Page"
 Cohesion: 0.22
 Nodes (8): createVendorMock, getWorkspaceMock, listVendorsMock, listWorkspacesMock, logoutMock, pushMock, renderPage(), routerMock
 
-### Community 210 - "Web Eslintrc"
+### Community 202 - "Web Eslintrc"
 Cohesion: 0.22
 Nodes (8): extends, ignorePatterns, .next, next-env.d.ts, node_modules, overrides, root, next/core-web-vitals
 
-### Community 211 - "Web Procurement Discrepancy Review Modal"
+### Community 203 - "Web Procurement Discrepancy Review Modal"
 Cohesion: 0.25
 Nodes (6): downloadMock, listDecisionsMock, listRunsMock, makeFlag(), recordDecisionMock, renderModal()
 
-### Community 212 - "Optra Prod Api Service"
+### Community 204 - "Optra Prod Api Service"
 Cohesion: 0.28
 Nodes (9): Backblaze B2 Production Object Storage, optra-prod-api Service, optra-prod-caddy (profile public), optra-prod-db (pgvector pg16), optra-prod-redis, S3_ENDPOINT Required from .env, optra-prod-umami Service, optra-prod-web Service (+1 more)
 
-### Community 213 - "Docs Api Contracts"
+### Community 205 - "Docs PRODUCTION READINESS"
+Cohesion: 0.22
+Nodes (9): queues, S0c LLM budget coverage, B1 Per-tenant rate limit + token budget, C4 Worker separation, D1 RAGAS evaluation, D3 Conditional LangGraph (flag-off), G1 PII handling, Production Readiness Checklist (+1 more)
+
+### Community 206 - "Docs Api Contracts"
 Cohesion: 0.28
 Nodes (9): Auth endpoints (register/verify-otp/resend-otp/login/refresh/logout/me/change-password), JwtAuthGuard, mnemra_at access cookie, mnemra_rt refresh cookie, NotificationsService, Refresh token rotation with theft cascade, RolesGuard, Workspaces endpoints (+1 more)
 
-### Community 214 - "S8 Commit 2 Freshness Skip"
+### Community 207 - "S8 Commit 2 Freshness Skip"
 Cohesion: 0.28
 Nodes (9): S8 commit 2: freshness skip and input-keyed job id, Bull job queues on Redis, S8 commit 3: three hand-copied event type lists, S5 goods receipt: assertUnreachable only guards converted sites, S8 commit 1: goods receipt status guard missing in compare(), S0b parse integrity: classify failures, fresh jobId requeue, S0c LLM budget: TokenMeter measures provider-billed usage, UsageService.metered helper (+1 more)
 
-### Community 215 - "V2 F7A Coverage Dashboard"
+### Community 208 - "V2 F7A Coverage Dashboard"
 Cohesion: 0.25
 Nodes (9): V2 F4 auto-FAQ from ticket clusters, V2 S3 chat_query_metrics telemetry, V2 F7a coverage dashboard, V2 F5 cross-file comparison queries, V2 F6 Slack + email digest, DuckDbQueryService, F1 frontend/XLSX finish + Docker root-cause chase, V2 S2+F3 scheduler and freshness detector, Docker amd64 pin (+1 more)
 
-### Community 216 - "Ui Package Tsconfig"
+### Community 209 - "Frontend Phase 2 Tabs Confidence"
+Cohesion: 0.25
+Nodes (9): S0f catalog integrity: scope of the delete, Catalog item photos: a schema field is not a feature, Catalog Matches page: first page-level PhotoCompare usage, Badge dark: variant dead code path, Frontend Phase 2: Tabs, ConfidenceMeter, ImageTile, PhotoGrid, PhotoCompare, Landing redesign: ReactBits components missing 'use client', Procurement page: loadPage vs refreshDocs split, reactbits/shadcn CLI registry vendoring (mobile chat animations) (+1 more)
+
+### Community 210 - "Ui Package Tsconfig"
 Cohesion: 0.22
 Nodes (8): compilerOptions, jsx, outDir, rootDir, extends, include, src, ../../tsconfig.base.json
 
-### Community 217 - "Scripts Evaluate Extraction"
+### Community 211 - "Scripts Evaluate Extraction"
 Cohesion: 0.47
 Nodes (8): extract_json(), load_rows(), main(), normalize_text(), print_summary(), Any, run_model(), score_rows()
 
-### Community 218 - "Scheduler Rules"
+### Community 212 - "Scripts Images"
+Cohesion: 0.28
+Nodes (7): BY_KEY, fetchImages(), HERE, IMAGE_CACHE_DIR, IMAGE_LIBRARY, imageSubject(), StockImage
+
+### Community 213 - "Scheduler Rules"
 Cohesion: 0.25
 Nodes (8): Codex retired (no .codex/, no .ai-scratchpad.md), Codex Runtime Rules, Avoid Duplicate Execution, Failure Reporting, Respect Approvals, Respect Ownership, Scheduler Rules, Runtime Validation
 
-### Community 219 - "API Insights Digest Tick Processor"
+### Community 214 - "API Insights Digest Tick Processor"
 Cohesion: 0.25
 Nodes (5): DigestTickProcessor, Injectable, InjectQueue, Process, Processor
 
-### Community 220 - "API Insights Faq Cluster Tick"
+### Community 215 - "API Insights Faq Cluster Tick"
 Cohesion: 0.25
 Nodes (5): FaqClusterTickProcessor, Injectable, InjectQueue, Process, Processor
 
-### Community 221 - "API Insights Freshness Tick Processor"
+### Community 216 - "API Insights Freshness Tick Processor"
 Cohesion: 0.25
 Nodes (5): FreshnessTickProcessor, Injectable, InjectQueue, Process, Processor
 
-### Community 222 - "API Insights Topic Gap Tick"
+### Community 217 - "API Insights Topic Gap Tick"
 Cohesion: 0.25
 Nodes (5): TopicGapTickProcessor, Injectable, InjectQueue, Process, Processor
 
-### Community 223 - "Web Package"
+### Community 218 - "Web Package"
 Cohesion: 0.25
 Nodes (8): scripts, build, dev, lint, start, test, test:watch, type-check
 
-### Community 224 - "Web Public Optra Mark Svg"
+### Community 219 - "Web Public Optra Mark Svg"
 Cohesion: 0.29
 Nodes (8): Optra Aperture Mark, Teal Iris Glow, One Choice, Open Iris, Six-Blade Aperture, Optra Mark SVG, Many Vendor Options, Vision-Aware Matching
 
-### Community 225 - "Docs Api Contracts"
+### Community 220 - "Docs Module Ownership Map"
 Cohesion: 0.25
-Nodes (8): API Contracts map, contracts, CONTRACT DRIFT marker, CONTRACT MISMATCH marker, UNMAPPED CONTRACT marker, Auth Permissions domain, Workspace-scoped JWT with per-request membership, Workspaces domain
+Nodes (8): compliance, contracts, Bull catalog-parse-queue, Bull catalog-scrape-queue, Vendor Catalog Price domain, Vendor Catalog Vision Matching domain, Vendor price history no averages, Vision-LLM catalog comparator
 
-### Community 226 - "S6 Three Way Comparison Empty"
+### Community 221 - "Optra Learnings Md Predict Verify"
+Cohesion: 0.25
+Nodes (8): Optra learnings.md (Predict-Verify log), B22 backups/B2: compose environment overrides env_file, Disabling the Mnemra-era support surfaces, S3b header linkage: validate then normalize currency, Launch hardening S1: real-world spreadsheets, S3a provenance: source_row/sheet, confidence, uom; source_page dropped, Full /qa sweep: ogl WebGL crash, tree-kill needs procps, Mnemra branding surface, Proving storage end to end: three test layers
+
+### Community 222 - "S6 Three Way Comparison Empty"
 Cohesion: 0.36
 Nodes (8): S9 commit 1: CASE label also chose recorded evidence, COMPARISON_SQL first-match CASE ladder, S9 commit 5: contract finding is independent, not a CASE branch, Demo seeder lives at repo root scripts/seed, S9 commit 2: drizzle-kit drops .where() on partial unique index, S9 commits 7-8: vendor history refuses to average, S6 commit 2: uom_mismatch and currency_mismatch, absent is not a value, S6 three-way comparison: empty grn.csv broke every compare
 
-### Community 227 - "A2 PDF Vision Mupdf Swapped"
+### Community 223 - "A2 PDF Vision Mupdf Swapped"
 Cohesion: 0.36
 Nodes (8): pdfjs-dist real render fails under Jest, works under Vitest/plain Node, mupdf AGPL-3.0 license finding (text-only A2), One process, one copy of pdfjs, A2 PDF vision: mupdf swapped for pdfjs-dist + @napi-rs/canvas, Procurement extraction chain with numeric field validation, Removing p-limit: ESM-only dep in a CommonJS package, A3 catalog matching: vision comparator, per-page extraction, skipped p-limit, Vitest hang root cause: mupdf top-level await WASM init
 
-### Community 228 - "Ai Package Eslintrc"
+### Community 224 - "Ai Package Eslintrc"
 Cohesion: 0.25
 Nodes (6): extends, ignorePatterns, dist, ../../.eslintrc.base.json, node_modules, root
 
-### Community 229 - "Db Package Eslintrc"
+### Community 225 - "Db Package Eslintrc"
 Cohesion: 0.25
 Nodes (6): extends, ignorePatterns, dist, ../../.eslintrc.base.json, node_modules, root
 
-### Community 230 - "Types Package Eslintrc"
+### Community 226 - "Types Package Eslintrc"
 Cohesion: 0.25
 Nodes (6): extends, ignorePatterns, dist, ../../.eslintrc.base.json, node_modules, root
 
-### Community 231 - "Types Package Tsconfig"
+### Community 227 - "Types Package Tsconfig"
 Cohesion: 0.25
 Nodes (7): compilerOptions, outDir, rootDir, extends, include, src, ../../tsconfig.base.json
 
-### Community 232 - "Scripts Storage"
-Cohesion: 0.43
-Nodes (6): s3, getClient(), putObject(), requireEnv(), s3Bucket(), storageAvailable()
-
-### Community 233 - "Workflow Cases"
+### Community 228 - "Workflow Cases"
 Cohesion: 0.29
 Nodes (7): BLOCKED_REQUIREMENT, Human Approval Required, Missing Requirement Test, New Feature Test, PR_READY, Security Change Test, Workflow Test Cases
 
-### Community 234 - "Docs Autonomous Engineering"
+### Community 229 - "Docs Autonomous Engineering"
 Cohesion: 0.29
 Nodes (7): Structured Autonomous Work Orders (Disabled), Before-activation Checklist, Always-on Approval Gates, activation: PILOT_FROZEN Status, What an Activated Work Order Would Change, QA Mode Standard Validation Set, Integration Sequence
 
-### Community 235 - "Nest Cli"
+### Community 230 - "Nest Cli"
 Cohesion: 0.29
 Nodes (6): collection, compilerOptions, builder, deleteOutDir, $schema, sourceRoot
 
-### Community 236 - "API Auth Limits Service"
+### Community 231 - "API Auth Limits Service"
 Cohesion: 0.48
 Nodes (4): LOGIN_FAILURE_WINDOW_SECONDS, MAX_LOGIN_FAILURES, MAX_OTP_RESENDS, OTP_RESEND_WINDOW_SECONDS
 
-### Community 238 - "API Procurement Upload Invoice Dto"
+### Community 232 - "API Auth Jwt Strategy"
 Cohesion: 0.29
-Nodes (6): IsISO4217CurrencyCode, IsString, IsUUID, MaxLength, MinLength, UploadInvoiceDto
+Nodes (4): JwtPayload, JwtStrategy, Injectable, jwt
 
-### Community 239 - "Required For Every Layer Touched"
+### Community 234 - "Storage State For"
+Cohesion: 0.29
+Nodes (6): storageStateFor(), pageAs(), pageAs(), pageAs(), HIDDEN, KEPT
+
+### Community 235 - "Required For Every Layer Touched"
 Cohesion: 0.38
 Nodes (5): Tests required for every layer touched, case_(), check-prod-env.spec.sh script, scenario(), check-test-layers.spec.sh script
 
-### Community 240 - "Optra Learnings Md Predict Verify"
-Cohesion: 0.29
-Nodes (7): Optra learnings.md (Predict-Verify log), B22 backups/B2: compose environment overrides env_file, Disabling the Mnemra-era support surfaces, S3b header linkage: validate then normalize currency, Launch hardening S1: real-world spreadsheets, S3a provenance: source_row/sheet, confidence, uom; source_page dropped, Proving storage end to end: three test layers
-
-### Community 241 - "Run Comparison 500 Duck DB"
+### Community 236 - "Run Comparison 500 Duck DB"
 Cohesion: 0.33
 Nodes (7): S0a compare integrity: SELECT FOR UPDATE row lock + ParseUUIDPipe, S1 comparison runs: stop deleting on re-compare, Account lock: count attempt first, then check, DuckDB native binding / Node ABI pin (.nvmrc 22), Run comparison 500: DuckDB infers CSV column types per file, e2e: three stacked causes (timeout, Bull job theft, incomplete mock), Flaky suites: fresh database per run and soak
 
-### Community 242 - "Ui Ux Designer Agent Generated"
+### Community 237 - "Scripts Storage"
+Cohesion: 0.52
+Nodes (5): getClient(), putObject(), requireEnv(), s3Bucket(), storageAvailable()
+
+### Community 238 - "Ui Ux Designer Agent Generated"
 Cohesion: 0.33
 Nodes (6): ui-ux-designer agent (generated), accessibility-auditor agent (generated), accessibility-auditor persona prompt, WCAG 2.1 AA checklist (WCAG_AA_PASS / FAIL), Calm Utility voice and microcopy rules, ui-ux-designer persona prompt
 
-### Community 243 - "API Health Controller"
+### Community 239 - "API Chat Dto"
+Cohesion: 0.33
+Nodes (5): ChatDto, IsNotEmpty, IsOptional, IsString, MaxLength
+
+### Community 240 - "API Common Upload Filename"
 Cohesion: 0.40
-Nodes (3): HealthController, Controller, Get
+Nodes (4): decodeUploadFilename(), RFC-7578, RFC-5987, RFC-7578
 
-### Community 244 - "API Procurement Record Decision Dto"
-Cohesion: 0.33
-Nodes (5): RecordDecisionDto, IsIn, IsString, MaxLength, MinLength
-
-### Community 245 - "API Procurement Upload Goods Receipt"
-Cohesion: 0.33
-Nodes (5): IsString, IsUUID, MaxLength, MinLength, UploadGoodsReceiptDto
-
-### Community 246 - "Web Decisions Route"
+### Community 241 - "Web Decisions Route"
 Cohesion: 0.47
 Nodes (3): GET(), POST(), params
 
-### Community 247 - "Web Opengraph Image Png"
+### Community 242 - "Web Login Page"
+Cohesion: 0.33
+Nodes (5): loginMock, markLoggedInMock, pushMock, refreshMock, routerMock
+
+### Community 243 - "Web Opengraph Image Png"
 Cohesion: 0.40
 Nodes (6): Teal Camera Aperture Logo, Dark Teal Visual Identity, OPTRA, Vision-Aware Procurement Product, Optra Social Preview, VISION-AWARE PROCUREMENT
 
-### Community 249 - "Docs Api Contracts"
-Cohesion: 0.40
-Nodes (6): buildOffsetResult(), Keyset cursor pagination {items, nextCursor}, Offset pagination convention (admin tables), OffsetQueryDto, Pagination (@repo/ui), resolveOffsetPage()
-
-### Community 250 - "Docs Elid Ticket Copilot"
+### Community 245 - "Docs Elid Ticket Copilot"
 Cohesion: 0.33
 Nodes (6): tickets, Bull Extraction Queue, Per-field Extraction Confidence, Review Audit Trail, ELID Transcript-to-Ticket Copilot, Transcript Hash Deduplication
 
-### Community 251 - "Db Package 0020 Bumpy Energizer"
+### Community 246 - "Db Package 0020 Bumpy Energizer"
 Cohesion: 0.33
 Nodes (5): "discrepancy_flags", "invoice_line_items", "invoices", "po_line_items", "purchase_orders"
 
-### Community 252 - "Optra README"
+### Community 247 - "Db Package Discrepancy Decisions"
+Cohesion: 0.33
+Nodes (5): DiscrepancyDecision, discrepancyDecisionOutcomeEnum, discrepancyDecisions, NewDiscrepancyDecision, discrepancyFlags
+
+### Community 248 - "Optra README"
 Cohesion: 0.40
 Nodes (6): Docker dev stack with hot reload and auto migrations, Monorepo structure (apps/web, apps/api, apps/e2e, packages/*), Pinned Node version (duckdb native binding), Optra README, Deploy to Hetzner VPS (deploy-remote.sh, deploy.yml), Umami self-hosted analytics
 
-### Community 253 - "Bootstrap Setup"
+### Community 249 - "Bootstrap Setup"
 Cohesion: 0.40
 Nodes (5): _ai_engineering_manifest_bootstrap_check__validation_bootstrap_check_md_, _ai_engineering_manifest_repair_loop__validation_repair_loop_md_, Bootstrap Setup, No Application Code Changes During Setup, Post-Setup Validation
 
-### Community 254 - "Non Bypassable Graphify Gate"
-Cohesion: 0.40
-Nodes (5): Instruction precedence (AGENTS.md > DESIGN.md > docs/ai > .ai-engineering), AI Workflow signpost (where the rules live), Non-bypassable evidence gate, Non-bypassable Graphify gate, Planning Standards signpost
-
-### Community 255 - "Architecture Decision Record"
+### Community 250 - "Architecture Decision Record"
 Cohesion: 0.40
 Nodes (5): Architecture Decision Record, Final Choice, Tradeoffs, Architect, Architect
 
-### Community 256 - "Review Report"
+### Community 251 - "Review Report"
 Cohesion: 0.40
 Nodes (5): Recommendation, Review Report, Severity, Passing Tests Alone Is Not Approval, Review Process
 
-### Community 257 - "Backup Job Production Concurrency"
+### Community 252 - "Backup Job Production Concurrency"
 Cohesion: 0.40
 Nodes (5): BACKUP_S3_* B2 credentials via envs, backup job (backup-production concurrency), scripts/backup.sh --reason=scheduled, Daily backup workflow, script
 
-### Community 264 - "Web Apple Icon Png"
+### Community 253 - "API Catalog Scrape Processor"
+Cohesion: 0.40
+Nodes (3): CatalogScrapeProcessor, Process, Processor
+
+### Community 254 - "API Common Client Bucket"
+Cohesion: 0.60
+Nodes (3): clientBucket(), hextets(), net
+
+### Community 255 - "API Refine Dto"
+Cohesion: 0.40
+Nodes (4): RefineDto, IsNotEmpty, IsString, MaxLength
+
+### Community 256 - "API Refine Save Refined Message"
+Cohesion: 0.40
+Nodes (4): SaveRefinedMessageDto, IsNotEmpty, IsString, MaxLength
+
+### Community 262 - "Web Apple Icon Png"
 Cohesion: 0.40
 Nodes (5): Apple Icon, Camera Aperture Symbol, Photography Branding, Dark Teal Background, White Shutter Blades
 
-### Community 265 - "Web Icon Png"
+### Community 263 - "Web Register Page"
+Cohesion: 0.40
+Nodes (4): RegisterPage(), pushMock, registerMock, routerMock
+
+### Community 264 - "Web Icon Png"
 Cohesion: 0.40
 Nodes (5): Application Icon, Camera Aperture Symbol, Dark Central Opening, Photography Branding, Teal Shutter Ring
 
-### Community 267 - "CI CD Deploy Integration"
+### Community 266 - "CI CD Deploy Integration"
 Cohesion: 0.50
 Nodes (5): CI/CD Deploy Integration, Daily Off-box Backup (backup.yml), Production VPS Deploy Job, Release Flow (task branch → main, merge commit), Stacked Slices
 
-### Community 268 - "Db Package 0021 Dear Speed"
+### Community 267 - "Db Package 0021 Dear Speed"
 Cohesion: 0.40
 Nodes (4): "catalog_items", "catalog_matches", "catalogs", "vendors"
 
-### Community 269 - "EOD Engineering Report"
+### Community 268 - "EOD Engineering Report"
 Cohesion: 0.50
 Nodes (4): Blockers, EOD Engineering Report, Next Actions, Skipped Already Implemented
 
-### Community 270 - "PR Report"
+### Community 269 - "PR Report"
 Cohesion: 0.50
 Nodes (4): Approval State, PR Report, QA Status, Reviewer Status
 
-### Community 271 - "Layers Module"
+### Community 270 - "Layers Module"
 Cohesion: 0.50
 Nodes (4): KB fixture: Shipping, KB fixture: Returns policy, KB fixture: Warranty HTML page (with script tag), layers
 
-### Community 290 - "Web Package"
+### Community 287 - "Web Package"
 Cohesion: 0.50
 Nodes (3): name, private, version
 
-### Community 291 - "Web Workspace Nav"
-Cohesion: 0.50
-Nodes (3): getUnreadCountMock, pushMock, usePathnameMock
-
-### Community 292 - "Verify Deployment Services Health Endpoints"
-Cohesion: 0.50
-Nodes (4): Loopback Publishing (web 127.0.0.1:3300, umami :3302, api internal), Visitor Addresses and TRUST_PROXY=1, Verify Deployment (services, health endpoints), API Middleware (global ThrottlerGuard, configureApp)
-
-### Community 293 - "Api Dev Entrypoint"
+### Community 289 - "Api Dev Entrypoint"
 Cohesion: 0.83
 Nodes (3): needs_build(), needs_install(), api-dev-entrypoint.sh script
 
-### Community 294 - "Docs Api Contracts"
+### Community 290 - "Docs Api Contracts"
 Cohesion: 0.50
 Nodes (4): Dismiss Catalog Match endpoint, Dismiss Discrepancy Flag endpoint, List Discrepancy Decisions endpoint, Record Discrepancy Decision endpoint (append-only)
 
-### Community 296 - "Embedding Dimension 1536 Text 3"
+### Community 292 - "Embedding Dimension 1536 Text 3"
 Cohesion: 0.67
 Nodes (3): Embedding dimension 1536 (text-embedding-3-small), Additive backward-compatible Drizzle migrations, Optra tech stack (Turborepo, Next.js 14, NestJS 10, Drizzle/pgvector, Bull, LangChain)
 
-### Community 298 - "Docs Module Ownership Map"
-Cohesion: 0.67
-Nodes (3): contracts, Bull ticket-extraction-queue, Tickets domain
-
-### Community 299 - "Docs ROADMAP"
+### Community 294 - "Docs ROADMAP"
 Cohesion: 1.00
 Nodes (3): LangGraph Reasoning, RAG Quality Progression, RAGAS Evaluation
 
-### Community 300 - "S7 Commit 2 Decision Routes"
+### Community 295 - "S7 Commit 2 Decision Routes"
 Cohesion: 0.67
 Nodes (3): S7 commit 2: decision routes had zero callers; roles untested, S2 decisions: append-only discrepancy_decisions table, S7 commit 1: ORDER BY created_at is not a total order
 
 ## Knowledge Gaps
-- **1773 isolated node(s):** `check-gstack.sh script`, `check-plan-gate.sh script`, `parser`, `ecmaVersion`, `sourceType` (+1768 more)
+- **1775 isolated node(s):** `check-gstack.sh script`, `check-plan-gate.sh script`, `parser`, `ecmaVersion`, `sourceType` (+1770 more)
   These have ≤1 connection - possible missing edges or undocumented components.
 - **138 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `File Index (map-only ledger)` connect `Docs Repository Map` to `API Auth Service`, `Web Kb Id Page`, `API Procurement Comparison Service`, `API Storage Service`, `API Catalog Extraction Service`, `API Auth Service`, `API Module`, `Web Procurement Page`, `Scripts Catalog`, `API Catalog Controller`, `Web Discrepancies Page`, `Docs Risk Register`, `API Limits Rate Limit Service`, `Web Vendor Id Page`, `Scripts Config`, `Ai Package Crawl`, `API Documents Controller`, `Scripts Tdd Lib Mjs`, `Db Package Discrepancy Flags`, `Web Legal Facts`, `Ai Package Catalog Match`, `Scripts Backup`, `Ai Package Procurement Extraction`, `Web Landing Demo Docs`, `Scripts Graphify Complete`, `Ai Package Text To Sql`, `Ai Package Refine`, `Ai Package Graph`, `Openai Stub`, `Db Package Chunks`, `Db Package`, `API Auth Controller`, `Scripts Check Prod Env`, `Docs Risk Register`, `Ai Package Pdf`, `Db Package Catalog Matches`, `Env Module`, `API Procurement Column Mapping`, `Scripts Images`, `API Auth Limits Service`, `Types Package`, `Deployment Guide`?**
-  _High betweenness centrality (0.245) - this node is a cross-community bridge._
-- **Why does `vitest` connect `Web Login Page` to `API Auth Service`, `Web Login Page`, `Web Digest Settings Route`, `Web Tickets Route`, `Web Vendors Route`, `Web Price History Route`, `Web Workspaces Route`, `Web Kb Id Page`, `Web Kb Id Page`, `Web Auth`, `Web Vendor Id Page`, `Web Chat Page`, `Web Landing Product Cards`, `Web Procurement Page`, `Web Discrepancies Page`, `Web Change Password Route`, `Web Dismiss Route`, `Web Search Route`, `Web Messages Route`, `Web Dataset Id Route`, `Web Preview Route`, `Web Mark Seen Route`, `Web Unread Count Route`, `Web Approve Route`, `Web Dismiss Route`, `Web Http Auth Proxy`, `Web Scrape Route`, `Web Scrape Runs Route`, `Web Comparison Runs Route`, `Web Compare Route`, `Web Refine Route`, `Web Status Route`, `Web Search Route`, `Web Scrape Route`, `Path Module`, `Web Workspace Nav`, `Ai Package Crawl`, `Web Legal Facts`, `Web Http Client Ip`, `Ai Package`, `Web Change Password Route`, `Web Http Auth Proxy`, `Web Layout`, `Web Insights Page`, `Web Settings Page`, `Web Landing Demo Docs`, `Ai Package Classify`, `Web Http Auth Proxy`, `Ai Package Text To Sql`, `Scripts Data`, `Docs Hide Support Surfaces`, `Web Members Page`, `Ai Package`, `Ai Package Graph`, `Web Knowledge Bases Page`, `Web Id Page`, `Web Page`, `Web Tickets Page`, `Web Tickets Page`, `Web Motion Reveal`, `Web Client`, `Web Datasets Page`, `Web Vendors Page`, `Web Discrepancies Page`, `Web Procurement Discrepancy Review Modal`, `API Storage Service`, `Ai Package Pdf`, `Ai Package`, `Scripts Embeddings`, `Db Package Pagination`, `Web Chat Page`, `Ui Package Toaster`, `Web Procurement Page`, `Web Decisions Route`, `Web Chat Layout`, `Web Catalog Matches Page`?**
+- **Why does `File Index (map-only ledger)` connect `Docs Repository Map` to `API Auth Service`, `API Storage Service`, `Web Client`, `Web Tickets Page`, `API Limits Usage Service`, `Web Procurement Page`, `API Auth Workspace Member Guard`, `API Catalog Controller`, `API Module`, `Scripts Catalog`, `Docs Risk Register`, `API Procurement Controller`, `Docs Repository Map`, `Scripts Config`, `API Procurement Column Mapping`, `Ai Package Text To Sql`, `Ai Package Crawl`, `API Catalog Match Service`, `Web Legal Facts`, `Scripts Backup`, `Docs Risk Register`, `Db Package Discrepancy Flags`, `Ai Package Catalog Match`, `Ai Package Procurement Extraction`, `Web Landing Demo Docs`, `Scripts Graphify Complete`, `Db Package Workspaces`, `Db Package Pagination`, `Openai Stub`, `Scripts Check Prod Env`, `Ai Package Graph`, `Db Package Chunks`, `API Auth Controller`, `Scripts Tdd Lib Mjs`, `Env Module`, `Deployment Guide`, `Ai Package Pdf`, `API Auth Limits Service`, `Types Package`, `Db Package Discrepancy Decisions`?**
+  _High betweenness centrality (0.247) - this node is a cross-community bridge._
+- **Why does `vitest` connect `Web Login Page` to `Web Digest Settings Route`, `Web Saved Route`, `Web Tickets Route`, `Web Price History Route`, `Web Workspaces Route`, `Web Tickets Page`, `Web Register Page`, `Web Kb Id Page`, `Web Vendor Id Page`, `Web Login Page`, `Web Discrepancies Page`, `Web Chat Page`, `Web Landing Workflow Steps`, `Web Procurement Page`, `Web Change Password Route`, `Web Dismiss Route`, `Web Catalog Matches Route`, `Web Dataset Id Route`, `Web Preview Route`, `Web Mark Seen Route`, `Web Events Route`, `Web Insights Route`, `Web Scrape Route`, `Web Scrape Runs Route`, `Web Members Route`, `Web Comparison Runs Route`, `Web Http Client Ip`, `Web Http Auth Proxy`, `Web Compare Route`, `Web Discrepancies Route`, `Web Refine Route`, `Web Status Route`, `Web Landing Pricing Plans`, `Ai Package Text To Sql`, `Web Change Password Route`, `Ai Package Crawl`, `Path Module`, `Web Layout`, `Web Insights Page`, `Web Legal Facts`, `Web Settings Page`, `Ai Package`, `Ai Package`, `Ai Package Classify`, `Docs Hide Support Surfaces`, `API Cache Service`, `Web Landing Demo Docs`, `Web Members Page`, `Web Http Auth Proxy`, `Web Workspace Search`, `API Storage Service`, `Ai Package`, `Scripts Data`, `Db Package Pagination`, `Web Http Auth Proxy`, `Web Knowledge Bases Page`, `Web Id Page`, `Web Tickets Page`, `Web Datasets Page`, `Web Vendors Page`, `Ai Package Graph`, `Web Page`, `Web Procurement Discrepancy Review Modal`, `Web Settings Page`, `Scripts Embeddings`, `Web Auth`, `Web Chat Page`, `Web Motion Reveal`, `Ai Package Pdf`, `Web Kb Id Page`, `Web Client`, `Ui Package Toaster`, `Web Procurement Page`, `Web Decisions Route`, `Web Login Page`, `Web Catalog Matches Page`?**
   _High betweenness centrality (0.128) - this node is a cross-community bridge._
-- **Why does `common` connect `API Module` to `Procurement E2E`, `API Auth Service`, `API Catalog Controller`, `API Documents Controller`, `API Procurement Comparison Service`, `API Storage Service`, `API Catalog Extraction Service`, `API Auth Service`, `API Module`, `API Auth Controller`, `Db Package Pagination`, `API Auth Limits Service`, `API Catalog Controller`, `API Health Controller`, `API Limits Rate Limit Service`?**
-  _High betweenness centrality (0.061) - this node is a cross-community bridge._
+- **Why does `common` connect `API Module` to `API Auth Service`, `API Catalog Documents Service`, `API Storage Service`, `Docs Repository Map`, `API Limits Usage Service`, `API Auth Limits Service`, `API Auth Workspace Member Guard`, `API Auth Jwt Strategy`, `API Catalog Match Service`, `API Insights Topic Gap Processor`, `API Catalog Controller`, `API Auth Controller`, `API Structured Query Service`, `API Procurement Controller`, `Db Package Pagination`?**
+  _High betweenness centrality (0.060) - this node is a cross-community bridge._
 - **What connects `check-gstack.sh script`, `check-plan-gate.sh script`, `parser` to the rest of the system?**
-  _1773 weakly-connected nodes found - possible documentation gaps or missing edges._
-- **Should `API Module` be split into smaller, more focused modules?**
-  _Cohesion score 0.028099674316443234 - nodes in this community are weakly interconnected._
+  _1775 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `API Auth Service` be split into smaller, more focused modules?**
-  _Cohesion score 0.04535742035742036 - nodes in this community are weakly interconnected._
-- **Should `Web Login Page` be split into smaller, more focused modules?**
-  _Cohesion score 0.031619679380873414 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.038127618238115474 - nodes in this community are weakly interconnected._
+- **Should `Docs Repository Map` be split into smaller, more focused modules?**
+  _Cohesion score 0.027203579418344517 - nodes in this community are weakly interconnected._
+- **Should `API Storage Service` be split into smaller, more focused modules?**
+  _Cohesion score 0.02988855116514691 - nodes in this community are weakly interconnected._
