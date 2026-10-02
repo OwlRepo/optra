@@ -290,7 +290,7 @@ test.describe('procurement core: unreadable files', () => {
 
   // B8. A browser sends the filename as UTF-8; it used to be stored and shown
   // as latin1 mojibake, and the download carried the same garbled name.
-  test('edge: a purchase order named with accents and CJK characters is listed and downloaded under that name', async ({
+  test('regression: a purchase order named with accents and CJK characters is listed and downloaded under that name', async ({
     browser,
   }) => {
     const page = await pageAs(browser, 'ownerB')

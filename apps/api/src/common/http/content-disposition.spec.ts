@@ -30,11 +30,27 @@ describe('attachmentDisposition', () => {
     expect(attachmentDisposition('report.txt')).toBe('attachment; filename="report.txt"')
     expect(attachmentDisposition('a"b\nc.txt')).toBe('attachment; filename="a_b_c.txt"')
   })
+})
 
 // B8. Once upload names keep their real characters, a name like
 // "façture-日本.csv" reaches this header. Node refuses header characters
 // above U+00FF, so the old quoted-only form made the download answer 500.
 describe('attachmentDisposition for non-ASCII names (B8)', () => {
+  // Inside a quoted-string a backslash escapes the next character, so a name
+  // ending in one would swallow the closing quote and the filename* after it.
+  it('error: a backslash cannot escape the closing quote of the filename', () => {
+    expect(attachmentDisposition('notes\\')).toBe('attachment; filename="notes_"')
+    expect(attachmentDisposition('日本\\')).toBe("attachment; filename=\"___\"; filename*=UTF-8''%E6%97%A5%E6%9C%AC_")
+  })
+
+  // encodeURIComponent throws URIError on an unpaired surrogate; a ticket or
+  // knowledge-base title (JSON, not a filename) can carry one.
+  it('error: a lone surrogate in a name still yields a header instead of throwing', () => {
+    const header = attachmentDisposition('a\ud800b.csv')
+    expect(header).toBe("attachment; filename=\"a_b.csv\"; filename*=UTF-8''a%EF%BF%BDb.csv")
+    expect(() => validateHeaderValue('Content-Disposition', header)).not.toThrow()
+  })
+
   it('error: a name with characters beyond latin1 still yields a header Node accepts', () => {
     expect(() => validateHeaderValue('Content-Disposition', attachmentDisposition('façture-日本.csv'))).not.toThrow()
   })
@@ -54,5 +70,4 @@ describe('attachmentDisposition for non-ASCII names (B8)', () => {
   it('happy: an ASCII name keeps the single quoted parameter', () => {
     expect(attachmentDisposition('march-invoices.csv')).toBe('attachment; filename="march-invoices.csv"')
   })
-})
 })
