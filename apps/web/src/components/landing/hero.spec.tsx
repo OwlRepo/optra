@@ -7,7 +7,14 @@ import { Hero } from './hero'
 afterEach(cleanup)
 
 describe('Hero', () => {
-  it('renders the headline with its deliberate line break', () => {
+  it('regression: no longer claims no card is needed', () => {
+    const { container } = render(<Hero />)
+
+    expect(container.textContent).not.toMatch(/no card/i)
+    expect(container.textContent).not.toContain('14 days free')
+  })
+
+  it('happy: renders the headline with its deliberate line break', () => {
     const { container } = render(<Hero />)
 
     const h1 = screen.getByRole('heading', { level: 1 })
@@ -15,7 +22,7 @@ describe('Hero', () => {
     expect(container.querySelector('h1 br')).not.toBeNull()
   })
 
-  it('offers one primary CTA and one secondary, not a wall of choices', () => {
+  it('happy: offers one primary CTA and one secondary, not a wall of choices', () => {
     render(<Hero />)
 
     expect(screen.getByRole('link', { name: /Start free trial/i }).getAttribute('href')).toBe(
@@ -26,19 +33,21 @@ describe('Hero', () => {
     )
   })
 
-  it('states the no-commitment reassurance under the buttons', () => {
-    render(<Hero />)
-
-    expect(
-      screen.getByText('14 days free · no card · works with the PDFs you already have'),
-    ).not.toBeNull()
-  })
-
-  it('mounts the interactive match demo alongside the copy', () => {
+  it('happy: mounts the interactive match demo alongside the copy', () => {
     render(<Hero />)
 
     // The demo owns the document tabs; their presence proves it rendered.
     expect(screen.getByText('PO #4417 · Ironclad')).not.toBeNull()
     expect(screen.getByText('Catalog evidence')).not.toBeNull()
+  })
+
+  it('happy: states the 14-day trial reassurance under the buttons', () => {
+    render(<Hero />)
+
+    expect(
+      screen.getByText(
+        '14-day free trial · reads the PDFs, CSVs and spreadsheets you already have',
+      ),
+    ).not.toBeNull()
   })
 })

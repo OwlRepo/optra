@@ -35,7 +35,7 @@ export function FinalCta() {
               <ArrowRight aria-hidden="true" className="size-4" />
             </Link>
             <p className="mt-4 text-[13px] text-cta-surface-muted">
-              14 days · no card · delete the workspace and every file goes with it
+              14-day free trial · ask and we delete your workspace and every file
             </p>
           </div>
         </div>

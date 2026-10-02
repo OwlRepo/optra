@@ -89,6 +89,36 @@
     },
     {
       "endpoints": [
+        "apps_api_src_bootstrap_configureapp",
+        "apps_api_src_common_trust_proxy_trustproxysetting"
+      ],
+      "variants": [
+        {
+          "source": "apps_api_src_bootstrap_configureapp",
+          "target": "apps_api_src_common_trust_proxy_trustproxysetting",
+          "relation": "calls",
+          "context": "call",
+          "confidence": "EXTRACTED",
+          "confidence_score": 1.0,
+          "source_file": "apps/api/src/bootstrap.ts",
+          "source_location": "L18",
+          "weight": 1.0,
+          "_origin": "ast"
+        },
+        {
+          "source": "apps_api_src_bootstrap_configureapp",
+          "target": "apps_api_src_common_trust_proxy_trustproxysetting",
+          "relation": "calls",
+          "confidence": "INFERRED",
+          "confidence_score": 0.95,
+          "source_file": "docs/ai/file-index/repository-map.md",
+          "source_location": "L132",
+          "weight": 1.0
+        }
+      ]
+    },
+    {
+      "endpoints": [
         "apps_api_src_catalog_catalog_controller_catalogcontroller_catalogitemphoto",
         "apps_api_src_catalog_catalog_controller_ts_param"
       ],
@@ -3510,6 +3540,120 @@
     },
     {
       "endpoints": [
+        "apps_web_src_lib_http_auth_proxy_proxyjson",
+        "apps_web_src_lib_http_client_ip_clientipheaders"
+      ],
+      "variants": [
+        {
+          "source": "apps_web_src_lib_http_auth_proxy_proxyjson",
+          "target": "apps_web_src_lib_http_client_ip_clientipheaders",
+          "relation": "calls",
+          "context": "call",
+          "confidence": "EXTRACTED",
+          "confidence_score": 1.0,
+          "source_file": "apps/web/src/lib/http/auth-proxy.ts",
+          "source_location": "L27",
+          "weight": 1.0,
+          "_origin": "ast"
+        },
+        {
+          "source": "apps_web_src_lib_http_auth_proxy_proxyjson",
+          "target": "apps_web_src_lib_http_client_ip_clientipheaders",
+          "relation": "calls",
+          "confidence": "EXTRACTED",
+          "confidence_score": 1.0,
+          "source_file": "docs/ai/file-index/repository-map.md",
+          "source_location": "L149",
+          "weight": 1.0
+        }
+      ]
+    },
+    {
+      "endpoints": [
+        "docs_ai_risk_register_backup_restore",
+        "docs_ai_risk_register_umami_analytics"
+      ],
+      "variants": [
+        {
+          "source": "docs_ai_risk_register_umami_analytics",
+          "target": "docs_ai_risk_register_backup_restore",
+          "relation": "references",
+          "confidence": "EXTRACTED",
+          "confidence_score": 1.0,
+          "source_file": "docs/ai/risk-register.md",
+          "source_location": "L85",
+          "weight": 1.0
+        },
+        {
+          "source": "docs_ai_risk_register_backup_restore",
+          "target": "docs_ai_risk_register_umami_analytics",
+          "relation": "references",
+          "confidence": "EXTRACTED",
+          "confidence_score": 1.0,
+          "source_file": "docs/ai/risk-register.md",
+          "source_location": "L83",
+          "weight": 1.0
+        }
+      ]
+    },
+    {
+      "endpoints": [
+        "docs_ai_risk_register_client_side_session_refresh",
+        "docs_ai_risk_register_post_login_redirect_target"
+      ],
+      "variants": [
+        {
+          "source": "docs_ai_risk_register_client_side_session_refresh",
+          "target": "docs_ai_risk_register_post_login_redirect_target",
+          "relation": "references",
+          "confidence": "EXTRACTED",
+          "confidence_score": 1.0,
+          "source_file": "docs/ai/risk-register.md",
+          "source_location": "L37",
+          "weight": 1.0
+        },
+        {
+          "source": "docs_ai_risk_register_post_login_redirect_target",
+          "target": "docs_ai_risk_register_client_side_session_refresh",
+          "relation": "references",
+          "confidence": "EXTRACTED",
+          "confidence_score": 1.0,
+          "source_file": "docs/ai/risk-register.md",
+          "source_location": "L36",
+          "weight": 1.0
+        }
+      ]
+    },
+    {
+      "endpoints": [
+        "docs_business_unit_economics_photo_check_unit",
+        "docs_business_unit_economics_solo_plan"
+      ],
+      "variants": [
+        {
+          "source": "docs_business_unit_economics_solo_plan",
+          "target": "docs_business_unit_economics_photo_check_unit",
+          "relation": "references",
+          "confidence": "EXTRACTED",
+          "confidence_score": 1.0,
+          "source_file": "docs/business/unit-economics.md",
+          "source_location": null,
+          "weight": 1.0
+        },
+        {
+          "source": "docs_business_unit_economics_photo_check_unit",
+          "target": "docs_business_unit_economics_solo_plan",
+          "relation": "rationale_for",
+          "confidence": "EXTRACTED",
+          "confidence_score": 1.0,
+          "source_file": "docs/business/unit-economics.md",
+          "source_location": "L45",
+          "weight": 1.0
+        }
+      ]
+    },
+    {
+      "endpoints": [
         "docs_optra_development_plan_optra_development_plan",
         "docs_production_readiness_production_readiness_checklist"
       ],
@@ -4149,6 +4293,36 @@
           "source_location": "L3",
           "weight": 1.0,
           "_origin": "ast"
+        }
+      ]
+    },
+    {
+      "endpoints": [
+        "packages_ai_src_chains_procurement_extraction_extractlineitemsfrompdf",
+        "packages_ai_src_loaders_pdf_render_renderpdftoimages"
+      ],
+      "variants": [
+        {
+          "source": "packages_ai_src_chains_procurement_extraction_extractlineitemsfrompdf",
+          "target": "packages_ai_src_loaders_pdf_render_renderpdftoimages",
+          "relation": "calls",
+          "context": "call",
+          "confidence": "EXTRACTED",
+          "confidence_score": 1.0,
+          "source_file": "packages/ai/src/chains/procurement-extraction.ts",
+          "source_location": "L135",
+          "weight": 1.0,
+          "_origin": "ast"
+        },
+        {
+          "source": "packages_ai_src_chains_procurement_extraction_extractlineitemsfrompdf",
+          "target": "packages_ai_src_loaders_pdf_render_renderpdftoimages",
+          "relation": "calls",
+          "confidence": "INFERRED",
+          "confidence_score": 0.75,
+          "source_file": "docs/ai/file-index/repository-map.md",
+          "source_location": "L318",
+          "weight": 1.0
         }
       ]
     },
@@ -6226,36 +6400,6 @@
           "confidence": "EXTRACTED",
           "source_file": "packages/db/src/schema/workspaceDigestSettings.ts",
           "source_location": "L27",
-          "weight": 1.0,
-          "_origin": "ast"
-        }
-      ]
-    },
-    {
-      "endpoints": [
-        "packages_types_src_index",
-        "packages_types_src_procurement"
-      ],
-      "variants": [
-        {
-          "source": "packages_types_src_index",
-          "target": "packages_types_src_procurement",
-          "relation": "imports_from",
-          "context": "re-export",
-          "confidence": "EXTRACTED",
-          "source_file": "packages/types/src/index.ts",
-          "source_location": "L48",
-          "weight": 1.0,
-          "_origin": "ast"
-        },
-        {
-          "source": "packages_types_src_index",
-          "target": "packages_types_src_procurement",
-          "relation": "re_exports",
-          "context": "export",
-          "confidence": "EXTRACTED",
-          "source_file": "packages/types/src/index.ts",
-          "source_location": "L48",
           "weight": 1.0,
           "_origin": "ast"
         }

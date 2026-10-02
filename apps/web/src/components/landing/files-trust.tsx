@@ -1,14 +1,6 @@
 import { Reveal } from '@/components/motion/reveal'
 
-const FILE_TYPES = [
-  'PDF',
-  'Scanned PDF',
-  'XLSX',
-  'CSV',
-  'JPG / PNG',
-  'Email attachment',
-  'Price list',
-]
+const FILE_TYPES = ['PDF', 'Scanned PDF', 'CSV', 'XLSX']
 
 // These four claims must stay accurate to the actual deployment (per-workspace
 // isolation, per-workspace storage, real deletion). Do not add certifications
@@ -16,7 +8,7 @@ const FILE_TYPES = [
 const TRUST_ROWS = [
   {
     label: 'Isolation',
-    text: 'Every workspace is separate. Your catalogs and invoices are never pooled with another buyer’s.',
+    text: "Every workspace is isolated from other workspaces' data.",
   },
   {
     label: 'Citations',
@@ -24,11 +16,11 @@ const TRUST_ROWS = [
   },
   {
     label: 'Human sign-off',
-    text: 'Optra flags and explains. Approval stays with the buyer, always.',
+    text: 'A person records every decision.',
   },
   {
     label: 'Deletion',
-    text: 'Remove a workspace and its files, matches, and history are removed with it.',
+    text: 'Email us and we delete your workspace data, including uploaded files, within 30 days. Backups expire on the schedule in the privacy policy.',
   },
 ]
 
