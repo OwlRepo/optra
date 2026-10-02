@@ -9,7 +9,7 @@ import Home from './page'
 afterEach(cleanup)
 
 describe('Home', () => {
-  it('renders every in-page anchor target the nav and footer link to', () => {
+  it('happy: renders every in-page anchor target the nav and footer link to', () => {
     const { container } = render(React.createElement(Home))
 
     for (const id of ['product', 'workflow', 'pricing', 'faq', 'trial', 'tour']) {
@@ -17,33 +17,33 @@ describe('Home', () => {
     }
   })
 
-  it('does not link to the retired dashboard route', () => {
+  it('happy: does not link to the retired dashboard route', () => {
     const { container } = render(React.createElement(Home))
 
     expect(container.querySelectorAll('a[href="/dashboard"]')).toHaveLength(0)
   })
 
-  it('no longer sends visitors to /chat, which only redirects into an authed workspace', () => {
+  it('happy: no longer sends visitors to /chat, which only redirects into an authed workspace', () => {
     const { container } = render(React.createElement(Home))
 
     expect(container.querySelectorAll('a[href="/chat"]')).toHaveLength(0)
   })
 
-  it('points the primary trial CTAs at the trial anchor', () => {
+  it('happy: points the primary trial CTAs at the trial anchor', () => {
     const { container } = render(React.createElement(Home))
 
-    // nav + hero + three pricing plan CTAs
-    expect(container.querySelectorAll('a[href="#trial"]').length).toBeGreaterThanOrEqual(5)
+    // nav + hero + Solo and Team plan CTAs (Scale is a mailto)
+    expect(container.querySelectorAll('a[href="#trial"]').length).toBeGreaterThanOrEqual(4)
   })
 
-  it('gives the logo link an accessible Home label and renders the brand mark', () => {
+  it('happy: gives the logo link an accessible Home label and renders the brand mark', () => {
     const { container } = render(React.createElement(Home))
 
     expect(screen.getAllByRole('link', { name: 'Home' }).at(0)).not.toBeUndefined()
     expect(container.querySelector('[data-brand-mark]')).not.toBeNull()
   })
 
-  it('emits Organization and SoftwareApplication JSON-LD', () => {
+  it('happy: emits Organization and SoftwareApplication JSON-LD', () => {
     const { container } = render(React.createElement(Home))
 
     const script = container.querySelector('script[type="application/ld+json"]')
@@ -56,28 +56,50 @@ describe('Home', () => {
     ])
   })
 
-  it('renders the hero headline and the single conversion goal', () => {
+  it('happy: renders the hero headline and the single conversion goal', () => {
     render(React.createElement(Home))
 
     expect(screen.getByRole('heading', { level: 1 }).textContent).toContain('Catch the mismatch')
     expect(screen.getAllByRole('link', { name: /start free trial/i }).length).toBeGreaterThan(0)
   })
 
-  it('keeps the illustrative-figures disclaimers next to the placeholder metrics', () => {
-    render(React.createElement(Home))
+  it('regression: drops the illustrative-figures disclaimers and the invented metrics', () => {
+    const { container } = render(React.createElement(Home))
 
-    expect(screen.getByText(/Illustrative figures from internal test runs/i)).not.toBeNull()
-    expect(screen.getByText(/illustrative examples, not customer results/i)).not.toBeNull()
+    expect(container.textContent).not.toMatch(/Illustrative figures from internal test runs/i)
+    expect(container.textContent).not.toMatch(/illustrative examples, not customer results/i)
+    expect(container.textContent).not.toContain('94%')
   })
 
-  it('renders the comparison table with both column headings', () => {
+  it('regression: FAQ no longer claims image uploads are readable', () => {
+    const { container } = render(React.createElement(Home))
+
+    expect(container.textContent).not.toContain('or image')
+    expect(container.textContent).not.toMatch(/price lists — PDF/)
+  })
+
+  it('happy: keeps the sample-data disclaimer in the footer', () => {
+    render(React.createElement(Home))
+
+    expect(screen.getByText('Product screens on this page show sample data.')).not.toBeNull()
+  })
+
+  it('happy: FAQ discloses the OpenAI subprocessor and the 30-day deletion promise', () => {
+    const { container } = render(React.createElement(Home))
+
+    expect(container.textContent).toContain("OpenAI's API, which does not train on them")
+    expect(container.textContent).toContain('within 30 days')
+    expect(container.textContent).toContain('as PDF (scanned too), CSV or XLSX')
+  })
+
+  it('happy: renders the comparison table with both column headings', () => {
     render(React.createElement(Home))
 
     expect(screen.getByText('Today, by hand')).not.toBeNull()
     expect(screen.getByText('With Optra')).not.toBeNull()
   })
 
-  it('renders the FAQ with the first item expanded', () => {
+  it('happy: renders the FAQ with the first item expanded', () => {
     render(React.createElement(Home))
 
     const collapsed = screen.queryAllByRole('button', { expanded: false })
@@ -87,7 +109,7 @@ describe('Home', () => {
     expect(expanded.length).toBeGreaterThanOrEqual(1)
   })
 
-  it('renders the three pricing plans', () => {
+  it('happy: renders the three pricing plans', () => {
     render(React.createElement(Home))
 
     // Scoped to headings: "Team" is also the label of the workspace-mode tab.
