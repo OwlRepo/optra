@@ -753,7 +753,8 @@ describe('ProcurementParseProcessor', () => {
   // save them. Every expected value was observed by replaying this processor's
   // own calls on the same bytes: Papa.parse(text, { header: true,
   // skipEmptyLines: false }), XLSX.read -> sheet_to_json({ defval: '' }) ->
-  // Papa.unparse, file read as utf-8, sourceRow = record index + 2.
+  // Papa.unparse, file read as utf-8, sourceRow = record index + 2 (XLSX:
+  // sheet row, see 'XLSX source rows (B1)').
   describe('real-world files (launch hardening)', () => {
     it('error: fails a truncated .xlsx at once with the spreadsheet message and stores no lines', async () => {
       const workspace = await seedWorkspace(`${prefix}rw-corrupt-xlsx@example.com`, prefix)
@@ -1215,6 +1216,52 @@ describe('ProcurementParseProcessor', () => {
       expect(items.map((item) => [item.sku, item.description, item.quantity])).toEqual([
         ['A1', 'Bolt; M8; zinc', '10'],
         ['B2', 'Nut;M8', '4'],
+      ])
+    })
+  })
+
+  // B1. sheet_to_json drops blank rows, so numbering XLSX lines by their
+  // position in the converted CSV cited the wrong spreadsheet row for every
+  // line after a blank one. The citation must be the row the reviewer sees.
+  describe('XLSX source rows (B1)', () => {
+    async function seedSheet(rows: unknown[][], workspaceId: string) {
+      const book = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(book, XLSX.utils.aoa_to_sheet(rows), 'Sheet1')
+      return seedPoBuffer(XLSX.write(book, { type: 'buffer', bookType: 'xlsx' }) as Buffer, workspaceId, 'po.xlsx')
+    }
+
+    it('regression: a line after a blank row cites its true spreadsheet row', async () => {
+      const workspace = await seedWorkspace(`${prefix}b1-blank@example.com`, prefix)
+      const po = await seedSheet([['sku', 'qty'], ['A1', 1], [], ['A3', 3]], workspace.id)
+
+      await processor.handleParse(job('job-b1-blank', { kind: 'purchase_order', id: po.id }))
+
+      const items = await db
+        .select()
+        .from(poLineItems)
+        .where(eq(poLineItems.purchaseOrderId, po.id))
+        .orderBy(poLineItems.lineNumber)
+      expect(items.map((item) => [item.sku, item.sourceRow])).toEqual([
+        ['A1', 2],
+        ['A3', 4],
+      ])
+    })
+
+    it('regression: a row of empty cells is skipped and the next line keeps its true row', async () => {
+      const workspace = await seedWorkspace(`${prefix}b1-empty-cells@example.com`, prefix)
+      const po = await seedSheet([['sku', 'qty'], ['A1', 1], [], ['A3', 3], ['', ''], ['A5', 5]], workspace.id)
+
+      await processor.handleParse(job('job-b1-empty-cells', { kind: 'purchase_order', id: po.id }))
+
+      const items = await db
+        .select()
+        .from(poLineItems)
+        .where(eq(poLineItems.purchaseOrderId, po.id))
+        .orderBy(poLineItems.lineNumber)
+      expect(items.map((item) => [item.sku, item.sourceRow, item.sourceSheet])).toEqual([
+        ['A1', 2, 'Sheet1'],
+        ['A3', 4, 'Sheet1'],
+        ['A5', 6, 'Sheet1'],
       ])
     })
   })

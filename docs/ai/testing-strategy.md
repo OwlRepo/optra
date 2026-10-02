@@ -395,6 +395,8 @@ Environment traps hit while verifying (they are execution preflight, not test lo
 
 **2026-10-02 — fix B2/B3 (unreadable spreadsheets).** `procurement-parse.processor.spec.ts` `describe('files with no readable line items (B2/B3)')` (10), `procurement.e2e-spec.ts` `describe('unreadable files (B2/B3)')` (2), `procurement-core.spec.ts` `describe('procurement core: unreadable files')` (1, fixture `po-headers-only.csv`). RED recorded 9 failing cases; the tenth (a comma file with semicolons inside quoted descriptions) passed on the old code by design — it is the guard that the new delimiter guess does not over-reach. **Guess on clean data, parse on raw data:** the delimiter is sniffed with `skipEmptyLines: 'greedy'` and a 50-record preview, then every record is parsed with that explicit delimiter and `skipEmptyLines: false`, so blank lines still count toward `sourceRow`.
 
+**2026-10-02 — fix B1 (XLSX source rows).** `procurement-parse.processor.spec.ts` `describe('XLSX source rows (B1)')` (2) and `procurement.e2e-spec.ts` `describe('XLSX citations (B1)')` (1). **Build XLSX fixtures through a real write/read round trip:** an in-memory sheet with a hand-set `!ref` behaved differently from a written workbook (SheetJS re-anchors written sheets at A1), and a claim based on the in-memory probe had to be withdrawn.
+
 ## Infrastructure / Docker / Deployment Verification
 
 Infra/config/script changes (Dockerfiles, compose files, CI workflows, deploy shell scripts) are not
