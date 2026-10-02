@@ -603,4 +603,35 @@ describe('Catalog flow (e2e)', () => {
       expect(res.body.message).toBe('Validation failed (uuid is expected)')
     })
   })
+
+  describe('over-long catalog SKUs (B5)', () => {
+    it('regression: a CSV catalog with one SKU over 200 characters parses to done, with that item stored without a SKU', async () => {
+      const owner = await seedOwnerWithWorkspace(app, `${prefix}b5-long-sku@example.com`, 'B5 Long Sku')
+      const auth = `Bearer ${owner.accessToken}`
+      const vendor = await request(app.getHttpServer())
+        .post(`/workspaces/${owner.workspaceId}/vendors`)
+        .set('Authorization', auth)
+        .send({ name: 'B5 Vendor' })
+        .expect(201)
+      const base = `/workspaces/${owner.workspaceId}/vendors/${vendor.body.id}/catalogs`
+      const longSku = 'X'.repeat(201)
+
+      const upload = await request(app.getHttpServer())
+        .post(base)
+        .set('Authorization', auth)
+        .attach('file', Buffer.from(`sku,description\nA1,Widget\n${longSku},Gadget\n`), 'catalog.csv')
+        .expect(201)
+      await waitForCatalogDone(upload.body.id)
+
+      const items = await request(app.getHttpServer())
+        .get(`${base}/${upload.body.id}/items`)
+        .set('Authorization', auth)
+        .expect(200)
+      const rows = items.body as { sku: string | null; description: string | null }[]
+      expect(rows.map((row) => [row.sku, row.description])).toEqual([
+        ['A1', 'Widget'],
+        [null, 'Gadget'],
+      ])
+    })
+  })
 })
