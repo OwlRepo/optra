@@ -548,3 +548,12 @@ And one rule the owner made standing: every change now ships with its tests for 
 **Actual:** confirmed, with one surprise. The sub-cent and fractional-quantity cases went red then green, and full api unit 811/811 and API e2e 102/102 passed three times. The surprise: the first exact implementation crashed on a stored `1e400`, which DuckDB reads as `Infinity`. It is now a null delta.
 
 **Why different:** **A number a flag shows a person is evidence, not arithmetic: round it and a real difference can print as zero. Doubles cannot hold decimals exactly, so compute money and quantity differences from decimal text (BigInt-scaled), and decide what an unrepresentable value means before it reaches that code.**
+
+## 2026-10-03 — Fix B10 + B11: evidence text must name what the reviewer sees
+*Learning Contract: the plan's design is the prediction; the diff is below. No live prediction solicited.*
+
+**Predicted (from the approved plan):** naming a line the way it was matched (SKU, else description) and printing the stated units makes every reason point at a row the reviewer can find.
+
+**Actual:** confirmed — four reason cases red then green; full api unit 816/816 and API e2e 103/103 three times.
+
+**Why different:** not different. **A reason is a citation: build it from the same text the flag's values and the source document show, never from the engine's normalized match keys.**
