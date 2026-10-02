@@ -763,7 +763,7 @@ describe('Catalog flow (e2e)', () => {
       const deadline = Date.now() + 15_000
       let row: typeof catalogs.$inferSelect | undefined
       while (Date.now() < deadline) {
-        ;[row] = await db.select().from(catalogs).where(eq(catalogs.id, upload.body.id)).limit(1)
+        row = (await db.select().from(catalogs).where(eq(catalogs.id, upload.body.id)).limit(1))[0]
         if (row?.status === 'failed' || row?.status === 'done') break
         await new Promise((resolve) => setTimeout(resolve, 200))
       }
