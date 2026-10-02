@@ -229,3 +229,74 @@ describe('goods receipt quantities (S5)', () => {
     expect(item.quantityRejected).toBeNull()
   })
 })
+
+// Launch hardening (S1). Cells and headers the way vendor exports actually
+// write them. Mapping keeps the text as-is; validateLineItem decides whether
+// Postgres numeric can hold it, so the pair is exercised together exactly as
+// procurement-parse.processor.ts does. Locale- and currency-formatted numbers
+// become null rather than a guessed value (DECIMAL_PATTERN).
+describe('real-world cells (launch hardening)', () => {
+  it('edge: nulls a European-format price that uses a dot for thousands and a comma for decimals', () => {
+    expect(validateLineItem(mapRowToLineItem({ sku: 'A1', 'unit price': '1.234,56' })).unitPrice).toBeNull()
+  })
+
+  it('edge: nulls prices that carry a currency symbol or currency code', () => {
+    for (const price of ['$12.50', '€12,50', 'PHP 1,200.00']) {
+      expect(validateLineItem(mapRowToLineItem({ sku: 'A1', 'unit price': price })).unitPrice).toBeNull()
+    }
+  })
+
+  it('edge: nulls an accounting-style negative written in parentheses', () => {
+    expect(validateLineItem(mapRowToLineItem({ sku: 'A1', 'unit price': '(5.00)' })).unitPrice).toBeNull()
+  })
+
+  it('edge: nulls a quantity written as a percentage', () => {
+    expect(validateLineItem(mapRowToLineItem({ sku: 'A1', qty: '12%' })).quantity).toBeNull()
+  })
+
+  it('edge: maps a header that still carries a UTF-8 byte order mark', () => {
+    expect(mapRowToLineItem({ '﻿sku': 'A1' }).sku).toBe('A1')
+  })
+
+  it('edge: maps a header padded with spaces', () => {
+    expect(mapRowToLineItem({ sku: 'A1', ' Unit Price ': '5.50' }).unitPrice).toBe('5.50')
+  })
+
+  it('edge: does not read an Ext Price header as the unit price or the line total', () => {
+    const item = mapRowToLineItem({ sku: 'A1', 'Ext Price': '55.00' })
+
+    expect(item.unitPrice).toBeNull()
+    expect(item.lineTotal).toBeNull()
+  })
+
+  it('edge: keeps the leading zeros of a SKU', () => {
+    expect(validateLineItem(mapRowToLineItem({ sku: '00501' })).sku).toBe('00501')
+  })
+
+  it('edge: keeps a SKU a spreadsheet rewrote in scientific notation verbatim', () => {
+    expect(validateLineItem(mapRowToLineItem({ sku: '1.23457E+15' })).sku).toBe('1.23457E+15')
+  })
+
+  it('happy: maps and validates every field of a typical vendor row', () => {
+    const row = {
+      SKU: 'ABC-123',
+      Description: 'Widget, blue',
+      Qty: '10',
+      'Unit Price': '5.50',
+      Total: '55.00',
+      UOM: 'box',
+    }
+
+    expect(validateLineItem(mapRowToLineItem(row))).toEqual({
+      sku: 'ABC-123',
+      description: 'Widget, blue',
+      quantity: '10',
+      unitPrice: '5.50',
+      lineTotal: '55.00',
+      uom: 'box',
+      quantityReceived: null,
+      quantityAccepted: null,
+      quantityRejected: null,
+    })
+  })
+})
