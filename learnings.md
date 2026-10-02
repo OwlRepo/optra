@@ -593,3 +593,12 @@ And one rule the owner made standing: every change now ships with its tests for 
 **Actual:** confirmed — three failure cases red then green; api unit 829/829 three times, API e2e 106/106 twice (one unrelated `socket hang up`).
 
 **Why different:** not different. **Apply one domain's hard-won rule to its siblings in the same pass: B2 taught procurement that `done` with zero rows reads as success; catalogs had the same hole.**
+
+## 2026-10-03 — Fix B18: finish a UI rule on every page in one pass
+*Learning Contract: the plan's design is the prediction; the diff is below. No live prediction solicited.*
+
+**Predicted (from the approved plan):** the B14 component and helper drop into each page's first-load catch with no other change.
+
+**Actual:** confirmed — 7 page cases red then green, web 698/698, browser 50 passed. Five pages reuse their loader for filters and paging, so a 403 there also shows the state, which is right for someone who lost access mid-session.
+
+**Why different:** not different. **A shared component plus a one-line branch is what makes "the rest of the pages" a cheap follow-up instead of a backlog item; build the reusable piece in the first fix.**
