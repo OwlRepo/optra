@@ -17,7 +17,7 @@ Owner instruction 2026-10-02: continue through the bug list without waiting; pul
   - Zero prints as `0`, never `-0`.
 - **Found while implementing:** Postgres `numeric` stores `1e400` (it passes `DECIMAL_PATTERN`), but DuckDB reads it as `Infinity`, and BigInt conversion threw. A non-finite side now gives a `null` delta. The test was written and seen failing first.
 - **Not changed:** flags already written keep their stored deltas, because runs are append-only. A re-compare writes exact ones.
-- **Tests first (RED `ff33ddb`):**
-  - Unit `exact deltas (B9)` (5): `error:` infinite double, `edge:` fractional quantity, `edge:` float noise, `regression:` sub-cent price, `happy:` whole and cent deltas.
+- **Tests first (RED `ff33ddb`: 4 unit + 1 API e2e; the infinity case was added in the fix commit after it was seen failing):**
+  - Unit `exact deltas (B9)` (5 in all): `error:` infinite double, `edge:` fractional quantity, `edge:` float noise, `regression:` sub-cent price, `happy:` whole and cent deltas.
   - API e2e (1).
   - No page changed, so no browser test.
