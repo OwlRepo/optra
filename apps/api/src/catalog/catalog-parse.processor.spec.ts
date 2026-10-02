@@ -435,6 +435,26 @@ describe('CatalogParseProcessor', () => {
       return lines.join('\n')
     }
 
+    it('edge: fetches several photos at once, never more than four', async () => {
+      const { workspace, vendor } = await seedWorkspaceAndVendor(`${prefix}b7-concurrency@example.com`, 'B7 Concurrency')
+      const catalog = await seedCatalog(workspace.id, vendor.id, 'catalog.csv', csvWithPhotos(10))
+      let inFlight = 0
+      let maxInFlight = 0
+      images.fetchAndStore.mockImplementation(async () => {
+        inFlight += 1
+        maxInFlight = Math.max(maxInFlight, inFlight)
+        await new Promise((resolve) => setTimeout(resolve, 5))
+        inFlight -= 1
+        return null
+      })
+
+      await processor.handleParse({ id: 'job-b7-concurrency', data: { id: catalog.id } } as any)
+
+      expect(images.fetchAndStore).toHaveBeenCalledTimes(10)
+      expect(maxInFlight).toBeGreaterThan(1)
+      expect(maxInFlight).toBeLessThanOrEqual(4)
+    })
+
     it('regression: a catalog whose photo host hangs stops fetching at the budget and still finishes with every row', async () => {
       const { workspace, vendor } = await seedWorkspaceAndVendor(`${prefix}b7-hang@example.com`, 'B7 Hang')
       const catalog = await seedCatalog(workspace.id, vendor.id, 'catalog.csv', csvWithPhotos(16))
@@ -463,26 +483,6 @@ describe('CatalogParseProcessor', () => {
         .orderBy(catalogItems.lineNumber)
       expect(items).toHaveLength(16)
       expect(items.every((item) => item.photoStorageKey === null)).toBe(true)
-    })
-
-    it('edge: fetches several photos at once, never more than four', async () => {
-      const { workspace, vendor } = await seedWorkspaceAndVendor(`${prefix}b7-concurrency@example.com`, 'B7 Concurrency')
-      const catalog = await seedCatalog(workspace.id, vendor.id, 'catalog.csv', csvWithPhotos(10))
-      let inFlight = 0
-      let maxInFlight = 0
-      images.fetchAndStore.mockImplementation(async () => {
-        inFlight += 1
-        maxInFlight = Math.max(maxInFlight, inFlight)
-        await new Promise((resolve) => setTimeout(resolve, 5))
-        inFlight -= 1
-        return null
-      })
-
-      await processor.handleParse({ id: 'job-b7-concurrency', data: { id: catalog.id } } as any)
-
-      expect(images.fetchAndStore).toHaveBeenCalledTimes(10)
-      expect(maxInFlight).toBeGreaterThan(1)
-      expect(maxInFlight).toBeLessThanOrEqual(4)
     })
 
     it('regression: photos fetched out of order still land on their own rows', async () => {
