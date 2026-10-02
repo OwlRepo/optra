@@ -472,12 +472,13 @@ describe('CatalogMatchService', () => {
       const before = await service.listMatches(workspace.id, { status: 'open' })
       failFor('A1', new Error('Connection error.'))
 
-      const error = await service
-        .search(workspace.id, { purchaseOrderLineItemId: poItem.id })
-        .catch((caught: unknown) => caught as { getStatus?: () => number; message: string })
+      const error = await service.search(workspace.id, { purchaseOrderLineItemId: poItem.id }).then(
+        () => null,
+        (caught: unknown) => caught as { getStatus?: () => number; message: string },
+      )
 
-      expect(error.getStatus?.()).toBe(503)
-      expect(error.message).toBe('No catalog item could be compared right now. Try the search again.')
+      expect(error?.getStatus?.()).toBe(503)
+      expect(error?.message).toBe('No catalog item could be compared right now. Try the search again.')
       const after = await service.listMatches(workspace.id, { status: 'open' })
       expect(after.map((match) => match.id).sort()).toEqual(before.map((match) => match.id).sort())
     })

@@ -1,7 +1,8 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common'
-import { and, desc, eq, ilike, inArray, or } from 'drizzle-orm'
+import { BadRequestException, Injectable, Logger, NotFoundException, ServiceUnavailableException } from '@nestjs/common'
+import { and, desc, eq, ilike, inArray, notInArray, or } from 'drizzle-orm'
 import { createLimit } from '@repo/ai'
 import { catalogItems, catalogMatches, catalogs, db, invoiceLineItems, poLineItems, vendors } from '@repo/db'
+import { isBudgetExceeded } from '../limits/usage.service'
 import { StorageService } from '../storage/storage.service'
 import { CatalogExtractionService } from './catalog-extraction.service'
 
@@ -35,6 +36,8 @@ type QueryLineItem = { id: string; workspaceId: string; sku: string | null; desc
 
 type SearchInput = { purchaseOrderLineItemId?: string; invoiceLineItemId?: string; vendorId?: string }
 
+export const CATALOG_COMPARE_UNAVAILABLE_MESSAGE = 'No catalog item could be compared right now. Try the search again.'
+
 // Mirrors ComparisonService's shape (load -> do work -> delete-prior-then-
 // insert idempotency -> list/dismiss) but the "work" is a vision-LLM
 // comparator per candidate instead of a DuckDB SQL join — A3 uses no
@@ -58,26 +61,42 @@ export class CatalogMatchService {
     const queryText = this.lineItemText(query)
     const candidates = await this.findCandidates(workspaceId, query, input.vendorId)
 
+    // One candidate the model cannot judge (malformed answer, refusal, timeout,
+    // the budget running out part-way) is skipped, not fatal: the verdicts
+    // already paid for are saved and the skip is counted for the caller.
     const limit = createLimit(matchConcurrency())
-    const judged = await Promise.all(
+    const outcomes = await Promise.all(
       candidates.map((candidate) =>
         limit(async () => {
-          const candidateText = this.lineItemText(candidate)
-          const image = candidate.photoStorageKey ? await this.loadImage(candidate.photoStorageKey) : null
+          try {
+            const candidateText = this.lineItemText(candidate)
+            const image = candidate.photoStorageKey ? await this.loadImage(candidate.photoStorageKey) : null
 
-          const verdict = await this.extraction.compare(
-            {
-              queryText,
-              candidateText,
-              candidateImageBase64: image?.base64 ?? null,
-              candidateImageContentType: image?.contentType ?? null,
-            },
-            workspaceId,
-          )
-          return { candidate, verdict }
+            const verdict = await this.extraction.compare(
+              {
+                queryText,
+                candidateText,
+                candidateImageBase64: image?.base64 ?? null,
+                candidateImageContentType: image?.contentType ?? null,
+              },
+              workspaceId,
+            )
+            return { candidate, verdict }
+          } catch (error) {
+            return { candidate, error }
+          }
         }),
       ),
     )
+    const judged = outcomes.flatMap((outcome) => ('verdict' in outcome ? [outcome] : []))
+    const failed = outcomes.flatMap((outcome) => ('error' in outcome ? [outcome] : []))
+
+    if (failed.length > 0) {
+      const reasons = failed.map(({ error }) => (error instanceof Error ? error.message : String(error)))
+      this.logger.warn(
+        `Catalog search left ${failed.length}/${candidates.length} candidate(s) uncompared workspaceId=${workspaceId}: ${[...new Set(reasons)].join(' | ')}`,
+      )
+    }
 
     const matchType = input.vendorId ? ('compliance' as const) : ('sourcing' as const)
 
@@ -85,7 +104,16 @@ export class CatalogMatchService {
     // means the prefilter found no comparable items; wiping the line's prior
     // verdicts on the strength of that would destroy real work (and used to).
     if (judged.length === 0) {
-      return { matches: [] }
+      if (failed.length === 0) {
+        return { matches: [], unjudged: 0 }
+      }
+      // Nothing was compared. A spent budget keeps its own 402 answer; any
+      // other model failure is reported in plain words, never the raw error.
+      const budget = failed.find(({ error }) => isBudgetExceeded(error))
+      if (budget) {
+        throw budget.error
+      }
+      throw new ServiceUnavailableException(CATALOG_COMPARE_UNAVAILABLE_MESSAGE)
     }
 
     // The delete is scoped exactly as narrowly as the insert that follows it:
@@ -106,6 +134,11 @@ export class CatalogMatchService {
     ]
     if (input.vendorId) {
       scope.push(eq(catalogMatches.vendorId, input.vendorId))
+    }
+    // A candidate this search could not judge keeps the verdict an earlier
+    // search gave it; nothing new replaces it.
+    if (failed.length > 0) {
+      scope.push(notInArray(catalogMatches.catalogItemId, failed.map(({ candidate }) => candidate.id)))
     }
 
     const inserted = await db.transaction(async (tx) => {
@@ -129,7 +162,7 @@ export class CatalogMatchService {
         .returning()
     })
 
-    return { matches: inserted }
+    return { matches: inserted, unjudged: failed.length }
   }
 
   async listMatches(
