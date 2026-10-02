@@ -171,10 +171,14 @@ export function listCatalogItems(
   return apiFetch(`/api/workspaces/${workspaceId}/vendors/${vendorId}/catalogs/${catalogId}/items`)
 }
 
+// `unjudged` counts candidates the model could not compare; they were skipped
+// and keep any verdict an earlier search gave them.
+export type CatalogMatchSearchResult = { matches: CatalogMatch[]; unjudged: number }
+
 export function searchCatalogMatches(
   workspaceId: string,
   payload: CatalogMatchQuery,
-): Promise<{ matches: CatalogMatch[] }> {
+): Promise<CatalogMatchSearchResult> {
   return apiFetch(`/api/workspaces/${workspaceId}/catalog-matches/search`, {
     method: 'POST',
     body: JSON.stringify(payload),
@@ -185,7 +189,7 @@ export function verifyCatalogMatches(
   workspaceId: string,
   vendorId: string,
   payload: CatalogMatchQuery,
-): Promise<{ matches: CatalogMatch[] }> {
+): Promise<CatalogMatchSearchResult> {
   return apiFetch(`/api/workspaces/${workspaceId}/vendors/${vendorId}/catalog-matches/verify`, {
     method: 'POST',
     body: JSON.stringify(payload),

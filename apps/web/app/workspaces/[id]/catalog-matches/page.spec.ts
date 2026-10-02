@@ -342,4 +342,55 @@ describe('CatalogMatchesPage', () => {
       expect(await screen.findByText(/Query item po-line-/)).toBeDefined()
     })
   })
+
+  // B6. A search now saves the verdicts it got and counts the candidates the
+  // model could not compare (`unjudged`). The success summary keeps its exact
+  // wording; the skipped count gets its own warning so it cannot be missed.
+  describe('unjudged candidates (B6)', () => {
+    it('edge: a search with candidates left uncompared says how many in a separate warning', async () => {
+      mockSearchParams = new URLSearchParams({ poLineItemId: 'po-line-12345678' })
+      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+      listCatalogMatchesMock.mockResolvedValue([baseMatch])
+      searchCatalogMatchesMock.mockResolvedValue({ matches: [baseMatch], unjudged: 2 })
+
+      renderPage()
+      fireEvent.click(await screen.findByRole('button', { name: 'Search all vendors' }))
+
+      await waitFor(() => {
+        expect(screen.getByText('1 match found.')).toBeDefined()
+        expect(screen.getByText('Some catalog items were not compared')).toBeDefined()
+        expect(screen.getByText('2 catalog items could not be compared. Search again to retry.')).toBeDefined()
+      })
+    })
+
+    it('edge: a verification with one candidate left uncompared says so in the singular', async () => {
+      mockSearchParams = new URLSearchParams({ invoiceLineItemId: 'inv-line-98765432', vendorId: 'vendor-1' })
+      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+      listCatalogMatchesMock.mockResolvedValue([])
+      verifyCatalogMatchesMock.mockResolvedValue({ matches: [], unjudged: 1 })
+
+      renderPage()
+      fireEvent.click(await screen.findByRole('button', { name: 'Verify against this vendor' }))
+
+      await waitFor(() => {
+        expect(screen.getByText('Verification complete')).toBeDefined()
+        expect(screen.getByText('1 catalog item could not be compared. Search again to retry.')).toBeDefined()
+      })
+    })
+
+    it('happy: a search with every candidate compared shows no warning', async () => {
+      mockSearchParams = new URLSearchParams({ poLineItemId: 'po-line-12345678' })
+      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+      listCatalogMatchesMock.mockResolvedValue([baseMatch])
+      searchCatalogMatchesMock.mockResolvedValue({ matches: [baseMatch], unjudged: 0 })
+
+      renderPage()
+      fireEvent.click(await screen.findByRole('button', { name: 'Search all vendors' }))
+
+      await waitFor(() => {
+        expect(screen.getByText('Search complete')).toBeDefined()
+      })
+      expect(screen.queryByText('Some catalog items were not compared')).toBeNull()
+    })
+  })
 })

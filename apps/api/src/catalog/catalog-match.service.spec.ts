@@ -1,3 +1,4 @@
+import { HttpException } from '@nestjs/common'
 import { eq, like } from 'drizzle-orm'
 import {
   catalogItems,
@@ -362,8 +363,10 @@ describe('CatalogMatchService', () => {
       const [previous] = await service.listMatches(workspace.id, { status: 'open' })
       extraction.compare.mockRejectedValueOnce(new CatalogExtractionParseError())
 
+      // B6 changed the answer: the model's own error text no longer reaches the
+      // caller; a search with nothing compared says so in plain words.
       await expect(service.search(workspace.id, { purchaseOrderLineItemId: poItem.id })).rejects.toThrow(
-        'Model returned malformed catalog extraction JSON',
+        'No catalog item could be compared right now. Try the search again.',
       )
 
       const rows = await db.select().from(catalogMatches).where(eq(catalogMatches.queryPoLineItemId, poItem.id))
@@ -445,6 +448,100 @@ describe('CatalogMatchService', () => {
       const rows = await db.select().from(catalogMatches).where(eq(catalogMatches.queryPoLineItemId, poItem.id))
       expect(rows).toHaveLength(1)
       expect(rows[0]).toMatchObject({ id: previous.id, status: 'open' })
+    })
+  })
+
+  // B6. One candidate the model could not judge used to reject the whole
+  // Promise.all: the search answered 500 and every verdict already paid for was
+  // thrown away. A failed candidate is now skipped and counted, its earlier
+  // verdict kept; only a search where nothing was compared fails, in plain words.
+  describe('partial search failures (B6)', () => {
+    const verdict = { isMatch: true, score: 0.9, reason: 'Same widget.' }
+    const failFor = (marker: string, error: unknown) =>
+      extraction.compare.mockImplementation(async (input: { candidateText: string }) => {
+        if (input.candidateText.includes(marker)) throw error
+        return verdict
+      })
+
+    it('error: when no candidate can be compared, the search answers 503 in plain words and keeps earlier open matches', async () => {
+      const workspace = await seedWorkspace(`${prefix}b6-none@example.com`, 'B6 None WS')
+      const poItem = await seedPoLineItem(workspace.id, 'A1', 'Widget')
+      await seedVendorWithCatalogItem(workspace.id, 'Acme', { sku: 'A1', description: 'Widget' })
+      await seedVendorWithCatalogItem(workspace.id, 'Beta', { sku: 'A1-B', description: 'Widget, large' })
+      await service.search(workspace.id, { purchaseOrderLineItemId: poItem.id })
+      const before = await service.listMatches(workspace.id, { status: 'open' })
+      failFor('A1', new Error('Connection error.'))
+
+      const error = await service.search(workspace.id, { purchaseOrderLineItemId: poItem.id }).then(
+        () => null,
+        (caught: unknown) => caught as { getStatus?: () => number; message: string },
+      )
+
+      expect(error?.getStatus?.()).toBe(503)
+      expect(error?.message).toBe('No catalog item could be compared right now. Try the search again.')
+      const after = await service.listMatches(workspace.id, { status: 'open' })
+      expect(after.map((match) => match.id).sort()).toEqual(before.map((match) => match.id).sort())
+    })
+
+    it('edge: a token budget that runs out mid-search keeps the verdicts already paid for and counts the rest', async () => {
+      const workspace = await seedWorkspace(`${prefix}b6-budget@example.com`, 'B6 Budget WS')
+      const poItem = await seedPoLineItem(workspace.id, 'A1', 'Widget')
+      const { catalogItem: judged } = await seedVendorWithCatalogItem(workspace.id, 'Acme', { sku: 'A1', description: 'Widget' })
+      await seedVendorWithCatalogItem(workspace.id, 'Beta', { sku: 'A1-B', description: 'Widget, large' })
+      failFor('A1-B', new HttpException('Workspace monthly token budget reached', 402))
+
+      const result = await service.search(workspace.id, { purchaseOrderLineItemId: poItem.id })
+
+      expect(result.matches.map((match) => match.catalogItemId)).toEqual([judged.id])
+      expect(result.unjudged).toBe(1)
+    })
+
+    it('regression: one candidate the model cannot compare no longer fails the search; the others are saved and it is counted', async () => {
+      const workspace = await seedWorkspace(`${prefix}b6-one@example.com`, 'B6 One WS')
+      const poItem = await seedPoLineItem(workspace.id, 'A1', 'Widget')
+      const { catalogItem: judged } = await seedVendorWithCatalogItem(workspace.id, 'Acme', { sku: 'A1', description: 'Widget' })
+      await seedVendorWithCatalogItem(workspace.id, 'Beta', { sku: 'A1-B', description: 'Widget, large' })
+      failFor('A1-B', new CatalogExtractionParseError('Model returned malformed catalog comparison JSON'))
+
+      const result = await service.search(workspace.id, { purchaseOrderLineItemId: poItem.id })
+
+      expect(result.matches).toHaveLength(1)
+      expect(result.matches[0]).toMatchObject({ catalogItemId: judged.id, reason: 'Same widget.' })
+      expect(result.unjudged).toBe(1)
+    })
+
+    it('regression: a candidate that fails on a re-search keeps its verdict from the previous search', async () => {
+      const workspace = await seedWorkspace(`${prefix}b6-keep@example.com`, 'B6 Keep WS')
+      const poItem = await seedPoLineItem(workspace.id, 'A1', 'Widget')
+      const { catalogItem: steady } = await seedVendorWithCatalogItem(workspace.id, 'Acme', { sku: 'A1', description: 'Widget' })
+      const { catalogItem: flaky } = await seedVendorWithCatalogItem(workspace.id, 'Beta', {
+        sku: 'A1-B',
+        description: 'Widget, large',
+      })
+      await service.search(workspace.id, { purchaseOrderLineItemId: poItem.id })
+      const [earlierFlaky] = (await service.listMatches(workspace.id, { status: 'open' })).filter(
+        (match) => match.catalogItemId === flaky.id,
+      )
+      failFor('A1-B', new Error('Request timed out.'))
+
+      await service.search(workspace.id, { purchaseOrderLineItemId: poItem.id })
+
+      const open = await service.listMatches(workspace.id, { status: 'open' })
+      expect(open).toHaveLength(2)
+      expect(open.find((match) => match.catalogItemId === flaky.id)?.id).toBe(earlierFlaky.id)
+      expect(open.find((match) => match.catalogItemId === steady.id)).toBeDefined()
+    })
+
+    it('happy: a search where every candidate is compared reports none unjudged', async () => {
+      const workspace = await seedWorkspace(`${prefix}b6-all@example.com`, 'B6 All WS')
+      const poItem = await seedPoLineItem(workspace.id, 'A1', 'Widget')
+      await seedVendorWithCatalogItem(workspace.id, 'Acme', { sku: 'A1', description: 'Widget' })
+      await seedVendorWithCatalogItem(workspace.id, 'Beta', { sku: 'A1-B', description: 'Widget, large' })
+
+      const result = await service.search(workspace.id, { purchaseOrderLineItemId: poItem.id })
+
+      expect(result.matches).toHaveLength(2)
+      expect(result.unjudged).toBe(0)
     })
   })
 })

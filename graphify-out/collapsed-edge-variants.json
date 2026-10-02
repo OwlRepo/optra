@@ -750,6 +750,35 @@
     },
     {
       "endpoints": [
+        "apps_api_src_catalog_catalog_match_service",
+        "apps_api_src_limits_usage_service"
+      ],
+      "variants": [
+        {
+          "source": "apps_api_src_catalog_catalog_match_service",
+          "target": "apps_api_src_limits_usage_service",
+          "relation": "imports_from",
+          "context": "import",
+          "confidence": "EXTRACTED",
+          "source_file": "apps/api/src/catalog/catalog-match.service.ts",
+          "source_location": "L5",
+          "weight": 1.0,
+          "_origin": "ast"
+        },
+        {
+          "source": "apps_api_src_catalog_catalog_match_service",
+          "target": "apps_api_src_limits_usage_service",
+          "relation": "calls",
+          "confidence": "INFERRED",
+          "confidence_score": 0.75,
+          "source_file": "docs/ai/file-index/repository-map.md",
+          "source_location": null,
+          "weight": 1.0
+        }
+      ]
+    },
+    {
+      "endpoints": [
         "apps_api_src_catalog_catalog_parse_processor",
         "apps_api_src_catalog_catalog_parse_service"
       ],
