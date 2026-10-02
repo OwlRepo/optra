@@ -64,8 +64,9 @@ setup('seed actors and sign each one in', async ({ browser }) => {
     await page.locator('#email').fill(state[role].email)
     await page.locator('#password').fill(state[role].password)
     await page.getByRole('button', { name: 'Sign in' }).click()
-    // /chat redirects into the user's workspace; landing there proves the
-    // BFF set both cookies and the middleware accepted them.
+    // /chat redirects into the user's workspace (Purchase Orders while the
+    // support surfaces are hidden, [support-surfaces-off]); landing there
+    // proves the BFF set both cookies and the middleware accepted them.
     await expect(page).toHaveURL(new RegExp(`/workspaces/${state[role].workspaceId}/`))
     await context.storageState({ path: storageStateFor(role) })
     await context.close()

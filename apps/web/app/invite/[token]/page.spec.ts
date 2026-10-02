@@ -41,7 +41,8 @@ describe('InvitePage', () => {
     vi.restoreAllMocks()
   })
 
-  it('accepts the invite and redirects to the workspace chat (default landing page)', async () => {
+  // [support-surfaces-off] was: '…redirects to the workspace chat…' → '/workspaces/ws-1/chat'
+  it('regression: accepts the invite and redirects to the workspace Purchase Orders (default landing page)', async () => {
     acceptInviteMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
 
     renderPage()
@@ -50,7 +51,7 @@ describe('InvitePage', () => {
 
     await waitFor(() => {
       expect(acceptInviteMock).toHaveBeenCalledWith('invite-token')
-      expect(pushMock).toHaveBeenCalledWith('/workspaces/ws-1/chat')
+      expect(pushMock).toHaveBeenCalledWith('/workspaces/ws-1/procurement')
     })
   })
 })

@@ -26,8 +26,26 @@ export async function uploadPurchaseOrder(page: Page, owner: Owner, fileName: st
 
 export async function uploadKnowledgeBaseDocument(page: Page, owner: Owner, fileName: string): Promise<string> {
   const file = fixture('kb-note.md', fileName)
-  await page.goto(`/workspaces/${owner.workspaceId}/knowledge-bases/${owner.knowledgeBaseId}`)
-  await page.getByLabel('Upload document').setInputFiles(file)
+  // [support-surfaces-off] was: page.goto the knowledge-base page and
+  // setInputFiles on 'Upload document'. That page answers 404 while the
+  // support surfaces are disabled, so upload through the same BFF route the
+  // page calls (same multipart field, same session). Restore on re-enable.
+  await page.goto(`/workspaces/${owner.workspaceId}/procurement`)
+  const status = await page.evaluate(
+    async ({ url, name, mimeType, base64 }) => {
+      const bytes = Uint8Array.from(atob(base64), (char) => char.charCodeAt(0))
+      const form = new FormData()
+      form.append('file', new File([bytes], name, { type: mimeType }))
+      return (await fetch(url, { method: 'POST', body: form, credentials: 'same-origin' })).status
+    },
+    {
+      url: `/api/workspaces/${owner.workspaceId}/knowledge-bases/${owner.knowledgeBaseId}/documents`,
+      name: file.name,
+      mimeType: file.mimeType,
+      base64: file.buffer.toString('base64'),
+    },
+  )
+  expect(status, 'knowledge-base upload through the BFF').toBeLessThan(300)
   const row = await waitForRow<{ id: string; title: string; status: string }>(
     page,
     `/api/workspaces/${owner.workspaceId}/knowledge-bases/${owner.knowledgeBaseId}/documents?pageSize=100`,

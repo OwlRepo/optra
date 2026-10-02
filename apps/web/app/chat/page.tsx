@@ -1,9 +1,16 @@
 'use client'
 
+// [support-surfaces-off] 2026-10-02: Knowledge Bases, Datasets, Chat, Tickets and
+// Insights are hidden from the UI. Their pages, BFF routes, API and jobs still
+// exist and are tested. To re-enable: uncomment every line tagged
+// [support-surfaces-off] in this file and restore each "was:" value noted there.
+// Repo checklist: grep -rn "support-surfaces-off" apps/web apps/e2e
+
 import * as React from 'react'
 import { useRouter } from 'next/navigation'
 import { EmptyState, PageShell, useToast } from '@repo/ui'
-import { MessageSquareText } from 'lucide-react'
+// [support-surfaces-off] was: import { MessageSquareText } from 'lucide-react'
+import { ClipboardList } from 'lucide-react'
 import { listWorkspaces } from '@/lib/api/workspaces'
 import { isUnauthorized } from '@/lib/api/handle-unauthorized'
 
@@ -22,7 +29,8 @@ export default function ChatRedirectPage() {
         const items = Array.isArray(workspaces?.items) ? workspaces.items : []
         const firstWorkspace = items[0] ?? null
         if (firstWorkspace?.id) {
-          router.push(`/workspaces/${firstWorkspace.id}/chat`)
+          // [support-surfaces-off] was: router.push(`/workspaces/${firstWorkspace.id}/chat`)
+          router.push(`/workspaces/${firstWorkspace.id}/procurement`)
           return
         }
 
@@ -35,8 +43,9 @@ export default function ChatRedirectPage() {
 
         toast({
           variant: 'error',
-          title: 'Workspace chat unavailable',
-          description: 'Open a workspace first, then start chat from there.',
+          // [support-surfaces-off] was: title 'Workspace chat unavailable', description 'Open a workspace first, then start chat from there.'
+          title: 'Workspace unavailable',
+          description: 'Open a workspace from the list to continue.',
         })
         router.push('/workspaces')
       }
@@ -51,9 +60,10 @@ export default function ChatRedirectPage() {
 
   return (
     <PageShell contentClassName="flex min-h-screen items-center py-16">
+      {/* [support-surfaces-off] was: icon MessageSquareText, title "Opening workspace chat" */}
       <EmptyState
-        icon={<MessageSquareText className="size-5" />}
-        title="Opening workspace chat"
+        icon={<ClipboardList className="size-5" />}
+        title="Opening your workspace"
         description="Picking your first available workspace and redirecting you there."
       />
     </PageShell>

@@ -1,5 +1,11 @@
 'use client'
 
+// [support-surfaces-off] 2026-10-02: Knowledge Bases, Datasets, Chat, Tickets and
+// Insights are hidden from the UI. Their pages, BFF routes, API and jobs still
+// exist and are tested. To re-enable: uncomment every line tagged
+// [support-surfaces-off] in this file and restore each "was:" value noted there.
+// Repo checklist: grep -rn "support-surfaces-off" apps/web apps/e2e
+
 import * as React from 'react'
 import { useRouter } from 'next/navigation'
 import { Badge, Button, Card, PageShell, useToast } from '@repo/ui'
@@ -22,7 +28,8 @@ export default function InvitePage({ params }: { params: { token: string } }) {
         title: 'Workspace joined',
         description: `You now have access to ${workspace.name}.`,
       })
-      router.push(`/workspaces/${workspace.id}/chat`)
+      // [support-surfaces-off] was: router.push(`/workspaces/${workspace.id}/chat`)
+      router.push(`/workspaces/${workspace.id}/procurement`)
     } catch (err) {
       if (isUnauthorized(err)) {
         router.push('/login')

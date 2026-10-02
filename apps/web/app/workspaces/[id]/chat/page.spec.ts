@@ -544,13 +544,11 @@ describe("WorkspaceChatPage", () => {
     // CSS breakpoint), so at least one match is what we're asserting.
     expect((await screen.findAllByText("Workspace assistant")).length).toBeGreaterThan(0);
     expect(screen.getAllByRole("button", { name: "New chat" }).length).toBeGreaterThan(0);
-    // The desktop sidebar nav renders a "Chat" link; confirm it (and any
-    // other instance) agrees this route is active.
-    const chatLinks = screen.getAllByRole("link", { name: "Chat" });
-    expect(chatLinks.length).toBeGreaterThanOrEqual(1);
-    for (const link of chatLinks) {
-      expect(link.getAttribute("aria-current")).toBe("page");
-    }
+    // [support-surfaces-off] was: the sidebar "Chat" link(s) render with
+    // aria-current="page". Chat is hidden from the nav, so the sidebar renders
+    // without it; restore the original assertion on re-enable.
+    expect(screen.getAllByRole("link", { name: "Overview" }).length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByRole("link", { name: "Chat" })).toBeNull();
   });
 
   it("renders real workspace name in sidebar header", async () => {

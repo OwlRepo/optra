@@ -212,7 +212,7 @@ track them.
 | `cd packages/db && bun run test` | Vitest 3.2.6 | 1 (`src/**/*.spec.ts`) |
 | `cd packages/ui && bun run test` | Vitest 4.1.9 | 11 |
 | `bun run db:seed:test` (root) | Vitest, `scripts/seed` | 2 (`scripts/seed/__tests__/*.test.ts`) |
-| `cd apps/e2e && bun run test:e2e` (root `bun run e2e` builds first) | Playwright 1.63 | 9 (`apps/e2e/tests/*.spec.ts`) plus the `tests/auth.setup.ts` setup project |
+| `cd apps/e2e && bun run test:e2e` (root `bun run e2e` builds first) | Playwright 1.63 | 10 (`apps/e2e/tests/*.spec.ts`) plus the `tests/auth.setup.ts` setup project; `knowledge-base.spec.ts` and `datasets.spec.ts` are parked with `test.skip` while the support surfaces are disabled (`[support-surfaces-off]`, 2026-10-02) |
 | `cd apps/e2e && bun run test:smoke` (by hand, after a deploy) | Playwright 1.63, `playwright.prod.config.ts` | 1 (`apps/e2e/smoke/prod.smoke.spec.ts`) |
 | `bun run test:scripts` (root) | `node --test` | 6 (`scripts/**/*.test.mjs`) |
 | `$(cat graphify-out/.graphify_python) -m unittest discover -s scripts/graphify -p 'test_*.py'` (not in CI; graphify is not installed there) | Python `unittest` | 2 (`scripts/graphify/test_*.py`) |

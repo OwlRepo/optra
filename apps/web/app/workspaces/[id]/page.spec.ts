@@ -80,21 +80,34 @@ describe('WorkspaceOverviewPage', () => {
     expect(screen.getByText('owner')).toBeDefined()
   })
 
-  it('renders all 5 quick-link cards with correct hrefs', async () => {
+  // [support-surfaces-off] On re-enable, restore the original "renders all 5
+  // quick-link cards" case from git history.
+  it('regression: quick-link cards and sidebar hide the support surfaces', async () => {
     getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
     listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'member' }], nextCursor: null })
 
     const { container } = renderPage()
 
     const sidebar = within(screen.getByRole('complementary'))
-    const kbLink = await sidebar.findByRole('link', { name: 'Knowledge Bases' })
-    expect(kbLink.getAttribute('href')).toBe('/workspaces/ws-1/knowledge-bases')
-    expect(sidebar.getByRole('link', { name: 'Members' }).getAttribute('href')).toBe('/workspaces/ws-1/members')
-    expect(sidebar.getByRole('link', { name: 'Chat' }).getAttribute('href')).toBe('/workspaces/ws-1/chat')
-    expect(sidebar.getByRole('link', { name: 'Tickets' }).getAttribute('href')).toBe('/workspaces/ws-1/tickets')
-    expect(sidebar.getByRole('link', { name: 'Settings' }).getAttribute('href')).toBe('/workspaces/ws-1/settings')
+    expect((await sidebar.findByRole('link', { name: 'Members' })).getAttribute('href')).toBe('/workspaces/ws-1/members')
+    expect(sidebar.getByRole('link', { name: 'Purchase Orders' }).getAttribute('href')).toBe('/workspaces/ws-1/procurement')
+    for (const label of ['Knowledge Bases', 'Chat', 'Tickets']) {
+      expect(sidebar.queryByRole('link', { name: label })).toBeNull()
+      expect(screen.queryByRole('heading', { level: 3, name: label })).toBeNull()
+    }
     expect(container.querySelector('span.shrink-0.text-accent-foreground')).not.toBeNull()
     expect(container.querySelector('.rounded-2xl.bg-accent\\/20.text-accent-foreground')).toBeNull()
+  })
+
+  it('happy: renders the Members and Settings quick-link cards with correct hrefs', async () => {
+    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
+    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'member' }], nextCursor: null })
+
+    renderPage()
+
+    const members = await screen.findByRole('heading', { level: 3, name: 'Members' })
+    expect(members.closest('a')?.getAttribute('href')).toBe('/workspaces/ws-1/members')
+    expect(screen.getByRole('heading', { level: 3, name: 'Settings' }).closest('a')?.getAttribute('href')).toBe('/workspaces/ws-1/settings')
   })
 
   it('redirects to login on unauthorized load error', async () => {
