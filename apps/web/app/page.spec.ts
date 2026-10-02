@@ -76,6 +76,7 @@ describe('Home', () => {
 
     expect(container.textContent).not.toContain('or image')
     expect(container.textContent).not.toMatch(/price lists — PDF/)
+    expect(container.textContent).not.toContain('files, matches and history within 30 days')
   })
 
   it('happy: keeps the sample-data disclaimer in the footer', () => {
@@ -88,8 +89,12 @@ describe('Home', () => {
     const { container } = render(React.createElement(Home))
 
     expect(container.textContent).toContain("OpenAI's API, which does not train on them")
-    expect(container.textContent).toContain('within 30 days')
-    expect(container.textContent).toContain('as PDF (scanned too), CSV or XLSX')
+    expect(container.textContent).toContain(
+      'Email us and we delete your workspace data, including uploaded files, within 30 days. Backups expire on the schedule in the privacy policy.',
+    )
+    expect(container.textContent).toContain(
+      'Vendor catalogs with product photos, purchase orders and invoices as PDF (scanned too), CSV or XLSX, and goods receipts as CSV or XLSX.',
+    )
   })
 
   it('happy: renders the comparison table with both column headings', () => {

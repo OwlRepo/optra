@@ -6,6 +6,10 @@ describe('legal-facts', () => {
     expect(facts.LANGSMITH_TRACING_IN_PROD).toBeNull()
   })
 
+  it('edge: file storage region is the confirmed Backblaze bucket region', () => {
+    expect(facts.FILE_STORAGE_REGION).toBe('United States (Backblaze B2 us-east-005)')
+  })
+
   it('edge: owner-confirmed preflight facts are exact', () => {
     expect(facts.HOSTING_COUNTRY).toBe('Singapore')
     expect(facts.OFFSITE_BACKUP_RETENTION_DAYS).toBe(30)
@@ -16,6 +20,7 @@ describe('legal-facts', () => {
       [
         'CONTACT_EMAIL',
         'DELETION_SLA_DAYS',
+        'FILE_STORAGE_REGION',
         'HOSTING_COUNTRY',
         'LANGSMITH_TRACING_IN_PROD',
         'LEGAL_LAST_UPDATED',

@@ -2,6 +2,7 @@
 
 import { cleanup, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
+import { CONTACT_EMAIL } from '@/lib/legal-facts'
 import { PricingPlans } from './pricing-plans'
 
 afterEach(cleanup)
@@ -22,6 +23,22 @@ describe('PricingPlans', () => {
       container.querySelector('a[href="mailto:romeo@tyvera.app?subject=Optra%20Scale"]'),
     ).not.toBeNull()
     expect(container.querySelectorAll('a[href="#trial"]')).toHaveLength(2)
+  })
+
+  it('edge: Scale mailto link carries sr-only (opens email) text', () => {
+    render(<PricingPlans />)
+
+    const link = screen
+      .getAllByRole('link')
+      .find((a) => a.getAttribute('href')?.startsWith('mailto:'))
+    expect(link?.textContent).toContain('(opens email)')
+    expect(link?.querySelector('.sr-only')?.textContent).toMatch(/opens email/)
+  })
+
+  it('edge: Scale mailto address comes from CONTACT_EMAIL', () => {
+    const { container } = render(<PricingPlans />)
+
+    expect(container.querySelector(`a[href^="mailto:${CONTACT_EMAIL}"]`)).not.toBeNull()
   })
 
   it('happy: renders the three plans with their prices and cadences', () => {

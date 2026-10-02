@@ -12,6 +12,7 @@ describe('FinalCta', () => {
 
     expect(container.textContent).not.toMatch(/no card/i)
     expect(container.textContent).not.toMatch(/delete the workspace and every file goes with it/i)
+    expect(container.textContent).not.toContain('files, matches and history within 30 days')
   })
 
   // The old CTA promised a "live match demo" behind /chat, which only

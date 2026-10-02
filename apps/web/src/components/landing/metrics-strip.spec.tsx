@@ -16,6 +16,12 @@ describe('MetricsStrip', () => {
     expect(container.textContent).not.toMatch(/Avg\. match time|Catalog coverage|Manual review time/)
   })
 
+  it('regression: the overclaiming Every line wording is gone', () => {
+    render(<MetricsStrip />)
+
+    expect(screen.queryByText('Every line')).toBeNull()
+  })
+
   it('edge: names no vendor, logo slot or illustrative footnote', () => {
     const { container } = render(<MetricsStrip />)
 
@@ -32,7 +38,7 @@ describe('MetricsStrip', () => {
     expect(screen.getByText('Formats read')).not.toBeNull()
     expect(screen.getByText('PDF · CSV · XLSX')).not.toBeNull()
     expect(screen.getByText('Lines checked')).not.toBeNull()
-    expect(screen.getByText('Every line')).not.toBeNull()
+    expect(screen.getByText('Each PO line')).not.toBeNull()
     expect(screen.getByText('Final call')).not.toBeNull()
     expect(screen.getByText('A person')).not.toBeNull()
   })

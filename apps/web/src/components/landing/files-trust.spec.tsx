@@ -16,6 +16,13 @@ describe('FilesTrust', () => {
     expect(container.textContent).not.toMatch(/JPG|PNG/)
   })
 
+  it('regression: isolation and sign-off rows drop the absolute wording', () => {
+    const { container } = render(<FilesTrust />)
+
+    expect(container.textContent).not.toMatch(/never pooled/i)
+    expect(container.textContent).not.toMatch(/stays with the buyer, always/i)
+  })
+
   // Guards against someone adding SOC 2 / ISO / HIPAA badges the product does
   // not actually hold -- the handoff called this out explicitly.
   it('edge: claims no certifications', () => {
@@ -28,6 +35,7 @@ describe('FilesTrust', () => {
     const { container } = render(<FilesTrust />)
 
     expect(container.textContent).not.toMatch(/removed with it/i)
+    expect(container.textContent).not.toContain('files, matches and history within 30 days')
   })
 
   it('happy: lists exactly the accepted file types', () => {
@@ -44,18 +52,20 @@ describe('FilesTrust', () => {
     render(<FilesTrust />)
 
     expect(screen.getByText('Isolation')).not.toBeNull()
-    expect(screen.getByText(/never pooled with another buyer’s/i)).not.toBeNull()
+    expect(
+      screen.getByText("Every workspace is isolated from other workspaces' data."),
+    ).not.toBeNull()
 
     expect(screen.getByText('Citations')).not.toBeNull()
     expect(screen.getByText(/openable, not paraphrased/i)).not.toBeNull()
 
     expect(screen.getByText('Human sign-off')).not.toBeNull()
-    expect(screen.getByText(/Approval stays with the buyer, always/i)).not.toBeNull()
+    expect(screen.getByText('A person records every decision.')).not.toBeNull()
 
     expect(screen.getByText('Deletion')).not.toBeNull()
     expect(
       screen.getByText(
-        /Email us and we delete the workspace, its files, matches and history within 30 days\./,
+        'Email us and we delete your workspace data, including uploaded files, within 30 days. Backups expire on the schedule in the privacy policy.',
       ),
     ).not.toBeNull()
   })

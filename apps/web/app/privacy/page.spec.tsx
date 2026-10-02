@@ -21,6 +21,7 @@ const BASE_FACTS = {
   VPS_BACKUP_COUNT: 7,
   REFUND_WINDOW_DAYS: 14,
   TRIAL_DAYS: 14,
+  FILE_STORAGE_REGION: 'United States (Backblaze B2 us-east-005)',
 }
 
 async function renderWithFacts(overrides: Record<string, unknown>) {
@@ -37,6 +38,78 @@ async function renderWithFacts(overrides: Record<string, unknown>) {
 }
 
 describe('Privacy page', () => {
+  it('regression: old deletion wording and the OpenAI-only-documents scope are gone', () => {
+    const { container } = render(React.createElement(PrivacyPage))
+
+    expect(container.textContent).not.toContain('files, matches and history within 30 days')
+    expect(container.textContent).not.toMatch(/Rate limiting and abuse protection\.(?! and)/)
+  })
+
+  it('edge: states the deletion promise with the backup-expiry pointer', () => {
+    const { container } = render(React.createElement(PrivacyPage))
+
+    expect(container.textContent).toContain(
+      'Email us and we delete your workspace data, including uploaded files, within 30 days. Backups expire on the schedule in the privacy policy.',
+    )
+  })
+
+  it('edge: the processor file-storage region is printed from FILE_STORAGE_REGION', async () => {
+    const { container } = await renderWithFacts({ FILE_STORAGE_REGION: 'Mars (Test B2 x-001)' })
+
+    expect(container.textContent).toContain('Mars (Test B2 x-001)')
+    expect(container.textContent).not.toMatch(/undefined|\bnull\b/)
+  })
+
+  it('happy: OpenAI row covers documents, photos and chat, and names OpenAI, L.L.C. in the United States', () => {
+    const { container } = render(React.createElement(PrivacyPage))
+
+    expect(container.textContent).toContain(
+      'Text and page images of uploaded documents, product photos, and questions you type into chat with the passages retrieved to answer them',
+    )
+    expect(container.textContent).toMatch(/OpenAI, L\.L\.C\./)
+    expect(container.textContent).toMatch(/OpenAI, L\.L\.C\.[^.]*United States/)
+  })
+
+  it('happy: data-we-collect lists chat, tickets, crawled pages, decisions, activity and members', () => {
+    const { container } = render(React.createElement(PrivacyPage))
+    const text = container.textContent ?? ''
+
+    expect(text).toMatch(/chat messages/i)
+    expect(text).toMatch(/tickets extracted from your documents/i)
+    expect(text).toMatch(/web pages you ask us to crawl/i)
+    expect(text).toMatch(/decision history/i)
+    expect(text).toMatch(/outcome, note, who decided and their role/i)
+    expect(text).toMatch(/workspace activity events/i)
+    expect(text).toMatch(/workspace member emails and roles/i)
+  })
+
+  it('happy: Backblaze row says file storage and off-site backups, with the US region and Singapore server', () => {
+    const { container } = render(React.createElement(PrivacyPage))
+    const text = container.textContent ?? ''
+
+    expect(text).toContain('File storage and off-site backups')
+    expect(text).toContain('United States (Backblaze B2 us-east-005)')
+    expect(text).toMatch(/uploaded files and backups are stored in the United States/i)
+    expect(text).toMatch(/application server runs in Singapore/i)
+  })
+
+  it('happy: IP row covers rate limiting, abuse protection and self-hosted Umami analytics', () => {
+    const { container } = render(React.createElement(PrivacyPage))
+
+    expect(container.textContent).toContain(
+      'Rate limiting and abuse protection, and site analytics (Umami, self-hosted)',
+    )
+  })
+
+  it('happy: cookies section calls mnemra_session_active a session-storage flag, not a cookie', () => {
+    const { container } = render(React.createElement(PrivacyPage))
+    const text = container.textContent ?? ''
+
+    expect(text).toContain('mnemra_session_active')
+    expect(text).toMatch(/mnemra_session_active[^.]*session-storage flag, not a cookie/i)
+    expect(text).toMatch(/clears when the (browser )?tab closes/i)
+  })
+
   it('error: null hosting country and backup retention render an on-request fallback, never undefined or null', async () => {
     const { container } = await renderWithFacts({
       HOSTING_COUNTRY: null,
