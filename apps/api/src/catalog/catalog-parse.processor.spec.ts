@@ -584,4 +584,84 @@ describe('CatalogParseProcessor', () => {
       expect(items[1].rawRow).toMatchObject({ sku: longSku, sourcePageNumber: 1 })
     })
   })
+
+  // B4. Spreadsheet exports end in ",,"-only rows (formatted-but-empty cells),
+  // and Papa's skipEmptyLines keeps them: each became a blank catalog item in
+  // the list and its counts. An item now needs a SKU or a description.
+  describe('blank rows (B4)', () => {
+    it('edge: a row with a description and no SKU is kept', async () => {
+      const { workspace, vendor } = await seedWorkspaceAndVendor(`${prefix}b4-desc@example.com`, 'B4 Desc')
+      const catalog = await seedCatalog(workspace.id, vendor.id, 'catalog.csv', 'sku,description\n,Loose washers\n')
+
+      await processor.handleParse({ id: 'job-b4-desc', data: { id: catalog.id } } as any)
+
+      const items = await db.select().from(catalogItems).where(eq(catalogItems.catalogId, catalog.id))
+      expect(items.map((item) => [item.lineNumber, item.sku, item.description])).toEqual([[1, null, 'Loose washers']])
+    })
+
+    it('edge: a PDF item the model read with neither SKU nor description is dropped', async () => {
+      const { workspace, vendor } = await seedWorkspaceAndVendor(`${prefix}b4-pdf@example.com`, 'B4 PDF')
+      const catalog = await seedCatalog(workspace.id, vendor.id, 'catalog.pdf', 'fake pdf bytes')
+      mockRenderPdfToImages.mockResolvedValue({ pages: [Buffer.from([0x01])], total: 1, truncated: false })
+      extraction.extractFromImage.mockResolvedValueOnce({
+        items: [
+          { sku: null, description: null, confidence: 0.2 },
+          { sku: 'A1', description: 'Widget', confidence: 0.9 },
+        ],
+      })
+
+      await processor.handleParse({ id: 'job-b4-pdf', data: { id: catalog.id } } as any)
+
+      const [updated] = await db.select().from(catalogs).where(eq(catalogs.id, catalog.id))
+      expect(updated.rowCount).toBe(1)
+      const items = await db.select().from(catalogItems).where(eq(catalogItems.catalogId, catalog.id))
+      expect(items.map((item) => [item.lineNumber, item.sku])).toEqual([[1, 'A1']])
+    })
+
+    it('regression: ",," rows and rows with only unmapped columns become no items, and the rest are numbered 1..n', async () => {
+      const { workspace, vendor } = await seedWorkspaceAndVendor(`${prefix}b4-blank@example.com`, 'B4 Blank')
+      const csv = ['sku,description,pack size', 'A1,Widget,10', ',,', ',,5', 'B2,Gadget,2', ',,', ''].join('\n')
+      const catalog = await seedCatalog(workspace.id, vendor.id, 'catalog.csv', csv)
+
+      await processor.handleParse({ id: 'job-b4-blank', data: { id: catalog.id } } as any)
+
+      const [updated] = await db.select().from(catalogs).where(eq(catalogs.id, catalog.id))
+      expect(updated.status).toBe('done')
+      expect(updated.rowCount).toBe(2)
+      const items = await db
+        .select()
+        .from(catalogItems)
+        .where(eq(catalogItems.catalogId, catalog.id))
+        .orderBy(catalogItems.lineNumber)
+      expect(items.map((item) => [item.lineNumber, item.sku, item.description])).toEqual([
+        [1, 'A1', 'Widget'],
+        [2, 'B2', 'Gadget'],
+      ])
+    })
+
+    // With B5 a SKU over 200 characters is stored as no SKU; a row with nothing
+    // else would still become an empty item, so it is dropped like a blank row.
+    it('regression: a row whose only value is an over-long SKU becomes no item', async () => {
+      const { workspace, vendor } = await seedWorkspaceAndVendor(`${prefix}b4-longsku@example.com`, 'B4 Long Sku')
+      const csv = ['sku,description', `${'X'.repeat(201)},`, 'A1,Widget'].join('\n')
+      const catalog = await seedCatalog(workspace.id, vendor.id, 'catalog.csv', csv)
+
+      await processor.handleParse({ id: 'job-b4-longsku', data: { id: catalog.id } } as any)
+
+      const items = await db.select().from(catalogItems).where(eq(catalogItems.catalogId, catalog.id))
+      expect(items.map((item) => [item.lineNumber, item.sku])).toEqual([[1, 'A1']])
+    })
+
+    it('regression: a blank row with a photo URL fetches no photo', async () => {
+      const { workspace, vendor } = await seedWorkspaceAndVendor(`${prefix}b4-photo@example.com`, 'B4 Photo')
+      const csv = ['sku,description,photo_url', ',,https://vendor.example.com/orphan.png', 'A1,Widget,'].join('\n')
+      const catalog = await seedCatalog(workspace.id, vendor.id, 'catalog.csv', csv)
+
+      await processor.handleParse({ id: 'job-b4-photo', data: { id: catalog.id } } as any)
+
+      expect(images.fetchAndStore).not.toHaveBeenCalled()
+      const items = await db.select().from(catalogItems).where(eq(catalogItems.catalogId, catalog.id))
+      expect(items.map((item) => item.sku)).toEqual(['A1'])
+    })
+  })
 })
