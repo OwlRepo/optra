@@ -2782,4 +2782,143 @@ describe('ComparisonService', () => {
       expect(bySku).toEqual({ A1: '-2', B2: '0.25' })
     })
   })
+
+  // B10. buildReason named a line only by SKU, so every flag on a line without
+  // one read "Item (unknown) …" and a reviewer could not tell which line it
+  // was. B11. The unit-of-measure reason printed the engine's normalized units
+  // (PO=bx Invoice=ea) beside flag values that keep what the documents say.
+  describe('line names in reasons (B10, B11)', () => {
+    it('edge: a description-keyed quantity mismatch names the line by its description', async () => {
+      const { workspace } = await seedWorkspace(`${prefix}b10-qty@example.com`, 'B10 Qty')
+      const { po, invoice } = await seedReadyPoAndInvoice(
+        workspace.id,
+        [{ description: 'Bolt M8x20', quantity: '100', unitPrice: '0.12' }],
+        [{ description: 'Bolt M8x20', quantity: '90', unitPrice: '0.12' }],
+      )
+
+      const result = await service.compare(workspace.id, po.id, invoice.id)
+
+      expect(result.flags[0].reason).toBe('Quantity mismatch for "Bolt M8x20": PO=100 Invoice=90')
+    })
+
+    it('edge: a long description is shortened in the reason', async () => {
+      const { workspace } = await seedWorkspace(`${prefix}b10-long@example.com`, 'B10 Long')
+      const description = `Stainless steel hex bolt ${'and washer kit '.repeat(8)}`.trim()
+      const { po, invoice } = await seedReadyPoAndInvoice(
+        workspace.id,
+        [{ sku: 'A1', quantity: '1', unitPrice: '5.00' }],
+        [
+          { sku: 'A1', quantity: '1', unitPrice: '5.00' },
+          { description, quantity: '1', unitPrice: '9.00' },
+        ],
+      )
+
+      const result = await service.compare(workspace.id, po.id, invoice.id)
+
+      expect(result.flags[0].reason).toBe(
+        `Item "${description.slice(0, 79)}…" appears on the invoice but not on the purchase order`,
+      )
+    })
+
+    it('edge: a description of exactly 80 characters is shown whole', async () => {
+      const { workspace } = await seedWorkspace(`${prefix}b10-eighty@example.com`, 'B10 Eighty')
+      const description = 'D'.repeat(80)
+      const { po, invoice } = await seedReadyPoAndInvoice(
+        workspace.id,
+        [{ sku: 'A1', quantity: '1', unitPrice: '5.00' }],
+        [
+          { sku: 'A1', quantity: '1', unitPrice: '5.00' },
+          { description, quantity: '1', unitPrice: '9.00' },
+        ],
+      )
+
+      const result = await service.compare(workspace.id, po.id, invoice.id)
+
+      expect(result.flags[0].reason).toBe(`Item "${description}" appears on the invoice but not on the purchase order`)
+    })
+
+    // Shortening by UTF-16 units could cut an emoji in half and store a broken
+    // character; the cut counts whole characters.
+    it('edge: shortening a description never splits a character in two', async () => {
+      const { workspace } = await seedWorkspace(`${prefix}b10-emoji@example.com`, 'B10 Emoji')
+      const description = `${'a'.repeat(78)}\u{1F4E6} boxed kit, extra long`
+      const { po, invoice } = await seedReadyPoAndInvoice(
+        workspace.id,
+        [{ sku: 'A1', quantity: '1', unitPrice: '5.00' }],
+        [
+          { sku: 'A1', quantity: '1', unitPrice: '5.00' },
+          { description, quantity: '1', unitPrice: '9.00' },
+        ],
+      )
+
+      const result = await service.compare(workspace.id, po.id, invoice.id)
+
+      expect(result.flags[0].reason).toBe(
+        `Item "${'a'.repeat(78)}\u{1F4E6}…" appears on the invoice but not on the purchase order`,
+      )
+    })
+
+    it('regression: a freight line with no SKU is named by its description, not "(unknown)"', async () => {
+      const { workspace } = await seedWorkspace(`${prefix}b10-freight@example.com`, 'B10 Freight')
+      const { po, invoice } = await seedReadyPoAndInvoice(
+        workspace.id,
+        [{ sku: 'A1', quantity: '10', unitPrice: '5.00' }],
+        [
+          { sku: 'A1', quantity: '10', unitPrice: '5.00' },
+          { description: 'Freight', quantity: '1', unitPrice: '50.00' },
+        ],
+      )
+
+      const result = await service.compare(workspace.id, po.id, invoice.id)
+
+      expect(result.flags[0].reason).toBe('Item "Freight" appears on the invoice but not on the purchase order')
+    })
+
+    it('regression: the unit-of-measure reason states the units as the documents wrote them', async () => {
+      const { workspace } = await seedWorkspace(`${prefix}b11-uom@example.com`, 'B11 Uom')
+      const { po, invoice } = await seedReadyPoAndInvoice(
+        workspace.id,
+        [{ sku: 'A1', quantity: '10', unitPrice: '5.00', uom: 'BX' }],
+        [{ sku: 'A1', quantity: '10', unitPrice: '5.00', uom: 'EA' }],
+      )
+
+      const result = await service.compare(workspace.id, po.id, invoice.id)
+
+      expect(result.flags[0]).toMatchObject({ flagType: 'uom_mismatch', poValue: 'BX', invoiceValue: 'EA' })
+      expect(result.flags[0].reason).toBe(
+        'Unit of measure mismatch for A1: PO=BX Invoice=EA. Units are captured, never converted, so no quantity difference is reported',
+      )
+    })
+
+    it('regression: the receipt side of a unit-of-measure reason is stated as written too', async () => {
+      const { workspace } = await seedWorkspace(`${prefix}b11-grn@example.com`, 'B11 Grn')
+      const { po, invoice } = await seedReadyPoAndInvoice(
+        workspace.id,
+        [{ sku: 'A1', quantity: '10', unitPrice: '5.00', uom: 'BX' }],
+        [{ sku: 'A1', quantity: '10', unitPrice: '5.00', uom: 'BX' }],
+        true,
+      )
+      await seedGoodsReceipt(workspace.id, po.id, [{ sku: 'A1', quantityAccepted: '10', uom: 'Ea' }])
+
+      const result = await service.compare(workspace.id, po.id, invoice.id)
+
+      expect(result.flags[0]).toMatchObject({ flagType: 'uom_mismatch', receivedValue: 'Ea' })
+      expect(result.flags[0].reason).toBe(
+        'Unit of measure mismatch for A1: PO=BX Received=Ea Invoice=BX. Units are captured, never converted, so no quantity difference is reported',
+      )
+    })
+
+    it('happy: a line with a SKU is still named by its SKU', async () => {
+      const { workspace } = await seedWorkspace(`${prefix}b10-sku@example.com`, 'B10 Sku')
+      const { po, invoice } = await seedReadyPoAndInvoice(
+        workspace.id,
+        [{ sku: 'A1', description: 'Widget', quantity: '10', unitPrice: '5.00' }],
+        [{ sku: 'A1', description: 'Widget', quantity: '8', unitPrice: '5.00' }],
+      )
+
+      const result = await service.compare(workspace.id, po.id, invoice.id)
+
+      expect(result.flags[0].reason).toBe('Quantity mismatch for A1: PO=10 Invoice=8')
+    })
+  })
 })

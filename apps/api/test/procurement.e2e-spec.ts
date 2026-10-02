@@ -1891,4 +1891,41 @@ describe('Procurement flow (e2e)', () => {
       expect(compared.body.flags[0]).toMatchObject({ flagType: 'price_mismatch', delta: '-0.0033' })
     })
   })
+
+  describe('line names in flag reasons (B10)', () => {
+    it('regression: a compare over HTTP names a line without a SKU by its description', async () => {
+      const owner = await seedOwnerWithWorkspace(app, `${prefix}b10-name@example.com`, 'B10 Name')
+      const vendorId = await createVendor(app, owner.workspaceId, owner.accessToken)
+      const base = `/workspaces/${owner.workspaceId}/procurement`
+      const auth = `Bearer ${owner.accessToken}`
+
+      const po = await request(app.getHttpServer())
+        .post(`${base}/purchase-orders`)
+        .set('Authorization', auth)
+        .field('vendorId', vendorId)
+        .field('poNumber', 'PO-B10')
+        .field('currency', 'USD')
+        .attach('file', Buffer.from('description,qty,unit price\nBolt M8x20,100,0.12'), 'po.csv')
+        .expect(201)
+      await waitForPoDone(po.body.id)
+      const invoice = await request(app.getHttpServer())
+        .post(`${base}/invoices`)
+        .set('Authorization', auth)
+        .field('purchaseOrderId', po.body.id)
+        .field('invoiceNumber', 'INV-B10')
+        .field('currency', 'USD')
+        .attach('file', Buffer.from('description,qty,unit price\nBolt M8x20,90,0.12'), 'invoice.csv')
+        .expect(201)
+      await waitForInvoiceDone(invoice.body.id)
+
+      const compared = await request(app.getHttpServer())
+        .post(`${base}/discrepancies/compare`)
+        .set('Authorization', auth)
+        .send({ purchaseOrderId: po.body.id, invoiceId: invoice.body.id })
+        .expect(201)
+
+      expect(compared.body.flags).toHaveLength(1)
+      expect(compared.body.flags[0].reason).toBe('Quantity mismatch for "Bolt M8x20": PO=100 Invoice=90')
+    })
+  })
 })
