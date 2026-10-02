@@ -3,13 +3,16 @@ import { cn } from '../../lib/utils'
 
 export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {}
 
+// Storyboard 01 C04: flat white well, 12px radius, teal border + 3px halo on
+// focus, red border when aria-invalid. Codes and IDs pass font-mono from the
+// call site.
 const Input = React.forwardRef<HTMLInputElement, InputProps>(
   ({ className, type, ...props }, ref) => {
     return (
       <input
         type={type}
         className={cn(
-          'flex h-11 w-full rounded-2xl border border-input bg-background/90 px-4 py-2 text-sm shadow-[var(--shadow-sm)] transition-[border-color,box-shadow,background-color] duration-200 placeholder:text-muted-foreground/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/25 focus-visible:border-primary/40 disabled:cursor-not-allowed disabled:opacity-60 file:border-0 file:bg-transparent file:text-sm file:font-medium',
+          'flex h-[42px] w-full rounded-[12px] border border-border-panel bg-card px-[14px] text-[15px] text-foreground outline-none transition-[border-color,box-shadow] duration-200 placeholder:text-ink-muted focus-visible:border-primary-strong focus-visible:shadow-focus disabled:cursor-not-allowed disabled:border-border-segmented disabled:bg-surface-subtle disabled:text-ink-muted aria-invalid:border-destructive-tone file:border-0 file:bg-transparent file:text-[14px] file:font-medium',
           className
         )}
         ref={ref}

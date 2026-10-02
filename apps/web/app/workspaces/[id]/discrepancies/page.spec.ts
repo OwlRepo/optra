@@ -1,13 +1,14 @@
 /** @vitest-environment jsdom */
 
 import React from 'react'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ToastProvider } from '@repo/ui'
 import DiscrepanciesPage from './page'
 
 const pushMock = vi.fn()
-const routerMock = { push: pushMock }
+const replaceMock = vi.fn()
+const routerMock = { push: pushMock, replace: replaceMock }
 const getWorkspaceMock = vi.fn()
 const listWorkspacesMock = vi.fn()
 const listDiscrepanciesMock = vi.fn()
@@ -16,6 +17,8 @@ const logoutMock = vi.fn()
 const listDecisionsMock = vi.fn()
 const recordDecisionMock = vi.fn()
 const listRunsMock = vi.fn()
+const listPurchaseOrdersMock = vi.fn()
+const listInvoicesMock = vi.fn()
 
 let mockSearchParams = new URLSearchParams()
 
@@ -37,6 +40,9 @@ vi.mock('@/lib/api/procurement', () => ({
   listDiscrepancyDecisions: (...args: unknown[]) => listDecisionsMock(...args),
   recordDiscrepancyDecision: (...args: unknown[]) => recordDecisionMock(...args),
   listComparisonRuns: (...args: unknown[]) => listRunsMock(...args),
+  // C-3 #1: the pair chip looks the two documents up by id for their numbers.
+  listPurchaseOrders: (...args: unknown[]) => listPurchaseOrdersMock(...args),
+  listInvoices: (...args: unknown[]) => listInvoicesMock(...args),
 }))
 
 vi.mock('@/lib/api/auth', () => ({
@@ -92,6 +98,22 @@ function listOf(flags: ReturnType<typeof makeFlag>[], overrides: Record<string, 
   }
 }
 
+function stubDesktop(matches: boolean) {
+  return vi.spyOn(window, 'matchMedia').mockImplementation(
+    (query: string) =>
+      ({
+        matches: matches && query === '(min-width: 1024px)',
+        media: query,
+        onchange: null,
+        addListener: () => {},
+        removeListener: () => {},
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        dispatchEvent: () => false,
+      }) as unknown as MediaQueryList,
+  )
+}
+
 function renderPage() {
   return render(
     React.createElement(
@@ -108,6 +130,7 @@ describe('DiscrepanciesPage', () => {
   beforeEach(() => {
     mockSearchParams = new URLSearchParams()
     pushMock.mockReset()
+    replaceMock.mockReset()
     getWorkspaceMock.mockReset()
     listWorkspacesMock.mockReset()
     listDiscrepanciesMock.mockReset()
@@ -116,6 +139,8 @@ describe('DiscrepanciesPage', () => {
     listDecisionsMock.mockReset().mockResolvedValue([])
     recordDecisionMock.mockReset().mockResolvedValue({})
     listRunsMock.mockReset().mockResolvedValue({ items: [], page: 1, pageSize: 20, total: 0, totalPages: 0 })
+    listPurchaseOrdersMock.mockReset().mockResolvedValue([])
+    listInvoicesMock.mockReset().mockResolvedValue([])
   })
 
   afterEach(() => {
@@ -366,27 +391,6 @@ describe('DiscrepanciesPage', () => {
     expect(screen.getByText('SKU-100')).toBeDefined()
   })
 
-  it('refetches with the status filter when changed', async () => {
-    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
-    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
-    listDiscrepanciesMock.mockResolvedValue(listOf([makeFlag()]))
-
-    renderPage()
-
-    await screen.findByText('SKU-100')
-    fireEvent.change(screen.getByLabelText('Filter by status'), { target: { value: 'dismissed' } })
-
-    await waitFor(() => {
-      expect(listDiscrepanciesMock).toHaveBeenLastCalledWith('ws-1', {
-        purchaseOrderId: undefined,
-        invoiceId: undefined,
-        status: 'dismissed',
-        page: 1,
-        pageSize: 20,
-      })
-    })
-  })
-
   it('pre-filters by purchaseOrderId and invoiceId from query params', async () => {
     mockSearchParams = new URLSearchParams({ purchaseOrderId: 'po-9', invoiceId: 'inv-9' })
     getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
@@ -415,6 +419,274 @@ describe('DiscrepanciesPage', () => {
 
     await waitFor(() => {
       expect(pushMock).toHaveBeenCalledWith('/login')
+    })
+  })
+
+  // Frames 2.7–2.8. error > edge > regression > happy. The status-filter case
+  // moved here from above: the filter is an All / Open / Dismissed segmented
+  // control now, so it is driven through `radio` roles instead of a <select>.
+  describe('design alignment (frames 2.7–2.8)', () => {
+    it('error: a failed pair lookup keeps the ids on the chip and never blocks the list', async () => {
+      mockSearchParams = new URLSearchParams({ purchaseOrderId: 'po-9', invoiceId: 'inv-9' })
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
+      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+      listDiscrepanciesMock.mockResolvedValue(listOf([makeFlag()]))
+      listPurchaseOrdersMock.mockRejectedValue({ message: 'boom' })
+      listInvoicesMock.mockRejectedValue({ message: 'boom' })
+
+      renderPage()
+
+      expect(await screen.findByText('SKU-100')).toBeDefined()
+      expect(await screen.findByText('po-9 ↔ inv-9')).toBeDefined()
+      await waitFor(() => expect(listPurchaseOrdersMock).toHaveBeenCalledWith('ws-1'))
+      expect(screen.queryByText('Failed to load discrepancies')).toBeNull()
+      expect(screen.queryByText('boom')).toBeNull()
+    })
+
+    it('edge: with no pair in the URL there is no pair chip and no document lookup', async () => {
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
+      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+      listDiscrepanciesMock.mockResolvedValue(listOf([makeFlag()]))
+
+      renderPage()
+
+      await screen.findByText('SKU-100')
+      expect(screen.queryByRole('button', { name: 'Clear pair filter' })).toBeNull()
+      expect(listPurchaseOrdersMock).not.toHaveBeenCalled()
+      expect(listInvoicesMock).not.toHaveBeenCalled()
+    })
+
+    it('edge: while the pair lookup is in flight the chip shows the ids', async () => {
+      mockSearchParams = new URLSearchParams({ purchaseOrderId: 'po-9', invoiceId: 'inv-9' })
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
+      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+      listDiscrepanciesMock.mockResolvedValue(listOf([makeFlag()]))
+      listPurchaseOrdersMock.mockImplementation(() => new Promise(() => {}))
+      listInvoicesMock.mockImplementation(() => new Promise(() => {}))
+
+      renderPage()
+
+      expect(await screen.findByText('po-9 ↔ inv-9')).toBeDefined()
+    })
+
+    it('edge: a pair document that is not found falls back to its id', async () => {
+      mockSearchParams = new URLSearchParams({ purchaseOrderId: 'po-9', invoiceId: 'inv-9' })
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
+      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+      listDiscrepanciesMock.mockResolvedValue(listOf([makeFlag()]))
+      listPurchaseOrdersMock.mockResolvedValue([{ id: 'po-9', name: 'po-9.csv', poNumber: 'PO-2026-1180' }])
+      listInvoicesMock.mockResolvedValue([{ id: 'inv-other', name: 'other.csv', invoiceNumber: 'INV-1' }])
+
+      renderPage()
+
+      expect(await screen.findByText('PO-2026-1180 ↔ inv-9')).toBeDefined()
+    })
+
+    it('edge: × on the pair chip replaces the URL without purchaseOrderId and invoiceId', async () => {
+      mockSearchParams = new URLSearchParams({ purchaseOrderId: 'po-9', invoiceId: 'inv-9' })
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
+      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+      listDiscrepanciesMock.mockResolvedValue(listOf([makeFlag()]))
+
+      renderPage()
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Clear pair filter' }))
+
+      expect(replaceMock).toHaveBeenCalledWith('/workspaces/ws-1/discrepancies')
+      expect(pushMock).not.toHaveBeenCalled()
+    })
+
+    it('edge: a positive delta reads with a plus sign and a negative one keeps its minus (frame 2.7)', async () => {
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
+      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+      listDiscrepanciesMock.mockResolvedValue(listOf([
+        makeFlag({ id: 'f1', sku: 'S-1', flagType: 'price_mismatch', poValue: '1.80', invoiceValue: '2.05', delta: '0.25' }),
+        makeFlag({ id: 'f2', sku: 'S-2', flagType: 'short_receipt', poValue: '6', receivedValue: '4', invoiceValue: '6', delta: '-2' }),
+      ]))
+
+      renderPage()
+
+      expect(await screen.findByText('+0.25')).toBeDefined()
+      expect(screen.getByText('-2')).toBeDefined()
+      expect(screen.queryByText('0.25')).toBeNull()
+    })
+
+    it('edge: a dismissed row offers no Dismiss, even to an owner', async () => {
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
+      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+      listDiscrepanciesMock.mockResolvedValue(listOf([makeFlag({ status: 'dismissed' })]))
+
+      renderPage()
+
+      await screen.findByText('SKU-100')
+      expect(screen.queryByRole('button', { name: 'Dismiss discrepancy SKU-100' })).toBeNull()
+      expect(screen.getByRole('button', { name: 'Review discrepancy SKU-100' })).toBeDefined()
+    })
+
+    it('regression: refetches with the status filter when changed', async () => {
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
+      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+      listDiscrepanciesMock.mockResolvedValue(listOf([makeFlag()]))
+
+      renderPage()
+
+      await screen.findByText('SKU-100')
+      fireEvent.click(screen.getByRole('radio', { name: 'Dismissed' }))
+
+      await waitFor(() => {
+        expect(listDiscrepanciesMock).toHaveBeenLastCalledWith('ws-1', {
+          purchaseOrderId: undefined,
+          invoiceId: undefined,
+          status: 'dismissed',
+          page: 1,
+          pageSize: 20,
+        })
+      })
+    })
+
+    it('regression: switching back to All drops the status from the request', async () => {
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
+      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+      listDiscrepanciesMock.mockResolvedValue(listOf([makeFlag()]))
+
+      renderPage()
+
+      await screen.findByText('SKU-100')
+      fireEvent.click(screen.getByRole('radio', { name: 'Dismissed' }))
+      await waitFor(() => {
+        expect(listDiscrepanciesMock).toHaveBeenLastCalledWith('ws-1', expect.objectContaining({ status: 'dismissed' }))
+      })
+      await screen.findByText('SKU-100')
+      fireEvent.click(screen.getByRole('radio', { name: 'All' }))
+
+      await waitFor(() => {
+        expect(listDiscrepanciesMock).toHaveBeenLastCalledWith('ws-1', expect.objectContaining({ status: undefined }))
+      })
+    })
+
+    // Any filter change restarts the queue: page 2 of the old filter is not a
+    // meaningful place to land in the new one.
+    it('regression: a status change returns to page 1', async () => {
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
+      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+      listDiscrepanciesMock.mockResolvedValue(listOf([makeFlag()], { total: 40, totalPages: 2 }))
+
+      renderPage()
+
+      await screen.findByText('SKU-100')
+      fireEvent.click(screen.getByLabelText('Next page'))
+      await waitFor(() => {
+        expect(listDiscrepanciesMock).toHaveBeenLastCalledWith('ws-1', expect.objectContaining({ page: 2 }))
+      })
+      await screen.findByText('SKU-100')
+      fireEvent.click(screen.getByRole('radio', { name: 'Open' }))
+
+      await waitFor(() => {
+        expect(listDiscrepanciesMock).toHaveBeenLastCalledWith(
+          'ws-1',
+          expect.objectContaining({ status: 'open', page: 1 }),
+        )
+      })
+    })
+
+    it('regression: pagination stays hidden when nothing matched', async () => {
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
+      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+      listDiscrepanciesMock.mockResolvedValue(listOf([]))
+
+      renderPage()
+
+      await screen.findByText('No discrepancies')
+      expect(screen.queryByLabelText('Next page')).toBeNull()
+    })
+
+    it('happy: the pair chip names the PO and invoice by their numbers', async () => {
+      mockSearchParams = new URLSearchParams({ purchaseOrderId: 'po-9', invoiceId: 'inv-9' })
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
+      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+      listDiscrepanciesMock.mockResolvedValue(listOf([makeFlag()]))
+      listPurchaseOrdersMock.mockResolvedValue([{ id: 'po-9', name: 'po-8791.pdf', poNumber: 'PO-2026-1180' }])
+      listInvoicesMock.mockResolvedValue([{ id: 'inv-9', name: 'inv-44120.pdf', invoiceNumber: 'INV-44120' }])
+
+      renderPage()
+
+      expect(await screen.findByText('PO-2026-1180 ↔ INV-44120')).toBeDefined()
+    })
+
+    it('happy: a pair document without a number is named by its file name', async () => {
+      mockSearchParams = new URLSearchParams({ purchaseOrderId: 'po-9', invoiceId: 'inv-9' })
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
+      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+      listDiscrepanciesMock.mockResolvedValue(listOf([makeFlag()]))
+      listPurchaseOrdersMock.mockResolvedValue([{ id: 'po-9', name: 'legacy-po.csv', poNumber: null }])
+      listInvoicesMock.mockResolvedValue([{ id: 'inv-9', name: 'legacy-inv.csv', invoiceNumber: null }])
+
+      renderPage()
+
+      expect(await screen.findByText('legacy-po.csv ↔ legacy-inv.csv')).toBeDefined()
+    })
+
+    it('happy: the row action reads "Matches" and keeps "Find catalog matches" as its name', async () => {
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
+      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+      listDiscrepanciesMock.mockResolvedValue(listOf([makeFlag()]))
+
+      renderPage()
+
+      const link = await screen.findByRole('link', { name: 'Find catalog matches' })
+      expect(link.textContent).toBe('Matches')
+      expect(link.getAttribute('href')).toBe(
+        '/workspaces/ws-1/catalog-matches?poLineItemId=po-line-1&invoiceLineItemId=inv-line-1',
+      )
+    })
+
+    it('happy: the all-clear empty state carries the teal "All clear" label', async () => {
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
+      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+      listDiscrepanciesMock.mockResolvedValue(listOf([]))
+
+      renderPage()
+
+      expect(await screen.findByText('All clear')).toBeDefined()
+      expect(screen.getByText('No discrepancies')).toBeDefined()
+    })
+
+    it('happy: the toolbar states how many flags exist and how many are shown', async () => {
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
+      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+      listDiscrepanciesMock.mockResolvedValue(listOf([makeFlag()], { total: 40, totalPages: 2 }))
+
+      renderPage()
+
+      expect(await screen.findByText('40 flags · 1 shown')).toBeDefined()
+    })
+
+    it('edge: below lg the breadcrumb is the workspace name and the filter spans the width (frame 4.2)', async () => {
+      stubDesktop(false)
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
+      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'member' }], nextCursor: null })
+      listDiscrepanciesMock.mockResolvedValue(listOf([makeFlag()]))
+
+      renderPage()
+
+      const banner = await screen.findByRole('banner')
+      expect(await within(banner).findByText('Alpha')).toBeDefined()
+      expect(within(banner).queryByText('Alpha / Matching')).toBeNull()
+      expect(screen.getByRole('radiogroup', { name: 'Filter by status' }).className).toContain('w-full')
+      const count = screen.getByText('1 flag · 1 shown').className.split(/\s+/)
+      expect(count).toEqual(expect.arrayContaining(['hidden', 'lg:inline']))
+    })
+
+    it('happy: the header breadcrumb reads "{workspace} / Matching"', async () => {
+      stubDesktop(true)
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
+      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'member' }], nextCursor: null })
+      listDiscrepanciesMock.mockResolvedValue(listOf([]))
+
+      renderPage()
+
+      expect((await screen.findAllByText('Alpha / Matching')).length).toBeGreaterThan(0)
+      expect(screen.getAllByText('Member').length).toBeGreaterThan(0)
     })
   })
 

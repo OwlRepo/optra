@@ -17,11 +17,15 @@ export interface ImageTileProps extends Omit<React.HTMLAttributes<HTMLDivElement
   src?: string | null
   alt: string
   aspect?: 'square' | 'video' | 'photo'
-  caption?: string
+  /** A string renders as one Mono 11 line; a node (frame 3.6: SKU + description) renders as given. */
+  caption?: React.ReactNode
   badge?: React.ReactNode
   isLoading?: boolean
 }
 
+// Storyboard 01 C17 / frame 3.6: r12 frame with a hairline; the caption is a
+// Mono line BELOW the photo (the black gradient overlay is gone). The frame
+// carries data-image-frame so a parent can retone its border (PhotoCompare).
 const ImageTile = React.forwardRef<HTMLDivElement, ImageTileProps>(
   ({ src, alt, aspect = 'square', caption, badge, isLoading = false, className, ...props }, ref) => {
     const [errored, setErrored] = React.useState(false)
@@ -32,49 +36,50 @@ const ImageTile = React.forwardRef<HTMLDivElement, ImageTileProps>(
       setErrored(false)
     }, [src])
 
-    if (isLoading) {
-      return (
-        <div
-          ref={ref}
-          className={cn('relative overflow-hidden rounded-2xl', aspectClassName[aspect], className)}
-          {...props}
-        >
-          <Skeleton data-testid="image-tile-skeleton" className="h-full w-full" />
-        </div>
-      )
-    }
-
     const hasImage = Boolean(src) && !errored
-    const showOverlay = Boolean(caption) || Boolean(badge)
+    const showCaption = !isLoading && (Boolean(caption) || Boolean(badge))
 
     return (
-      <div
-        ref={ref}
-        className={cn('relative overflow-hidden rounded-2xl', aspectClassName[aspect], className)}
-        {...props}
-      >
-        {hasImage ? (
-          <img
-            src={src as string}
-            alt={alt}
-            loading="lazy"
-            className="h-full w-full object-cover"
-            onError={() => setErrored(true)}
-          />
-        ) : (
-          <div
-            data-testid="image-tile-fallback"
-            className="flex h-full w-full items-center justify-center bg-muted text-muted-foreground"
-          >
-            <ImageOff className="size-6" aria-hidden="true" />
-          </div>
-        )}
-        {showOverlay ? (
-          // Raw black/white overlay colors are intentional here — this is
-          // legibility-over-arbitrary-photo, not a themed surface. Flagged
-          // for design-review sign-off, not silently treated as compliant.
-          <div className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-2 bg-gradient-to-t from-black/60 to-transparent px-3 py-2 text-xs font-medium text-white">
-            {caption ? <span className="truncate">{caption}</span> : <span />}
+      <div ref={ref} className={cn('min-w-0', className)} {...props}>
+        <div
+          data-image-frame
+          className={cn(
+            'relative overflow-hidden rounded-[12px]',
+            aspectClassName[aspect],
+            isLoading ? null : 'border border-border-segmented',
+          )}
+        >
+          {isLoading ? (
+            <Skeleton data-testid="image-tile-skeleton" className="h-full w-full rounded-none" />
+          ) : hasImage ? (
+            <img
+              src={src as string}
+              alt={alt}
+              loading="lazy"
+              className="block h-full w-full object-cover"
+              onError={() => setErrored(true)}
+            />
+          ) : (
+            <div
+              data-testid="image-tile-fallback"
+              className="flex h-full w-full flex-col items-center justify-center gap-[6px] bg-surface-subtle text-[oklch(0.6_0.02_264)]"
+            >
+              <ImageOff className="size-5" aria-hidden="true" />
+              <span className="font-mono text-[10px] uppercase tracking-[0.12em]">no photo</span>
+            </div>
+          )}
+        </div>
+        {showCaption ? (
+          <div className="mt-2 flex min-w-0 items-center justify-between gap-2">
+            {caption ? (
+              typeof caption === 'string' ? (
+                <span className="truncate font-mono text-[11px] text-ink-body">{caption}</span>
+              ) : (
+                <div className="min-w-0 flex-1">{caption}</div>
+              )
+            ) : (
+              <span />
+            )}
             {badge ? <span className="shrink-0">{badge}</span> : null}
           </div>
         ) : null}

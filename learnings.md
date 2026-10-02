@@ -620,3 +620,12 @@ And one rule the owner made standing: every change now ships with its tests for 
 **Actual:** confirmed — the parity spec runs the migration file and compares it name for name with the TypeScript helper; adding an emoji name proved the SQL needs a code-point test (`[^\u0001-\u00ff]`) where JS uses a UTF-16 range.
 
 **Why different:** **When SQL must reproduce application logic, test the SQL file itself against the application function on the same inputs, not against hand-written expectations.**
+
+## 2026-10-02 — Reproducing a design handoff 1:1 across a whole app
+*Learning Contract: the plan's design is the prediction; the diff is below. No live prediction solicited.*
+
+**Predicted (from the approved plan):** locking the primitive API first (contract C-1) lets four authors write tokens, shell, matching and workspace screens in parallel without collisions, and restyling primitives changes most of what users see before any page is touched.
+
+**Actual:** the parallel authors never touched the same file, and every literal block applied cleanly (111 operations, 0 mismatches). But the first contract was not enough: twelve amendments (C-3) were needed once the screens were drawn against it — a compact segmented size, a Mono modal title with its own accessible name, a red metric tile, a header slot in the photo comparison, a page-owned mobile action. Integration then surfaced two things no author could see alone: AppShell renders header actions in exactly one place chosen by a media query, and the web test setup reports every viewport as mobile, so the disabled chat page's desktop History button vanished from its spec; and one rewritten spec never cleaned up between renders.
+
+**Why different:** a component contract is written from the component storyboard, but the screens are where the components meet real data and layout, so the screen frames decide the props. **Lock the contract from the screens that consume a primitive, not from the primitive's own sheet**, and run the whole suite, including the specs of pages you think are out of scope, as soon as a shared shell changes.

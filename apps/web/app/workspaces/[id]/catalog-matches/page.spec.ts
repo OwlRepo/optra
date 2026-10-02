@@ -7,7 +7,8 @@ import { ToastProvider } from '@repo/ui'
 import CatalogMatchesPage from './page'
 
 const pushMock = vi.fn()
-const routerMock = { push: pushMock }
+const replaceMock = vi.fn()
+const routerMock = { push: pushMock, replace: replaceMock }
 let mockSearchParams = new URLSearchParams()
 const getWorkspaceMock = vi.fn()
 const listWorkspacesMock = vi.fn()
@@ -73,6 +74,7 @@ describe('CatalogMatchesPage', () => {
   beforeEach(() => {
     mockSearchParams = new URLSearchParams()
     pushMock.mockReset()
+    replaceMock.mockReset()
     getWorkspaceMock.mockReset()
     listWorkspacesMock.mockReset()
     listVendorsMock.mockReset()
@@ -89,16 +91,6 @@ describe('CatalogMatchesPage', () => {
   afterEach(() => {
     cleanup()
     vi.restoreAllMocks()
-  })
-
-  it('renders the loading skeleton before data resolves', async () => {
-    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
-    listCatalogMatchesMock.mockResolvedValue([])
-
-    renderPage()
-
-    expect(document.querySelectorAll('[class*="shimmer"]').length).toBeGreaterThan(0)
-    await screen.findByText('No catalog matches yet')
   })
 
   it('renders empty state with neutral copy when there are no matches yet', async () => {
@@ -240,22 +232,6 @@ describe('CatalogMatchesPage', () => {
     expect(screen.queryByRole('button', { name: 'Dismiss match match-1' })).toBeNull()
   })
 
-  it('refetches the list with new filters when the vendor or status Select changes', async () => {
-    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
-    listCatalogMatchesMock
-      .mockResolvedValueOnce([baseMatch])
-      .mockResolvedValueOnce([])
-
-    renderPage()
-
-    await screen.findByText(/Query item po-line-/)
-    fireEvent.change(screen.getByLabelText('Filter by status'), { target: { value: 'dismissed' } })
-
-    await waitFor(() => {
-      expect(listCatalogMatchesMock).toHaveBeenNthCalledWith(2, 'ws-1', { vendorId: undefined, status: 'dismissed' })
-    })
-  })
-
   it('redirects to login on a 401 from the initial load', async () => {
     getWorkspaceMock.mockRejectedValue({ statusCode: 401, message: 'Unauthorized' })
     listWorkspacesMock.mockResolvedValue({ items: [], nextCursor: null })
@@ -281,6 +257,126 @@ describe('CatalogMatchesPage', () => {
 
     await waitFor(() => {
       expect(pushMock).toHaveBeenCalledWith('/login')
+    })
+  })
+
+  // Frames 2.11–2.12. error > edge > regression > happy. Two cases moved here
+  // on purpose: the status filter is a segmented control (radio roles, was a
+  // <select>), and the skeleton no longer exposes a `shimmer` class.
+  describe('design alignment (frames 2.11–2.12)', () => {
+    it('edge: with no line in the URL there is no line-scope chip', async () => {
+      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+      listCatalogMatchesMock.mockResolvedValue([baseMatch])
+
+      renderPage()
+
+      await screen.findByText(/Query item po-line-/)
+      expect(screen.queryByRole('button', { name: 'Clear line scope' })).toBeNull()
+    })
+
+    it('edge: the line-scope chip falls back to the line id when no loaded match names a SKU', async () => {
+      mockSearchParams = new URLSearchParams({ poLineItemId: 'po-line-12345678' })
+      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+      listCatalogMatchesMock.mockResolvedValue([])
+
+      renderPage()
+
+      expect(await screen.findByText('PO line · po-line-...')).toBeDefined()
+    })
+
+    it('edge: × on the line-scope chip replaces the URL without the line params and keeps the rest', async () => {
+      mockSearchParams = new URLSearchParams({ poLineItemId: 'po-line-12345678', vendorId: 'vendor-1' })
+      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+      listCatalogMatchesMock.mockResolvedValue([])
+
+      renderPage()
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Clear line scope' }))
+
+      expect(replaceMock).toHaveBeenCalledWith('/workspaces/ws-1/catalog-matches?vendorId=vendor-1')
+      expect(pushMock).not.toHaveBeenCalled()
+    })
+
+    it('edge: a line-scoped empty list offers no Discrepancies link', async () => {
+      mockSearchParams = new URLSearchParams({ poLineItemId: 'po-line-12345678' })
+      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+      listCatalogMatchesMock.mockResolvedValue([])
+
+      renderPage()
+
+      await screen.findByText('No catalog matches yet')
+      expect(screen.queryByRole('link', { name: 'Open discrepancies' })).toBeNull()
+    })
+
+    it('regression: renders the loading placeholder before data resolves', async () => {
+      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+      listCatalogMatchesMock.mockResolvedValue([])
+
+      renderPage()
+
+      expect(document.querySelector('div[aria-busy="true"]')).not.toBeNull()
+      await screen.findByText('No catalog matches yet')
+      expect(document.querySelector('div[aria-busy="true"]')).toBeNull()
+    })
+
+    it('regression: refetches the list with new filters when the status segmented control changes', async () => {
+      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+      listCatalogMatchesMock
+        .mockResolvedValueOnce([baseMatch])
+        .mockResolvedValueOnce([])
+
+      renderPage()
+
+      await screen.findByText(/Query item po-line-/)
+      fireEvent.click(screen.getByRole('radio', { name: 'Dismissed' }))
+
+      await waitFor(() => {
+        expect(listCatalogMatchesMock).toHaveBeenNthCalledWith(2, 'ws-1', { vendorId: undefined, status: 'dismissed' })
+      })
+    })
+
+    it('happy: the line-scope chip names the SKU from the loaded query item', async () => {
+      mockSearchParams = new URLSearchParams({ poLineItemId: 'po-line-12345678' })
+      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+      listCatalogMatchesMock.mockResolvedValue([
+        { ...baseMatch, queryItem: { id: 'po-line-12345678', sku: 'NG-SW20', description: 'Stretch wrap' } },
+      ])
+
+      renderPage()
+
+      expect(await screen.findByText('PO line · NG-SW20')).toBeDefined()
+    })
+
+    it('happy: an invoice line is named as an invoice line', async () => {
+      mockSearchParams = new URLSearchParams({ invoiceLineItemId: 'inv-line-98765432' })
+      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+      listCatalogMatchesMock.mockResolvedValue([])
+
+      renderPage()
+
+      expect(await screen.findByText('Invoice line · inv-line...')).toBeDefined()
+    })
+
+    it('happy: the sidebar-entry empty state links to Discrepancies', async () => {
+      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'member' }], nextCursor: null })
+      listCatalogMatchesMock.mockResolvedValue([])
+
+      renderPage()
+
+      const link = await screen.findByRole('link', { name: 'Open discrepancies' })
+      expect(link.getAttribute('href')).toBe('/workspaces/ws-1/discrepancies')
+    })
+
+    it('happy: Search all vendors is the right-most header action', async () => {
+      mockSearchParams = new URLSearchParams({ poLineItemId: 'po-line-12345678', vendorId: 'vendor-1' })
+      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+      listCatalogMatchesMock.mockResolvedValue([])
+
+      renderPage()
+
+      const search = await screen.findByRole('button', { name: 'Search all vendors' })
+      const verify = screen.getByRole('button', { name: 'Verify against this vendor' })
+      expect(verify.compareDocumentPosition(search) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     })
   })
 

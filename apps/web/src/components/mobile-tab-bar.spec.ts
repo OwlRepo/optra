@@ -26,7 +26,35 @@ describe('MobileTabBar', () => {
     cleanup()
   })
 
-  it('renders all items plus a More tab', () => {
+  it('edge: an inactive tab carries no dot', () => {
+    usePathnameMock.mockReturnValue('/workspaces/w1')
+    render(React.createElement(MobileTabBar, { items, moreActive: false, onMoreClick: () => {} }))
+
+    expect(screen.getByRole('link', { name: /Chat/ }).querySelector('[data-nav-indicator]')).toBeNull()
+  })
+
+  it('regression: the active tab shows a 4px teal dot and never scales', () => {
+    usePathnameMock.mockReturnValue('/workspaces/w1')
+    const { container } = render(React.createElement(MobileTabBar, { items, moreActive: false, onMoreClick: () => {} }))
+
+    const overview = screen.getByRole('link', { name: /Overview/ })
+    expect(overview.querySelector('[data-nav-indicator="dot"]')).not.toBeNull()
+    expect(overview.classList.contains('text-primary-strong')).toBe(true)
+    expect(container.querySelector('.scale-110')).toBeNull()
+    expect(container.querySelector('.active\\:scale-95')).toBeNull()
+  })
+
+  it('regression: the bar takes the landing header surface with 44px targets', () => {
+    usePathnameMock.mockReturnValue('/workspaces/w1')
+    render(React.createElement(MobileTabBar, { items, moreActive: false, onMoreClick: () => {} }))
+
+    const nav = screen.getByRole('navigation', { name: 'Primary' })
+    expect(nav.classList.contains('bg-background/90')).toBe(true)
+    expect(nav.classList.contains('backdrop-blur-[16px]')).toBe(true)
+    expect(screen.getByRole('button', { name: 'More' }).classList.contains('min-h-11')).toBe(true)
+  })
+
+  it('happy: renders all items plus a More tab', () => {
     usePathnameMock.mockReturnValue('/workspaces/w1')
     render(React.createElement(MobileTabBar, { items, moreActive: false, onMoreClick: () => {} }))
 
@@ -36,7 +64,7 @@ describe('MobileTabBar', () => {
     expect(screen.getByRole('button', { name: 'More' })).toBeTruthy()
   })
 
-  it('marks the exact-matched item as active via aria-current', () => {
+  it('happy: marks the exact-matched item as active via aria-current', () => {
     usePathnameMock.mockReturnValue('/workspaces/w1')
     render(React.createElement(MobileTabBar, { items, moreActive: false, onMoreClick: () => {} }))
 
@@ -44,7 +72,7 @@ describe('MobileTabBar', () => {
     expect(screen.getByRole('link', { name: /Chat/ }).getAttribute('aria-current')).toBeNull()
   })
 
-  it('marks a nested route as active via prefix match', () => {
+  it('happy: marks a nested route as active via prefix match', () => {
     usePathnameMock.mockReturnValue('/workspaces/w1/chat/session-123')
     render(React.createElement(MobileTabBar, { items, moreActive: false, onMoreClick: () => {} }))
 
@@ -52,7 +80,7 @@ describe('MobileTabBar', () => {
     expect(screen.getByRole('link', { name: /Overview/ }).getAttribute('aria-current')).toBeNull()
   })
 
-  it('calls onMoreClick when the More tab is pressed and reflects moreActive via aria-pressed', () => {
+  it('happy: calls onMoreClick when the More tab is pressed and reflects moreActive via aria-pressed', () => {
     usePathnameMock.mockReturnValue('/workspaces/w1')
     const onMoreClick = vi.fn()
     const { rerender } = render(React.createElement(MobileTabBar, { items, moreActive: false, onMoreClick }))

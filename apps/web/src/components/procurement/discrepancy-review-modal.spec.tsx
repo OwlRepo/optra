@@ -1,7 +1,7 @@
 /** @vitest-environment jsdom */
 
 import React from 'react'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ToastProvider } from '@repo/ui'
 import { DiscrepancyReviewModal } from './discrepancy-review-modal'
@@ -119,31 +119,6 @@ describe('DiscrepancyReviewModal', () => {
 
   // Oldest first: a later decision correcting an earlier one only makes sense
   // after it.
-  // S9. The unit price used to vanish whenever another exception outranked it.
-  it('shows the unit prices behind a flag that is not itself about price', async () => {
-    renderModal({ flag: makeFlag({ poUnitPrice: '25', invoiceUnitPrice: '27.5' }) })
-
-    expect(await screen.findByText('Unit price')).toBeTruthy()
-    expect(screen.getByText(/25/)).toBeTruthy()
-    expect(screen.getByText(/27\.5/)).toBeTruthy()
-  })
-
-  it('does not repeat the prices on a flag whose own numbers already are the prices', async () => {
-    renderModal({
-      flag: makeFlag({ flagType: 'price_mismatch', poValue: '25', invoiceValue: '27.5', poUnitPrice: '25', invoiceUnitPrice: '27.5' }),
-    })
-
-    await screen.findByText('Ordered')
-    expect(screen.queryByText('Unit price')).toBeNull()
-  })
-
-  it('says nothing about price when neither side stated one', async () => {
-    renderModal({ flag: makeFlag() })
-
-    await screen.findByText('Ordered')
-    expect(screen.queryByText('Unit price')).toBeNull()
-  })
-
   it('lists the decision history oldest first, naming who decided and as what', async () => {
     listDecisionsMock.mockResolvedValue([
       makeDecision({ id: 'd1', note: 'First call.', createdAt: '2026-07-02T00:00:00.000Z' }),
@@ -163,8 +138,8 @@ describe('DiscrepancyReviewModal', () => {
     // would pass in either sequence.
     expect(first.compareDocumentPosition(second) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(screen.getAllByText(/reviewer@example\.com/).length).toBe(2)
-    // Each label also appears as an <option> in the outcome picker, so the
-    // badge is one of several matches rather than the only one.
+    // Each label also appears as a radio card in the outcome picker, so the
+    // history entry is one of several matches rather than the only one.
     expect(screen.getAllByText('Approved exception').length).toBeGreaterThan(1)
     expect(screen.getAllByText('Resolved').length).toBeGreaterThan(1)
   })
@@ -222,23 +197,6 @@ describe('DiscrepancyReviewModal', () => {
 
     fireEvent.change(screen.getByLabelText('Decision note'), { target: { value: 'Checked the packing slip.' } })
     expect(submit.disabled).toBe(false)
-  })
-
-  it('records the chosen outcome with its note', async () => {
-    const onDecided = vi.fn()
-    renderModal({ onDecided })
-
-    fireEvent.change(await screen.findByLabelText('Outcome'), { target: { value: 'vendor_dispute' } })
-    fireEvent.change(screen.getByLabelText('Decision note'), { target: { value: 'Raised with the vendor.' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Record decision' }))
-
-    await waitFor(() => {
-      expect(recordDecisionMock).toHaveBeenCalledWith('ws-1', 'flag-1', {
-        outcome: 'vendor_dispute',
-        note: 'Raised with the vendor.',
-      })
-      expect(onDecided).toHaveBeenCalled()
-    })
   })
 
   it('surfaces the server’s refusal rather than a generic failure', async () => {
@@ -351,6 +309,145 @@ describe('DiscrepancyReviewModal', () => {
         expect(downloadMock).toHaveBeenCalledWith('ws-1', 'invoices', 'inv-doc-1')
         expect(downloadMock).toHaveBeenCalledWith('ws-1', 'goods-receipts', 'grn-doc-1')
       })
+    })
+  })
+
+  // Frames 2.9–2.10. error > edge > regression > happy. The regression cases
+  // moved here on purpose: the outcome is four radio cards now (was a
+  // <select>), and the price rows read "unit price" in the Mono key/value
+  // style the frame uses (was "Unit price").
+  describe('design alignment (frames 2.9–2.10)', () => {
+    it('error: a refused decision keeps the reviewer’s chosen outcome selected', async () => {
+      recordDecisionMock.mockRejectedValue({ message: 'A decision note is required' })
+      renderModal()
+
+      fireEvent.click(await screen.findByRole('radio', { name: 'Vendor dispute' }))
+      fireEvent.change(screen.getByLabelText('Decision note'), { target: { value: 'x' } })
+      fireEvent.click(screen.getByRole('button', { name: 'Record decision' }))
+
+      expect(await screen.findByText('A decision note is required')).toBeDefined()
+      expect((screen.getByRole('radio', { name: 'Vendor dispute' }) as HTMLInputElement).checked).toBe(true)
+    })
+
+    it('edge: a header-level finding is titled as such and still names its flag type', async () => {
+      renderModal({
+        flag: makeFlag({ sku: null, flagType: 'currency_mismatch', poValue: 'USD', receivedValue: null, invoiceValue: 'CAD', delta: null }),
+      })
+
+      expect(await screen.findByText('Header-level finding')).toBeDefined()
+      expect(screen.getByText('Currency mismatch')).toBeDefined()
+      expect(screen.queryByText('delta')).toBeNull()
+    })
+
+    it('edge: a member gets an explicit Close in the read-only footer', async () => {
+      const onClose = vi.fn()
+      renderModal({ canManage: false, onClose })
+
+      fireEvent.click(await screen.findByText('Close', { selector: 'button' }))
+
+      expect(onClose).toHaveBeenCalled()
+    })
+
+    it('edge: a member sees the Read-only chip and no outcome choices', async () => {
+      renderModal({ canManage: false })
+
+      expect(await screen.findByText('Read-only')).toBeDefined()
+      expect(screen.getByText('Only an owner or admin can record a decision on this discrepancy.')).toBeDefined()
+      expect(screen.queryByRole('radiogroup', { name: 'Outcome' })).toBeNull()
+    })
+
+    it('regression: decision history and comparison runs stay lists, one item per entry', async () => {
+      listDecisionsMock.mockResolvedValue([
+        makeDecision({ id: 'd1', note: 'First call.', createdAt: '2026-07-02T00:00:00.000Z' }),
+        makeDecision({ id: 'd2', outcome: 'resolved', note: 'Vendor credited us.', createdAt: '2026-07-03T00:00:00.000Z' }),
+      ])
+
+      renderModal()
+
+      const entry = (await screen.findByText('Vendor credited us.')).closest('li')
+      expect(entry).not.toBeNull()
+      expect(entry?.closest('ol')?.querySelectorAll(':scope > li')).toHaveLength(2)
+      expect(within(entry as HTMLElement).getByText('Resolved')).toBeDefined()
+    })
+
+    it('regression: records the outcome chosen from the radio cards with its note', async () => {
+      const onDecided = vi.fn()
+      renderModal({ onDecided })
+
+      fireEvent.click(await screen.findByRole('radio', { name: 'Vendor dispute' }))
+      fireEvent.change(screen.getByLabelText('Decision note'), { target: { value: 'Raised with the vendor.' } })
+      fireEvent.click(screen.getByRole('button', { name: 'Record decision' }))
+
+      await waitFor(() => {
+        expect(recordDecisionMock).toHaveBeenCalledWith('ws-1', 'flag-1', {
+          outcome: 'vendor_dispute',
+          note: 'Raised with the vendor.',
+        })
+        expect(onDecided).toHaveBeenCalled()
+      })
+    })
+
+    it('regression: the outcome radio group defaults to False positive', async () => {
+      renderModal()
+
+      const group = await screen.findByRole('radiogroup', { name: 'Outcome' })
+      expect(group).toBeDefined()
+      expect(screen.getAllByRole('radio')).toHaveLength(4)
+      expect((screen.getByRole('radio', { name: 'False positive' }) as HTMLInputElement).checked).toBe(true)
+    })
+
+    // S9. The unit price used to vanish whenever another exception outranked it.
+    it('regression: shows the unit prices behind a flag that is not itself about price', async () => {
+      renderModal({ flag: makeFlag({ poUnitPrice: '25', invoiceUnitPrice: '27.5' }) })
+
+      expect(await screen.findByText('unit price')).toBeTruthy()
+      expect(screen.getByText(/25/)).toBeTruthy()
+      expect(screen.getByText(/27\.5/)).toBeTruthy()
+    })
+
+    it('regression: does not repeat the prices on a flag whose own numbers already are the prices', async () => {
+      renderModal({
+        flag: makeFlag({ flagType: 'price_mismatch', poValue: '25', invoiceValue: '27.5', poUnitPrice: '25', invoiceUnitPrice: '27.5' }),
+      })
+
+      await screen.findByText('Ordered')
+      expect(screen.queryByText('unit price')).toBeNull()
+    })
+
+    it('regression: says nothing about price when neither side stated one', async () => {
+      renderModal({ flag: makeFlag() })
+
+      await screen.findByText('Ordered')
+      expect(screen.queryByText('unit price')).toBeNull()
+    })
+
+    it('happy: the note is marked required', async () => {
+      renderModal()
+
+      expect(await screen.findByText('(required)')).toBeDefined()
+    })
+
+    it('happy: the header carries the flag-type pill and the status', async () => {
+      renderModal()
+
+      expect(await screen.findByText('Short receipt')).toBeDefined()
+      expect(screen.getByText('Open')).toBeDefined()
+      expect(screen.getByText('Review discrepancy')).toBeDefined()
+    })
+
+    it('happy: the delta line shows the finding’s delta', async () => {
+      renderModal()
+
+      expect(await screen.findByText('delta')).toBeDefined()
+      expect(screen.getByText('-3')).toBeDefined()
+    })
+
+    // C-3 #5: the title is the SKU, but the dialog keeps its frame name.
+    it('happy: the dialog is named "Review discrepancy" while its title is the SKU', async () => {
+      renderModal()
+
+      expect(await screen.findByRole('dialog', { name: 'Review discrepancy' })).toBeDefined()
+      expect(screen.getByText('SKU-100')).toBeDefined()
     })
   })
 })

@@ -52,4 +52,39 @@ describe('PhotoGrid', () => {
     setup({ isLoading: true, maxCols: 5 })
     expect(screen.getAllByTestId('photo-grid-tile-loading')).toHaveLength(5)
   })
+
+  it('regression: each loading tile carries a caption placeholder bar under the image', () => {
+    setup({ isLoading: true, loadingCount: 2 })
+    for (const tile of screen.getAllByTestId('photo-grid-tile-loading')) {
+      const bar = tile.querySelector('[data-caption-placeholder]')
+      expect(bar).not.toBeNull()
+      expect(bar?.className).toContain('h-[11px]')
+      expect(bar?.className).toContain('bg-surface-skeleton')
+    }
+  })
+
+  it('edge: an item caption can be a node (frame 3.6 two-line caption)', () => {
+    setup({
+      items: [
+        {
+          id: '1',
+          src: 'https://example.com/1.jpg',
+          alt: 'IRN-38HXB',
+          caption: (
+            <>
+              <span>IRN-38HXB</span>
+              <span>3/8in hex bolt</span>
+            </>
+          ),
+        },
+      ],
+    })
+    expect(screen.getByText('IRN-38HXB')).toBeTruthy()
+    expect(screen.getByText('3/8in hex bolt')).toBeTruthy()
+  })
+
+  it('regression: the grid uses the 14px gap from the catalog items frame', () => {
+    const { container } = setup({ maxCols: 4 })
+    expect((container.firstChild as HTMLElement).className).toContain('gap-[14px]')
+  })
 })

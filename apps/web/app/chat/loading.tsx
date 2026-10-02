@@ -1,29 +1,30 @@
-import { AppHeader, Badge, Card, PageShell, Skeleton } from '@repo/ui'
+import { MicroLabel } from '@repo/ui'
 import { BrandMark } from '@/components/brand-mark'
 
+// Frame 4.6: /chat's route-level loading shows the same redirect panel as the
+// page, so the hand-off to Purchase Orders reads as one step.
 export default function ChatLoading() {
   return (
-    <PageShell contentClassName="pb-16">
-      <AppHeader
-        className="mt-4 rounded-2xl border border-border/70 bg-background/75"
-        brand={<BrandMark decorative className="size-11" />}
-        title="Assistant workspace"
-        description="Loading conversation surface."
-        badge={<Badge variant="secondary">Connecting</Badge>}
-      />
-      <div className="grid gap-6 pb-6 pt-10 xl:grid-cols-[1.2fr_0.8fr]">
-        <Card variant="elevated" className="space-y-6 p-6">
-          <Skeleton className="h-10 w-72" />
-          <Skeleton className="h-28 w-full" />
-          <Skeleton className="ml-auto h-24 w-2/3" />
-          <Skeleton className="h-28 w-3/4" />
-          <Skeleton className="h-12 w-full" />
-        </Card>
-        <div className="space-y-6">
-          <Skeleton className="h-48 w-full" />
-          <Skeleton className="h-48 w-full" />
+    <div className="min-h-screen bg-background leading-[normal]">
+      <header className="flex items-center gap-2.5 border-b border-border px-5 py-3.5 sm:px-10">
+        <BrandMark decorative className="size-7" />
+        <span className="font-display text-xl font-semibold tracking-[-0.04em] text-foreground">Optra</span>
+      </header>
+      <main className="mx-auto box-content max-w-[1040px] px-5 py-16 sm:px-10">
+        <div className="relative overflow-hidden rounded-[18px] border border-border-panel bg-card p-7">
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-y-0 left-0 w-[34%] animate-[rf-sweep_1.6s_cubic-bezier(0.4,0,0.6,1)_infinite] bg-[linear-gradient(90deg,transparent,oklch(0.5_0.09_184/0.12),transparent)]"
+          />
+          <MicroLabel as="p" tone="teal">
+            Redirecting…
+          </MicroLabel>
+          <h3 className="mt-3 text-xl">Opening your workspace</h3>
+          <p className="mt-2 text-[15px] leading-[1.6] text-ink-body">
+            Picking your first available workspace and redirecting you there.
+          </p>
         </div>
-      </div>
-    </PageShell>
+      </main>
+    </div>
   )
 }

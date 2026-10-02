@@ -56,7 +56,8 @@ test.describe('procurement core', () => {
     const page = await pageAs(browser, 'memberA')
     await page.goto(`/workspaces/${ws}/discrepancies?purchaseOrderId=${purchaseOrderId}&invoiceId=${invoiceId}`)
     // The role badge renders only once membership has loaded, so the absences below are real.
-    await expect(page.getByText('member', { exact: true })).toBeVisible()
+    // The role pill reads "Member" since the app alignment (frame 2.2).
+    await expect(page.getByText('Member', { exact: true })).toBeVisible()
     await expect(page.getByRole('button', { name: 'Review discrepancy A1', exact: true })).toBeVisible()
     await expect(page.getByRole('button', { name: 'Dismiss discrepancy A1', exact: true })).toHaveCount(0)
 
@@ -237,7 +238,9 @@ test.describe('procurement core', () => {
     await page.getByRole('button', { name: 'Review discrepancy B2', exact: true }).click()
     const review = page.getByRole('dialog')
     await expect(review.getByText('Three-way', { exact: true })).toBeVisible()
-    await review.getByRole('combobox', { name: 'Outcome' }).selectOption('vendor_dispute')
+    // Outcome is four radio cards since the app alignment (frame 2.9); the card is the input's label.
+    await review.getByRole('radiogroup', { name: 'Outcome' }).getByText('Vendor dispute', { exact: true }).click()
+    await expect(review.getByRole('radio', { name: 'Vendor dispute' })).toBeChecked()
     const note = `Billed 4, accepted 3 across two deliveries (${state.run}).`
     await review.getByRole('textbox', { name: 'Decision note' }).fill(note)
     await review.getByRole('button', { name: 'Record decision' }).click()

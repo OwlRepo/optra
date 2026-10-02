@@ -25,7 +25,8 @@ test.describe('catalog core', () => {
     const ws = state.memberA.workspaceId
     await page.goto(`/workspaces/${ws}/vendors/${state.ownerA.vendorId}`)
     // The role badge renders only once membership has loaded, so the absences below are real.
-    await expect(page.getByText('member', { exact: true })).toBeVisible()
+    // The role pill reads "Member" since the app alignment (frame 3.5).
+    await expect(page.getByText('Member', { exact: true })).toBeVisible()
     await expect(page.getByRole('button', { name: 'Upload catalog' })).toHaveCount(0)
     await expect(page.getByRole('button', { name: 'Scrape website' })).toHaveCount(0)
 
@@ -96,7 +97,8 @@ test.describe('catalog core', () => {
     await dismissButtons.first().click()
     await expect(toast(page, 'Match dismissed')).toBeVisible()
 
-    await page.getByRole('combobox', { name: 'Filter by status' }).selectOption('open')
+    // The status filter is a segmented control since the app alignment (frame 2.11).
+    await page.getByRole('radio', { name: 'Open', exact: true }).click()
     await expect(page.getByText('E2E stub match', { exact: true })).toHaveCount(found - 1)
     const open = JSON.parse(
       (await bff(page, `/api/workspaces/${ws}/catalog-matches?status=open&poLineItemId=${poLineItemId}`)).body,

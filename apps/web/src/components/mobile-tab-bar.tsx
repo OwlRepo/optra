@@ -13,6 +13,11 @@ export interface MobileTabItem {
   exact?: boolean
 }
 
+const TAB_CLASS =
+  'flex min-h-11 flex-1 flex-col items-center gap-[3px] py-1.5 text-[11px] transition-colors duration-200'
+const TAB_ACTIVE = 'font-semibold text-primary-strong'
+const TAB_INACTIVE = 'font-medium text-[oklch(0.5_0.02_264)]'
+
 export function MobileTabBar({
   items,
   moreActive,
@@ -27,47 +32,40 @@ export function MobileTabBar({
   return (
     <nav
       aria-label="Primary"
-      className="fixed inset-x-0 bottom-0 z-30 border-t border-border/70 bg-background/70 pb-[env(safe-area-inset-bottom)] backdrop-blur-2xl backdrop-saturate-150 lg:hidden"
+      className="fixed inset-x-0 bottom-0 z-30 flex border-t border-border bg-background/90 px-1 pb-[max(26px,env(safe-area-inset-bottom))] pt-1.5 backdrop-blur-[16px] lg:hidden"
     >
-      <div className="mx-auto flex max-w-md items-stretch justify-around">
-        {items.map((item) => {
-          const isActive = item.exact
-            ? pathname === item.href
-            : pathname === item.href || pathname?.startsWith(`${item.href}/`)
+      {items.map((item) => {
+        const isActive = item.exact
+          ? pathname === item.href
+          : pathname === item.href || pathname?.startsWith(`${item.href}/`)
 
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              aria-current={isActive ? 'page' : undefined}
-              className={cn(
-                'flex flex-1 flex-col items-center justify-center gap-0.5 py-2 text-[11px] font-medium transition-colors duration-150 active:scale-95',
-                isActive ? 'text-primary' : 'text-muted-foreground',
-              )}
-            >
-              <span className={cn('flex size-6 items-center justify-center transition-transform duration-150', isActive && 'scale-110')}>
-                {item.icon}
-              </span>
-              {item.label}
-            </Link>
-          )
-        })}
-        <button
-          type="button"
-          aria-label="More"
-          aria-pressed={moreActive}
-          onClick={onMoreClick}
-          className={cn(
-            'flex flex-1 flex-col items-center justify-center gap-0.5 py-2 text-[11px] font-medium transition-colors duration-150 active:scale-95',
-            moreActive ? 'text-primary' : 'text-muted-foreground',
-          )}
-        >
-          <span className={cn('flex size-6 items-center justify-center transition-transform duration-150', moreActive && 'scale-110')}>
-            <MoreHorizontal className="size-5" />
-          </span>
-          More
-        </button>
-      </div>
+        return (
+          <Link
+            key={item.href}
+            href={item.href}
+            aria-current={isActive ? 'page' : undefined}
+            className={cn(TAB_CLASS, isActive ? TAB_ACTIVE : TAB_INACTIVE)}
+          >
+            <span className="inline-flex" aria-hidden="true">
+              {item.icon}
+            </span>
+            {item.label}
+            {isActive ? (
+              <span data-nav-indicator="dot" aria-hidden="true" className="size-1 rounded-full bg-primary-strong" />
+            ) : null}
+          </Link>
+        )
+      })}
+      <button
+        type="button"
+        aria-label="More"
+        aria-pressed={moreActive}
+        onClick={onMoreClick}
+        className={cn(TAB_CLASS, 'border-0 bg-transparent', moreActive ? TAB_ACTIVE : TAB_INACTIVE)}
+      >
+        <MoreHorizontal className="size-5" aria-hidden="true" />
+        More
+      </button>
     </nav>
   )
 }

@@ -8,7 +8,8 @@
 
 import * as React from 'react'
 import { useRouter } from 'next/navigation'
-import { Badge, Button, Card, PageShell, useToast } from '@repo/ui'
+import { Button, Eyebrow, useToast } from '@repo/ui'
+import { BrandMark } from '@/components/brand-mark'
 import { acceptInvite } from '@/lib/api/workspaces'
 import { isUnauthorized } from '@/lib/api/handle-unauthorized'
 
@@ -51,24 +52,43 @@ export default function InvitePage({ params }: { params: { token: string } }) {
   }, [params.token, router, toast])
 
   return (
-    <PageShell contentClassName="flex min-h-screen items-center py-16">
-      <Card variant="elevated" className="mx-auto w-full max-w-lg space-y-6 p-8">
-        <Badge variant="secondary" className="w-fit">
-          Invitation
-        </Badge>
-        <div className="space-y-3">
-          <h1 className="text-3xl font-semibold">Join workspace?</h1>
-          <p className="text-sm leading-6 text-muted-foreground">
-            Accept the invitation to join the shared workspace and access its knowledge bases and documents.
-          </p>
+    <div className="min-h-screen bg-background leading-[normal]">
+      <header className="border-b border-border">
+        <div className="mx-auto box-content flex max-w-[1040px] items-center gap-2.5 px-5 py-3.5 sm:px-10">
+          <BrandMark decorative className="size-7" />
+          <span className="font-display text-xl font-semibold tracking-[-0.04em] text-foreground">Optra</span>
         </div>
-        {error ? <p className="text-sm text-destructive">{error}</p> : null}
-        <div className="flex justify-end">
-          <Button onClick={() => void handleAccept()} isLoading={isSubmitting} loadingText="Joining">
-            Join workspace
-          </Button>
+      </header>
+      <main className="mx-auto box-content max-w-[1040px] px-5 py-[72px] sm:px-10">
+        <div className="grid items-center gap-12 rounded-[24px] bg-cta-surface p-8 text-cta-surface-foreground sm:p-12 md:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
+          <div>
+            <Eyebrow className="text-cta-surface-accent">Invitation</Eyebrow>
+            <h1 className="mt-4 text-[44px] leading-[1.05]">Join workspace?</h1>
+            <p className="mt-4 max-w-[44ch] text-[17px] leading-[1.7] text-cta-surface-muted">
+              {/* [support-surfaces-off] was: Accept the invitation to join the shared workspace and access its knowledge bases and documents. */}
+              Accept the invitation to join the shared workspace and see its vendors, documents and discrepancy history.
+            </p>
+          </div>
+          <div className="flex flex-col gap-3">
+            <Button
+              onClick={() => void handleAccept()}
+              isLoading={isSubmitting}
+              loadingText="Joining"
+              className="h-auto justify-between rounded-[14px] bg-cta-surface-foreground px-6 py-[18px] text-base font-semibold text-[oklch(0.28_0.04_200)] hover:bg-card"
+            >
+              Join workspace <span aria-hidden="true">→</span>
+            </Button>
+            <p className="mt-1 text-[13px] leading-[1.6] text-[oklch(0.8_0.02_200)]">
+              {"You'll land on the workspace's Purchase Orders."}
+            </p>
+            {error ? (
+              <p className="mt-2 rounded-[10px] bg-destructive-tone/18 px-3.5 py-2.5 text-[13px] leading-[1.5] text-[oklch(0.95_0.03_27)]">
+                {error}
+              </p>
+            ) : null}
+          </div>
         </div>
-      </Card>
-    </PageShell>
+      </main>
+    </div>
   )
 }

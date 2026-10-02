@@ -10,10 +10,16 @@ const display = Outfit({
   display: 'swap',
 })
 
+// No auto-generated Arial fallback: DM Sans' latin subset has no "→", and the
+// handoff frames draw it from system-ui ("DM Sans", system-ui, sans-serif).
 const body = DM_Sans({
   subsets: ['latin'],
   variable: '--font-body',
   display: 'swap',
+  adjustFontFallback: false,
+  fallback: ['system-ui', 'sans-serif'],
+  // Optical size, as the frames load it (DM+Sans:opsz,wght@9..40).
+  axes: ['opsz'],
 })
 
 const mono = JetBrains_Mono({

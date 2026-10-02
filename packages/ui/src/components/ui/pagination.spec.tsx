@@ -83,4 +83,37 @@ describe('Pagination', () => {
     expect(screen.getByText(/0.*of.*0/)).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Next page' }).hasAttribute('disabled')).toBe(true)
   })
+
+  it('regression: docks as a table footer on the subtle fill with an inner top rule', () => {
+    setup()
+    const nav = screen.getByRole('navigation', { name: 'Pagination' })
+    expect(nav.className).toContain('bg-surface-subtle')
+    expect(nav.className).toContain('border-t')
+    expect(nav.className).toContain('border-border-inner')
+    expect(nav.className).toContain('px-[18px]')
+  })
+
+  it('regression: range and page count read in Mono 12 body ink', () => {
+    setup()
+    const pageCount = screen.getByText(/Page 2 of 5/)
+    expect(pageCount.className).toContain('font-mono')
+    expect(pageCount.className).toContain('text-[12px]')
+    expect(screen.getByText(/11.*20.*of.*42/).className).toContain('font-mono')
+  })
+
+  it('regression: page buttons are 32px bordered squares and the selects and go-to field are 32px Mono 12', () => {
+    setup()
+    const first = screen.getByRole('button', { name: 'First page' })
+    expect(first.className).toContain('size-8')
+    expect(first.className).toContain('rounded-[9px]')
+    expect(first.className).toContain('border-border-panel')
+    const rows = screen.getByLabelText('Rows per page')
+    expect(rows.className).toContain('h-8')
+    expect(rows.className).toContain('font-mono')
+    expect(rows.className).toContain('text-[12px]')
+    const goTo = screen.getByLabelText('Go to page')
+    expect(goTo.className).toContain('h-8')
+    expect(goTo.className).toContain('w-12')
+    expect(goTo.className).toContain('rounded-[9px]')
+  })
 })

@@ -1,7 +1,7 @@
 /** @vitest-environment jsdom */
 
 import React from 'react'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ToastProvider } from '@repo/ui'
 import MembersPage from './page'
@@ -34,6 +34,17 @@ vi.mock('@/lib/api/auth', () => ({
   logout: (...args: unknown[]) => logoutMock(...args),
 }))
 
+const roster = {
+  items: [
+    { id: 'mem-1', userId: 'user-owner', email: 'owner@example.com', role: 'owner', joinedAt: new Date(2026, 5, 1, 12, 0).toISOString() },
+    { id: 'mem-2', userId: 'user-2', email: 'teammate@example.com', role: 'member', joinedAt: new Date(2026, 5, 15, 12, 0).toISOString() },
+  ],
+  page: 1,
+  pageSize: 20,
+  total: 2,
+  totalPages: 1,
+}
+
 function renderPage() {
   return render(
     React.createElement(
@@ -44,6 +55,10 @@ function renderPage() {
       }),
     ),
   )
+}
+
+function rowOf(email: string): HTMLTableRowElement {
+  return screen.getByText(email).closest('tr') as HTMLTableRowElement
 }
 
 describe('MembersPage', () => {
@@ -58,16 +73,7 @@ describe('MembersPage', () => {
     logoutMock.mockReset()
 
     getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
-    listMembersMock.mockResolvedValue({
-      items: [
-        { id: 'mem-1', userId: 'user-owner', email: 'owner@example.com', role: 'owner', joinedAt: '2026-06-01T00:00:00.000Z' },
-        { id: 'mem-2', userId: 'user-2', email: 'teammate@example.com', role: 'member', joinedAt: '2026-06-15T00:00:00.000Z' },
-      ],
-      page: 1,
-      pageSize: 20,
-      total: 2,
-      totalPages: 1,
-    })
+    listMembersMock.mockResolvedValue(roster)
     getCurrentUserMock.mockResolvedValue({ userId: 'user-owner', email: 'owner@example.com' })
   })
 
@@ -76,26 +82,25 @@ describe('MembersPage', () => {
     vi.restoreAllMocks()
   })
 
-  it('renders fetched member list', async () => {
+  it('error: shows the 403 remove error toast and keeps the list unchanged', async () => {
     listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
-
-    renderPage()
-
-    expect(await screen.findByText('owner@example.com')).toBeDefined()
-    expect(screen.getByText('teammate@example.com')).toBeDefined()
-  })
-
-  it('shows remove button only for owner viewer on other rows', async () => {
-    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+    removeMemberMock.mockRejectedValue({ statusCode: 403, message: 'Cannot remove the last owner' })
 
     renderPage()
 
     await screen.findByText('teammate@example.com')
-    expect(screen.queryByRole('button', { name: 'Remove owner@example.com' })).toBeNull()
-    expect(screen.getByRole('button', { name: 'Remove teammate@example.com' })).toBeDefined()
+    fireEvent.click(screen.getByRole('button', { name: 'Remove teammate@example.com' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Remove member' }))
+
+    await waitFor(() => {
+      expect(screen.getByText('Cannot remove the last owner')).toBeDefined()
+    })
+    // The confirm modal stays open and names the email too, so the list is
+    // checked inside the table.
+    expect(within(screen.getByRole('table')).getByText('teammate@example.com')).toBeDefined()
   })
 
-  it('hides remove buttons for member and admin viewers', async () => {
+  it('edge: hides Remove for member and admin viewers', async () => {
     listWorkspacesMock.mockResolvedValueOnce({ items: [{ id: 'ws-1', role: 'member' }], nextCursor: null })
 
     const view = renderPage()
@@ -111,7 +116,8 @@ describe('MembersPage', () => {
     expect(screen.queryByRole('button', { name: 'Remove teammate@example.com' })).toBeNull()
   })
 
-  it('shows invite form for owner and admin, empty state for member', async () => {
+  // [RED] the role-gated empty has no "Owners & admins" label today.
+  it('edge: members get the "Owners & admins" role-gated empty instead of the invite form; admins get the form', async () => {
     listWorkspacesMock.mockResolvedValueOnce({ items: [{ id: 'ws-1', role: 'admin' }], nextCursor: null })
 
     const view = renderPage()
@@ -123,10 +129,120 @@ describe('MembersPage', () => {
     renderPage()
 
     expect(await screen.findByText('Invite controls hidden')).toBeDefined()
+    expect(screen.getByText('Owners & admins')).toBeDefined()
+    expect(screen.getByText('Only owners and admins can invite members to this workspace.')).toBeDefined()
     expect(screen.queryByLabelText('Member email')).toBeNull()
   })
 
-  it('submits invite, resets form, and toasts success', async () => {
+  // [RED] no search label on the empty today, and the filters must stay reachable.
+  it('edge: no results name the search and keep the search and role filter on screen', async () => {
+    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+
+    renderPage()
+
+    await screen.findByText('owner@example.com')
+    listMembersMock.mockResolvedValue({ items: [], page: 1, pageSize: 20, total: 0, totalPages: 0 })
+    fireEvent.change(screen.getByLabelText('Search members'), { target: { value: 'ops@' } })
+
+    expect(await screen.findByText('No members found')).toBeDefined()
+    expect(screen.getByText('Try a different search or role filter.')).toBeDefined()
+    expect(screen.getByText('Search · "ops@"')).toBeDefined()
+    expect(screen.getByLabelText('Search members')).toBeDefined()
+    expect(screen.getByLabelText('Filter by role')).toBeDefined()
+  })
+
+  // [RED] amber 3.8 copy: the developer note is replaced.
+  it('regression: the invite description is user-facing copy, not a developer note', async () => {
+    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+
+    renderPage()
+
+    expect(await screen.findByText('Invites go out by email. The link joins them to this workspace as a member.')).toBeDefined()
+    expect(screen.queryByText(/Backend still enforces permissions/)).toBeNull()
+  })
+
+  // [RED] amber 3.8: Mono "you" tag on the viewer's own row.
+  it('regression: the viewer\'s own row carries a Mono "you" tag and no Remove; other rows do not', async () => {
+    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+
+    renderPage()
+
+    await screen.findByText('teammate@example.com')
+    await waitFor(() => {
+      expect(within(rowOf('owner@example.com')).getByText('you')).toBeDefined()
+    })
+    expect(within(rowOf('owner@example.com')).getByText('you').className).toContain('font-mono')
+    expect(within(rowOf('owner@example.com')).queryByRole('button')).toBeNull()
+    expect(within(rowOf('teammate@example.com')).queryByText('you')).toBeNull()
+    expect(within(rowOf('owner@example.com')).getByText('Owner')).toBeDefined()
+    expect(within(rowOf('teammate@example.com')).getByText('Member')).toBeDefined()
+  })
+
+  // [RED] Remove is plain ghost today.
+  it('regression: Remove is a ghost button that turns red on hover', async () => {
+    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+
+    renderPage()
+
+    const remove = await screen.findByRole('button', { name: 'Remove teammate@example.com' })
+    expect(remove.className).toContain('hover:text-destructive-strong-text')
+    expect(remove.className).toContain('hover:bg-destructive-tone/8')
+  })
+
+  // [RED] the confirm modal has no eyebrow today.
+  it('regression: the remove confirm modal is eyebrowed "Confirm"', async () => {
+    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+
+    renderPage()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Remove teammate@example.com' }))
+
+    const dialog = screen.getByRole('dialog')
+    expect(within(dialog).getByText('Confirm')).toBeDefined()
+    expect(within(dialog).getByText('teammate@example.com')).toBeDefined()
+    expect(within(dialog).getByRole('button', { name: 'Remove member' })).toBeDefined()
+  })
+
+  // [RED] the roster repeated the page description under its title.
+  it('regression: search and role filter head the roster table panel, and the roster drops the duplicate description', async () => {
+    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+
+    renderPage()
+
+    await screen.findByText('teammate@example.com')
+    let panel: HTMLElement | null = screen.getByLabelText('Search members').parentElement
+    while (panel && !panel.querySelector('table')) panel = panel.parentElement
+    expect(panel).not.toBeNull()
+    expect((panel as HTMLElement).contains(screen.getByLabelText('Filter by role'))).toBe(true)
+    expect(within(panel as HTMLElement).getByRole('navigation', { name: 'Pagination' })).toBeDefined()
+    expect(within(panel as HTMLElement).queryByRole('heading', { level: 2, name: 'Members' })).toBeNull()
+
+    const rosterSection = screen.getByRole('heading', { level: 2, name: 'Members' }).closest('section') as HTMLElement
+    expect(within(rosterSection).queryByText('Everyone with access to this workspace.')).toBeNull()
+  })
+
+  it('happy: renders the fetched member list with local ISO joined dates', async () => {
+    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+
+    renderPage()
+
+    expect(await screen.findByText('owner@example.com')).toBeDefined()
+    expect(screen.getByText('teammate@example.com')).toBeDefined()
+    expect(screen.getByText('2026-06-01')).toBeDefined()
+    expect(screen.getByText('2026-06-15')).toBeDefined()
+  })
+
+  it('happy: shows Remove only to an owner viewer, on other rows', async () => {
+    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+
+    renderPage()
+
+    await screen.findByText('teammate@example.com')
+    expect(screen.queryByRole('button', { name: 'Remove owner@example.com' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Remove teammate@example.com' })).toBeDefined()
+  })
+
+  it('happy: submits an invite, resets the form and toasts success', async () => {
     listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
     inviteMemberMock.mockResolvedValue({ message: 'Invite sent' })
 
@@ -143,19 +259,10 @@ describe('MembersPage', () => {
     })
   })
 
-  it('removes member after confirmation and reloads list', async () => {
+  it('happy: removes a member after confirmation and reloads the list', async () => {
     listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
     listMembersMock
-      .mockResolvedValueOnce({
-        items: [
-          { id: 'mem-1', userId: 'user-owner', email: 'owner@example.com', role: 'owner', joinedAt: '2026-06-01T00:00:00.000Z' },
-          { id: 'mem-2', userId: 'user-2', email: 'teammate@example.com', role: 'member', joinedAt: '2026-06-15T00:00:00.000Z' },
-        ],
-        page: 1,
-        pageSize: 20,
-        total: 2,
-        totalPages: 1,
-      })
+      .mockResolvedValueOnce(roster)
       .mockResolvedValueOnce({
         items: [{ id: 'mem-1', userId: 'user-owner', email: 'owner@example.com', role: 'owner', joinedAt: '2026-06-01T00:00:00.000Z' }],
         page: 1,
@@ -177,23 +284,7 @@ describe('MembersPage', () => {
     })
   })
 
-  it('shows 403 remove error toast and keeps list unchanged', async () => {
-    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
-    removeMemberMock.mockRejectedValue({ statusCode: 403, message: 'Cannot remove the last owner' })
-
-    renderPage()
-
-    await screen.findByText('teammate@example.com')
-    fireEvent.click(screen.getByRole('button', { name: 'Remove teammate@example.com' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Remove member' }))
-
-    await waitFor(() => {
-      expect(screen.getByText('Cannot remove the last owner')).toBeDefined()
-    })
-    expect(screen.getByText('teammate@example.com')).toBeDefined()
-  })
-
-  it('paginates to the next page via the pagination control', async () => {
+  it('happy: paginates to the next page via the docked pagination', async () => {
     listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
     listMembersMock.mockResolvedValue({
       items: [{ id: 'mem-1', userId: 'user-owner', email: 'owner@example.com', role: 'owner', joinedAt: '2026-06-01T00:00:00.000Z' }],
@@ -213,7 +304,7 @@ describe('MembersPage', () => {
     })
   })
 
-  it('searches members by email through the backend', async () => {
+  it('happy: searches members by email through the backend', async () => {
     listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
 
     renderPage()
@@ -226,7 +317,7 @@ describe('MembersPage', () => {
     })
   })
 
-  it('filters members by role through the backend', async () => {
+  it('happy: filters members by role through the backend', async () => {
     listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
 
     renderPage()

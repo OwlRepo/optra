@@ -1,7 +1,7 @@
 /** @vitest-environment jsdom */
 
 import React from 'react'
-import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ToastProvider } from '@repo/ui'
 import WorkspaceOverviewPage from './page'
@@ -35,6 +35,28 @@ vi.mock('@/lib/api/auth', () => ({
   logout: (...args: unknown[]) => logoutMock(...args),
 }))
 
+// HistoryRow's look belongs to packages/ui and is tested there. What this page
+// owns is the tone and the unseen flag it picks for each event, so the real row
+// is rendered inside a wrapper that exposes those two choices as data.
+vi.mock('@repo/ui', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@repo/ui')>()
+  const { createElement } = await import('react')
+  return {
+    ...actual,
+    HistoryRow: (props: React.ComponentProps<typeof actual.HistoryRow>) =>
+      createElement(
+        'div',
+        {
+          'data-testid': 'history-row',
+          'data-event': props.eventKey,
+          'data-tone': props.tone,
+          'data-unseen': String(Boolean(props.unseen)),
+        },
+        createElement(actual.HistoryRow, props),
+      ),
+  }
+})
+
 function renderPage() {
   return render(
     React.createElement(
@@ -45,6 +67,15 @@ function renderPage() {
       }),
     ),
   )
+}
+
+function event(id: string, type: string, title: string, detail: string | null = null) {
+  return { id, type, title, detail, createdAt: new Date(2026, 6, 2, 9, 0).toISOString() }
+}
+
+function signedInAs(role: 'owner' | 'admin' | 'member') {
+  getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
+  listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role }], nextCursor: null })
 }
 
 describe('WorkspaceOverviewPage', () => {
@@ -66,51 +97,7 @@ describe('WorkspaceOverviewPage', () => {
     vi.restoreAllMocks()
   })
 
-  beforeEach(() => {
-    // no-op keeps test order explicit after previous mock cleanup
-  })
-
-  it('renders workspace name in top bar and membership badge', async () => {
-    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
-    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
-
-    renderPage()
-
-    expect((await screen.findAllByText('Alpha')).length).toBeGreaterThan(0)
-    expect(screen.getByText('owner')).toBeDefined()
-  })
-
-  // [support-surfaces-off] On re-enable, restore the original "renders all 5
-  // quick-link cards" case from git history.
-  it('regression: quick-link cards and sidebar hide the support surfaces', async () => {
-    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
-    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'member' }], nextCursor: null })
-
-    const { container } = renderPage()
-
-    const sidebar = within(screen.getByRole('complementary'))
-    expect((await sidebar.findByRole('link', { name: 'Members' })).getAttribute('href')).toBe('/workspaces/ws-1/members')
-    expect(sidebar.getByRole('link', { name: 'Purchase Orders' }).getAttribute('href')).toBe('/workspaces/ws-1/procurement')
-    for (const label of ['Knowledge Bases', 'Chat', 'Tickets']) {
-      expect(sidebar.queryByRole('link', { name: label })).toBeNull()
-      expect(screen.queryByRole('heading', { level: 3, name: label })).toBeNull()
-    }
-    expect(container.querySelector('span.shrink-0.text-accent-foreground')).not.toBeNull()
-    expect(container.querySelector('.rounded-2xl.bg-accent\\/20.text-accent-foreground')).toBeNull()
-  })
-
-  it('happy: renders the Members and Settings quick-link cards with correct hrefs', async () => {
-    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
-    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'member' }], nextCursor: null })
-
-    renderPage()
-
-    const members = await screen.findByRole('heading', { level: 3, name: 'Members' })
-    expect(members.closest('a')?.getAttribute('href')).toBe('/workspaces/ws-1/members')
-    expect(screen.getByRole('heading', { level: 3, name: 'Settings' }).closest('a')?.getAttribute('href')).toBe('/workspaces/ws-1/settings')
-  })
-
-  it('redirects to login on unauthorized load error', async () => {
+  it('error: redirects to login on unauthorized load error', async () => {
     getWorkspaceMock.mockRejectedValue({ statusCode: 401, message: 'Unauthorized' })
     listWorkspacesMock.mockResolvedValue({ items: [], nextCursor: null })
 
@@ -121,7 +108,7 @@ describe('WorkspaceOverviewPage', () => {
     })
   })
 
-  it('surfaces non-unauthorized load error as toast', async () => {
+  it('error: surfaces a non-unauthorized load error as a toast', async () => {
     getWorkspaceMock.mockRejectedValue(new Error('boom'))
     listWorkspacesMock.mockResolvedValue({ items: [], nextCursor: null })
 
@@ -136,87 +123,186 @@ describe('WorkspaceOverviewPage', () => {
     expect(screen.getByText('Failed to load workspace')).toBeDefined()
   })
 
-  it('renders activity feed rows and marks events seen once after load', async () => {
-    vi.spyOn(Date.prototype, 'toLocaleString').mockReturnValue('Jul 2, 2026, 9:00 AM')
-    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
-    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+  it('error: a failed unread-count read still renders the feed, without the "new" line, and marks seen once', async () => {
+    signedInAs('owner')
+    getUnreadCountMock.mockRejectedValue(new Error('unread down'))
+    listEventsMock.mockResolvedValue({ items: [event('evt-1', 'document_ingested', 'Imported guide')], nextCursor: null })
+
+    renderPage()
+
+    expect(await screen.findByText('Imported guide')).toBeDefined()
+    expect(screen.queryByText(/new since your last visit/)).toBeNull()
+    expect(screen.queryByText('Failed to load workspace')).toBeNull()
+    await waitFor(() => {
+      expect(markEventsSeenMock).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  // [RED] no HistoryRow today.
+  it('edge: an unknown event type falls back to the neutral tone instead of breaking the feed', async () => {
+    signedInAs('owner')
+    listEventsMock.mockResolvedValue({ items: [event('evt-1', 'not_a_real_type', 'Unknown')], nextCursor: null })
+
+    renderPage()
+
+    const row = await screen.findByTestId('history-row')
+    expect(row.dataset.tone).toBe('neutral')
+    expect(within(row).getByText('Unknown')).toBeDefined()
+  })
+
+  // [RED] no HistoryRow today.
+  it('edge: nothing unread means no "new" line and no tinted rows', async () => {
+    signedInAs('owner')
+    getUnreadCountMock.mockResolvedValue({ count: 0 })
+    listEventsMock.mockResolvedValue({
+      items: [event('evt-1', 'document_ingested', 'Imported guide'), event('evt-2', 'scrape_failed', 'Crawl stopped')],
+      nextCursor: null,
+    })
+
+    renderPage()
+
+    const rows = await screen.findAllByTestId('history-row')
+    expect(rows.map((row) => row.dataset.unseen)).toEqual(['false', 'false'])
+    expect(screen.queryByText(/new since your last visit/)).toBeNull()
+  })
+
+  // [RED] the empty state has no label today.
+  it('edge: an empty feed shows the teal "Quiet so far" empty state', async () => {
+    signedInAs('owner')
+
+    renderPage()
+
+    expect(await screen.findByText('No activity yet')).toBeDefined()
+    expect(screen.getByText('Quiet so far')).toBeDefined()
+    expect(screen.getByText('Work this workspace does on its own will show up here.')).toBeDefined()
+  })
+
+  // [RED] replaces the icon-class selectors (C-2): every workspace_event_type has its C19 tone.
+  it('regression: every workspace_event_type renders as a history row in its C19 tone', async () => {
+    signedInAs('owner')
+    const expected = [
+      ['document_ingested', 'teal'],
+      ['document_failed', 'red'],
+      ['scrape_completed', 'teal'],
+      ['scrape_failed', 'red'],
+      ['ticket_extracted', 'neutral'],
+      ['ticket_failed', 'red'],
+      ['comparison_flagged', 'amber'],
+      ['comparison_failed', 'red'],
+    ]
+    listEventsMock.mockResolvedValue({
+      items: expected.map(([type], index) => event(`evt-${index}`, type, `Event ${type}`)),
+      nextCursor: null,
+    })
+
+    renderPage()
+
+    const rows = await screen.findAllByTestId('history-row')
+    expect(rows.map((row) => [row.dataset.event, row.dataset.tone])).toEqual(expected)
+    for (const [type] of expected) {
+      expect(screen.getByText(type)).toBeDefined()
+    }
+  })
+
+  // [RED] amber 3.3: the count is read by the page before markEventsSeen fires.
+  it('regression: rows counted unread before markEventsSeen are tinted and announced', async () => {
+    signedInAs('owner')
+    getUnreadCountMock.mockResolvedValue({ count: 2 })
     listEventsMock.mockResolvedValue({
       items: [
-        {
-          id: 'evt-1',
-          type: 'document_ingested',
-          title: 'Imported guide',
-          detail: null,
-          createdAt: '2026-07-02T01:00:00.000Z',
-        },
+        event('evt-1', 'comparison_flagged', 'PO-1 compared'),
+        event('evt-2', 'document_ingested', 'po.pdf parsed'),
+        event('evt-3', 'scrape_completed', 'Crawl finished'),
       ],
       nextCursor: null,
     })
 
-    const { container } = renderPage()
+    renderPage()
+
+    expect(await screen.findByText('2 new since your last visit')).toBeDefined()
+    const rows = screen.getAllByTestId('history-row')
+    expect(rows.map((row) => row.dataset.unseen)).toEqual(['true', 'true', 'false'])
+    await waitFor(() => {
+      expect(markEventsSeenMock).toHaveBeenCalledTimes(1)
+    })
+    expect(getUnreadCountMock).toHaveBeenCalledWith('ws-1')
+    expect(Math.min(...getUnreadCountMock.mock.invocationCallOrder)).toBeLessThan(
+      markEventsSeenMock.mock.invocationCallOrder[0] as number,
+    )
+  })
+
+  // [RED] the cards carry an icon today and no arrow.
+  it('regression: quick-link cards are icon-free with a trailing arrow, and the support surfaces stay hidden', async () => {
+    signedInAs('member')
+
+    renderPage()
+
+    const sidebar = within(screen.getByRole('complementary'))
+    expect((await sidebar.findByRole('link', { name: 'Members' })).getAttribute('href')).toBe('/workspaces/ws-1/members')
+    expect(sidebar.getByRole('link', { name: 'Purchase Orders' }).getAttribute('href')).toBe('/workspaces/ws-1/procurement')
+    for (const label of ['Knowledge Bases', 'Chat', 'Tickets']) {
+      expect(sidebar.queryByRole('link', { name: label })).toBeNull()
+      expect(screen.queryByRole('heading', { level: 3, name: label })).toBeNull()
+    }
+    for (const label of ['Members', 'Settings']) {
+      const card = screen.getByRole('heading', { level: 3, name: label }).closest('a') as HTMLAnchorElement
+      expect(card.querySelector('svg')).toBeNull()
+      expect(within(card).getByText('→')).toBeDefined()
+    }
+  })
+
+  // [RED] breadcrumb is new and the pill read "owner" before.
+  it('regression: the header shows the workspace name, the Overview breadcrumb and the role pill as the frame writes it', async () => {
+    signedInAs('owner')
+
+    renderPage()
+
+    expect((await screen.findAllByText('Alpha')).length).toBeGreaterThan(0)
+    expect(screen.getByText('Workspace / Overview')).toBeDefined()
+    expect(screen.getByText('Owner')).toBeDefined()
+    expect(screen.queryByText('owner')).toBeNull()
+  })
+
+  // [RED] timestamps were locale strings; C-3 #2 makes them local ISO.
+  it('regression: renders activity rows with a local ISO timestamp and marks events seen once after load', async () => {
+    signedInAs('owner')
+    listEventsMock.mockResolvedValue({ items: [event('evt-1', 'document_ingested', 'Imported guide')], nextCursor: null })
+
+    renderPage()
 
     expect(await screen.findByText('Imported guide')).toBeDefined()
-    expect(screen.getByText('Jul 2, 2026, 9:00 AM')).toBeDefined()
-    expect(container.querySelector('span.shrink-0.text-secondary-foreground')).not.toBeNull()
-    expect(container.querySelector('.rounded-2xl.bg-secondary.text-secondary-foreground')).toBeNull()
+    expect(screen.getByText('2026-07-02 09:00')).toBeDefined()
     await waitFor(() => {
       expect(markEventsSeenMock).toHaveBeenCalledTimes(1)
       expect(markEventsSeenMock).toHaveBeenCalledWith('ws-1')
     })
   })
 
-  // The icon switch has a `default`, so a new event type compiles fine and
-  // renders the generic alert glyph — the failure mode has no compiler
-  // tripwire. This asserts the comparison types resolve to their own icon by
-  // comparing against what an unknown type actually falls through to.
-  it('gives comparison events their own icon rather than the generic fallback', async () => {
-    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
-    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
-    listEventsMock.mockResolvedValue({
-      items: [
-        {
-          id: 'evt-1',
-          type: 'comparison_flagged',
-          title: '3 discrepancies found',
-          detail: null,
-          createdAt: '2026-07-02T01:00:00.000Z',
-        },
-        {
-          id: 'evt-2',
-          type: 'comparison_failed',
-          title: 'Comparison failed',
-          detail: null,
-          createdAt: '2026-07-02T01:00:00.000Z',
-        },
-        {
-          id: 'evt-3',
-          type: 'not_a_real_type' as never,
-          title: 'Unknown',
-          detail: null,
-          createdAt: '2026-07-02T01:00:00.000Z',
-        },
-      ],
-      nextCursor: null,
-    })
-
-    const { container } = renderPage()
-
-    expect(await screen.findByText('3 discrepancies found')).toBeDefined()
-    const icons = Array.from(container.querySelectorAll('span.shrink-0.text-secondary-foreground svg'))
-    expect(icons).toHaveLength(3)
-    const fallback = icons[2].getAttribute('class')
-    expect(icons[0].getAttribute('class')).not.toBe(fallback)
-    expect(icons[1].getAttribute('class')).not.toBe(fallback)
-  })
-
-  it('renders empty state when there is no activity', async () => {
-    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
-    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
-    listEventsMock.mockResolvedValue({ items: [], nextCursor: null })
+  it('happy: renders the Members and Settings quick-link cards with correct hrefs', async () => {
+    signedInAs('member')
 
     renderPage()
 
-    expect(await screen.findByText('No activity yet')).toBeDefined()
+    const members = await screen.findByRole('heading', { level: 3, name: 'Members' })
+    expect(members.closest('a')?.getAttribute('href')).toBe('/workspaces/ws-1/members')
+    expect(screen.getByRole('heading', { level: 3, name: 'Settings' }).closest('a')?.getAttribute('href')).toBe('/workspaces/ws-1/settings')
+  })
+
+  it('happy: Load more fetches the next page with the cursor and appends it', async () => {
+    signedInAs('owner')
+    listEventsMock
+      .mockResolvedValueOnce({ items: [event('evt-1', 'document_ingested', 'First page row')], nextCursor: 'cursor-2' })
+      .mockResolvedValueOnce({ items: [event('evt-2', 'scrape_completed', 'Second page row')], nextCursor: null })
+
+    renderPage()
+
+    await screen.findByText('First page row')
+    fireEvent.click(screen.getByRole('button', { name: 'Load more' }))
+
+    expect(await screen.findByText('Second page row')).toBeDefined()
+    expect(listEventsMock).toHaveBeenLastCalledWith('ws-1', { cursor: 'cursor-2' })
+    expect(screen.getByText('First page row')).toBeDefined()
+    expect(screen.queryByRole('button', { name: 'Load more' })).toBeNull()
   })
 
   describe('no access (B18)', () => {

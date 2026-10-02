@@ -5,39 +5,36 @@
 // Repo checklist: grep -rn "support-surfaces-off" apps/web apps/e2e
 
 import Link from 'next/link'
-import { Badge, Button, Card, PageShell } from '@repo/ui'
+import { Button, Eyebrow } from '@repo/ui'
 // [support-surfaces-off] was: import { Compass, Home, MessageSquareText } from 'lucide-react'
-import { BriefcaseBusiness, Compass, Home } from 'lucide-react'
+import { BrandMark } from '@/components/brand-mark'
 
 export default function NotFound() {
   return (
-    <PageShell contentClassName="flex min-h-screen items-center py-16">
-      <Card variant="gradient" className="mx-auto max-w-2xl p-8 text-center sm:p-12">
-        <Badge variant="outline" className="mx-auto w-fit">404</Badge>
-        <div className="mx-auto mt-6 flex size-16 items-center justify-center rounded-3xl bg-primary/10 text-primary">
-          <Compass className="size-7" />
-        </div>
-        <h1 className="mt-6 text-4xl font-semibold">Page not found</h1>
-        <p className="mt-4 text-sm leading-7 text-muted-foreground sm:text-base">
+    <div className="min-h-screen bg-background leading-[normal]">
+      <header className="flex items-center gap-2.5 border-b border-border px-5 py-3.5 sm:px-8">
+        <BrandMark decorative className="size-[26px]" />
+        <span className="font-display text-[19px] font-semibold tracking-[-0.04em] text-foreground">Optra</span>
+      </header>
+      <main className="px-5 py-16 sm:px-12">
+        <Eyebrow rule>404 · not found</Eyebrow>
+        <h1 className="mt-5 text-[48px] leading-[1.02]">Page not found</h1>
+        <p className="mt-[18px] max-w-[40ch] text-[17px] leading-[1.65] text-ink-body">
           {/* [support-surfaces-off] was: Route does not exist yet. Use redesigned dashboard or assistant workspace to continue exploring product experience. */}
           This page does not exist. Go home or open your workspace to continue.
         </p>
-        <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
-          <Button asChild>
-            <Link href="/">
-              <Home className="size-4" />
-              Go home
+        <div className="mt-[30px] flex flex-wrap gap-3">
+          <Button asChild className="h-auto gap-2.5 rounded-[14px] px-[22px] py-3.5 text-[15px]">
+            <Link href="/workspaces">
+              {/* [support-surfaces-off] was: <MessageSquareText className="size-4" /> Open assistant (href /chat) */}
+              Open workspace <span aria-hidden="true">→</span>
             </Link>
           </Button>
-          <Button asChild variant="outline">
-            <Link href="/chat">
-              {/* [support-surfaces-off] was: <MessageSquareText className="size-4" /> Open assistant */}
-              <BriefcaseBusiness className="size-4" />
-              Open workspace
-            </Link>
+          <Button asChild variant="outline" className="h-auto rounded-[14px] px-[22px] py-3.5 text-[15px]">
+            <Link href="/">Go home</Link>
           </Button>
         </div>
-      </Card>
-    </PageShell>
+      </main>
+    </div>
   )
 }

@@ -7,12 +7,11 @@ import {
   AppShell,
   Badge,
   Button,
-  Card,
   EmptyState,
-  Select,
-  Skeleton,
   Pagination,
-  StatCard,
+  SegmentedControl,
+  SkeletonRows,
+  StatStrip,
   Table,
   TableBody,
   TableCell,
@@ -21,7 +20,6 @@ import {
   TableRow,
   useToast,
 } from '@repo/ui'
-import { CheckCircle2, DollarSign, FileX, Hash, HelpCircle, PackageX, Truck } from 'lucide-react'
 import { logout } from '@/lib/api/auth'
 import { isForbidden, isUnauthorized } from '@/lib/api/handle-unauthorized'
 import { WorkspaceAccessDenied } from '@/components/workspace-access-denied'
@@ -29,6 +27,8 @@ import { getWorkspace, listWorkspaces } from '@/lib/api/workspaces'
 import {
   dismissDiscrepancy,
   listDiscrepancies,
+  listInvoices,
+  listPurchaseOrders,
   type DiscrepancyFlag,
   type DiscrepancyFlagCounts,
   type DiscrepancyFlagStatus,
@@ -38,44 +38,27 @@ import { WorkspaceNav, workspacePrimaryTabItems } from '@/components/workspace-n
 import { MobileTabBar } from '@/components/mobile-tab-bar'
 import { WorkspaceBrandLink } from '@/components/workspace-brand-link'
 import { DiscrepancyReviewModal } from '@/components/procurement/discrepancy-review-modal'
+import { ScopeChip } from '@/components/procurement/scope-chip'
+import { flagTypeLabel, flagTypeTone, type FlagTone, formatDelta } from '@/components/procurement/flag-type'
 
 type Workspace = { id: string; name: string }
-type WorkspaceMembership = { id: string; role: 'owner' | 'admin' | 'member' }
+type WorkspaceRole = 'owner' | 'admin' | 'member'
+type WorkspaceMembership = { id: string; role: WorkspaceRole }
 type StatusFilterValue = '' | DiscrepancyFlagStatus
 
-// Both maps are exhaustive `Record`s on purpose: under the web app's strict
-// TypeScript they are the only place in the repo that fails to compile when the
-// API learns a new flag type. An unlisted type would otherwise render a blank
-// badge — no crash, no warning, just a discrepancy nobody can read.
-const flagTypeVariant: Record<DiscrepancyFlagType, 'warning' | 'destructive' | 'secondary'> = {
-  quantity_mismatch: 'warning',
-  price_mismatch: 'destructive',
-  missing_on_invoice: 'secondary',
-  missing_on_po: 'secondary',
-  // Being billed for goods nobody kept is the one to act on first.
-  invoice_exceeds_received: 'destructive',
-  short_receipt: 'warning',
-  // Neither of these is an accusation — they say the documents are not
-  // comparable yet, which is a question for a human, not a dispute.
-  uom_mismatch: 'secondary',
-  currency_mismatch: 'secondary',
-  // Ordering off contract is a finding about us, not about the vendor, so it
-  // never renders as `destructive` however large the gap.
-  contract_price_variance: 'warning',
-  contract_price_unavailable: 'secondary',
-}
+const roleLabel: Record<WorkspaceRole, string> = { owner: 'Owner', admin: 'Admin', member: 'Member' }
 
-const flagTypeLabel: Record<DiscrepancyFlagType, string> = {
-  quantity_mismatch: 'Quantity mismatch',
-  price_mismatch: 'Price mismatch',
-  missing_on_invoice: 'Missing on invoice',
-  missing_on_po: 'Missing on PO',
-  short_receipt: 'Short receipt',
-  invoice_exceeds_received: 'Billed above received',
-  uom_mismatch: 'Unit mismatch',
-  currency_mismatch: 'Currency mismatch',
-  contract_price_variance: 'Off contract price',
-  contract_price_unavailable: 'Contract price unclear',
+// `all` stands in for the empty filter: a segmented option needs a value.
+const STATUS_OPTIONS = [
+  { value: 'all', label: 'All' },
+  { value: 'open', label: 'Open' },
+  { value: 'dismissed', label: 'Dismissed' },
+]
+
+const deltaInk: Record<FlagTone, string> = {
+  red: 'text-destructive-strong-text',
+  amber: 'text-flag-text',
+  neutral: 'text-[oklch(0.6_0.02_264)]',
 }
 
 const RECEIVING_TYPES: DiscrepancyFlagType[] = ['short_receipt', 'invoice_exceeds_received']
@@ -88,7 +71,7 @@ const NEEDS_REVIEW_TYPES: DiscrepancyFlagType[] = [
   'contract_price_unavailable',
 ]
 
-// What the cards read before the first response lands.
+// What the stat strip reads before the first response lands.
 const EMPTY_COUNTS: DiscrepancyFlagCounts = {
   quantity_mismatch: 0,
   price_mismatch: 0,
@@ -141,10 +124,43 @@ export default function DiscrepanciesPage({ params }: { params: { id: string } }
   const canManage = membership?.role === 'owner' || membership?.role === 'admin'
   const purchaseOrderIdFilter = searchParams.get('purchaseOrderId') ?? undefined
   const invoiceIdFilter = searchParams.get('invoiceId') ?? undefined
+  // Frame 2.7 (amber, C-3 #1): the pair scope Run comparison applies was
+  // silent. The chip names it by document number (file name when a legacy
+  // document has none), and by the raw id while the lookup is in flight, when
+  // a document is not found, or when the lookup fails.
+  const [pairNames, setPairNames] = React.useState<{ po: string | null; invoice: string | null } | null>(null)
+  const pairLabel =
+    purchaseOrderIdFilter && invoiceIdFilter
+      ? `${pairNames?.po ?? purchaseOrderIdFilter} ↔ ${pairNames?.invoice ?? invoiceIdFilter}`
+      : null
 
   React.useEffect(() => {
     toastRef.current = toast
   }, [toast])
+
+  // Only runs when both params are set. Two existing GETs, no API change; a
+  // failure here is silent for the chip and never touches the list.
+  React.useEffect(() => {
+    setPairNames(null)
+    if (!purchaseOrderIdFilter || !invoiceIdFilter) return
+    let cancelled = false
+    Promise.all([listPurchaseOrders(workspaceId), listInvoices(workspaceId)])
+      .then(([pos, invs]) => {
+        if (cancelled) return
+        const po = (Array.isArray(pos) ? pos : []).find((doc) => doc.id === purchaseOrderIdFilter)
+        const invoice = (Array.isArray(invs) ? invs : []).find((doc) => doc.id === invoiceIdFilter)
+        setPairNames({
+          po: po ? (po.poNumber ?? po.name) : null,
+          invoice: invoice ? (invoice.invoiceNumber ?? invoice.name) : null,
+        })
+      })
+      .catch(() => {
+        // Ids stay on the chip.
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [invoiceIdFilter, purchaseOrderIdFilter, workspaceId])
 
   const extractErrorMessage = (err: unknown, fallback: string) =>
     err && typeof err === 'object' && 'message' in err ? String((err as { message: unknown }).message) : fallback
@@ -239,6 +255,44 @@ export default function DiscrepanciesPage({ params }: { params: { id: string } }
     setPage(1)
   }, [])
 
+  // × on the pair chip: back to the workspace-wide list. `replace`, not
+  // `push` — the scoped view is not a step worth returning to with Back.
+  const clearPairFilter = React.useCallback(() => {
+    const next = new URLSearchParams(searchParams.toString())
+    next.delete('purchaseOrderId')
+    next.delete('invoiceId')
+    const query = next.toString()
+    setPage(1)
+    router.replace(`/workspaces/${workspaceId}/discrepancies${query ? `?${query}` : ''}`)
+  }, [router, searchParams, workspaceId])
+
+  // C10: a value takes its tone only when it is above zero (the primitive
+  // applies that rule), so an all-clear strip reads in ink.
+  const statItems = [
+    { label: 'Quantity mismatches', value: counts.quantity_mismatch, tone: 'amber' as const },
+    { label: 'Price mismatches', value: counts.price_mismatch, tone: 'red' as const },
+    { label: 'Receiving exceptions', value: sumOf(counts, RECEIVING_TYPES), tone: 'amber' as const },
+    { label: 'Missing on invoice', value: counts.missing_on_invoice },
+    { label: 'Missing on PO', value: counts.missing_on_po },
+    { label: 'Needs review', value: sumOf(counts, NEEDS_REVIEW_TYPES) },
+  ]
+
+  const pagination =
+    meta.total > 0 ? (
+      <Pagination
+        page={meta.page}
+        pageSize={meta.pageSize}
+        total={meta.total}
+        totalPages={meta.totalPages}
+        onPageChange={setPage}
+        onPageSizeChange={(size) => {
+          setPageSize(size)
+          setPage(1)
+        }}
+        isLoading={isLoading}
+      />
+    ) : null
+
   return (
     <AppShell
       sidebarHeader={({ collapsed }) => <WorkspaceBrandLink name={workspace?.name} collapsed={collapsed} />}
@@ -246,136 +300,138 @@ export default function DiscrepanciesPage({ params }: { params: { id: string } }
       mobileTabBar={({ moreActive, onMoreClick }) => (
         <MobileTabBar items={workspacePrimaryTabItems(workspaceId)} moreActive={moreActive} onMoreClick={onMoreClick} />
       )}
+      breadcrumb={workspace ? `${workspace.name} / Matching` : 'Matching'}
+      mobileBreadcrumb={workspace ? workspace.name : undefined}
       title="Discrepancies"
       description="Line items where a purchase order and invoice don't match."
-      badge={membership ? <Badge variant={membership.role === 'member' ? 'secondary' : 'success'}>{membership.role}</Badge> : null}
+      badge={
+        membership ? (
+          <Badge variant={membership.role === 'member' ? 'neutral' : 'teal'}>{roleLabel[membership.role]}</Badge>
+        ) : null
+      }
       onLogout={handleLogout}
     >
-      <div className="mx-auto w-full max-w-6xl space-y-8 px-6 py-10">
+      {/* AppShell <main> owns the frame padding (Part 2 addendum); this is
+          only the content column. */}
+      <div className="flex flex-col gap-[14px] lg:gap-6">
         {isLoading ? (
-          <Card variant="elevated" className="space-y-4 p-6">
-            <Skeleton className="h-12 w-full" />
-            <Skeleton className="h-12 w-full" />
-          </Card>
+          <div aria-busy="true" className="overflow-hidden rounded-[18px] border border-border-panel bg-card">
+            <SkeletonRows rows={5} columns={4} />
+          </div>
         ) : accessDenied ? (
           <WorkspaceAccessDenied />
         ) : (
           <>
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              <StatCard label="Quantity mismatches" value={counts.quantity_mismatch} icon={<Hash className="size-5" />} />
-              <StatCard label="Price mismatches" value={counts.price_mismatch} icon={<DollarSign className="size-5" />} />
-              <StatCard
-                label="Receiving exceptions"
-                value={sumOf(counts, RECEIVING_TYPES)}
-                icon={<Truck className="size-5" />}
-              />
-              <StatCard label="Missing on invoice" value={counts.missing_on_invoice} icon={<FileX className="size-5" />} />
-              <StatCard label="Missing on PO" value={counts.missing_on_po} icon={<PackageX className="size-5" />} />
-              <StatCard
-                label="Needs review"
-                value={sumOf(counts, NEEDS_REVIEW_TYPES)}
-                icon={<HelpCircle className="size-5" />}
-              />
+            <StatStrip items={statItems} />
+
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex w-full min-w-0 flex-wrap items-center gap-3 lg:w-auto">
+                <SegmentedControl
+                  aria-label="Filter by status"
+                  size="md"
+                  fullWidth
+                  options={STATUS_OPTIONS}
+                  value={statusFilter || 'all'}
+                  onValueChange={(value) =>
+                    applyStatusFilter(value === 'open' || value === 'dismissed' ? value : '')
+                  }
+                />
+                {pairLabel ? (
+                  <ScopeChip label={pairLabel} clearLabel="Clear pair filter" onClear={clearPairFilter} />
+                ) : null}
+              </div>
+              {meta.total > 0 ? (
+                <span className="hidden font-mono text-[12px] text-ink-muted lg:inline">
+                  {`${meta.total} flag${meta.total === 1 ? '' : 's'} · ${flags.length} shown`}
+                </span>
+              ) : null}
             </div>
 
-            <Card variant="elevated" className="p-6">
-              <div className="flex flex-wrap items-center gap-3">
-                <Select
-                  aria-label="Filter by status"
-                  className="sm:w-40"
-                  value={statusFilter}
-                  onChange={(event) => applyStatusFilter(event.target.value as StatusFilterValue)}
-                >
-                  <option value="">All</option>
-                  <option value="open">Open</option>
-                  <option value="dismissed">Dismissed</option>
-                </Select>
-              </div>
-            </Card>
-
             {flags.length === 0 ? (
-              <EmptyState
-                icon={<CheckCircle2 className="size-5" />}
-                title="No discrepancies"
-                description="Every checked line item matches."
-              />
+              <>
+                <EmptyState
+                  label="All clear"
+                  labelTone="teal"
+                  title="No discrepancies"
+                  description="Every checked line item matches."
+                />
+                {pagination}
+              </>
             ) : (
-              <Table>
+              <Table className="min-w-[950px] table-fixed" footer={pagination ?? undefined}>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>SKU</TableHead>
-                    <TableHead>Type</TableHead>
-                    <TableHead>PO value</TableHead>
+                    <TableHead className="w-[100px] pl-5">SKU</TableHead>
+                    <TableHead className="w-[172px]">Type</TableHead>
+                    <TableHead className="w-[64px] text-right">PO</TableHead>
                     {/* Ordered, received, billed — read left to right, which is
                         the order the documents arrive in. Empty on every
                         two-way flag, which is honest: nothing was received
                         because no receipt was compared. */}
-                    <TableHead>Received</TableHead>
-                    <TableHead>Invoice value</TableHead>
-                    <TableHead>Delta</TableHead>
+                    <TableHead className="w-[72px] text-right">Received</TableHead>
+                    <TableHead className="w-[72px] text-right">Invoice</TableHead>
+                    <TableHead className="w-[62px] text-right">Delta</TableHead>
                     <TableHead>Reason</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
+                    <TableHead className="w-[222px] pr-5 text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {flags.map((flag) => (
-                    <TableRow key={flag.id}>
-                      <TableCell className="font-medium">{flag.sku ?? '—'}</TableCell>
-                      <TableCell>
-                        <Badge variant={flagTypeVariant[flag.flagType]}>{flagTypeLabel[flag.flagType]}</Badge>
-                      </TableCell>
-                      <TableCell>{flag.poValue ?? '—'}</TableCell>
-                      <TableCell>{flag.receivedValue ?? '—'}</TableCell>
-                      <TableCell>{flag.invoiceValue ?? '—'}</TableCell>
-                      <TableCell>{flag.delta ?? '—'}</TableCell>
-                      <TableCell className="max-w-xs truncate" title={flag.reason}>
-                        {flag.reason}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex justify-end gap-2">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            aria-label={`Review discrepancy ${flag.sku ?? flag.id}`}
-                            onClick={() => setReviewing(flag)}
-                          >
-                            Review
-                          </Button>
-                          <Button asChild variant="ghost" size="sm">
-                            <Link href={catalogMatchesHref(workspaceId, flag)}>Find catalog matches</Link>
-                          </Button>
-                          {canManage && flag.status === 'open' ? (
+                  {flags.map((flag) => {
+                    const tone = flagTypeTone[flag.flagType]
+                    return (
+                      <TableRow key={flag.id} tone={tone} muted={flag.status === 'dismissed'}>
+                        <TableCell className="truncate pl-5 font-mono text-[13px]">{flag.sku ?? '—'}</TableCell>
+                        <TableCell>
+                          <Badge variant={tone}>{flagTypeLabel[flag.flagType]}</Badge>
+                        </TableCell>
+                        <TableCell numeric>{flag.poValue ?? '—'}</TableCell>
+                        <TableCell numeric className="text-ink-body">
+                          {flag.receivedValue ?? '—'}
+                        </TableCell>
+                        <TableCell numeric>{flag.invoiceValue ?? '—'}</TableCell>
+                        <TableCell numeric className={deltaInk[tone]}>
+                          {flag.delta === null ? '—' : formatDelta(flag.delta)}
+                        </TableCell>
+                        <TableCell className="truncate text-[13px] text-ink-body" title={flag.reason}>
+                          {flag.reason}
+                        </TableCell>
+                        <TableCell className="py-[6px] pl-0 pr-4">
+                          <div className="flex justify-end gap-1">
                             <Button
-                              variant="ghost"
-                              size="sm"
-                              aria-label={`Dismiss discrepancy ${flag.sku ?? flag.id}`}
-                              onClick={() => void handleDismiss(flag)}
+                              variant="outline"
+                              size="xs"
+                              aria-label={`Review discrepancy ${flag.sku ?? flag.id}`}
+                              onClick={() => setReviewing(flag)}
                             >
-                              Dismiss
+                              Review
                             </Button>
-                          ) : null}
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                            {/* "Find catalog matches" shortens to "Matches" on
+                                screen (frame 2.7); the accessible name keeps
+                                the full phrase. */}
+                            <Button asChild variant="ghost" size="xs" className="px-[10px]">
+                              <Link href={catalogMatchesHref(workspaceId, flag)} aria-label="Find catalog matches">
+                                Matches
+                              </Link>
+                            </Button>
+                            {canManage && flag.status === 'open' ? (
+                              <Button
+                                variant="ghost"
+                                size="xs"
+                                className="px-[10px]"
+                                aria-label={`Dismiss discrepancy ${flag.sku ?? flag.id}`}
+                                onClick={() => void handleDismiss(flag)}
+                              >
+                                Dismiss
+                              </Button>
+                            ) : null}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })}
                 </TableBody>
               </Table>
             )}
-
-            {meta.total > 0 ? (
-              <Pagination
-                page={meta.page}
-                pageSize={meta.pageSize}
-                total={meta.total}
-                totalPages={meta.totalPages}
-                onPageChange={setPage}
-                onPageSizeChange={(size) => {
-                  setPageSize(size)
-                  setPage(1)
-                }}
-                isLoading={isLoading}
-              />
-            ) : null}
           </>
         )}
       </div>

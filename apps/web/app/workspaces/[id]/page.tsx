@@ -9,14 +9,13 @@
 import * as React from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { AppShell, Badge, Button, Card, EmptyState, PageSection, useToast } from '@repo/ui'
-// [support-surfaces-off] was: import { CircleAlert, Database, FileText, Globe, MessageSquareText, Scale, Settings, Ticket, Users } from 'lucide-react'
-import { CircleAlert, FileText, Globe, Scale, Settings, Ticket, Users } from 'lucide-react'
+import { AppShell, Badge, Button, EmptyState, Eyebrow, HistoryRow, PageSection, useToast } from '@repo/ui'
 import { logout } from '@/lib/api/auth'
-import { listEvents, markEventsSeen } from '@/lib/api/events'
+import { getUnreadCount, listEvents, markEventsSeen } from '@/lib/api/events'
 import { isForbidden, isUnauthorized } from '@/lib/api/handle-unauthorized'
 import { WorkspaceAccessDenied } from '@/components/workspace-access-denied'
 import { getWorkspace, listWorkspaces } from '@/lib/api/workspaces'
+import { formatDateTime } from '@/lib/format-date'
 import { WorkspaceNav, workspacePrimaryTabItems } from '@/components/workspace-nav'
 import { MobileTabBar } from '@/components/mobile-tab-bar'
 import { WorkspaceBrandLink } from '@/components/workspace-brand-link'
@@ -35,7 +34,8 @@ type WorkspaceEvent = {
   id: string
   // Hand-duplicated from `workspace_event_type` — the API's shape does not
   // reach this file as a type. It must be widened in the same change as the
-  // enum, or a new event renders with the fallback icon below.
+  // enum; `eventTone` below is keyed by this union, so a missing tone is a
+  // compile error rather than a silently neutral row.
   type:
     | 'document_ingested'
     | 'document_failed'
@@ -55,39 +55,65 @@ type EventListResponse = {
   nextCursor: string | null
 }
 
+type UnreadCountResponse = {
+  count: number
+}
+
+type HistoryTone = React.ComponentProps<typeof HistoryRow>['tone']
+
+// Storyboard C19: *_failed red, comparison_flagged amber, ingested/completed
+// teal, extracted neutral.
+const eventTone: Record<WorkspaceEvent['type'], HistoryTone> = {
+  document_ingested: 'teal',
+  document_failed: 'red',
+  scrape_completed: 'teal',
+  scrape_failed: 'red',
+  ticket_extracted: 'neutral',
+  ticket_failed: 'red',
+  comparison_flagged: 'amber',
+  comparison_failed: 'red',
+}
+
+// An event type the API adds before this file is widened still renders, in
+// the neutral tone.
+function toneFor(type: string): HistoryTone {
+  return (eventTone as Record<string, HistoryTone | undefined>)[type] ?? 'neutral'
+}
+
+const roleLabel: Record<WorkspaceMembership['role'], string> = {
+  owner: 'Owner',
+  admin: 'Admin',
+  member: 'Member',
+}
+
 const quickLinks = (workspaceId: string) => [
   // [support-surfaces-off] Knowledge Bases quick link:
   // {
   //   label: 'Knowledge Bases',
   //   href: `/workspaces/${workspaceId}/knowledge-bases`,
   //   description: 'Manage the sources your assistant retrieves from.',
-  //   icon: <Database className="size-5" />,
   // },
   {
     label: 'Members',
     href: `/workspaces/${workspaceId}/members`,
     description: 'Invite teammates and manage roster access.',
-    icon: <Users className="size-5" />,
   },
   // [support-surfaces-off] Chat quick link:
   // {
   //   label: 'Chat',
   //   href: `/workspaces/${workspaceId}/chat`,
   //   description: 'Ask grounded questions against this workspace.',
-  //   icon: <MessageSquareText className="size-5" />,
   // },
   // [support-surfaces-off] Tickets quick link:
   // {
   //   label: 'Tickets',
   //   href: `/workspaces/${workspaceId}/tickets`,
   //   description: 'Draft and review tickets from support calls.',
-  //   icon: <Ticket className="size-5" />,
   // },
   {
     label: 'Settings',
     href: `/workspaces/${workspaceId}/settings`,
     description: 'Workspace-level configuration.',
-    icon: <Settings className="size-5" />,
   },
 ]
 
@@ -101,6 +127,7 @@ export default function WorkspaceOverviewPage({ params }: { params: { id: string
   const [events, setEvents] = React.useState<WorkspaceEvent[]>([])
   const [eventsNextCursor, setEventsNextCursor] = React.useState<string | null>(null)
   const [isLoadingMoreEvents, setIsLoadingMoreEvents] = React.useState(false)
+  const [unseenCount, setUnseenCount] = React.useState(0)
   const hasMarkedSeenRef = React.useRef(false)
   // B18. Set when the first load answers 403; the page then shows only the
   // no-access state instead of empty content.
@@ -112,16 +139,22 @@ export default function WorkspaceOverviewPage({ params }: { params: { id: string
 
   const loadPage = React.useCallback(async () => {
     try {
-      const [workspaceData, memberships, eventData] = await Promise.all([
+      const [workspaceData, memberships, eventData, unread] = await Promise.all([
         getWorkspace(workspaceId),
         listWorkspaces(),
         listEvents(workspaceId) as Promise<EventListResponse>,
+        // Read here, before markEventsSeen below moves the server's marker, so
+        // "N new since your last visit" and the tinted rows describe this
+        // visit. WorkspaceNav's own read races markEventsSeen; this one cannot.
+        // A failed read costs only the hint, never the page.
+        (getUnreadCount(workspaceId) as Promise<UnreadCountResponse>).catch(() => null),
       ])
       setWorkspace(workspaceData)
       const membershipItems = Array.isArray(memberships?.items) ? memberships.items : []
       setMembership(membershipItems.find((entry: WorkspaceMembership) => entry.id === workspaceId) ?? null)
       setEvents(Array.isArray(eventData?.items) ? eventData.items : [])
       setEventsNextCursor(eventData?.nextCursor ?? null)
+      setUnseenCount(typeof unread?.count === 'number' ? unread.count : 0)
 
       if (!hasMarkedSeenRef.current) {
         hasMarkedSeenRef.current = true
@@ -173,25 +206,6 @@ export default function WorkspaceOverviewPage({ params }: { params: { id: string
     }
   }, [eventsNextCursor, router, workspaceId])
 
-  const eventIcon = React.useCallback((type: WorkspaceEvent['type']) => {
-    switch (type) {
-      case 'document_ingested':
-      case 'document_failed':
-        return <FileText className="size-5" />
-      case 'scrape_completed':
-      case 'scrape_failed':
-        return <Globe className="size-5" />
-      case 'ticket_extracted':
-      case 'ticket_failed':
-        return <Ticket className="size-5" />
-      case 'comparison_flagged':
-      case 'comparison_failed':
-        return <Scale className="size-5" />
-      default:
-        return <CircleAlert className="size-5" />
-    }
-  }, [])
-
   const handleLogout = React.useCallback(async () => {
     try {
       await logout()
@@ -209,73 +223,91 @@ export default function WorkspaceOverviewPage({ params }: { params: { id: string
       mobileTabBar={({ moreActive, onMoreClick }) => (
         <MobileTabBar items={workspacePrimaryTabItems(workspaceId)} moreActive={moreActive} onMoreClick={onMoreClick} />
       )}
+      breadcrumb="Workspace / Overview"
       title={workspace?.name ?? 'Workspace'}
-      badge={membership ? <Badge variant={membership.role === 'member' ? 'secondary' : 'success'}>{membership.role}</Badge> : null}
+      badge={membership ? <Badge variant={membership.role === 'member' ? 'neutral' : 'teal'}>{roleLabel[membership.role]}</Badge> : null}
       onLogout={handleLogout}
     >
-      <div className="mx-auto w-full max-w-5xl space-y-8 px-6 py-10">
+      <div className="flex flex-col gap-10">
         {accessDenied ? (
           <WorkspaceAccessDenied />
         ) : (
           <>
-          <PageSection eyebrow={<Badge variant="outline">Workspace</Badge>} title="Where to next" description="Jump into any area of this workspace.">
-            <div className="grid gap-4 md:grid-cols-2">
-              {quickLinks(workspaceId).map((link) => (
-                <Link key={link.href} href={link.href}>
-                  <Card variant="elevated" className="flex items-start gap-4 p-6 transition-colors hover:bg-card/80">
-                    <span className="shrink-0 text-accent-foreground">{link.icon}</span>
+            <PageSection eyebrow={<Eyebrow>Workspace</Eyebrow>} title="Where to next" description="Jump into any area of this workspace.">
+              <div className="grid gap-4 md:grid-cols-2">
+                {quickLinks(workspaceId).map((link) => (
+                  <Link
+                    key={link.href}
+                    href={link.href}
+                    className="flex items-end justify-between gap-4 rounded-[16px] border border-border-panel bg-card p-[22px] text-foreground transition-colors duration-200 hover:border-primary-strong/50"
+                  >
                     <div>
-                      <h3 className="text-lg font-semibold">{link.label}</h3>
-                      <p className="mt-1 text-sm text-muted-foreground">{link.description}</p>
+                      <h3 className="text-[17px]">{link.label}</h3>
+                      <p className="mt-1.5 text-[14px] leading-[1.6] text-[oklch(0.48_0.02_264)]">{link.description}</p>
                     </div>
-                  </Card>
-                </Link>
-              ))}
-            </div>
-          </PageSection>
-
-          <PageSection eyebrow={<Badge variant="outline">Activity</Badge>} title="Activity" description="What this workspace has done on its own — imports, crawls, extractions and comparisons.">
-            {events.length === 0 ? (
-              <EmptyState
-                icon={<CircleAlert className="size-5" />}
-                title="No activity yet"
-                description="Work this workspace does on its own will show up here."
-              />
-            ) : (
-              <div className="space-y-4">
-                <div className="space-y-3">
-                  {events.map((event) => (
-                    <Card key={event.id} variant="elevated" className="flex items-start gap-4 p-5">
-                      <span className="shrink-0 text-secondary-foreground">{eventIcon(event.type)}</span>
-                      <div className="min-w-0 flex-1 space-y-1">
-                        <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
-                          <h3 className="font-medium">{event.title}</h3>
-                          <span className="text-sm text-muted-foreground">
-                            {new Date(event.createdAt).toLocaleString()}
-                          </span>
-                        </div>
-                        {event.detail ? <p className="text-sm text-muted-foreground">{event.detail}</p> : null}
-                      </div>
-                    </Card>
-                  ))}
-                </div>
-
-                {eventsNextCursor ? (
-                  <div className="flex justify-center">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => void loadMoreEvents()}
-                      isLoading={isLoadingMoreEvents}
-                      loadingText="Loading"
-                    >
-                      {!isLoadingMoreEvents ? 'Load more' : null}
-                    </Button>
-                  </div>
-                ) : null}
+                    <span aria-hidden="true" className="text-primary-strong">
+                      →
+                    </span>
+                  </Link>
+                ))}
               </div>
-            )}
-          </PageSection>
+            </PageSection>
+
+            <PageSection
+              eyebrow={<Eyebrow>Activity</Eyebrow>}
+              title="Activity"
+              description="What this workspace has done on its own — imports, crawls, extractions and comparisons."
+              descriptionClassName="max-w-[60ch]"
+              actions={
+                unseenCount > 0 ? (
+                  <span className="font-mono text-[11px] text-primary-strong-hover">{`${unseenCount} new since your last visit`}</span>
+                ) : undefined
+              }
+            >
+              {events.length === 0 ? (
+                <EmptyState
+                  label="Quiet so far"
+                  labelTone="teal"
+                  title="No activity yet"
+                  description="Work this workspace does on its own will show up here."
+                />
+              ) : (
+                <div className="overflow-hidden rounded-[18px] border border-border-panel bg-card">
+                  <ol className="flex flex-col gap-1.5 p-4">
+                    {events.map((event, index) => (
+                      <li key={event.id}>
+                        {/* Events arrive newest first and the unread count is every
+                            event newer than the last visit, so the first
+                            `unseenCount` rows are exactly the unseen ones. */}
+                        <HistoryRow
+                          eventKey={event.type}
+                          title={event.title}
+                          detail={event.detail ?? undefined}
+                          timestamp={formatDateTime(event.createdAt)}
+                          tone={toneFor(event.type)}
+                          unseen={index < unseenCount}
+                        />
+                      </li>
+                    ))}
+                  </ol>
+
+                  {eventsNextCursor ? (
+                    <div className="border-t border-border-inner bg-surface-subtle px-5 py-3.5">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => void loadMoreEvents()}
+                        isLoading={isLoadingMoreEvents}
+                        loadingText="Loading"
+                      >
+                        {!isLoadingMoreEvents ? 'Load more' : null}
+                      </Button>
+                    </div>
+                  ) : null}
+                </div>
+              )}
+            </PageSection>
           </>
         )}
       </div>
