@@ -12,6 +12,7 @@ Owner instruction 2026-10-02: continue through the bug list without waiting; pul
   - Spreadsheet path: applied right after mapping, before photo fetching.
   - PDF path: applied per page before numbering.
   - Kept rows are numbered 1..n.
+  - A SKU longer than `MAX_SKU_LENGTH` counts as no SKU here, because `replaceItems` stores it as null (B5). A row with nothing else is dropped too (review follow-up, its own RED).
 - **Not changed:** a catalog whose rows are all blank still finishes `done` with 0 items. Procurement fails such a file since B2; making catalogs do the same is an owner decision.
 - **Tests first (RED `3f1d3ee`):**
   - Unit `blank rows (B4)` (4).
