@@ -602,3 +602,21 @@ And one rule the owner made standing: every change now ships with its tests for 
 **Actual:** confirmed — 7 page cases red then green, web 698/698, browser 50 passed. Five pages reuse their loader for filters and paging, so a 403 there also shows the state, which is right for someone who lost access mid-session.
 
 **Why different:** not different. **A shared component plus a one-line branch is what makes "the rest of the pages" a cheap follow-up instead of a backlog item; build the reusable piece in the first fix.**
+
+## 2026-10-03 — Two flakes, two root causes, no retries
+*Learning Contract: the plan's design is the prediction; the diff is below. No live prediction solicited.*
+
+**Predicted (from the approved plan):** each intermittent failure has a specific cause that a fix can remove, not mask.
+
+**Actual:** confirmed — supertest's listen/close cycle plus Node 19+ keep-alive reused stale sockets on a recycled port; and a global sweeper in a parallel worker acted on another spec's fixture. API e2e 107/107 five times, unit 831/831 three times after the fixes.
+
+**Why different:** not different. **A flake is a bug in the harness or the test's assumptions. Read the library's lifecycle code (here, supertest's `serverAddress`/`end`) before touching timeouts or retries, and never assert another process's legitimate work away.**
+
+## 2026-10-03 — A data backfill tested against the code rule it mirrors
+*Learning Contract: the plan's design is the prediction; the diff is below. No live prediction solicited.*
+
+**Predicted (from the approved plan):** a SQL migration can apply exactly the `decodeUploadFilename` rule to rows stored before B8.
+
+**Actual:** confirmed — the parity spec runs the migration file and compares it name for name with the TypeScript helper; adding an emoji name proved the SQL needs a code-point test (`[^\u0001-\u00ff]`) where JS uses a UTF-16 range.
+
+**Why different:** **When SQL must reproduce application logic, test the SQL file itself against the application function on the same inputs, not against hand-written expectations.**
