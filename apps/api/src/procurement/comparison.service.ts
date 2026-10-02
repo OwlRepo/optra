@@ -393,6 +393,18 @@ function decimalDifference(a: number, b: number): string {
   return `${sign}${whole}${fraction ? `.${fraction}` : ''}`
 }
 
+const REASON_NAME_MAX = 80
+
+// How a reason names a line: its SKU, else its description in quotes.
+function lineName(line?: { sku: string | null; description: string | null }): string | null {
+  const sku = line?.sku?.trim()
+  if (sku) return line!.sku
+  const description = line?.description?.trim()
+  if (!description) return null
+  const shown = description.length > REASON_NAME_MAX ? `${description.slice(0, REASON_NAME_MAX - 1)}…` : description
+  return `"${shown}"`
+}
+
 @Injectable()
 export class ComparisonService {
   private readonly logger = new Logger(ComparisonService.name)
@@ -1183,7 +1195,7 @@ export class ComparisonService {
                 : isInvoiceExceedsReceived
                   ? this.diff(row.inv_qty, row.grn_accepted_qty)
                   : null,
-      reason: this.buildReason(row, poLine, invoiceLine),
+      reason: this.buildReason(row, poLine, invoiceLine, goodsReceiptLine),
     }
   }
 
@@ -1420,8 +1432,16 @@ export class ComparisonService {
     return value === null ? null : String(value)
   }
 
-  private buildReason(row: ComparisonRow, poLine?: PoLineItem, invoiceLine?: InvoiceLineItem): string {
-    const sku = poLine?.sku ?? invoiceLine?.sku ?? '(unknown)'
+  private buildReason(
+    row: ComparisonRow,
+    poLine?: PoLineItem,
+    invoiceLine?: InvoiceLineItem,
+    goodsReceiptLine?: GoodsReceiptLineItem,
+  ): string {
+    // B10. A line is named the way it was matched: by SKU, or by its quoted
+    // description when it has none (description-keyed lines, freight). A long
+    // description is shortened so the reason stays one readable line.
+    const sku = lineName(poLine) ?? lineName(invoiceLine) ?? '(unknown)'
     const summed = this.summedNote(row)
 
     switch (row.flag_type) {
@@ -1453,10 +1473,12 @@ export class ComparisonService {
         if (selfContradicting.length > 0) {
           return `Unit of measure mismatch for ${sku}: ${selfContradicting.join(' and ')} lists more than one unit for this item, so its quantities cannot be added together`
         }
+        // B11. The units as the documents wrote them, the same text the flag's
+        // values carry; the engine compared normalized copies (normalizeUom).
         const stated = [
-          row.po_uom ? `PO=${row.po_uom}` : null,
-          row.grn_uom ? `Received=${row.grn_uom}` : null,
-          row.inv_uom ? `Invoice=${row.inv_uom}` : null,
+          row.po_uom ? `PO=${poLine?.uom?.trim() || row.po_uom}` : null,
+          row.grn_uom ? `Received=${goodsReceiptLine?.uom?.trim() || row.grn_uom}` : null,
+          row.inv_uom ? `Invoice=${invoiceLine?.uom?.trim() || row.inv_uom}` : null,
         ].filter(Boolean)
         return `Unit of measure mismatch for ${sku}: ${stated.join(' ')}. Units are captured, never converted, so no quantity difference is reported${summed}`
       }
