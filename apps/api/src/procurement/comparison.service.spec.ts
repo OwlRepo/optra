@@ -2388,4 +2388,309 @@ describe('ComparisonService', () => {
       expect(item.receiptLine).toBeNull()
     })
   })
+
+  // Launch hardening. Shapes real accounts-payable documents take, each pinned
+  // to the outcome the engine produces today (COMPARISON_SQL, toFlagValues,
+  // diff()) rather than to what a reader might expect.
+  describe('real-world AP scenarios (launch hardening)', () => {
+    it('error: refuses a purchase order with no parsed lines even when the invoice has some, and records no run', async () => {
+      const { workspace } = await seedWorkspace(`${prefix}ap-empty-po@example.com`, 'AP Empty PO')
+      const { po, invoice } = await seedReadyPoAndInvoice(
+        workspace.id,
+        [],
+        [{ sku: 'A1', quantity: '10', unitPrice: '5.00' }],
+      )
+
+      const error = await service.compare(workspace.id, po.id, invoice.id).then(
+        () => null,
+        (caught: unknown) => caught as { status: number; message: string },
+      )
+
+      expect(error?.status).toBe(400)
+      expect(error?.message).toBe('Both documents must have parsed line items to compare')
+      const runs = await db.select().from(comparisonRuns).where(eq(comparisonRuns.purchaseOrderId, po.id))
+      expect(runs).toHaveLength(0)
+    })
+
+    it('edge: invoice lines in a different order from the purchase order raise no flag', async () => {
+      const { workspace } = await seedWorkspace(`${prefix}ap-reorder@example.com`, 'AP Reorder')
+      const { po, invoice } = await seedReadyPoAndInvoice(
+        workspace.id,
+        [
+          { sku: 'A1', quantity: '10', unitPrice: '5.00' },
+          { sku: 'B2', quantity: '3', unitPrice: '2.50' },
+          { sku: 'C3', quantity: '1', unitPrice: '99.99' },
+        ],
+        [
+          { sku: 'C3', quantity: '1', unitPrice: '99.99' },
+          { sku: 'A1', quantity: '10', unitPrice: '5.00' },
+          { sku: 'B2', quantity: '3', unitPrice: '2.50' },
+        ],
+      )
+
+      const result = await service.compare(workspace.id, po.id, invoice.id)
+
+      expect(result.flags).toHaveLength(0)
+    })
+
+    it('edge: a unit price written as 5.0000 on the order and 5.00 on the invoice is one price', async () => {
+      const { workspace } = await seedWorkspace(`${prefix}ap-scale@example.com`, 'AP Scale')
+      const { po, invoice } = await seedReadyPoAndInvoice(
+        workspace.id,
+        [{ sku: 'A1', quantity: '10', unitPrice: '5.0000' }],
+        [{ sku: 'A1', quantity: '10', unitPrice: '5.00' }],
+      )
+
+      const result = await service.compare(workspace.id, po.id, invoice.id)
+
+      expect(result.flags).toHaveLength(0)
+    })
+
+    it('edge: an invoice splitting 0.3 into 0.1 + 0.2 matches the order with no floating-point quantity flag', async () => {
+      const { workspace } = await seedWorkspace(`${prefix}ap-float@example.com`, 'AP Float')
+      const { po, invoice } = await seedReadyPoAndInvoice(
+        workspace.id,
+        [{ sku: 'A1', quantity: '0.3', unitPrice: '5.00' }],
+        [
+          { sku: 'A1', quantity: '0.1', unitPrice: '5.00' },
+          { sku: 'A1', quantity: '0.2', unitPrice: '5.00' },
+        ],
+      )
+
+      const result = await service.compare(workspace.id, po.id, invoice.id)
+
+      expect(result.flags).toHaveLength(0)
+    })
+
+    it('edge: a receipt accepting more than was ordered raises no flag when the invoice bills the order quantity', async () => {
+      const { workspace } = await seedWorkspace(`${prefix}ap-over-delivery@example.com`, 'AP Over Delivery')
+      const { po, invoice } = await seedReadyPoAndInvoice(
+        workspace.id,
+        [{ sku: 'A1', quantity: '10', unitPrice: '5.00' }],
+        [{ sku: 'A1', quantity: '10', unitPrice: '5.00' }],
+      )
+      await seedGoodsReceipt(workspace.id, po.id, [{ sku: 'A1', quantityAccepted: '12' }])
+
+      const result = await service.compare(workspace.id, po.id, invoice.id)
+
+      expect(result.flags).toHaveLength(0)
+      const [run] = await db.select().from(comparisonRuns).where(eq(comparisonRuns.id, result.runId))
+      expect(run.mode).toBe('three_way')
+      expect(run.goodsReceiptLineCount).toBe(1)
+    })
+
+    it('edge: a credit line on the invoice is netted into the billed quantity', async () => {
+      const { workspace } = await seedWorkspace(`${prefix}ap-credit@example.com`, 'AP Credit')
+      const { po, invoice } = await seedReadyPoAndInvoice(
+        workspace.id,
+        [{ sku: 'A1', quantity: '10', unitPrice: '5.00' }],
+        [
+          { sku: 'A1', quantity: '10', unitPrice: '5.00' },
+          { sku: 'A1', quantity: '-2', unitPrice: '5.00' },
+        ],
+      )
+
+      const result = await service.compare(workspace.id, po.id, invoice.id)
+
+      expect(result.flags).toHaveLength(1)
+      const flag = result.flags[0]
+      expect(flag.flagType).toBe('quantity_mismatch')
+      expect(flag.poValue).toBe('10')
+      expect(flag.invoiceValue).toBe('8')
+      expect(flag.delta).toBe('-2')
+      expect(flag.reason).toBe('Quantity mismatch for A1: PO=10 Invoice=8 (summed across 2 invoice lines)')
+    })
+
+    it('edge: a freight line with no SKU is flagged missing_on_po under its description key, with no SKU', async () => {
+      const { workspace } = await seedWorkspace(`${prefix}ap-freight@example.com`, 'AP Freight')
+      const { po, invoice } = await seedReadyPoAndInvoice(
+        workspace.id,
+        [{ sku: 'A1', quantity: '10', unitPrice: '5.00' }],
+        [
+          { sku: 'A1', quantity: '10', unitPrice: '5.00' },
+          { description: 'Freight', quantity: '1', unitPrice: '50.00' },
+        ],
+      )
+
+      const result = await service.compare(workspace.id, po.id, invoice.id)
+
+      expect(result.flags).toHaveLength(1)
+      const flag = result.flags[0]
+      expect(flag.flagType).toBe('missing_on_po')
+      expect(flag.sku).toBeNull()
+      expect(flag.poLineItemId).toBeNull()
+      expect(flag.invoiceLineItemId).not.toBeNull()
+      expect(flag.poValue).toBeNull()
+      expect(flag.invoiceValue).toBe('1')
+      expect(flag.delta).toBe('1')
+      expect(flag.poUnitPrice).toBeNull()
+      expect(flag.invoiceUnitPrice).toBe('50')
+    })
+
+    it('edge: a SKU with surrounding spaces and different case matches its order line', async () => {
+      const { workspace } = await seedWorkspace(`${prefix}ap-sku-trim@example.com`, 'AP Sku Trim')
+      const { po, invoice } = await seedReadyPoAndInvoice(
+        workspace.id,
+        [{ sku: ' a1 ', quantity: '10', unitPrice: '5.00' }],
+        [{ sku: 'A1', quantity: '10', unitPrice: '5.00' }],
+      )
+
+      const result = await service.compare(workspace.id, po.id, invoice.id)
+
+      expect(result.flags).toHaveLength(0)
+    })
+
+    it('edge: a leading-zero SKU and the same digits without zeros are two different items', async () => {
+      const { workspace } = await seedWorkspace(`${prefix}ap-sku-zeros@example.com`, 'AP Sku Zeros')
+      const { po, invoice } = await seedReadyPoAndInvoice(
+        workspace.id,
+        [{ sku: '00501', quantity: '10', unitPrice: '5.00' }],
+        [{ sku: '501', quantity: '10', unitPrice: '5.00' }],
+      )
+
+      const result = await service.compare(workspace.id, po.id, invoice.id)
+
+      expect(result.flags).toHaveLength(2)
+      const onlyOnPo = result.flags.find((flag) => flag.flagType === 'missing_on_invoice')!
+      expect(onlyOnPo.sku).toBe('00501')
+      expect(onlyOnPo.poValue).toBe('10')
+      expect(onlyOnPo.delta).toBe('-10')
+      const onlyOnInvoice = result.flags.find((flag) => flag.flagType === 'missing_on_po')!
+      expect(onlyOnInvoice.sku).toBe('501')
+      expect(onlyOnInvoice.invoiceValue).toBe('10')
+      expect(onlyOnInvoice.delta).toBe('10')
+    })
+
+    it('edge: description-only lines that differ by one character are two unmatched items', async () => {
+      const { workspace } = await seedWorkspace(`${prefix}ap-desc-near@example.com`, 'AP Desc Near')
+      const { po, invoice } = await seedReadyPoAndInvoice(
+        workspace.id,
+        [{ description: 'Bolt M8x20', quantity: '100', unitPrice: '0.12' }],
+        [{ description: 'Bolt M8x25', quantity: '100', unitPrice: '0.12' }],
+      )
+
+      const result = await service.compare(workspace.id, po.id, invoice.id)
+
+      expect(result.flags).toHaveLength(2)
+      const onlyOnPo = result.flags.find((flag) => flag.flagType === 'missing_on_invoice')!
+      expect(onlyOnPo.sku).toBeNull()
+      expect(onlyOnPo.poValue).toBe('100')
+      expect(onlyOnPo.delta).toBe('-100')
+      const onlyOnInvoice = result.flags.find((flag) => flag.flagType === 'missing_on_po')!
+      expect(onlyOnInvoice.sku).toBeNull()
+      expect(onlyOnInvoice.invoiceValue).toBe('100')
+      expect(onlyOnInvoice.delta).toBe('100')
+    })
+
+    it('edge: an item ordered at two prices and invoiced at one is a price flag with no delta', async () => {
+      const { workspace } = await seedWorkspace(`${prefix}ap-two-prices@example.com`, 'AP Two Prices')
+      const { po, invoice } = await seedReadyPoAndInvoice(
+        workspace.id,
+        [
+          { sku: 'A1', quantity: '4', unitPrice: '5.00' },
+          { sku: 'A1', quantity: '6', unitPrice: '6.00' },
+        ],
+        [{ sku: 'A1', quantity: '10', unitPrice: '5.00' }],
+      )
+
+      const result = await service.compare(workspace.id, po.id, invoice.id)
+
+      expect(result.flags).toHaveLength(1)
+      const flag = result.flags[0]
+      expect(flag.flagType).toBe('price_mismatch')
+      expect(flag.poValue).toBeNull()
+      expect(flag.invoiceValue).toBe('5')
+      expect(flag.poUnitPrice).toBeNull()
+      expect(flag.invoiceUnitPrice).toBe('5')
+      expect(flag.delta).toBeNull()
+      expect(flag.reason).toBe(
+        'Unit price mismatch for A1: multiple unit prices on the purchase order (5–6) (summed across 2 purchase order lines)',
+      )
+    })
+
+    it('edge: a second invoice billing the full order again is compared on its own and raises no flag', async () => {
+      const { workspace } = await seedWorkspace(`${prefix}ap-double-bill@example.com`, 'AP Double Bill')
+      const { po, invoice } = await seedReadyPoAndInvoice(
+        workspace.id,
+        [{ sku: 'A1', quantity: '10', unitPrice: '5.00' }],
+        [{ sku: 'A1', quantity: '10', unitPrice: '5.00' }],
+        true,
+      )
+      const [second] = await db
+        .insert(invoices)
+        .values({
+          workspaceId: workspace.id,
+          name: 'invoice-2.csv',
+          status: 'done',
+          rowCount: 1,
+          purchaseOrderId: po.id,
+        })
+        .returning()
+      await db.insert(invoiceLineItems).values({
+        workspaceId: workspace.id,
+        invoiceId: second.id,
+        lineNumber: 1,
+        sku: 'A1',
+        quantity: '10',
+        unitPrice: '5.00',
+      })
+
+      const first = await service.compare(workspace.id, po.id, invoice.id)
+      const again = await service.compare(workspace.id, po.id, second.id)
+
+      expect(first.flags).toHaveLength(0)
+      expect(again.flags).toHaveLength(0)
+      const runs = await db.select().from(comparisonRuns).where(eq(comparisonRuns.purchaseOrderId, po.id))
+      expect(runs).toHaveLength(2)
+      expect(runs.every((run) => run.status === 'succeeded' && run.flagCount === 0)).toBe(true)
+    })
+
+    it('happy: a three-way match across normalized SKUs, units, price scale, line order and split receipts raises nothing', async () => {
+      const { workspace } = await seedWorkspace(`${prefix}ap-happy@example.com`, 'AP Happy')
+      const { po, invoice } = await seedReadyPoAndInvoice(
+        workspace.id,
+        [
+          { sku: 'A1', quantity: '10', unitPrice: '5.0000', uom: 'EA' },
+          { sku: 'B2', quantity: '4', unitPrice: '12.50', uom: 'EA' },
+        ],
+        [
+          { sku: 'b2 ', quantity: '4', unitPrice: '12.5', uom: 'ea' },
+          { sku: ' A1', quantity: '10.000', unitPrice: '5.00', uom: ' ea ' },
+        ],
+        true,
+        { po: 'PHP', invoice: 'PHP' },
+      )
+      await seedGoodsReceipt(
+        workspace.id,
+        po.id,
+        [
+          { sku: 'A1', quantityAccepted: '6', uom: 'EA' },
+          { sku: 'B2', quantityAccepted: '4', uom: 'EA' },
+        ],
+        'GRN-1',
+      )
+      await seedGoodsReceipt(workspace.id, po.id, [{ sku: 'A1', quantityAccepted: '4', uom: 'ea' }], 'GRN-2')
+
+      const result = await service.compare(workspace.id, po.id, invoice.id)
+
+      expect(result.flags).toHaveLength(0)
+      expect(result.counts).toEqual({
+        quantity_mismatch: 0,
+        price_mismatch: 0,
+        missing_on_invoice: 0,
+        missing_on_po: 0,
+        short_receipt: 0,
+        invoice_exceeds_received: 0,
+        uom_mismatch: 0,
+        currency_mismatch: 0,
+        contract_price_variance: 0,
+        contract_price_unavailable: 0,
+      })
+      const [run] = await db.select().from(comparisonRuns).where(eq(comparisonRuns.id, result.runId))
+      expect(run.status).toBe('succeeded')
+      expect(run.mode).toBe('three_way')
+      expect(run.goodsReceiptLineCount).toBe(3)
+      expect(run.flagCount).toBe(0)
+    })
+  })
 })
