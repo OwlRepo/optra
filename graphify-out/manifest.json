@@ -705,14 +705,14 @@
     "semantic_hash": "66d2d1b0b67a6d29f9109c2c5e46aa95"
   },
   "apps/api/src/procurement/comparison.service.spec.ts": {
-    "mtime": 1790959387.9473255,
-    "ast_hash": "cd6f49a8c407daa4452a5917a0e948b4",
-    "semantic_hash": "cd6f49a8c407daa4452a5917a0e948b4"
+    "mtime": 1790959727.7576714,
+    "ast_hash": "f29e96c7b525876155a21bb76fb2426d",
+    "semantic_hash": "f29e96c7b525876155a21bb76fb2426d"
   },
   "apps/api/src/procurement/comparison.service.ts": {
-    "mtime": 1790959414.5044081,
-    "ast_hash": "b355266057fcbd4319fb392360004442",
-    "semantic_hash": "b355266057fcbd4319fb392360004442"
+    "mtime": 1790959741.220122,
+    "ast_hash": "b2ecfe89217507b0361711356903e9c1",
+    "semantic_hash": "b2ecfe89217507b0361711356903e9c1"
   },
   "apps/api/src/procurement/dto/compare-documents.dto.ts": {
     "mtime": 1790959290.5006516,
@@ -3540,9 +3540,9 @@
     "semantic_hash": "98c8c9754dd69f6ce447a665510a2896"
   },
   "docs/ai/testing-strategy.md": {
-    "mtime": 1790959605.0373726,
-    "ast_hash": "b1537475edb98010467cfc37252f2f3a",
-    "semantic_hash": "b1537475edb98010467cfc37252f2f3a"
+    "mtime": 1790959781.092879,
+    "ast_hash": "96c6f4ab5d3868fb724703e34503ae8d",
+    "semantic_hash": "96c6f4ab5d3868fb724703e34503ae8d"
   },
   "docs/designs/elid-ticket-copilot.md": {
     "mtime": 1790959290.6205883,
@@ -5320,8 +5320,8 @@
     "semantic_hash": "a350194efc1d3bf86ef69b9d36efbef3"
   },
   "docs/plans/fix-flag-reason-names.md": {
-    "mtime": 1790959605.037865,
-    "ast_hash": "6906dabd285b07baf85b050cabc2c385",
-    "semantic_hash": "6906dabd285b07baf85b050cabc2c385"
+    "mtime": 1790959781.093106,
+    "ast_hash": "5f27c503c800a3bb5e125030a748944e",
+    "semantic_hash": "5f27c503c800a3bb5e125030a748944e"
   }
 }
