@@ -106,3 +106,56 @@ test.describe('catalog core', () => {
     await page.context().close()
   })
 })
+
+// B12: "Find catalog matches" on a flag carries both its PO and invoice line
+// ids. The match the search finds must show on the page it lands on.
+test.describe('catalog core: matches from a discrepancy (B12)', () => {
+  test('regression: following a flag\'s "Find catalog matches" link and searching lists the match it found', async ({
+    browser,
+  }) => {
+    test.setTimeout(120_000)
+    const page = await pageAs(browser, 'ownerB')
+    const ws = state.ownerB.workspaceId
+
+    const catalogFile = fixture('catalog.csv', `catalog-b12-${state.run}.csv`)
+    await page.goto(`/workspaces/${ws}/vendors/${state.ownerB.vendorId}`)
+    await chooseFile(page, 'Upload catalog', catalogFile)
+    await expect(toast(page, 'Catalog uploaded')).toBeVisible()
+    await waitForRow<{ id: string; name: string; status: string }>(
+      page,
+      `/api/workspaces/${ws}/vendors/${state.ownerB.vendorId}/catalogs`,
+      (row) => row.name === catalogFile.name,
+      'done',
+    )
+
+    const purchaseOrderId = await uploadPurchaseOrder(page, state.ownerB, `catalog-b12-po-${state.run}.csv`)
+    const invoiceId = await uploadInvoiceFile(
+      page,
+      state.ownerB,
+      purchaseOrderId,
+      fixture('invoice-mismatch.csv', `catalog-b12-invoice-${state.run}.csv`),
+      `INV-CAT-B12-${state.run}`,
+    )
+    const compared = await bff(page, `/api/workspaces/${ws}/procurement/discrepancies/compare`, {
+      method: 'POST',
+      json: { purchaseOrderId, invoiceId },
+    })
+    expect(compared.status).toBe(201)
+
+    await page.goto(`/workspaces/${ws}/discrepancies?purchaseOrderId=${purchaseOrderId}&invoiceId=${invoiceId}`)
+    const a1Row = page
+      .getByRole('row')
+      .filter({ has: page.getByRole('button', { name: 'Review discrepancy A1', exact: true }) })
+    await a1Row.getByRole('link', { name: 'Find catalog matches' }).click()
+    await expect(page).toHaveURL(/poLineItemId=.*invoiceLineItemId=/)
+
+    await page.getByRole('button', { name: 'Search all vendors' }).click()
+    await expect(toast(page, 'Search complete')).toBeVisible()
+    const summary = await page.getByText(/^\d+ match(es)? found\.$/).textContent()
+    const found = Number(summary!.split(' ')[0])
+    expect(found).toBeGreaterThan(0)
+    await expect(page.getByText('E2E stub match', { exact: true })).toHaveCount(found)
+    await page.context().close()
+  })
+})
+

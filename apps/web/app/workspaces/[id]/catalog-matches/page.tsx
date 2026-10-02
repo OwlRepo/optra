@@ -64,11 +64,13 @@ export default function CatalogMatchesPage({ params }: { params: { id: string } 
   // page listed every match in the workspace, which is not what "Find catalog
   // matches" on a single discrepancy row means. Empty when opened from the
   // sidebar, which keeps the workspace-wide listing for that entry point.
+  //
+  // It is the same line matchQuery searches by. A flag's link carries both its
+  // PO and its invoice line ids, a search stores matches under the PO line
+  // only, and the API ANDs the two filters, so scoping to both listed nothing
+  // right after "1 match found".
   const lineScope = React.useMemo(
-    () => ({
-      poLineItemId: poLineItemId ?? undefined,
-      invoiceLineItemId: invoiceLineItemId ?? undefined,
-    }),
+    () => (poLineItemId ? { poLineItemId } : invoiceLineItemId ? { invoiceLineItemId } : {}),
     [poLineItemId, invoiceLineItemId],
   )
 
