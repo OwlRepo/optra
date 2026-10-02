@@ -2,7 +2,9 @@
 
 import * as React from 'react'
 import { Badge, Button, Modal, Select, Textarea, useToast } from '@repo/ui'
+import { Download } from 'lucide-react'
 import {
+  downloadProcurementDocument,
   listComparisonRuns,
   listDiscrepancyDecisions,
   recordDiscrepancyDecision,
@@ -10,6 +12,8 @@ import {
   type DiscrepancyDecision,
   type DiscrepancyDecisionOutcome,
   type DiscrepancyFlag,
+  type DiscrepancyLineCitation,
+  type ProcurementDocKind,
 } from '@/lib/api/procurement'
 
 // POLICY v1 #7's four outcomes. "Dismissed" alone lost the distinction between
@@ -38,6 +42,29 @@ function extractErrorMessage(err: unknown, fallback: string) {
   return err && typeof err === 'object' && 'message' in err
     ? String((err as { message: unknown }).message)
     : fallback
+}
+
+const SOURCE_SIDES = [
+  { key: 'poLine', label: 'PO', kind: 'purchase-orders' },
+  { key: 'invoiceLine', label: 'Invoice', kind: 'invoices' },
+  { key: 'receiptLine', label: 'Receipt', kind: 'goods-receipts' },
+] as const satisfies ReadonlyArray<{
+  key: 'poLine' | 'invoiceLine' | 'receiptLine'
+  label: string
+  kind: ProcurementDocKind
+}>
+
+/** One honest line per citation. There is no page number to quote, by design. */
+function citationText(label: string, c: DiscrepancyLineCitation) {
+  if (c.sourceRow !== null) {
+    return c.sourceSheet
+      ? `${label} sheet ${c.sourceSheet}, row ${c.sourceRow}`
+      : `${label} row ${c.sourceRow}`
+  }
+  const line = `${label} line ${c.lineNumber ?? '—'}`
+  return c.extractionConfidence !== null
+    ? `${line} · read from PDF, ${Math.round(c.extractionConfidence * 100)}% confidence`
+    : line
 }
 
 /** Who decided. The email is joined; the role is what was recorded at the time. */
@@ -107,7 +134,27 @@ export function DiscrepancyReviewModal({
     }
   }, [flagId, note, onClose, onDecided, outcome, toast, workspaceId])
 
+  const handleDownload = React.useCallback(
+    async (kind: ProcurementDocKind, documentId: string) => {
+      try {
+        await downloadProcurementDocument(workspaceId, kind, documentId)
+      } catch (err) {
+        toast({
+          variant: 'error',
+          title: 'Failed to download document',
+          description: extractErrorMessage(err, 'Try again in a moment.'),
+        })
+      }
+    },
+    [toast, workspaceId],
+  )
+
   if (!flag) return null
+
+  const sources = SOURCE_SIDES.flatMap((side) => {
+    const citation = flag[side.key]
+    return citation ? [{ ...side, citation }] : []
+  })
 
   return (
     <Modal open={open} onClose={onClose} title="Review discrepancy" size="xl">
@@ -155,6 +202,27 @@ export function DiscrepancyReviewModal({
           ) : null}
           <p className="text-sm">{flag.reason}</p>
         </section>
+
+        {sources.length > 0 ? (
+          <section className="space-y-2">
+            <h3 className="text-sm font-medium">Source</h3>
+            <ul className="space-y-2">
+              {sources.map(({ key, label, kind, citation }) => (
+                <li key={key} className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                  <span className="font-mono">{citationText(label, citation)}</span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    aria-label={`Download ${label}`}
+                    onClick={() => void handleDownload(kind, citation.documentId)}
+                  >
+                    <Download className="h-4 w-4" aria-hidden="true" />
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
 
         <section className="space-y-2">
           <h3 className="text-sm font-medium">Comparison runs</h3>

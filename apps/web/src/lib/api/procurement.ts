@@ -73,6 +73,14 @@ export type DiscrepancyFlagType =
   | 'contract_price_variance'
   | 'contract_price_unavailable'
 export type DiscrepancyFlagStatus = 'open' | 'dismissed'
+// S2. Mirrors DiscrepancyLineCitation in @repo/types. No page number, by design.
+export type DiscrepancyLineCitation = {
+  lineNumber: number | null
+  sourceRow: number | null
+  sourceSheet: string | null
+  extractionConfidence: number | null
+  documentId: string
+}
 export type DiscrepancyFlag = {
   id: string
   workspaceId: string
@@ -112,6 +120,10 @@ export type DiscrepancyFlag = {
   dismissedAt: string | null
   dismissedBy: string | null
   createdAt: string
+  // S2. Optional-safe: absent on responses from an API older than the contract.
+  poLine?: DiscrepancyLineCitation | null
+  invoiceLine?: DiscrepancyLineCitation | null
+  receiptLine?: DiscrepancyLineCitation | null
 }
 export type CompareResult = {
   runId: string

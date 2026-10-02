@@ -44,3 +44,5 @@ export interface RetrievalResult {
   score: number
   document?: Document
 }
+
+export * from './procurement'

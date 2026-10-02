@@ -9,11 +9,13 @@ import { DiscrepancyReviewModal } from './discrepancy-review-modal'
 const listDecisionsMock = vi.fn()
 const recordDecisionMock = vi.fn()
 const listRunsMock = vi.fn()
+const downloadMock = vi.fn()
 
 vi.mock('@/lib/api/procurement', () => ({
   listDiscrepancyDecisions: (...args: unknown[]) => listDecisionsMock(...args),
   recordDiscrepancyDecision: (...args: unknown[]) => recordDecisionMock(...args),
   listComparisonRuns: (...args: unknown[]) => listRunsMock(...args),
+  downloadProcurementDocument: (...args: unknown[]) => downloadMock(...args),
 }))
 
 function makeFlag(overrides: Record<string, unknown> = {}) {
@@ -41,6 +43,20 @@ function makeFlag(overrides: Record<string, unknown> = {}) {
     dismissedAt: null,
     dismissedBy: null,
     createdAt: '2026-07-01T00:00:00.000Z',
+    poLine: null,
+    invoiceLine: null,
+    receiptLine: null,
+    ...overrides,
+  }
+}
+
+function makeCitation(overrides: Record<string, unknown> = {}) {
+  return {
+    lineNumber: 7,
+    sourceRow: 9,
+    sourceSheet: null,
+    extractionConfidence: null,
+    documentId: 'po-doc-1',
     ...overrides,
   }
 }
@@ -83,6 +99,7 @@ describe('DiscrepancyReviewModal', () => {
     listDecisionsMock.mockReset().mockResolvedValue([])
     recordDecisionMock.mockReset().mockResolvedValue(makeDecision())
     listRunsMock.mockReset().mockResolvedValue({ items: [], page: 1, pageSize: 20, total: 0, totalPages: 0 })
+    downloadMock.mockReset().mockResolvedValue(undefined)
   })
 
   afterEach(() => {
@@ -242,5 +259,98 @@ describe('DiscrepancyReviewModal', () => {
 
     expect(await screen.findByText('Agreed with the vendor by phone.')).toBeDefined()
     expect(screen.queryByRole('button', { name: 'Record decision' })).toBeNull()
+  })
+
+  // S2. Where each side of the flag came from. Declared in error > edge >
+  // regression > happy order; the existing cases above are the regression set.
+  describe('source citations (S2)', () => {
+    it('error: a failed source download toasts the reason and leaves the modal usable', async () => {
+      downloadMock.mockRejectedValue({ message: 'Purchase order file is missing' })
+      renderModal({ flag: makeFlag({ poLine: makeCitation() }) })
+
+      fireEvent.click((await screen.findAllByRole('button', { name: /download/i }))[0])
+
+      expect(await screen.findByText('Failed to download document')).toBeDefined()
+      expect(screen.getByText('Purchase order file is missing')).toBeDefined()
+      expect(screen.getByText('SKU-100')).toBeDefined()
+    })
+
+    it('edge: a citation with no source row and no confidence reads "PO line N"', async () => {
+      renderModal({ flag: makeFlag({ poLine: makeCitation({ lineNumber: 4, sourceRow: null }) }) })
+
+      expect(await screen.findByText('PO line 4')).toBeDefined()
+    })
+
+    it('edge: every citation null renders no Source block', async () => {
+      renderModal()
+
+      await screen.findByText('SKU-100')
+      expect(screen.queryByText('Source')).toBeNull()
+      expect(screen.queryByRole('button', { name: /download/i })).toBeNull()
+    })
+
+    it('edge: an XLSX citation names the sheet and row', async () => {
+      renderModal({ flag: makeFlag({ poLine: makeCitation({ sourceSheet: 'Orders' }) }) })
+
+      expect(await screen.findByText('PO sheet Orders, row 9')).toBeDefined()
+    })
+
+    it('edge: a PDF citation says it was read from the PDF with a rounded confidence', async () => {
+      renderModal({
+        flag: makeFlag({ poLine: makeCitation({ sourceRow: null, extractionConfidence: 0.925 }) }),
+      })
+
+      expect(await screen.findByText('PO line 7 · read from PDF, 93% confidence')).toBeDefined()
+    })
+
+    it('edge: a confidence of 1 reads 100%', async () => {
+      renderModal({
+        flag: makeFlag({ invoiceLine: makeCitation({ sourceRow: null, extractionConfidence: 1, documentId: 'inv-doc-1' }) }),
+      })
+
+      expect(await screen.findByText('Invoice line 7 · read from PDF, 100% confidence')).toBeDefined()
+    })
+
+    it('regression: no citation wording mentions a page', async () => {
+      renderModal({
+        flag: makeFlag({
+          poLine: makeCitation(),
+          invoiceLine: makeCitation({ sourceRow: null, extractionConfidence: 0.5, documentId: 'inv-doc-1' }),
+          receiptLine: makeCitation({ documentId: 'grn-doc-1' }),
+        }),
+      })
+
+      await screen.findByText('Source')
+      expect(document.body.textContent ?? '').not.toMatch(/\bpage\b/i)
+    })
+
+    it('happy: a CSV citation reads "PO row 9" and its download fetches the purchase order', async () => {
+      renderModal({ flag: makeFlag({ poLine: makeCitation() }) })
+
+      expect(await screen.findByText('PO row 9')).toBeDefined()
+      fireEvent.click(screen.getByRole('button', { name: /download/i }))
+
+      await waitFor(() => expect(downloadMock).toHaveBeenCalledWith('ws-1', 'purchase-orders', 'po-doc-1'))
+    })
+
+    it('happy: invoice and receipt sides cite their rows and download their own documents', async () => {
+      renderModal({
+        flag: makeFlag({
+          invoiceLine: makeCitation({ sourceRow: 5, documentId: 'inv-doc-1' }),
+          receiptLine: makeCitation({ sourceRow: 3, documentId: 'grn-doc-1' }),
+        }),
+      })
+
+      expect(await screen.findByText('Invoice row 5')).toBeDefined()
+      expect(screen.getByText('Receipt row 3')).toBeDefined()
+      const buttons = screen.getAllByRole('button', { name: /download/i })
+      expect(buttons).toHaveLength(2)
+      buttons.forEach((button) => fireEvent.click(button))
+
+      await waitFor(() => {
+        expect(downloadMock).toHaveBeenCalledWith('ws-1', 'invoices', 'inv-doc-1')
+        expect(downloadMock).toHaveBeenCalledWith('ws-1', 'goods-receipts', 'grn-doc-1')
+      })
+    })
   })
 })

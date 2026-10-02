@@ -10,6 +10,7 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common'
 import { and, count, desc, eq, inArray, isNull, notExists, or, sql } from 'drizzle-orm'
+import { alias } from 'drizzle-orm/pg-core'
 import Papa from 'papaparse'
 import {
   buildOffsetResult,
@@ -645,13 +646,88 @@ export class ComparisonService {
     // share it exactly. Ordering on that alone is not a total order, so
     // Postgres could return a different sequence per OFFSET and the reviewer
     // would see some flags twice and never see others at all.
-    const items = await db
-      .select()
+    // Citations ride on the same query as LEFT JOINs (no N+1). Each join is
+    // pinned to the flag's workspace, so a line id from another tenant yields
+    // a null citation instead of a foreign documentId.
+    const po = alias(poLineItems, 'cite_po')
+    const inv = alias(invoiceLineItems, 'cite_inv')
+    const rcpt = alias(goodsReceiptLineItems, 'cite_rcpt')
+    const rows = await db
+      .select({
+        flag: discrepancyFlags,
+        po: {
+          id: po.id,
+          lineNumber: po.lineNumber,
+          sourceRow: po.sourceRow,
+          sourceSheet: po.sourceSheet,
+          extractionConfidence: po.extractionConfidence,
+          documentId: po.purchaseOrderId,
+        },
+        inv: {
+          id: inv.id,
+          lineNumber: inv.lineNumber,
+          sourceRow: inv.sourceRow,
+          sourceSheet: inv.sourceSheet,
+          extractionConfidence: inv.extractionConfidence,
+          documentId: inv.invoiceId,
+        },
+        rcpt: {
+          id: rcpt.id,
+          lineNumber: rcpt.lineNumber,
+          sourceRow: rcpt.sourceRow,
+          sourceSheet: rcpt.sourceSheet,
+          documentId: rcpt.goodsReceiptId,
+        },
+      })
       .from(discrepancyFlags)
+      .leftJoin(
+        po,
+        and(eq(po.id, discrepancyFlags.poLineItemId), eq(po.workspaceId, discrepancyFlags.workspaceId)),
+      )
+      .leftJoin(
+        inv,
+        and(eq(inv.id, discrepancyFlags.invoiceLineItemId), eq(inv.workspaceId, discrepancyFlags.workspaceId)),
+      )
+      .leftJoin(
+        rcpt,
+        and(eq(rcpt.id, discrepancyFlags.goodsReceiptLineItemId), eq(rcpt.workspaceId, discrepancyFlags.workspaceId)),
+      )
       .where(where)
       .orderBy(discrepancyFlags.createdAt, discrepancyFlags.id)
       .limit(pageSize)
       .offset(offset)
+
+    const toConfidence = (value: string | null): number | null => (value === null ? null : Number(value))
+    const items = rows.map(({ flag, po: p, inv: i, rcpt: r }) => ({
+      ...flag,
+      poLine: p && p.id !== null
+        ? {
+            lineNumber: p.lineNumber,
+            sourceRow: p.sourceRow,
+            sourceSheet: p.sourceSheet,
+            extractionConfidence: toConfidence(p.extractionConfidence),
+            documentId: p.documentId as string,
+          }
+        : null,
+      invoiceLine: i && i.id !== null
+        ? {
+            lineNumber: i.lineNumber,
+            sourceRow: i.sourceRow,
+            sourceSheet: i.sourceSheet,
+            extractionConfidence: toConfidence(i.extractionConfidence),
+            documentId: i.documentId as string,
+          }
+        : null,
+      receiptLine: r && r.id !== null
+        ? {
+            lineNumber: r.lineNumber,
+            sourceRow: r.sourceRow,
+            sourceSheet: r.sourceSheet,
+            extractionConfidence: null,
+            documentId: r.documentId as string,
+          }
+        : null,
+    }))
 
     // One aggregate serves both the stat cards and `total`. Deriving the total
     // by summing the counts makes "the cards add up to the list" structural

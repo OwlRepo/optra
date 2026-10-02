@@ -2191,4 +2191,201 @@ describe('ComparisonService', () => {
       expect(result.counts.quantity_mismatch).toBe(1)
     })
   })
+
+  // S2. Each flag says where its two (three, with receiving) sides came from.
+  // The citation is read through a join, so it is also a new place a tenant
+  // boundary could leak: the join is constrained by workspaceId.
+  describe('discrepancy line citations (S2)', () => {
+    interface Citation {
+      lineNumber: number | null
+      sourceRow: number | null
+      sourceSheet: string | null
+      extractionConfidence: number | null
+      documentId: string
+    }
+    interface Cited {
+      id: string
+      poLine: Citation | null
+      invoiceLine: Citation | null
+      receiptLine: Citation | null
+    }
+
+    async function seedDocs(workspaceId: string, poSourceRow: number | null = null) {
+      const { po, invoice } = await seedReadyPoAndInvoice(
+        workspaceId,
+        [{ sku: 'A1', quantity: '10', unitPrice: '5.00' }],
+        [{ sku: 'A1', quantity: '10', unitPrice: '6.00' }],
+        true,
+      )
+      const [poLine] = await db.select().from(poLineItems).where(eq(poLineItems.purchaseOrderId, po.id))
+      const [invLine] = await db.select().from(invoiceLineItems).where(eq(invoiceLineItems.invoiceId, invoice.id))
+      if (poSourceRow !== null) {
+        await db.update(poLineItems).set({ sourceRow: poSourceRow }).where(eq(poLineItems.id, poLine.id))
+      }
+      return { po, invoice, poLine, invLine }
+    }
+
+    async function insertFlag(
+      workspaceId: string,
+      poId: string,
+      invoiceId: string,
+      lines: { po?: string | null; invoice?: string | null; receipt?: string | null },
+      createdAt?: Date,
+    ) {
+      const [flag] = await db
+        .insert(discrepancyFlags)
+        .values({
+          workspaceId,
+          purchaseOrderId: poId,
+          invoiceId,
+          poLineItemId: lines.po ?? null,
+          invoiceLineItemId: lines.invoice ?? null,
+          goodsReceiptLineItemId: lines.receipt ?? null,
+          sku: 'A1',
+          flagType: 'price_mismatch',
+          reason: 'Price differs.',
+          ...(createdAt ? { createdAt } : {}),
+        })
+        .returning()
+      return flag
+    }
+
+    const listed = async (workspaceId: string) =>
+      (await service.listFlags(workspaceId, {})).items as unknown as Cited[]
+
+    it('error: a line id belonging to another workspace yields a null citation and no foreign documentId', async () => {
+      const { workspace: mine } = await seedWorkspace(`${prefix}cite-iso-a@example.com`, 'Cite Iso A')
+      const { workspace: theirs } = await seedWorkspace(`${prefix}cite-iso-b@example.com`, 'Cite Iso B')
+      const own = await seedDocs(mine.id)
+      const foreign = await seedDocs(theirs.id)
+      await insertFlag(mine.id, own.po.id, own.invoice.id, { po: foreign.poLine.id, invoice: foreign.invLine.id })
+
+      const [item] = await listed(mine.id)
+
+      expect(item.poLine).toBeNull()
+      expect(item.invoiceLine).toBeNull()
+      const serialised = JSON.stringify(item)
+      expect(serialised).not.toContain(foreign.po.id)
+      expect(serialised).not.toContain(foreign.invoice.id)
+    })
+
+    it('edge: a flag with no line ids returns three null citations', async () => {
+      const { workspace } = await seedWorkspace(`${prefix}cite-null@example.com`, 'Cite Null')
+      const { po, invoice } = await seedDocs(workspace.id)
+      await insertFlag(workspace.id, po.id, invoice.id, {})
+
+      const [item] = await listed(workspace.id)
+
+      expect(item.poLine).toBeNull()
+      expect(item.invoiceLine).toBeNull()
+      expect(item.receiptLine).toBeNull()
+    })
+
+    it('edge: a deleted line (id set null) yields a null citation while the flag stays listed', async () => {
+      const { workspace } = await seedWorkspace(`${prefix}cite-deleted@example.com`, 'Cite Deleted')
+      const { po, invoice, poLine, invLine } = await seedDocs(workspace.id, 2)
+      await insertFlag(workspace.id, po.id, invoice.id, { po: poLine.id, invoice: invLine.id })
+      await db.delete(poLineItems).where(eq(poLineItems.id, poLine.id))
+
+      const [item] = await listed(workspace.id)
+
+      expect(item.poLine).toBeNull()
+      expect(item.invoiceLine).not.toBeNull()
+    })
+
+    it('edge: an XLSX line carries its sheet name and row', async () => {
+      const { workspace } = await seedWorkspace(`${prefix}cite-xlsx@example.com`, 'Cite Xlsx')
+      const { po, invoice, poLine, invLine } = await seedDocs(workspace.id)
+      await db.update(poLineItems).set({ sourceRow: 9, sourceSheet: 'Orders' }).where(eq(poLineItems.id, poLine.id))
+      await insertFlag(workspace.id, po.id, invoice.id, { po: poLine.id, invoice: invLine.id })
+
+      const [item] = await listed(workspace.id)
+
+      expect(item.poLine).toMatchObject({ sourceRow: 9, sourceSheet: 'Orders', extractionConfidence: null })
+    })
+
+    it('edge: a PDF line returns confidence as a number, not the numeric string, and no row or sheet', async () => {
+      const { workspace } = await seedWorkspace(`${prefix}cite-pdf@example.com`, 'Cite Pdf')
+      const { po, invoice, poLine, invLine } = await seedDocs(workspace.id)
+      await db.update(poLineItems).set({ extractionConfidence: '0.93' }).where(eq(poLineItems.id, poLine.id))
+      await db.update(invoiceLineItems).set({ extractionConfidence: '0.5' }).where(eq(invoiceLineItems.id, invLine.id))
+      await insertFlag(workspace.id, po.id, invoice.id, { po: poLine.id, invoice: invLine.id })
+
+      const [item] = await listed(workspace.id)
+
+      expect(typeof item.poLine?.extractionConfidence).toBe('number')
+      expect(item.poLine?.extractionConfidence).toBe(0.93)
+      expect(item.invoiceLine?.extractionConfidence).toBe(0.5)
+      expect(item.poLine).toMatchObject({ sourceRow: null, sourceSheet: null })
+    })
+
+    it('edge: a receipt line is cited with null confidence and its goods receipt id', async () => {
+      const { workspace } = await seedWorkspace(`${prefix}cite-receipt@example.com`, 'Cite Receipt')
+      const { po, invoice, poLine, invLine } = await seedDocs(workspace.id)
+      const grn = await seedGoodsReceipt(workspace.id, po.id, [{ sku: 'A1', quantityAccepted: '7' }])
+      const [receiptLine] = await db
+        .select()
+        .from(goodsReceiptLineItems)
+        .where(eq(goodsReceiptLineItems.goodsReceiptId, grn.id))
+      await db.update(goodsReceiptLineItems).set({ sourceRow: 4 }).where(eq(goodsReceiptLineItems.id, receiptLine.id))
+      await insertFlag(workspace.id, po.id, invoice.id, { po: poLine.id, invoice: invLine.id, receipt: receiptLine.id })
+
+      const [item] = await listed(workspace.id)
+
+      expect(item.receiptLine).toEqual({
+        lineNumber: 1,
+        sourceRow: 4,
+        sourceSheet: null,
+        extractionConfidence: null,
+        documentId: grn.id,
+      })
+    })
+
+    it('regression: the joins add no rows and leave order, total, counts and paging unchanged', async () => {
+      const { workspace } = await seedWorkspace(`${prefix}cite-regress@example.com`, 'Cite Regress')
+      const { po, invoice, poLine, invLine } = await seedDocs(workspace.id)
+      const grn = await seedGoodsReceipt(workspace.id, po.id, [{ sku: 'A1', quantityAccepted: '7' }])
+      const [receiptLine] = await db
+        .select()
+        .from(goodsReceiptLineItems)
+        .where(eq(goodsReceiptLineItems.goodsReceiptId, grn.id))
+      // Identical created_at on purpose: the id tiebreak is what keeps order total.
+      const at = new Date('2026-07-01T00:00:00.000Z')
+      const created = [
+        await insertFlag(workspace.id, po.id, invoice.id, { po: poLine.id, invoice: invLine.id, receipt: receiptLine.id }, at),
+        await insertFlag(workspace.id, po.id, invoice.id, { po: poLine.id, invoice: invLine.id }, at),
+        await insertFlag(workspace.id, po.id, invoice.id, {}, at),
+      ]
+      const expectedOrder = created.map((flag) => flag.id).sort()
+
+      const all = await service.listFlags(workspace.id, {})
+      const firstPage = await service.listFlags(workspace.id, { page: '1', pageSize: '2' })
+      const secondPage = await service.listFlags(workspace.id, { page: '2', pageSize: '2' })
+
+      expect(all.items.map((item) => item.id)).toEqual(expectedOrder)
+      expect(all.total).toBe(3)
+      expect(all.counts.price_mismatch).toBe(3)
+      expect(firstPage.totalPages).toBe(2)
+      expect([...firstPage.items, ...secondPage.items].map((item) => item.id)).toEqual(expectedOrder)
+    })
+
+    it('happy: a CSV flag cites the source row and the owning document ids', async () => {
+      const { workspace } = await seedWorkspace(`${prefix}cite-csv@example.com`, 'Cite Csv')
+      const { po, invoice, poLine, invLine } = await seedDocs(workspace.id, 2)
+      await db.update(invoiceLineItems).set({ sourceRow: 2 }).where(eq(invoiceLineItems.id, invLine.id))
+
+      await service.compare(workspace.id, po.id, invoice.id)
+      const [item] = await listed(workspace.id)
+
+      expect(item.poLine).toEqual({
+        lineNumber: poLine.lineNumber,
+        sourceRow: 2,
+        sourceSheet: null,
+        extractionConfidence: null,
+        documentId: po.id,
+      })
+      expect(item.invoiceLine).toMatchObject({ sourceRow: 2, documentId: invoice.id })
+      expect(item.receiptLine).toBeNull()
+    })
+  })
 })
