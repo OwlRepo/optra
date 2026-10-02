@@ -584,3 +584,12 @@ And one rule the owner made standing: every change now ships with its tests for 
 **Actual:** confirmed — the walk listed exactly the eleven routes, all answered 500 over HTTP before the fix and 400 after; api unit 825/825 and API e2e 105/105 three times. One surprise: a scrape request with an empty body was refused by body validation before the path pipe ran, so the sweep sends valid bodies.
 
 **Why different:** **A fix applied to one module invites the same bug in the next. When a rule is mechanical (every path id is a UUID), enforce it with one test that walks the whole codebase, so the next route cannot forget it.**
+
+## 2026-10-03 — Fix B17: an empty result is a failure the user must hear about
+*Learning Contract: the plan's design is the prediction; the diff is below. No live prediction solicited.*
+
+**Predicted (from the approved plan):** failing a zero-item catalog at parse with a reason, as procurement does, turns a silent empty catalog into an actionable error.
+
+**Actual:** confirmed — three failure cases red then green; api unit 829/829 three times, API e2e 106/106 twice (one unrelated `socket hang up`).
+
+**Why different:** not different. **Apply one domain's hard-won rule to its siblings in the same pass: B2 taught procurement that `done` with zero rows reads as success; catalogs had the same hole.**
