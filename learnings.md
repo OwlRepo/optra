@@ -575,3 +575,48 @@ And one rule the owner made standing: every change now ships with its tests for 
 **Actual:** confirmed — the PDF, blank-row and stray-photo cases red then green; full api unit 823/823 and API e2e 104/104 three times.
 
 **Why different:** not different. **"Empty line" is a parser's idea; "describes nothing we can use" is the domain's. Filter on the fields the product matches on, after mapping, not on raw text — and before any paid or slow work (a photo fetch) runs for the row.**
+
+## 2026-10-03 — Fix B16: guard a rule across the codebase, not one module
+*Learning Contract: the plan's design is the prediction; the diff is below. No live prediction solicited.*
+
+**Predicted (from the approved plan):** the same pipe B13 added to catalogs turns the remaining eleven 500s into 400s.
+
+**Actual:** confirmed — the walk listed exactly the eleven routes, all answered 500 over HTTP before the fix and 400 after; api unit 825/825 and API e2e 105/105 three times. One surprise: a scrape request with an empty body was refused by body validation before the path pipe ran, so the sweep sends valid bodies.
+
+**Why different:** **A fix applied to one module invites the same bug in the next. When a rule is mechanical (every path id is a UUID), enforce it with one test that walks the whole codebase, so the next route cannot forget it.**
+
+## 2026-10-03 — Fix B17: an empty result is a failure the user must hear about
+*Learning Contract: the plan's design is the prediction; the diff is below. No live prediction solicited.*
+
+**Predicted (from the approved plan):** failing a zero-item catalog at parse with a reason, as procurement does, turns a silent empty catalog into an actionable error.
+
+**Actual:** confirmed — three failure cases red then green; api unit 829/829 three times, API e2e 106/106 twice (one unrelated `socket hang up`).
+
+**Why different:** not different. **Apply one domain's hard-won rule to its siblings in the same pass: B2 taught procurement that `done` with zero rows reads as success; catalogs had the same hole.**
+
+## 2026-10-03 — Fix B18: finish a UI rule on every page in one pass
+*Learning Contract: the plan's design is the prediction; the diff is below. No live prediction solicited.*
+
+**Predicted (from the approved plan):** the B14 component and helper drop into each page's first-load catch with no other change.
+
+**Actual:** confirmed — 7 page cases red then green, web 698/698, browser 50 passed. Five pages reuse their loader for filters and paging, so a 403 there also shows the state, which is right for someone who lost access mid-session.
+
+**Why different:** not different. **A shared component plus a one-line branch is what makes "the rest of the pages" a cheap follow-up instead of a backlog item; build the reusable piece in the first fix.**
+
+## 2026-10-03 — Two flakes, two root causes, no retries
+*Learning Contract: the plan's design is the prediction; the diff is below. No live prediction solicited.*
+
+**Predicted (from the approved plan):** each intermittent failure has a specific cause that a fix can remove, not mask.
+
+**Actual:** confirmed — supertest's listen/close cycle plus Node 19+ keep-alive reused stale sockets on a recycled port; and a global sweeper in a parallel worker acted on another spec's fixture. API e2e 107/107 five times, unit 831/831 three times after the fixes.
+
+**Why different:** not different. **A flake is a bug in the harness or the test's assumptions. Read the library's lifecycle code (here, supertest's `serverAddress`/`end`) before touching timeouts or retries, and never assert another process's legitimate work away.**
+
+## 2026-10-03 — A data backfill tested against the code rule it mirrors
+*Learning Contract: the plan's design is the prediction; the diff is below. No live prediction solicited.*
+
+**Predicted (from the approved plan):** a SQL migration can apply exactly the `decodeUploadFilename` rule to rows stored before B8.
+
+**Actual:** confirmed — the parity spec runs the migration file and compares it name for name with the TypeScript helper; adding an emoji name proved the SQL needs a code-point test (`[^\u0001-\u00ff]`) where JS uses a UTF-16 range.
+
+**Why different:** **When SQL must reproduce application logic, test the SQL file itself against the application function on the same inputs, not against hand-written expectations.**

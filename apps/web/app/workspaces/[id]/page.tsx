@@ -14,7 +14,8 @@ import { AppShell, Badge, Button, Card, EmptyState, PageSection, useToast } from
 import { CircleAlert, FileText, Globe, Scale, Settings, Ticket, Users } from 'lucide-react'
 import { logout } from '@/lib/api/auth'
 import { listEvents, markEventsSeen } from '@/lib/api/events'
-import { isUnauthorized } from '@/lib/api/handle-unauthorized'
+import { isForbidden, isUnauthorized } from '@/lib/api/handle-unauthorized'
+import { WorkspaceAccessDenied } from '@/components/workspace-access-denied'
 import { getWorkspace, listWorkspaces } from '@/lib/api/workspaces'
 import { WorkspaceNav, workspacePrimaryTabItems } from '@/components/workspace-nav'
 import { MobileTabBar } from '@/components/mobile-tab-bar'
@@ -101,6 +102,9 @@ export default function WorkspaceOverviewPage({ params }: { params: { id: string
   const [eventsNextCursor, setEventsNextCursor] = React.useState<string | null>(null)
   const [isLoadingMoreEvents, setIsLoadingMoreEvents] = React.useState(false)
   const hasMarkedSeenRef = React.useRef(false)
+  // B18. Set when the first load answers 403; the page then shows only the
+  // no-access state instead of empty content.
+  const [accessDenied, setAccessDenied] = React.useState(false)
 
   React.useEffect(() => {
     toastRef.current = toast
@@ -129,6 +133,10 @@ export default function WorkspaceOverviewPage({ params }: { params: { id: string
         return
       }
 
+      if (isForbidden(err)) {
+        setAccessDenied(true)
+        return
+      }
       toastRef.current({
         variant: 'error',
         title: 'Failed to load workspace',
@@ -206,64 +214,70 @@ export default function WorkspaceOverviewPage({ params }: { params: { id: string
       onLogout={handleLogout}
     >
       <div className="mx-auto w-full max-w-5xl space-y-8 px-6 py-10">
-        <PageSection eyebrow={<Badge variant="outline">Workspace</Badge>} title="Where to next" description="Jump into any area of this workspace.">
-          <div className="grid gap-4 md:grid-cols-2">
-            {quickLinks(workspaceId).map((link) => (
-              <Link key={link.href} href={link.href}>
-                <Card variant="elevated" className="flex items-start gap-4 p-6 transition-colors hover:bg-card/80">
-                  <span className="shrink-0 text-accent-foreground">{link.icon}</span>
-                  <div>
-                    <h3 className="text-lg font-semibold">{link.label}</h3>
-                    <p className="mt-1 text-sm text-muted-foreground">{link.description}</p>
-                  </div>
-                </Card>
-              </Link>
-            ))}
-          </div>
-        </PageSection>
-
-        <PageSection eyebrow={<Badge variant="outline">Activity</Badge>} title="Activity" description="What this workspace has done on its own — imports, crawls, extractions and comparisons.">
-          {events.length === 0 ? (
-            <EmptyState
-              icon={<CircleAlert className="size-5" />}
-              title="No activity yet"
-              description="Work this workspace does on its own will show up here."
-            />
-          ) : (
-            <div className="space-y-4">
-              <div className="space-y-3">
-                {events.map((event) => (
-                  <Card key={event.id} variant="elevated" className="flex items-start gap-4 p-5">
-                    <span className="shrink-0 text-secondary-foreground">{eventIcon(event.type)}</span>
-                    <div className="min-w-0 flex-1 space-y-1">
-                      <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
-                        <h3 className="font-medium">{event.title}</h3>
-                        <span className="text-sm text-muted-foreground">
-                          {new Date(event.createdAt).toLocaleString()}
-                        </span>
-                      </div>
-                      {event.detail ? <p className="text-sm text-muted-foreground">{event.detail}</p> : null}
+        {accessDenied ? (
+          <WorkspaceAccessDenied />
+        ) : (
+          <>
+          <PageSection eyebrow={<Badge variant="outline">Workspace</Badge>} title="Where to next" description="Jump into any area of this workspace.">
+            <div className="grid gap-4 md:grid-cols-2">
+              {quickLinks(workspaceId).map((link) => (
+                <Link key={link.href} href={link.href}>
+                  <Card variant="elevated" className="flex items-start gap-4 p-6 transition-colors hover:bg-card/80">
+                    <span className="shrink-0 text-accent-foreground">{link.icon}</span>
+                    <div>
+                      <h3 className="text-lg font-semibold">{link.label}</h3>
+                      <p className="mt-1 text-sm text-muted-foreground">{link.description}</p>
                     </div>
                   </Card>
-                ))}
-              </div>
-
-              {eventsNextCursor ? (
-                <div className="flex justify-center">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => void loadMoreEvents()}
-                    isLoading={isLoadingMoreEvents}
-                    loadingText="Loading"
-                  >
-                    {!isLoadingMoreEvents ? 'Load more' : null}
-                  </Button>
-                </div>
-              ) : null}
+                </Link>
+              ))}
             </div>
-          )}
-        </PageSection>
+          </PageSection>
+
+          <PageSection eyebrow={<Badge variant="outline">Activity</Badge>} title="Activity" description="What this workspace has done on its own — imports, crawls, extractions and comparisons.">
+            {events.length === 0 ? (
+              <EmptyState
+                icon={<CircleAlert className="size-5" />}
+                title="No activity yet"
+                description="Work this workspace does on its own will show up here."
+              />
+            ) : (
+              <div className="space-y-4">
+                <div className="space-y-3">
+                  {events.map((event) => (
+                    <Card key={event.id} variant="elevated" className="flex items-start gap-4 p-5">
+                      <span className="shrink-0 text-secondary-foreground">{eventIcon(event.type)}</span>
+                      <div className="min-w-0 flex-1 space-y-1">
+                        <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
+                          <h3 className="font-medium">{event.title}</h3>
+                          <span className="text-sm text-muted-foreground">
+                            {new Date(event.createdAt).toLocaleString()}
+                          </span>
+                        </div>
+                        {event.detail ? <p className="text-sm text-muted-foreground">{event.detail}</p> : null}
+                      </div>
+                    </Card>
+                  ))}
+                </div>
+
+                {eventsNextCursor ? (
+                  <div className="flex justify-center">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => void loadMoreEvents()}
+                      isLoading={isLoadingMoreEvents}
+                      loadingText="Loading"
+                    >
+                      {!isLoadingMoreEvents ? 'Load more' : null}
+                    </Button>
+                  </div>
+                ) : null}
+              </div>
+            )}
+          </PageSection>
+          </>
+        )}
       </div>
     </AppShell>
   )

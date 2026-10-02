@@ -743,4 +743,32 @@ describe('Catalog flow (e2e)', () => {
       expect((items.body as { sku: string | null }[]).map((item) => item.sku)).toEqual(['A1', 'B2'])
     })
   })
+
+  describe('catalogs with no items (B17)', () => {
+    it('error: an uploaded catalog whose rows are all blank ends failed with a reason', async () => {
+      const owner = await seedOwnerWithWorkspace(app, `${prefix}b17-blank@example.com`, 'B17 Blank')
+      const auth = `Bearer ${owner.accessToken}`
+      const vendor = await request(app.getHttpServer())
+        .post(`/workspaces/${owner.workspaceId}/vendors`)
+        .set('Authorization', auth)
+        .send({ name: 'B17 Vendor' })
+        .expect(201)
+
+      const upload = await request(app.getHttpServer())
+        .post(`/workspaces/${owner.workspaceId}/vendors/${vendor.body.id}/catalogs`)
+        .set('Authorization', auth)
+        .attach('file', Buffer.from('sku,description\n,,\n,,\n'), 'catalog.csv')
+        .expect(201)
+
+      const deadline = Date.now() + 15_000
+      let row: typeof catalogs.$inferSelect | undefined
+      while (Date.now() < deadline) {
+        row = (await db.select().from(catalogs).where(eq(catalogs.id, upload.body.id)).limit(1))[0]
+        if (row?.status === 'failed' || row?.status === 'done') break
+        await new Promise((resolve) => setTimeout(resolve, 200))
+      }
+      expect(row).toMatchObject({ status: 'failed' })
+      expect(row?.lastError).toMatch(/^No catalog items were found in this file\./)
+    })
+  })
 })

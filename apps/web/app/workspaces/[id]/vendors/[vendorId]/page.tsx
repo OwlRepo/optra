@@ -23,7 +23,8 @@ import {
 } from '@repo/ui'
 import { PackageSearch, Receipt, ScrollText, TrendingUp, TriangleAlert, Upload } from 'lucide-react'
 import { logout } from '@/lib/api/auth'
-import { isUnauthorized } from '@/lib/api/handle-unauthorized'
+import { isForbidden, isUnauthorized } from '@/lib/api/handle-unauthorized'
+import { WorkspaceAccessDenied } from '@/components/workspace-access-denied'
 import { getWorkspace, listWorkspaces } from '@/lib/api/workspaces'
 import type { VendorExceptionSummary, VendorPriceHistoryRow } from '@/lib/api/catalog'
 import {
@@ -103,6 +104,9 @@ export default function VendorDetailPage({ params }: { params: { id: string; ven
   }, [history])
   const [membership, setMembership] = React.useState<WorkspaceMembership | null>(null)
   const [isLoading, setIsLoading] = React.useState(true)
+  // B18. Set when the first load answers 403; the page then shows only the
+  // no-access state instead of empty content.
+  const [accessDenied, setAccessDenied] = React.useState(false)
   const [isUploading, setIsUploading] = React.useState(false)
 
   const [isScrapeModalOpen, setIsScrapeModalOpen] = React.useState(false)
@@ -148,6 +152,10 @@ export default function VendorDetailPage({ params }: { params: { id: string; ven
     } catch (err) {
       if (isUnauthorized(err)) {
         router.push('/login')
+        return
+      }
+      if (isForbidden(err)) {
+        setAccessDenied(true)
         return
       }
       toastRef.current({
@@ -338,7 +346,7 @@ export default function VendorDetailPage({ params }: { params: { id: string; ven
             them. Rendered as numbers and a table rather than a chart:
             packages/ui has no chart component, and a handful of observations
             per item is a table's job, not a graph's. */}
-        {!isLoading ? (
+        {!isLoading && !accessDenied ? (
           <section className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <StatCard label="Orders" value={summary?.purchaseOrderCount ?? 0} icon={<Receipt className="size-4" />} />
@@ -411,6 +419,8 @@ export default function VendorDetailPage({ params }: { params: { id: string; ven
             <Skeleton className="h-12 w-full" />
             <Skeleton className="h-12 w-full" />
           </Card>
+        ) : accessDenied ? (
+          <WorkspaceAccessDenied />
         ) : catalogs.length === 0 ? (
           <EmptyState
             icon={<PackageSearch className="size-5" />}

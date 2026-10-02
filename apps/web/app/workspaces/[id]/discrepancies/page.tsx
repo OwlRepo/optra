@@ -23,7 +23,8 @@ import {
 } from '@repo/ui'
 import { CheckCircle2, DollarSign, FileX, Hash, HelpCircle, PackageX, Truck } from 'lucide-react'
 import { logout } from '@/lib/api/auth'
-import { isUnauthorized } from '@/lib/api/handle-unauthorized'
+import { isForbidden, isUnauthorized } from '@/lib/api/handle-unauthorized'
+import { WorkspaceAccessDenied } from '@/components/workspace-access-denied'
 import { getWorkspace, listWorkspaces } from '@/lib/api/workspaces'
 import {
   dismissDiscrepancy,
@@ -123,6 +124,9 @@ export default function DiscrepanciesPage({ params }: { params: { id: string } }
   const [flags, setFlags] = React.useState<DiscrepancyFlag[]>([])
   const [membership, setMembership] = React.useState<WorkspaceMembership | null>(null)
   const [isLoading, setIsLoading] = React.useState(true)
+  // B18. Set when the first load answers 403; the page then shows only the
+  // no-access state instead of empty content.
+  const [accessDenied, setAccessDenied] = React.useState(false)
   const [statusFilter, setStatusFilter] = React.useState<StatusFilterValue>('')
   const [page, setPage] = React.useState(1)
   const [pageSize, setPageSize] = React.useState(20)
@@ -173,6 +177,10 @@ export default function DiscrepanciesPage({ params }: { params: { id: string } }
     } catch (err) {
       if (isUnauthorized(err)) {
         router.push('/login')
+        return
+      }
+      if (isForbidden(err)) {
+        setAccessDenied(true)
         return
       }
       toastRef.current({
@@ -249,6 +257,8 @@ export default function DiscrepanciesPage({ params }: { params: { id: string } }
             <Skeleton className="h-12 w-full" />
             <Skeleton className="h-12 w-full" />
           </Card>
+        ) : accessDenied ? (
+          <WorkspaceAccessDenied />
         ) : (
           <>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

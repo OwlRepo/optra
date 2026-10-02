@@ -8,7 +8,8 @@ import { z } from 'zod'
 import { AppShell, Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Input, useToast } from '@repo/ui'
 import { changePassword, logout } from '@/lib/api/auth'
 import { getDigestSettings, previewDigest, updateDigestSettings } from '@/lib/api/digest-settings'
-import { isUnauthorized } from '@/lib/api/handle-unauthorized'
+import { isForbidden, isUnauthorized } from '@/lib/api/handle-unauthorized'
+import { WorkspaceAccessDenied } from '@/components/workspace-access-denied'
 import { getWorkspace, listWorkspaces, updateWorkspace } from '@/lib/api/workspaces'
 import { WorkspaceNav, workspacePrimaryTabItems } from '@/components/workspace-nav'
 import { MobileTabBar } from '@/components/mobile-tab-bar'
@@ -42,6 +43,9 @@ export default function SettingsPage({ params }: { params: { id: string } }) {
   const { toast } = useToast()
   const workspaceId = params.id
   const [workspace, setWorkspace] = React.useState<Workspace | null>(null)
+  // B18. Set when the first load answers 403; the page then shows only the
+  // no-access state instead of empty content.
+  const [accessDenied, setAccessDenied] = React.useState(false)
   const [role, setRole] = React.useState<WorkspaceMembership['role'] | null>(null)
   const [digestSettings, setDigestSettings] = React.useState<DigestSettings | null>(null)
   const [slackWebhookInput, setSlackWebhookInput] = React.useState('')
@@ -89,6 +93,10 @@ export default function SettingsPage({ params }: { params: { id: string } }) {
       } catch (err) {
         if (isUnauthorized(err)) {
           router.push('/login')
+          return
+        }
+        if (isForbidden(err)) {
+          setAccessDenied(true)
           return
         }
         toast({
@@ -249,162 +257,168 @@ export default function SettingsPage({ params }: { params: { id: string } }) {
       onLogout={handleLogout}
     >
       <div className="mx-auto w-full max-w-3xl space-y-4 px-4 py-6 sm:space-y-6 sm:px-6 sm:py-10">
-        <Card>
-          <CardHeader className="space-y-2 border-b border-border/60 pb-4">
-            <Badge variant="outline" className="w-fit">Workspace</Badge>
-            <CardTitle>Workspace name</CardTitle>
-            <CardDescription>{`Workspace ID: ${workspaceId}`}</CardDescription>
-          </CardHeader>
-          <CardContent className="pt-6">
-            <form className="space-y-4" onSubmit={onSubmitRename}>
-              <div className="space-y-2">
-                <label htmlFor="workspace-name-input" className="text-sm font-medium">
-                  Workspace name
-                </label>
-                <Input id="workspace-name-input" disabled={!canRename} {...register('name')} />
-                {errors.name ? <p className="text-sm text-destructive">{errors.name.message}</p> : null}
-              </div>
-              {canRename ? (
-                <div className="flex justify-end">
-                  <Button type="submit" isLoading={isSubmitting} loadingText="Saving">
-                    Save changes
-                  </Button>
-                </div>
-              ) : null}
-            </form>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="space-y-2 border-b border-border/60 pb-4">
-            <Badge variant="outline" className="w-fit">Security</Badge>
-            <CardTitle>Change password</CardTitle>
-            <CardDescription>Changing your password signs you out of every other session.</CardDescription>
-          </CardHeader>
-          <CardContent className="pt-6">
-            <form className="space-y-4" onSubmit={onSubmitChangePassword}>
-              <div className="space-y-2">
-                <label htmlFor="current-password-input" className="text-sm font-medium">
-                  Current password
-                </label>
-                <Input
-                  id="current-password-input"
-                  type="password"
-                  autoComplete="current-password"
-                  {...registerPassword('currentPassword')}
-                />
-                {passwordErrors.currentPassword ? (
-                  <p className="text-sm text-destructive">{passwordErrors.currentPassword.message}</p>
-                ) : null}
-              </div>
-              <div className="space-y-2">
-                <label htmlFor="new-password-input" className="text-sm font-medium">
-                  New password
-                </label>
-                <Input
-                  id="new-password-input"
-                  type="password"
-                  autoComplete="new-password"
-                  {...registerPassword('newPassword')}
-                />
-                {passwordErrors.newPassword ? (
-                  <p className="text-sm text-destructive">{passwordErrors.newPassword.message}</p>
-                ) : null}
-              </div>
-              <div className="space-y-2">
-                <label htmlFor="confirm-password-input" className="text-sm font-medium">
-                  Confirm new password
-                </label>
-                <Input
-                  id="confirm-password-input"
-                  type="password"
-                  autoComplete="new-password"
-                  {...registerPassword('confirmPassword')}
-                />
-                {passwordErrors.confirmPassword ? (
-                  <p className="text-sm text-destructive">{passwordErrors.confirmPassword.message}</p>
-                ) : null}
-              </div>
-              {passwordApiError ? <p className="text-sm text-destructive">{passwordApiError}</p> : null}
-              <div className="flex justify-end">
-                <Button type="submit" isLoading={isChangingPassword} loadingText="Changing">
-                  Change password
-                </Button>
-              </div>
-            </form>
-          </CardContent>
-        </Card>
-
-        {(role === 'owner' || role === 'admin') && digestSettings ? (
+        {accessDenied ? (
+          <WorkspaceAccessDenied />
+        ) : (
+          <>
           <Card>
             <CardHeader className="space-y-2 border-b border-border/60 pb-4">
-              <Badge variant="outline" className="w-fit">Notifications</Badge>
-              <CardTitle>Weekly digest</CardTitle>
-              <CardDescription>A weekly summary of activity, sent by email and/or posted to Slack.</CardDescription>
+              <Badge variant="outline" className="w-fit">Workspace</Badge>
+              <CardTitle>Workspace name</CardTitle>
+              <CardDescription>{`Workspace ID: ${workspaceId}`}</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4 pt-6">
-              <div className="flex items-center justify-between gap-4">
-                <div>
-                  <p className="text-sm font-medium">Email digest</p>
-                  <p className="text-xs text-muted-foreground">Sent to the workspace owner.</p>
+            <CardContent className="pt-6">
+              <form className="space-y-4" onSubmit={onSubmitRename}>
+                <div className="space-y-2">
+                  <label htmlFor="workspace-name-input" className="text-sm font-medium">
+                    Workspace name
+                  </label>
+                  <Input id="workspace-name-input" disabled={!canRename} {...register('name')} />
+                  {errors.name ? <p className="text-sm text-destructive">{errors.name.message}</p> : null}
                 </div>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant={digestSettings.emailEnabled ? 'default' : 'ghost'}
-                  isLoading={isSavingDigest}
-                  onClick={() => void handleToggleEmail()}
-                >
-                  {digestSettings.emailEnabled ? 'On' : 'Off'}
-                </Button>
-              </div>
-
-              <div className="space-y-2">
-                <label htmlFor="slack-webhook-input" className="text-sm font-medium">
-                  Slack webhook URL
-                </label>
-                <div className="flex flex-col gap-2 sm:flex-row">
-                  <Input
-                    id="slack-webhook-input"
-                    placeholder="https://hooks.slack.com/services/..."
-                    value={slackWebhookInput}
-                    onChange={(event) => setSlackWebhookInput(event.target.value)}
-                  />
-                  <Button
-                    type="button"
-                    isLoading={isSavingDigest}
-                    loadingText="Saving"
-                    onClick={() => void handleSaveSlackWebhook()}
-                  >
-                    Save
-                  </Button>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  {digestSettings.slackEnabled ? 'Slack posting is enabled.' : 'Leave blank to disable Slack posting.'}
-                </p>
-              </div>
-
-              <div className="flex justify-end">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  isLoading={isPreviewingDigest}
-                  loadingText="Loading"
-                  onClick={() => void handlePreviewDigest()}
-                >
-                  Preview digest
-                </Button>
-              </div>
-
-              {digestPreviewText ? (
-                <pre className="whitespace-pre-wrap rounded-lg border border-border/70 p-4 text-sm">
-                  {digestPreviewText}
-                </pre>
-              ) : null}
+                {canRename ? (
+                  <div className="flex justify-end">
+                    <Button type="submit" isLoading={isSubmitting} loadingText="Saving">
+                      Save changes
+                    </Button>
+                  </div>
+                ) : null}
+              </form>
             </CardContent>
           </Card>
-        ) : null}
+
+          <Card>
+            <CardHeader className="space-y-2 border-b border-border/60 pb-4">
+              <Badge variant="outline" className="w-fit">Security</Badge>
+              <CardTitle>Change password</CardTitle>
+              <CardDescription>Changing your password signs you out of every other session.</CardDescription>
+            </CardHeader>
+            <CardContent className="pt-6">
+              <form className="space-y-4" onSubmit={onSubmitChangePassword}>
+                <div className="space-y-2">
+                  <label htmlFor="current-password-input" className="text-sm font-medium">
+                    Current password
+                  </label>
+                  <Input
+                    id="current-password-input"
+                    type="password"
+                    autoComplete="current-password"
+                    {...registerPassword('currentPassword')}
+                  />
+                  {passwordErrors.currentPassword ? (
+                    <p className="text-sm text-destructive">{passwordErrors.currentPassword.message}</p>
+                  ) : null}
+                </div>
+                <div className="space-y-2">
+                  <label htmlFor="new-password-input" className="text-sm font-medium">
+                    New password
+                  </label>
+                  <Input
+                    id="new-password-input"
+                    type="password"
+                    autoComplete="new-password"
+                    {...registerPassword('newPassword')}
+                  />
+                  {passwordErrors.newPassword ? (
+                    <p className="text-sm text-destructive">{passwordErrors.newPassword.message}</p>
+                  ) : null}
+                </div>
+                <div className="space-y-2">
+                  <label htmlFor="confirm-password-input" className="text-sm font-medium">
+                    Confirm new password
+                  </label>
+                  <Input
+                    id="confirm-password-input"
+                    type="password"
+                    autoComplete="new-password"
+                    {...registerPassword('confirmPassword')}
+                  />
+                  {passwordErrors.confirmPassword ? (
+                    <p className="text-sm text-destructive">{passwordErrors.confirmPassword.message}</p>
+                  ) : null}
+                </div>
+                {passwordApiError ? <p className="text-sm text-destructive">{passwordApiError}</p> : null}
+                <div className="flex justify-end">
+                  <Button type="submit" isLoading={isChangingPassword} loadingText="Changing">
+                    Change password
+                  </Button>
+                </div>
+              </form>
+            </CardContent>
+          </Card>
+
+          {(role === 'owner' || role === 'admin') && digestSettings ? (
+            <Card>
+              <CardHeader className="space-y-2 border-b border-border/60 pb-4">
+                <Badge variant="outline" className="w-fit">Notifications</Badge>
+                <CardTitle>Weekly digest</CardTitle>
+                <CardDescription>A weekly summary of activity, sent by email and/or posted to Slack.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4 pt-6">
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <p className="text-sm font-medium">Email digest</p>
+                    <p className="text-xs text-muted-foreground">Sent to the workspace owner.</p>
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={digestSettings.emailEnabled ? 'default' : 'ghost'}
+                    isLoading={isSavingDigest}
+                    onClick={() => void handleToggleEmail()}
+                  >
+                    {digestSettings.emailEnabled ? 'On' : 'Off'}
+                  </Button>
+                </div>
+
+                <div className="space-y-2">
+                  <label htmlFor="slack-webhook-input" className="text-sm font-medium">
+                    Slack webhook URL
+                  </label>
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <Input
+                      id="slack-webhook-input"
+                      placeholder="https://hooks.slack.com/services/..."
+                      value={slackWebhookInput}
+                      onChange={(event) => setSlackWebhookInput(event.target.value)}
+                    />
+                    <Button
+                      type="button"
+                      isLoading={isSavingDigest}
+                      loadingText="Saving"
+                      onClick={() => void handleSaveSlackWebhook()}
+                    >
+                      Save
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {digestSettings.slackEnabled ? 'Slack posting is enabled.' : 'Leave blank to disable Slack posting.'}
+                  </p>
+                </div>
+
+                <div className="flex justify-end">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    isLoading={isPreviewingDigest}
+                    loadingText="Loading"
+                    onClick={() => void handlePreviewDigest()}
+                  >
+                    Preview digest
+                  </Button>
+                </div>
+
+                {digestPreviewText ? (
+                  <pre className="whitespace-pre-wrap rounded-lg border border-border/70 p-4 text-sm">
+                    {digestPreviewText}
+                  </pre>
+                ) : null}
+              </CardContent>
+            </Card>
+          ) : null}
+          </>
+        )}
       </div>
     </AppShell>
   )

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, Res, UseGuards } from '@nestjs/common'
+import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Query, Res, UseGuards } from '@nestjs/common'
 import type { Response } from 'express'
 import { CurrentUser, type CurrentUserContext } from '../auth/decorators/current-user.decorator'
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard'
@@ -35,7 +35,7 @@ export class TicketsController {
   @UseGuards(JwtAuthGuard, WorkspaceMemberGuard)
   async downloadTranscript(
     @Param('workspaceId') workspaceId: string,
-    @Param('ticketId') ticketId: string,
+    @Param('ticketId', new ParseUUIDPipe()) ticketId: string,
     @Res() res: Response,
   ) {
     const { title, buffer } = await this.ticketsService.getTranscriptPdf(workspaceId, ticketId)
@@ -50,7 +50,7 @@ export class TicketsController {
 
   @Get(':ticketId')
   @UseGuards(JwtAuthGuard, WorkspaceMemberGuard)
-  getOne(@Param('workspaceId') workspaceId: string, @Param('ticketId') ticketId: string) {
+  getOne(@Param('workspaceId') workspaceId: string, @Param('ticketId', new ParseUUIDPipe()) ticketId: string) {
     return this.ticketsService.getOne(workspaceId, ticketId)
   }
 
@@ -58,7 +58,7 @@ export class TicketsController {
   @UseGuards(JwtAuthGuard, WorkspaceMemberGuard)
   update(
     @Param('workspaceId') workspaceId: string,
-    @Param('ticketId') ticketId: string,
+    @Param('ticketId', new ParseUUIDPipe()) ticketId: string,
     @CurrentUser() user: CurrentUserContext,
     @Body() dto: UpdateTicketDto,
   ) {

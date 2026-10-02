@@ -664,4 +664,62 @@ describe('CatalogParseProcessor', () => {
       expect(items.map((item) => item.sku)).toEqual(['A1'])
     })
   })
+
+  // B17. A catalog with no item in it (all rows blank, headers that match no
+  // column, a PDF the model read nothing from) finished `done` with 0 items and
+  // no message; matching then simply found nothing. It now fails at once with a
+  // reason, as procurement files have since B2.
+  describe('catalogs with no items (B17)', () => {
+    it('error: a CSV whose rows are all blank fails at once with a reason and stores nothing', async () => {
+      const { workspace, vendor } = await seedWorkspaceAndVendor(`${prefix}b17-blank@example.com`, 'B17 Blank')
+      const catalog = await seedCatalog(workspace.id, vendor.id, 'catalog.csv', 'sku,description\n,,\n,,\n')
+
+      await expect(
+        processor.handleParse({ id: 'job-b17-blank', data: { id: catalog.id }, attemptsMade: 0, opts: { attempts: 3 } } as any),
+      ).resolves.toBeUndefined()
+
+      const [updated] = await db.select().from(catalogs).where(eq(catalogs.id, catalog.id))
+      expect(updated.status).toBe('failed')
+      expect(updated.lastError).toBe(
+        'No catalog items were found in this file. Its first row must hold column headers such as SKU and Description, and it must be saved as a UTF-8 CSV or an XLSX workbook.',
+      )
+      expect(await db.select().from(catalogItems).where(eq(catalogItems.catalogId, catalog.id))).toHaveLength(0)
+    })
+
+    it('error: a CSV whose headers match no catalog column fails the same way', async () => {
+      const { workspace, vendor } = await seedWorkspaceAndVendor(`${prefix}b17-headers@example.com`, 'B17 Headers')
+      const catalog = await seedCatalog(workspace.id, vendor.id, 'catalog.csv', 'Artikel;Bezeichnung\nA1;Widget\n')
+
+      await processor.handleParse({ id: 'job-b17-headers', data: { id: catalog.id } } as any)
+
+      const [updated] = await db.select().from(catalogs).where(eq(catalogs.id, catalog.id))
+      expect(updated.status).toBe('failed')
+      expect(updated.lastError).toMatch(/^No catalog items were found in this file\./)
+    })
+
+    it('error: a PDF the model read no items from fails with a reason', async () => {
+      const { workspace, vendor } = await seedWorkspaceAndVendor(`${prefix}b17-pdf@example.com`, 'B17 PDF')
+      const catalog = await seedCatalog(workspace.id, vendor.id, 'catalog.pdf', 'fake pdf bytes')
+      mockRenderPdfToImages.mockResolvedValue({ pages: [Buffer.from([0x01])], total: 1, truncated: false })
+      extraction.extractFromImage.mockResolvedValueOnce({ items: [] })
+
+      await processor.handleParse({ id: 'job-b17-pdf', data: { id: catalog.id } } as any)
+
+      const [updated] = await db.select().from(catalogs).where(eq(catalogs.id, catalog.id))
+      expect(updated.status).toBe('failed')
+      expect(updated.lastError).toBe(
+        'No catalog items could be read from this PDF. Check that its pages show product SKUs or descriptions as text or clear images.',
+      )
+    })
+
+    it('happy: a catalog with one real item among blank rows still finishes done', async () => {
+      const { workspace, vendor } = await seedWorkspaceAndVendor(`${prefix}b17-one@example.com`, 'B17 One')
+      const catalog = await seedCatalog(workspace.id, vendor.id, 'catalog.csv', 'sku,description\n,,\nA1,Widget\n')
+
+      await processor.handleParse({ id: 'job-b17-one', data: { id: catalog.id } } as any)
+
+      const [updated] = await db.select().from(catalogs).where(eq(catalogs.id, catalog.id))
+      expect(updated).toMatchObject({ status: 'done', rowCount: 1 })
+    })
+  })
 })

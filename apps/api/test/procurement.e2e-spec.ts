@@ -1928,4 +1928,39 @@ describe('Procurement flow (e2e)', () => {
       expect(compared.body.flags[0].reason).toBe('Quantity mismatch for "Bolt M8x20": PO=100 Invoice=90')
     })
   })
+
+  // B16. Lives in this suite for its seeded owner (no /auth/register spend);
+  // the routes belong to other modules. Each used to answer 500 (Postgres
+  // 22P02) on a malformed id.
+  describe('malformed path ids on the remaining routes (B16)', () => {
+    it('error: every route that takes an id from the path answers 400 for a malformed one', async () => {
+      const owner = await seedOwnerWithWorkspace(app, `${prefix}b16-ids@example.com`, 'B16 Ids')
+      const ws = `/workspaces/${owner.workspaceId}`
+      const auth = `Bearer ${owner.accessToken}`
+      const http = () => request(app.getHttpServer())
+      const routes: [string, () => request.Test][] = [
+        ['DELETE members/:userId', () => http().delete(`${ws}/members/not-a-uuid`)],
+        ['GET chat/sessions/:sessionId/messages', () => http().get(`${ws}/chat/sessions/not-a-uuid/messages`)],
+        ['PATCH faq-drafts/:draftId/approve', () => http().patch(`${ws}/insights/faq-drafts/not-a-uuid/approve`).send({})],
+        ['PATCH faq-drafts/:draftId/reject', () => http().patch(`${ws}/insights/faq-drafts/not-a-uuid/reject`).send({})],
+        ['PATCH freshness-flags/:flagId/dismiss', () => http().patch(`${ws}/insights/freshness-flags/not-a-uuid/dismiss`)],
+        ['DELETE knowledge-bases/:kbId', () => http().delete(`${ws}/knowledge-bases/not-a-uuid`)],
+        ['POST knowledge-bases/:kbId/scrape', () => http().post(`${ws}/knowledge-bases/not-a-uuid/scrape`).send({ url: 'https://vendor.example.com/' })],
+        ['GET knowledge-bases/:kbId/scrape-runs', () => http().get(`${ws}/knowledge-bases/not-a-uuid/scrape-runs`)],
+        ['GET tickets/:ticketId/transcript.pdf', () => http().get(`${ws}/tickets/not-a-uuid/transcript.pdf`)],
+        ['GET tickets/:ticketId', () => http().get(`${ws}/tickets/not-a-uuid`)],
+        ['PATCH tickets/:ticketId', () => http().patch(`${ws}/tickets/not-a-uuid`).send({})],
+      ]
+
+      const answers: { route: string; status: number; message: unknown }[] = []
+      for (const [route, send] of routes) {
+        const res = await send().set('Authorization', auth)
+        answers.push({ route, status: res.status, message: res.body.message })
+      }
+
+      expect(answers).toEqual(
+        routes.map(([route]) => ({ route, status: 400, message: 'Validation failed (uuid is expected)' })),
+      )
+    })
+  })
 })

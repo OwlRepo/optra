@@ -187,7 +187,7 @@
           "context": "import",
           "confidence": "EXTRACTED",
           "source_file": "apps/api/src/workspaces/workspaces.controller.ts",
-          "source_location": "L18",
+          "source_location": "L19",
           "weight": 1.0,
           "_origin": "ast"
         },
@@ -1274,7 +1274,7 @@
           "relation": "references",
           "confidence": "EXTRACTED",
           "source_file": "apps/api/src/chat/chat.controller.ts",
-          "source_location": "L102",
+          "source_location": "L103",
           "weight": 1.0,
           "context": "decorator",
           "_origin": "ast"
@@ -1285,7 +1285,7 @@
           "relation": "references",
           "confidence": "EXTRACTED",
           "source_file": "apps/api/src/chat/chat.controller.ts",
-          "source_location": "L103",
+          "source_location": "L104",
           "weight": 1.0,
           "context": "decorator",
           "_origin": "ast"
@@ -2168,7 +2168,7 @@
           "relation": "references",
           "confidence": "EXTRACTED",
           "source_file": "apps/api/src/knowledge-bases/knowledge-bases.controller.ts",
-          "source_location": "L46",
+          "source_location": "L47",
           "weight": 1.0,
           "context": "decorator",
           "_origin": "ast"
@@ -2179,7 +2179,7 @@
           "relation": "references",
           "confidence": "EXTRACTED",
           "source_file": "apps/api/src/knowledge-bases/knowledge-bases.controller.ts",
-          "source_location": "L47",
+          "source_location": "L48",
           "weight": 1.0,
           "context": "decorator",
           "_origin": "ast"
@@ -3830,7 +3830,7 @@
           "context": "import",
           "confidence": "EXTRACTED",
           "source_file": "apps/api/src/workspaces/workspaces.controller.ts",
-          "source_location": "L24",
+          "source_location": "L25",
           "weight": 1.0,
           "_origin": "ast"
         },
@@ -3858,7 +3858,7 @@
           "relation": "references",
           "confidence": "EXTRACTED",
           "source_file": "apps/api/src/workspaces/workspaces.controller.ts",
-          "source_location": "L95",
+          "source_location": "L96",
           "weight": 1.0,
           "context": "decorator",
           "_origin": "ast"
@@ -3869,7 +3869,7 @@
           "relation": "references",
           "confidence": "EXTRACTED",
           "source_file": "apps/api/src/workspaces/workspaces.controller.ts",
-          "source_location": "L96",
+          "source_location": "L97",
           "weight": 1.0,
           "context": "decorator",
           "_origin": "ast"
@@ -4137,7 +4137,7 @@
           "context": "import",
           "confidence": "EXTRACTED",
           "source_file": "apps/web/app/workspaces/[id]/catalog-matches/page.tsx",
-          "source_location": "L20",
+          "source_location": "L21",
           "weight": 1.0,
           "_origin": "ast"
         },
@@ -4166,7 +4166,7 @@
           "context": "import",
           "confidence": "EXTRACTED",
           "source_file": "apps/web/app/workspaces/[id]/discrepancies/page.tsx",
-          "source_location": "L28",
+          "source_location": "L29",
           "weight": 1.0,
           "_origin": "ast"
         },
@@ -4253,7 +4253,7 @@
           "context": "import",
           "confidence": "EXTRACTED",
           "source_file": "apps/web/app/workspaces/[id]/vendors/[vendorId]/page.tsx",
-          "source_location": "L28",
+          "source_location": "L29",
           "weight": 1.0,
           "_origin": "ast"
         },
@@ -4264,7 +4264,7 @@
           "context": "import",
           "confidence": "EXTRACTED",
           "source_file": "apps/web/app/workspaces/[id]/vendors/[vendorId]/page.tsx",
-          "source_location": "L29",
+          "source_location": "L30",
           "weight": 1.0,
           "_origin": "ast"
         }

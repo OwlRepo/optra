@@ -93,6 +93,30 @@ test.describe('procurement core', () => {
     await page.context().close()
   })
 
+  // B18 extends B14 to every other workspace page.
+  test("error: owner B sees the no-access state on every page of workspace A", async ({ browser }) => {
+    const page = await pageAs(browser, 'ownerB')
+    const ws = state.ownerA.workspaceId
+    const paths = [
+      '',
+      '/discrepancies',
+      '/vendors',
+      `/vendors/${state.ownerA.vendorId}`,
+      '/catalog-matches',
+      '/members',
+      '/settings',
+    ]
+
+    for (const path of paths) {
+      await page.goto(`/workspaces/${ws}${path}`)
+      await expect(
+        page.getByRole('heading', { name: "You don't have access to this workspace" }),
+        path || 'overview',
+      ).toBeVisible()
+    }
+    await page.context().close()
+  })
+
   test('edge: an XLSX purchase order uploads and parses its rows', async ({ browser }) => {
     const page = await pageAs(browser, 'ownerB')
     const ws = state.ownerB.workspaceId
