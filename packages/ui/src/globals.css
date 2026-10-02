@@ -37,6 +37,25 @@
   --color-cta-surface-foreground: var(--cta-surface-foreground);
   --color-cta-surface-muted: var(--cta-surface-muted);
   --color-cta-surface-accent: var(--cta-surface-accent);
+  /* App alignment (2026-10-02): landing literals the authenticated app draws
+     with, as named tokens. Additive only; no existing token is redefined. */
+  --color-destructive-strong: var(--destructive-strong);
+  --color-destructive-strong-text: var(--destructive-strong-text);
+  --color-destructive-tone: var(--destructive-tone);
+  --color-surface-subtle: var(--surface-subtle);
+  --color-surface-segmented: var(--surface-segmented);
+  --color-surface-skeleton: var(--surface-skeleton);
+  --color-surface-hover: var(--surface-hover);
+  --color-secondary-hover: var(--secondary-hover);
+  --color-border-panel: var(--border-panel);
+  --color-border-segmented: var(--border-segmented);
+  --color-border-inner: var(--border-inner);
+  --color-border-definition: var(--border-definition);
+  --color-border-dashed: var(--border-dashed);
+  --color-ink-body: var(--ink-body);
+  --color-ink-muted: var(--ink-muted);
+  --color-ink-ghost: var(--ink-ghost);
+  --color-ink-neutral: var(--ink-neutral);
   --radius-sm: calc(var(--radius) - 0.5rem);
   --radius-md: calc(var(--radius) - 0.25rem);
   --radius-lg: var(--radius);
@@ -46,6 +65,15 @@
   --shadow-md: var(--shadow-md);
   --shadow-lg: var(--shadow-lg);
   --shadow-xl: var(--shadow-xl);
+  /* The only shadows the aligned app draws (design handoff README "Shadows"). */
+  --shadow-modal: 0 24px 60px oklch(0.238 0.03 264 / 0.18);
+  --shadow-toast: 0 24px 60px oklch(0.238 0.03 264 / 0.07);
+  --shadow-cta: 0 10px 24px oklch(0.5 0.09 184 / 0.22);
+  --shadow-segmented: 0 1px 3px oklch(0.238 0.03 264 / 0.12);
+  --shadow-nav: 0 1px 2px oklch(0.238 0.03 264 / 0.06);
+  --shadow-focus: 0 0 0 3px oklch(0.5 0.09 184 / 0.15);
+  /* Switch knob (frame 3.10). */
+  --shadow-knob: 0 1px 2px oklch(0.238 0.03 264 / 0.2);
 }
 
 @layer base {
@@ -89,6 +117,30 @@
     --cta-surface-foreground: oklch(0.97 0.01 200);
     --cta-surface-muted: oklch(0.86 0.02 200);
     --cta-surface-accent: oklch(0.8 0.09 184);
+    /* Action red -- the landing's three red roles. --destructive stays the
+       status token; these are what the aligned app draws with. */
+    --destructive-strong: oklch(0.55 0.18 27);
+    --destructive-strong-text: oklch(0.5 0.17 27);
+    --destructive-tone: oklch(0.6 0.18 27);
+    /* Quiet surfaces: inset panels and footers, segmented track, skeleton
+       blocks, table row hover, tonal button hover. */
+    --surface-subtle: oklch(0.978 0.004 255);
+    --surface-segmented: oklch(0.965 0.008 255);
+    --surface-skeleton: oklch(0.955 0.008 255);
+    --surface-hover: oklch(0.982 0.004 255);
+    --secondary-hover: oklch(0.95 0.01 255);
+    /* Hairlines, strongest to faintest: panels and controls, segmented track
+       and tiles, inner row rules, definition rows; dashed wells. */
+    --border-panel: oklch(0.9 0.012 255);
+    --border-segmented: oklch(0.92 0.012 255);
+    --border-inner: oklch(0.93 0.01 255);
+    --border-definition: oklch(0.94 0.01 255);
+    --border-dashed: oklch(0.88 0.012 255);
+    /* Ink steps between --foreground and --muted-foreground. */
+    --ink-body: oklch(0.46 0.02 264);
+    --ink-muted: oklch(0.56 0.02 264);
+    --ink-ghost: oklch(0.45 0.02 264);
+    --ink-neutral: oklch(0.42 0.02 264);
     --radius: 1rem;
     --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.05), 0 1px 1px rgba(15, 23, 42, 0.03);
     --shadow-md: 0 10px 20px rgba(15, 23, 42, 0.06), 0 2px 6px rgba(15, 23, 42, 0.04);
@@ -138,6 +190,25 @@
     --cta-surface-foreground: oklch(0.97 0.01 200);
     --cta-surface-muted: oklch(0.86 0.02 200);
     --cta-surface-accent: oklch(0.8 0.09 184);
+    /* App-alignment siblings alias existing dark tokens; no dark value is
+       invented (nothing toggles .dark in the app today). */
+    --destructive-strong: var(--destructive);
+    --destructive-strong-text: var(--destructive);
+    --destructive-tone: var(--destructive);
+    --surface-subtle: var(--muted);
+    --surface-segmented: var(--muted);
+    --surface-skeleton: var(--muted);
+    --surface-hover: var(--muted);
+    --secondary-hover: var(--muted);
+    --border-panel: var(--border);
+    --border-segmented: var(--border);
+    --border-inner: var(--border);
+    --border-definition: var(--border);
+    --border-dashed: var(--border);
+    --ink-body: var(--muted-foreground);
+    --ink-muted: var(--muted-foreground);
+    --ink-ghost: var(--muted-foreground);
+    --ink-neutral: var(--muted-foreground);
     --shadow-sm: 0 1px 2px rgba(2, 6, 23, 0.2), 0 1px 1px rgba(2, 6, 23, 0.2);
     --shadow-md: 0 12px 22px rgba(2, 6, 23, 0.25), 0 2px 6px rgba(2, 6, 23, 0.2);
     --shadow-lg: 0 20px 40px rgba(2, 6, 23, 0.34), 0 8px 18px rgba(2, 6, 23, 0.24);
@@ -161,9 +232,6 @@
   body {
     @apply bg-background text-foreground;
     min-height: 100vh;
-    background-image:
-      radial-gradient(circle at top, oklch(from var(--primary) l c h / 0.08), transparent 26%),
-      radial-gradient(circle at 82% 18%, oklch(from var(--accent) l c h / 0.09), transparent 22%);
   }
 
   ::selection {
@@ -184,8 +252,8 @@
   h6 {
     text-wrap: balance;
     font-family: var(--font-display), system-ui, -apple-system, sans-serif;
-    font-weight: 700;
-    letter-spacing: -0.03em;
+    font-weight: 600;
+    letter-spacing: -0.035em;
   }
 
   p,
@@ -331,6 +399,47 @@
 
   .animate-rf-pop {
     animation: rf-pop 300ms var(--ease-spring) both;
+  }
+
+  /* App alignment: the processing pill's 6px dot (Badge pulse). */
+  @keyframes op-pulse {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.35;
+    }
+  }
+
+  .animate-op-pulse {
+    animation: op-pulse 1.4s ease-in-out infinite;
+  }
+
+  /* App alignment: skeleton shimmer -- the hero demo's rf-sweep teal band,
+     34% wide, looping. Stagger rows with --skeleton-delay. */
+  .skeleton-sweep {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .skeleton-sweep::before {
+    content: "";
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 34%;
+    background-image: linear-gradient(90deg, transparent, oklch(from var(--primary-strong) l c h / 0.18), transparent);
+    animation: rf-sweep 1.6s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    animation-delay: var(--skeleton-delay, 0s);
+  }
+
+  /* App alignment: native <select> with a drawn chevron (16px, right 14px).
+     Size and inset are overridable with --chevron-size / --chevron-right. */
+  .select-chevron {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='oklch(0.56 0.02 264)' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right var(--chevron-right, 14px) center;
+    background-size: var(--chevron-size, 16px) var(--chevron-size, 16px);
   }
 
   .font-display {
