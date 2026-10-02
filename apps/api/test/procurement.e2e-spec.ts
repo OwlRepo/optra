@@ -1347,10 +1347,17 @@ describe('Procurement flow (e2e)', () => {
       const pairA = await uploadPair(a, { po: [Buffer.from(poCsv), 'po.csv'], invoice: [Buffer.from(invoiceCsv), 'invoice.csv'] }, { po: 'PO-CITE-A', invoice: 'INV-CITE-A' })
       const pairB = await uploadPair(b, { po: [Buffer.from(poCsv), 'po.csv'], invoice: [Buffer.from(invoiceCsv), 'invoice.csv'] }, { po: 'PO-CITE-B', invoice: 'INV-CITE-B' })
       const [lineOfA] = await db.select().from(poLineItems).where(eq(poLineItems.purchaseOrderId, pairA.poId))
+      // Inside the pair's succeeded run: a run-less flag is hidden by
+      // currentFlagScope once the pair has any succeeded run.
+      const [runB] = await db
+        .select()
+        .from(comparisonRuns)
+        .where(and(eq(comparisonRuns.workspaceId, b.workspaceId), eq(comparisonRuns.status, 'succeeded')))
       await db.insert(discrepancyFlags).values({
         workspaceId: b.workspaceId,
         purchaseOrderId: pairB.poId,
         invoiceId: pairB.invoiceId,
+        comparisonRunId: runB.id,
         poLineItemId: lineOfA.id,
         flagType: 'price_mismatch',
         reason: 'Planted cross-workspace reference.',
