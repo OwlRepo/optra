@@ -399,6 +399,8 @@ Environment traps hit while verifying (they are execution preflight, not test lo
 
 **2026-10-02 — fix B12 (catalog matches from a flag).** Web unit `catalog-matches/page.spec.ts` `describe('line scope (B12)')` (2) asserts the exact list scope shape, and Playwright `catalog-core.spec.ts` now follows the flag's real "Find catalog matches" link instead of building the URL with one id — the S4 test had deliberately side-stepped this bug, so the browser layer is where it now gets proven.
 
+**2026-10-02 — fix B7 (catalog photo budget).** `catalog-parse.processor.spec.ts` `describe('photo fetching budget (B7)')` (3). **Test a time budget with a controlled clock, not real waiting:** the hanging-host case spies on `Date.now` and lets each mocked fetch advance it by 20 s, so 16 hung photos run in milliseconds. The spec's `jest.mock('@repo/ai')` gained `createLimit` through `jest.requireActual` of `packages/ai/src/web/limit` alone — a mock factory must cover every name the code imports (see the chat e2e note above), and loading one small file keeps the rest of `@repo/ai` mocked.
+
 ## Infrastructure / Docker / Deployment Verification
 
 Infra/config/script changes (Dockerfiles, compose files, CI workflows, deploy shell scripts) are not
