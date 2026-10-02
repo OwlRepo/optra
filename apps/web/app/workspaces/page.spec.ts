@@ -59,7 +59,8 @@ describe('WorkspacesPage', () => {
     expect(screen.getByText('member')).toBeDefined()
   })
 
-  it('opens a workspace directly into chat (default landing page)', async () => {
+  // [support-surfaces-off] was: '…into chat…' → '/workspaces/ws-1/chat'
+  it('regression: opens a workspace directly into Purchase Orders (default landing page)', async () => {
     listWorkspacesMock.mockResolvedValue({
       items: [{ id: 'ws-1', name: 'Alpha', role: 'owner' }],
       nextCursor: null,
@@ -68,7 +69,7 @@ describe('WorkspacesPage', () => {
     renderPage()
 
     expect(await screen.findByText('Alpha')).toBeDefined()
-    expect(screen.getByRole('link', { name: 'Open' }).getAttribute('href')).toBe('/workspaces/ws-1/chat')
+    expect(screen.getByRole('link', { name: 'Open' }).getAttribute('href')).toBe('/workspaces/ws-1/procurement')
   })
 
   it('renders empty state when there are no workspaces', async () => {

@@ -3,7 +3,7 @@
 import React from 'react'
 import { cleanup, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { WorkspaceNav } from './workspace-nav'
+import { WorkspaceNav, workspacePrimaryTabItems } from './workspace-nav'
 
 const usePathnameMock = vi.fn()
 const getUnreadCountMock = vi.fn()
@@ -30,62 +30,85 @@ describe('WorkspaceNav', () => {
     cleanup()
   })
 
-  it('renders all items with correct hrefs', () => {
+  // [support-surfaces-off] On re-enable, restore the original cases from git
+  // history (they asserted Knowledge Bases/Chat/Tickets links and the search
+  // slot's mb-4) and drop the "hides" cases below.
+  it('edge: does not render the workspace search slot', () => {
     usePathnameMock.mockReturnValue('/workspaces/w1')
 
     render(React.createElement(WorkspaceNav, { workspaceId: 'w1', collapsed: false }))
 
-    expect(screen.getByRole('link', { name: 'Overview' }).getAttribute('href')).toBe('/workspaces/w1')
-    expect(screen.getByRole('link', { name: 'Knowledge Bases' }).getAttribute('href')).toBe('/workspaces/w1/knowledge-bases')
-    expect(screen.getByRole('link', { name: 'Members' }).getAttribute('href')).toBe('/workspaces/w1/members')
-    expect(screen.getByRole('link', { name: 'Chat' }).getAttribute('href')).toBe('/workspaces/w1/chat')
-    expect(screen.getByRole('link', { name: 'Tickets' }).getAttribute('href')).toBe('/workspaces/w1/tickets')
-    expect(screen.getByRole('link', { name: 'Settings' }).getAttribute('href')).toBe('/workspaces/w1/settings')
+    expect(screen.queryByTestId('workspace-search-slot')).toBeNull()
   })
 
-  it('marks only Overview active on overview route', () => {
+  it('regression: hides Knowledge Bases, Datasets, Chat, Tickets and Insights', () => {
+    usePathnameMock.mockReturnValue('/workspaces/w1')
+
+    render(React.createElement(WorkspaceNav, { workspaceId: 'w1', collapsed: false }))
+
+    for (const label of ['Knowledge Bases', 'Datasets', 'Chat', 'Tickets', 'Insights']) {
+      expect(screen.queryByRole('link', { name: label })).toBeNull()
+    }
+  })
+
+  it('regression: primary tabs are Overview, Purchase Orders and Discrepancies', () => {
+    expect(workspacePrimaryTabItems('w1').map((item) => [item.label, item.href])).toEqual([
+      ['Overview', '/workspaces/w1'],
+      ['Purchase Orders', '/workspaces/w1/procurement'],
+      ['Discrepancies', '/workspaces/w1/discrepancies'],
+    ])
+  })
+
+  it('happy: renders the seven kept items with correct hrefs in order', () => {
+    usePathnameMock.mockReturnValue('/workspaces/w1')
+
+    render(React.createElement(WorkspaceNav, { workspaceId: 'w1', collapsed: false }))
+
+    expect(screen.getAllByRole('link').map((link) => [link.textContent, link.getAttribute('href')])).toEqual([
+      ['Overview', '/workspaces/w1'],
+      ['Members', '/workspaces/w1/members'],
+      ['Settings', '/workspaces/w1/settings'],
+      ['Vendors', '/workspaces/w1/vendors'],
+      ['Purchase Orders', '/workspaces/w1/procurement'],
+      ['Discrepancies', '/workspaces/w1/discrepancies'],
+      ['Catalog Matches', '/workspaces/w1/catalog-matches'],
+    ])
+  })
+
+  it('happy: marks only Overview active on overview route', () => {
     usePathnameMock.mockReturnValue('/workspaces/w1')
 
     render(React.createElement(WorkspaceNav, { workspaceId: 'w1', collapsed: false }))
 
     expect(screen.getByRole('link', { name: 'Overview' }).getAttribute('aria-current')).toBe('page')
-    expect(screen.getByRole('link', { name: 'Knowledge Bases' }).getAttribute('aria-current')).toBeNull()
+    expect(screen.getByRole('link', { name: 'Vendors' }).getAttribute('aria-current')).toBeNull()
   })
 
-  it('marks Knowledge Bases active on knowledge-base index route', () => {
-    usePathnameMock.mockReturnValue('/workspaces/w1/knowledge-bases')
+  it('happy: marks Vendors active on vendors index route', () => {
+    usePathnameMock.mockReturnValue('/workspaces/w1/vendors')
 
     render(React.createElement(WorkspaceNav, { workspaceId: 'w1', collapsed: false }))
 
-    expect(screen.getByRole('link', { name: 'Knowledge Bases' }).getAttribute('aria-current')).toBe('page')
+    expect(screen.getByRole('link', { name: 'Vendors' }).getAttribute('aria-current')).toBe('page')
     expect(screen.getByRole('link', { name: 'Overview' }).getAttribute('aria-current')).toBeNull()
   })
 
-  it('keeps Knowledge Bases active on knowledge-base detail route', () => {
-    usePathnameMock.mockReturnValue('/workspaces/w1/knowledge-bases/kb1')
+  it('happy: keeps Vendors active on vendor detail route', () => {
+    usePathnameMock.mockReturnValue('/workspaces/w1/vendors/v1')
 
     render(React.createElement(WorkspaceNav, { workspaceId: 'w1', collapsed: false }))
 
-    expect(screen.getByRole('link', { name: 'Knowledge Bases' }).getAttribute('aria-current')).toBe('page')
+    expect(screen.getByRole('link', { name: 'Vendors' }).getAttribute('aria-current')).toBe('page')
   })
 
-  it('keeps labels in DOM with sr-only class when collapsed', () => {
-    usePathnameMock.mockReturnValue('/workspaces/w1/chat')
+  it('happy: keeps labels in DOM with sr-only class when collapsed', () => {
+    usePathnameMock.mockReturnValue('/workspaces/w1/members')
 
     render(React.createElement(WorkspaceNav, { workspaceId: 'w1', collapsed: true }))
 
-    expect(screen.getByRole('link', { name: 'Chat' })).toBeTruthy()
-    const label = screen.getByText('Chat')
+    expect(screen.getByRole('link', { name: 'Members' })).toBeTruthy()
+    const label = screen.getByText('Members')
     expect(label.className).toContain('sr-only')
-  })
-
-  it('separates the search control from the nav links with bottom spacing', () => {
-    usePathnameMock.mockReturnValue('/workspaces/w1')
-
-    render(React.createElement(WorkspaceNav, { workspaceId: 'w1', collapsed: false }))
-
-    const slot = screen.getByTestId('workspace-search-slot')
-    expect(slot.className).toContain('mb-4')
   })
 
   it('renders unread-count badge on Overview when count is positive', async () => {

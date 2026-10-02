@@ -1,7 +1,7 @@
 /** @vitest-environment jsdom */
 
 import React from 'react'
-import { cleanup, render, waitFor } from '@testing-library/react'
+import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ToastProvider } from '@repo/ui'
 import ChatRedirectPage from './page'
@@ -33,13 +33,43 @@ describe('ChatRedirectPage', () => {
     vi.restoreAllMocks()
   })
 
-  it('redirects to first workspace chat', async () => {
+  it('error: a failed workspace lookup shows a workspace-neutral toast and falls back to /workspaces', async () => {
+    listWorkspacesMock.mockRejectedValue(new Error('boom'))
+
+    renderPage()
+
+    expect(await screen.findByText('Workspace unavailable')).toBeTruthy()
+    expect(screen.queryByText(/chat/i)).toBeNull()
+    expect(pushMock).toHaveBeenCalledWith('/workspaces')
+  })
+
+  it('edge: sends a user with no workspace to /workspaces', async () => {
+    listWorkspacesMock.mockResolvedValue({ items: [], nextCursor: null })
+
+    renderPage()
+
+    await waitFor(() => {
+      expect(pushMock).toHaveBeenCalledWith('/workspaces')
+    })
+  })
+
+  // [support-surfaces-off] was: 'redirects to first workspace chat' → '/workspaces/ws-1/chat'
+  it('regression: redirects to the first workspace Purchase Orders', async () => {
     listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
 
     renderPage()
 
     await waitFor(() => {
-      expect(pushMock).toHaveBeenCalledWith('/workspaces/ws-1/chat')
+      expect(pushMock).toHaveBeenCalledWith('/workspaces/ws-1/procurement')
     })
+  })
+
+  it('happy: the waiting screen does not mention chat', () => {
+    listWorkspacesMock.mockReturnValue(new Promise(() => {}))
+
+    renderPage()
+
+    expect(screen.getByText('Opening your workspace')).toBeTruthy()
+    expect(screen.queryByText(/chat/i)).toBeNull()
   })
 })
