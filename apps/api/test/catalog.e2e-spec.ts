@@ -161,7 +161,12 @@ describe('Catalog flow (e2e)', () => {
     // catalog-parse.processor.spec.ts (real processor logic, mocked render).
     const extraction = {
       extractFromImage: jest.fn(async () => ({ items: [] })),
-      compare: jest.fn(async () => ({ isMatch: true, score: 0.9, reason: 'Same product.' })),
+      // A candidate described with E2E-UNJUDGED stands in for a model call that
+      // fails (B6); every other candidate gets the fixed verdict.
+      compare: jest.fn(async (input: { candidateText: string }) => {
+        if (input.candidateText.includes('E2E-UNJUDGED')) throw new Error('E2E model failure')
+        return { isMatch: true, score: 0.9, reason: 'Same product.' }
+      }),
     }
     const images = {
       fetchAndStore: jest.fn(async (workspaceId: string, catalogId: string) => `${workspaceId}/catalogs/${catalogId}/images/fake.png`),
@@ -632,6 +637,60 @@ describe('Catalog flow (e2e)', () => {
         ['A1', 'Widget'],
         [null, 'Gadget'],
       ])
+    })
+  })
+
+  describe('partial catalog search failures (B6)', () => {
+    async function seedLineAndCandidates(email: string, candidates: { sku: string; description: string }[]) {
+      const owner = await seedOwnerWithWorkspace(app, email, 'B6 Search')
+      const [vendor] = await db.insert(vendors).values({ workspaceId: owner.workspaceId, name: 'B6 Vendor' }).returning()
+      const [catalog] = await db
+        .insert(catalogs)
+        .values({ workspaceId: owner.workspaceId, vendorId: vendor.id, name: 'catalog.csv', status: 'done' })
+        .returning()
+      await db
+        .insert(catalogItems)
+        .values(candidates.map((item) => ({ workspaceId: owner.workspaceId, catalogId: catalog.id, ...item })))
+      const [po] = await db
+        .insert(purchaseOrders)
+        .values({ workspaceId: owner.workspaceId, name: 'po.csv', status: 'done' })
+        .returning()
+      const [line] = await db
+        .insert(poLineItems)
+        .values({ workspaceId: owner.workspaceId, purchaseOrderId: po.id, sku: 'B6A', description: 'Widget' })
+        .returning()
+      return { owner, lineId: line.id }
+    }
+
+    it('error: a search where no candidate can be compared answers 503 in plain words', async () => {
+      const { owner, lineId } = await seedLineAndCandidates(`${prefix}b6-none@example.com`, [
+        { sku: 'B6A-1', description: 'E2E-UNJUDGED widget' },
+      ])
+
+      const res = await request(app.getHttpServer())
+        .post(`/workspaces/${owner.workspaceId}/catalog-matches/search`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .send({ purchaseOrderLineItemId: lineId })
+        .expect(503)
+
+      expect(res.body.message).toBe('No catalog item could be compared right now. Try the search again.')
+    })
+
+    it('regression: a search where one candidate cannot be compared answers 201 with the rest and counts it', async () => {
+      const { owner, lineId } = await seedLineAndCandidates(`${prefix}b6-one@example.com`, [
+        { sku: 'B6A', description: 'Widget' },
+        { sku: 'B6A-2', description: 'E2E-UNJUDGED widget' },
+      ])
+
+      const res = await request(app.getHttpServer())
+        .post(`/workspaces/${owner.workspaceId}/catalog-matches/search`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .send({ purchaseOrderLineItemId: lineId })
+        .expect(201)
+
+      expect(res.body.matches).toHaveLength(1)
+      expect(res.body.matches[0]).toMatchObject({ isMatch: true, reason: 'Same product.' })
+      expect(res.body.unjudged).toBe(1)
     })
   })
 })

@@ -64,8 +64,13 @@ function chatCompletion(body: any): unknown {
   // Catalog match comparison: keyed on CATALOG_COMPARE_SYSTEM_PROMPT's own
   // wording (packages/ai/src/chains/catalog-match.ts), which the page-extraction
   // prompt never contains. Checked first so the two can never cross.
+  // A candidate described with E2E-UNJUDGED gets an unparseable verdict, the
+  // way a model sometimes answers, so a browser test can watch a search skip
+  // one candidate (B6). No fixture outside that test uses the marker.
   const content = /candidate product from a vendor catalog/i.test(prompt)
-    ? JSON.stringify({ isMatch: true, score: 0.9, reason: 'E2E stub match' })
+    ? /E2E-UNJUDGED/.test(prompt)
+      ? 'not a verdict'
+      : JSON.stringify({ isMatch: true, score: 0.9, reason: 'E2E stub match' })
     : /catalog product entries/i.test(prompt)
       ? JSON.stringify({ items: CATALOG_STUB_ITEMS })
       : 'e2e stub response'
