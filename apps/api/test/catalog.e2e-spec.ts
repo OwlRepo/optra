@@ -693,4 +693,28 @@ describe('Catalog flow (e2e)', () => {
       expect(res.body.unjudged).toBe(1)
     })
   })
+
+  describe('non-ASCII catalog filenames (B8)', () => {
+    it('regression: a catalog uploaded as catálogo-日本.csv is listed under that name', async () => {
+      const owner = await seedOwnerWithWorkspace(app, `${prefix}b8-name@example.com`, 'B8 Catalog Name')
+      const auth = `Bearer ${owner.accessToken}`
+      const vendor = await request(app.getHttpServer())
+        .post(`/workspaces/${owner.workspaceId}/vendors`)
+        .set('Authorization', auth)
+        .send({ name: 'B8 Vendor' })
+        .expect(201)
+      const base = `/workspaces/${owner.workspaceId}/vendors/${vendor.body.id}/catalogs`
+
+      const upload = await request(app.getHttpServer())
+        .post(base)
+        .set('Authorization', auth)
+        .attach('file', Buffer.from('sku,description\nA1,Widget\n'), 'catálogo-日本.csv')
+        .expect(201)
+
+      const listed = await request(app.getHttpServer()).get(base).set('Authorization', auth).expect(200)
+      expect((listed.body as { id: string; name: string }[]).find((row) => row.id === upload.body.id)?.name).toBe(
+        'catálogo-日本.csv',
+      )
+    })
+  })
 })

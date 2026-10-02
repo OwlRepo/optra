@@ -1823,4 +1823,35 @@ describe('Procurement flow (e2e)', () => {
       expect(price.invoiceLine).toMatchObject({ sourceRow: 3, documentId: invoice.body.id })
     })
   })
+
+  describe('non-ASCII filenames (B8)', () => {
+    it('regression: a purchase order uploaded as façture-日本.csv is listed and downloaded under that name', async () => {
+      const owner = await seedOwnerWithWorkspace(app, `${prefix}b8-name@example.com`, 'B8 Name')
+      const vendorId = await createVendor(app, owner.workspaceId, owner.accessToken)
+      const base = `/workspaces/${owner.workspaceId}/procurement`
+      const auth = `Bearer ${owner.accessToken}`
+
+      const upload = await request(app.getHttpServer())
+        .post(`${base}/purchase-orders`)
+        .set('Authorization', auth)
+        .field('vendorId', vendorId)
+        .field('poNumber', 'PO-B8')
+        .field('currency', 'USD')
+        .attach('file', Buffer.from('sku,description,qty,unit price\nA1,Widget,10,5.00'), 'façture-日本.csv')
+        .expect(201)
+      expect(upload.body.name).toBe('façture-日本.csv')
+
+      const listed = await request(app.getHttpServer()).get(`${base}/purchase-orders`).set('Authorization', auth).expect(200)
+      const rows = (Array.isArray(listed.body) ? listed.body : listed.body.items) as { id: string; name: string }[]
+      expect(rows.find((row) => row.id === upload.body.id)?.name).toBe('façture-日本.csv')
+
+      const download = await request(app.getHttpServer())
+        .get(`${base}/purchase-orders/${upload.body.id}/download`)
+        .set('Authorization', auth)
+        .expect(200)
+      expect(download.headers['content-disposition']).toBe(
+        "attachment; filename=\"fa_ture-__.csv\"; filename*=UTF-8''fa%C3%A7ture-%E6%97%A5%E6%9C%AC.csv",
+      )
+    })
+  })
 })
