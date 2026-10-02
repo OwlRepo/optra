@@ -6265,6 +6265,36 @@
     },
     {
       "endpoints": [
+        "packages_types_src_index",
+        "packages_types_src_procurement"
+      ],
+      "variants": [
+        {
+          "source": "packages_types_src_index",
+          "target": "packages_types_src_procurement",
+          "relation": "imports_from",
+          "context": "re-export",
+          "confidence": "EXTRACTED",
+          "source_file": "packages/types/src/index.ts",
+          "source_location": "L48",
+          "weight": 1.0,
+          "_origin": "ast"
+        },
+        {
+          "source": "packages_types_src_index",
+          "target": "packages_types_src_procurement",
+          "relation": "re_exports",
+          "context": "export",
+          "confidence": "EXTRACTED",
+          "source_file": "packages/types/src/index.ts",
+          "source_location": "L48",
+          "weight": 1.0,
+          "_origin": "ast"
+        }
+      ]
+    },
+    {
+      "endpoints": [
         "packages_ui_src_components_ui_app_header",
         "packages_ui_src_index"
       ],

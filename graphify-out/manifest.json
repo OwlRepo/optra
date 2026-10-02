@@ -705,14 +705,14 @@
     "semantic_hash": "66d2d1b0b67a6d29f9109c2c5e46aa95"
   },
   "apps/api/src/procurement/comparison.service.spec.ts": {
-    "mtime": 1790918563.9909878,
-    "ast_hash": "058b17dc5052918b70e9bbda209accb6",
-    "semantic_hash": "058b17dc5052918b70e9bbda209accb6"
+    "mtime": 1790919631.2150135,
+    "ast_hash": "dccf5357c0d42a9ab5ed95560c70bb70",
+    "semantic_hash": "dccf5357c0d42a9ab5ed95560c70bb70"
   },
   "apps/api/src/procurement/comparison.service.ts": {
-    "mtime": 1790918563.9914923,
-    "ast_hash": "711b4790d126d174beda8557006c8d2a",
-    "semantic_hash": "711b4790d126d174beda8557006c8d2a"
+    "mtime": 1790919631.2153819,
+    "ast_hash": "96d1e88f2096fd004cbfa563a61d9f7d",
+    "semantic_hash": "96d1e88f2096fd004cbfa563a61d9f7d"
   },
   "apps/api/src/procurement/dto/compare-documents.dto.ts": {
     "mtime": 1790918563.9918752,
@@ -1050,9 +1050,9 @@
     "semantic_hash": "c8116b44f0c4feeed79f31c6c7bf7c13"
   },
   "apps/api/test/procurement.e2e-spec.ts": {
-    "mtime": 1790918564.0122855,
-    "ast_hash": "b35b3ede5d594e681b98ebe1eb938f37",
-    "semantic_hash": "b35b3ede5d594e681b98ebe1eb938f37"
+    "mtime": 1790919631.2156532,
+    "ast_hash": "84cd67a4ad985165967d2bdb5cc7f02d",
+    "semantic_hash": "84cd67a4ad985165967d2bdb5cc7f02d"
   },
   "apps/api/test/refine.e2e-spec.ts": {
     "mtime": 1790918564.0124018,
@@ -2215,9 +2215,9 @@
     "semantic_hash": "a188e9707359aa2e3f3c6ec04a598314"
   },
   "apps/web/src/lib/api/procurement.ts": {
-    "mtime": 1790918564.0780356,
-    "ast_hash": "0779d5eb52c2f27054e47e9a5b9d3b12",
-    "semantic_hash": "0779d5eb52c2f27054e47e9a5b9d3b12"
+    "mtime": 1790919631.2166314,
+    "ast_hash": "d188cc32924bb0d6573fa08cff26bf54",
+    "semantic_hash": "d188cc32924bb0d6573fa08cff26bf54"
   },
   "apps/web/src/lib/api/refine.spec.ts": {
     "mtime": 1790918564.0781062,
@@ -3105,9 +3105,9 @@
     "semantic_hash": "1161659f6edf26b5c6ce44e9bbe6c063"
   },
   "packages/types/src/index.ts": {
-    "mtime": 1790918564.1580348,
-    "ast_hash": "139dc0f6184c6c69d6aca30d6bf6481d",
-    "semantic_hash": "139dc0f6184c6c69d6aca30d6bf6481d"
+    "mtime": 1790919631.2178204,
+    "ast_hash": "425008119951815538f6c5f3e7a05891",
+    "semantic_hash": "425008119951815538f6c5f3e7a05891"
   },
   "packages/types/tsconfig.json": {
     "mtime": 1790918564.158096,
@@ -3480,9 +3480,9 @@
     "semantic_hash": "b3b95b476dbd5872dabf7e39f77801d9"
   },
   "docs/ai/contracts/api-contracts.md": {
-    "mtime": 1790918564.0907779,
-    "ast_hash": "871d4cb948ff23dd46cb11e1d12230f2",
-    "semantic_hash": "871d4cb948ff23dd46cb11e1d12230f2"
+    "mtime": 1790919631.2169862,
+    "ast_hash": "38c2ae4de4363ad578edbf70aee9b546",
+    "semantic_hash": "38c2ae4de4363ad578edbf70aee9b546"
   },
   "docs/ai/contracts/db-contracts.md": {
     "mtime": 1790918564.0919044,
@@ -3495,9 +3495,9 @@
     "semantic_hash": "9619efa5f368bba8353d40256875032b"
   },
   "docs/ai/file-index/repository-map.md": {
-    "mtime": 1790919192.4886622,
-    "ast_hash": "541345d89195b87a0a47e006d089c6cd",
-    "semantic_hash": "541345d89195b87a0a47e006d089c6cd"
+    "mtime": 1790919631.2174165,
+    "ast_hash": "3add46861c1c1207d8620fed4f39c053",
+    "semantic_hash": "3add46861c1c1207d8620fed4f39c053"
   },
   "docs/ai/module-ownership-map.md": {
     "mtime": 1790918564.0976086,
@@ -3895,9 +3895,9 @@
     "semantic_hash": "31487ce2dd18d2b61d363bf23b86edd5"
   },
   "apps/e2e/tests/procurement.spec.ts": {
-    "mtime": 1790918564.0218096,
-    "ast_hash": "53db8827e50cf2b3edddc6ac43f84ada",
-    "semantic_hash": "53db8827e50cf2b3edddc6ac43f84ada"
+    "mtime": 1790919631.2159793,
+    "ast_hash": "e0f1b4405eedc4e572294c7df75e959d",
+    "semantic_hash": "e0f1b4405eedc4e572294c7df75e959d"
   },
   "apps/e2e/tests/rate-limit.spec.ts": {
     "mtime": 1790918564.0220163,
@@ -4140,14 +4140,14 @@
     "semantic_hash": "18591f5053ae7fb00a6c2197407abfd7"
   },
   "apps/web/src/components/procurement/discrepancy-review-modal.spec.tsx": {
-    "mtime": 1790918564.0732288,
-    "ast_hash": "6e0b75ba68dba4e4f1590b240a8f2568",
-    "semantic_hash": "6e0b75ba68dba4e4f1590b240a8f2568"
+    "mtime": 1790919631.2162576,
+    "ast_hash": "dc68ac7ed883bf1bbf48c73fb7e6ce17",
+    "semantic_hash": "dc68ac7ed883bf1bbf48c73fb7e6ce17"
   },
   "apps/web/src/components/procurement/discrepancy-review-modal.tsx": {
-    "mtime": 1790918564.0735083,
-    "ast_hash": "e9a4e0a0c2ca17de6b6c3b832fac2b91",
-    "semantic_hash": "e9a4e0a0c2ca17de6b6c3b832fac2b91"
+    "mtime": 1790919631.2164383,
+    "ast_hash": "b637929f2e31729ce85498dad1b92c26",
+    "semantic_hash": "b637929f2e31729ce85498dad1b92c26"
   },
   "apps/web/src/lib/http/client-ip.spec.ts": {
     "mtime": 1790918564.0797365,
@@ -5223,5 +5223,15 @@
     "mtime": 1790919199.7812655,
     "ast_hash": "f6d960bde0c695265bda1d1dd7de62de",
     "semantic_hash": "f6d960bde0c695265bda1d1dd7de62de"
+  },
+  "packages/types/src/procurement.ts": {
+    "mtime": 1790919631.2179213,
+    "ast_hash": "8c43760313b62111e5e88eea126477d3",
+    "semantic_hash": "8c43760313b62111e5e88eea126477d3"
+  },
+  "docs/plans/lemon-squeezy-s2-discrepancy-citations.md": {
+    "mtime": 1790919631.2175908,
+    "ast_hash": "80b580edb9bf5c92e61885117ceb3a8a",
+    "semantic_hash": "80b580edb9bf5c92e61885117ceb3a8a"
   }
 }
