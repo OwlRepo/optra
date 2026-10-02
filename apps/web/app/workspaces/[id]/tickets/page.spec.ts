@@ -705,7 +705,8 @@ describe('TicketsPage', () => {
 
     expect(await screen.findAllByText('Acme Support')).not.toHaveLength(0)
     expect(screen.getByText('A')).toBeDefined()
-    expect(screen.queryByText('Workspace')).toBeNull()
+    // Scoped to the brand link: the sidebar's "Workspace" group label is not the fallback name.
+    expect(screen.queryByText('Workspace', { selector: 'a[href="/workspaces"] *' })).toBeNull()
   })
 
   it('redirects to login when workspace fetch is unauthorized', async () => {

@@ -163,6 +163,22 @@ function renderPage() {
 
 describe("WorkspaceChatPage", () => {
   beforeEach(() => {
+    // AppShell renders header actions only at lg+ (one placement, no CSS
+    // duplicate). These cases drive the desktop header (History, New chat),
+    // so the viewport is desktop; vitest.setup.ts defaults to matches: false.
+    vi.spyOn(window, "matchMedia").mockImplementation(
+      (query: string) =>
+        ({
+          matches: query === "(min-width: 1024px)",
+          media: query,
+          onchange: null,
+          addListener: () => {},
+          removeListener: () => {},
+          addEventListener: () => {},
+          removeEventListener: () => {},
+          dispatchEvent: () => false,
+        }) as unknown as MediaQueryList,
+    );
     pushMock.mockReset();
     listChatSessionsMock.mockReset();
     getChatMessagesMock.mockReset();
@@ -556,7 +572,8 @@ describe("WorkspaceChatPage", () => {
 
     expect(await screen.findAllByText("Acme Support")).not.toHaveLength(0);
     expect(screen.getByText("A")).toBeDefined();
-    expect(screen.queryByText("Workspace")).toBeNull();
+    // Scoped to the brand link: the sidebar's "Workspace" group label is not the fallback name.
+    expect(screen.queryByText("Workspace", { selector: 'a[href="/workspaces"] *' })).toBeNull();
   });
 
   it("redirects to login when workspace fetch is unauthorized", async () => {
