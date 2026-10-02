@@ -403,6 +403,8 @@ Environment traps hit while verifying (they are execution preflight, not test lo
 
 **2026-10-02 — fix B13 (catalog path ids).** `catalog.controller.spec.ts` `describe('CatalogController path ids (B13)')` reads Nest's `ROUTE_ARGS_METADATA` and fails when any catalog handler's `:vendorId`, `:catalogId`, `:itemId` or `:matchId` lacks `ParseUUIDPipe` — a new route with a bare id param breaks it, not just the ten fixed here. `catalog.e2e-spec.ts` `describe('malformed vendor and catalog ids (B13)')` (2) sends `not-a-uuid` to every one of them over HTTP and expects 400 `Validation failed (uuid is expected)`.
 
+**2026-10-03 — fix B5 (over-long catalog SKU).** `catalog-parse.processor.spec.ts` `describe('over-long SKUs (B5)')` (3): the 200-character boundary is kept, a 201-character SKU in a CSV and in a PDF extraction is stored as no SKU with the text in `rawRow`. The CSV case runs as the final attempt (`attemptsMade: 2`, `attempts: 3`), the only attempt that used to write `failed`. API e2e `catalog.e2e-spec.ts` `describe('over-long catalog SKUs (B5)')` (1) uploads the file over HTTP through the real Bull queue. Seen while validating, unrelated: `auth.e2e-spec.ts` "registers, verifies via the real OTP…" failed once in three full runs with `socket hang up` and passed on the next.
+
 ## Infrastructure / Docker / Deployment Verification
 
 Infra/config/script changes (Dockerfiles, compose files, CI workflows, deploy shell scripts) are not

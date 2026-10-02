@@ -512,3 +512,12 @@ And one rule the owner made standing: every change now ships with its tests for 
 **Actual:** confirmed — the route-metadata unit test and the HTTP cases red then green; full api unit 786/786 and API e2e 96/96, three runs each.
 
 **Why different:** not different. **A path param skips the global `ValidationPipe`'s DTO checks, so an id the database types as `uuid` needs its pipe on every route, and a test that walks the route metadata catches the next route that forgets it.**
+
+## 2026-10-03 — Fix B5: one cell failed a whole catalog
+*Learning Contract: the plan's design is the prediction; the diff is below. No live prediction solicited.*
+
+**Predicted (from the approved plan):** applying procurement's SKU length rule at the catalog's single insert keeps every row and turns the failed catalog into `done`.
+
+**Actual:** confirmed — the CSV and PDF cases and the HTTP upload red then green; full api unit 789/789 three times, API e2e 97/97 twice (one unrelated auth `socket hang up` on the other run).
+
+**Why different:** not different. **When two import paths share a table, enforce its column limits where they meet the insert, not in each parser — and reuse the limit the other domain already exports instead of restating 200.**

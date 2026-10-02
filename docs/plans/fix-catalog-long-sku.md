@@ -1,0 +1,11 @@
+# Fix B5 — an over-long catalog SKU no longer fails the catalog
+
+Owner instruction 2026-10-02: continue through the bug list without waiting; pull the owner in only when a decision is needed.
+
+- Classification: BUG_FIX · Deep (Bull catalog-parse processor) · Vendor Catalog / Vision Matching · Jobs. Contract areas: API — none; DB — none (no schema change; `catalog_items.sku` stays `varchar(200)`); Jobs — a catalog that used to fail now finishes `done`.
+- Root cause: `CatalogParseProcessor.replaceItems` inserted `row.sku` as mapped. A SKU over 200 characters (a pasted spec sheet, a joined variant list, an LLM reading a paragraph as a SKU) made Postgres reject the whole batch with `value too long for type character varying(200)`. That error is not in the permanent set, so Bull retried it twice more and the final attempt stored the raw database message as `lastError`. Procurement never had this: `validateLineItem` nulls an over-long SKU.
+- Fix: `replaceItems` stores `null` for a SKU longer than `MAX_SKU_LENGTH` (imported from `procurement/column-mapping.ts`, the same limit, the same column width). `rawRow` keeps the original text. One place covers both the spreadsheet and PDF paths; the scrape path already inserts no SKU.
+- Behaviour after: the item is listed with its description and photo, and catalog matching can still find it by its description: the candidate filter matches a line's term against SKU or description (`findCandidates`, `catalog-match.service.ts`). A search by that long SKU no longer finds it.
+- Not changed: an item without a SKU is not marked in the UI as "SKU too long". That would need a field or a UI change; the vendor's text stays in `rawRow`.
+- Tests first (RED `330bb8e`): unit `describe('over-long SKUs (B5)')` — `edge:` 200 characters kept; `regression:` a 201-character CSV SKU on the final attempt finishes `done` with that SKU null and the text in `rawRow`; `regression:` the same for a PDF-extracted item. API e2e `describe('over-long catalog SKUs (B5)')` uploads the CSV over HTTP and reads the items back. No page or BFF route changed, so no browser test.
+- Also recorded: B16, bare uuid path params outside this hardening's scope (risk register), for the owner to schedule.
