@@ -9,10 +9,31 @@ import TermsPage, { metadata } from './page'
 afterEach(cleanup)
 
 describe('Terms page', () => {
+  it('error: terms title does not repeat the brand the layout template appends', () => {
+    expect(metadata.title).not.toContain('— Optra')
+    expect(metadata.title).not.toContain('Optra')
+  })
+
+  it('regression: seller line says "based in the Philippines", not "based in Philippines"', () => {
+    const { container } = render(React.createElement(TermsPage))
+
+    expect(container.textContent).not.toContain('based in Philippines')
+    expect(container.textContent).toContain('an individual based in the Philippines')
+  })
+
   it('edge: renders no undefined or null text from missing facts', () => {
     const { container } = render(React.createElement(TermsPage))
 
     expect(container.textContent).not.toMatch(/undefined|\bnull\b/)
+  })
+
+  it('error: photo checks are hard-capped, not billed as overage', () => {
+    const { container } = render(React.createElement(TermsPage))
+
+    expect(container.textContent).not.toContain('Usage above the included amount')
+    expect(container.textContent).toContain(
+      "Extra matched line items are charged at the overage rate shown for your plan. Photo checks stop at your plan's cap.",
+    )
   })
 
   it('edge: does not promise that every discrepancy is caught', () => {
@@ -29,7 +50,7 @@ describe('Terms page', () => {
   })
 
   it('happy: exports title, description and canonical metadata', () => {
-    expect(metadata.title).toMatch(/Terms/)
+    expect(metadata.title).toBe('Terms of Service')
     expect(metadata.description).toBeTruthy()
     expect(metadata.alternates?.canonical).toMatch(/\/terms$/)
   })

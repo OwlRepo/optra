@@ -38,6 +38,18 @@ async function renderWithFacts(overrides: Record<string, unknown>) {
 }
 
 describe('Privacy page', () => {
+  it('error: privacy title does not repeat the brand the layout template appends', () => {
+    expect(metadata.title).not.toContain('— Optra')
+    expect(metadata.title).not.toContain('Optra')
+  })
+
+  it('regression: seller line says "based in the Philippines", not "based in Philippines"', () => {
+    const { container } = render(React.createElement(PrivacyPage))
+
+    expect(container.textContent).not.toContain('based in Philippines')
+    expect(container.textContent).toContain('an individual based in the Philippines')
+  })
+
   it('regression: old deletion wording and the OpenAI-only-documents scope are gone', () => {
     const { container } = render(React.createElement(PrivacyPage))
 
@@ -45,11 +57,26 @@ describe('Privacy page', () => {
     expect(container.textContent).not.toMatch(/Rate limiting and abuse protection\.(?! and)/)
   })
 
+  it('regression: the privacy policy does not refer to itself as the privacy policy', () => {
+    const { container } = render(React.createElement(PrivacyPage))
+
+    expect(container.textContent).not.toContain('schedule in the privacy policy')
+  })
+
+  it('error: the storage sentence renders the region once, without a doubled United States', () => {
+    const { container } = render(React.createElement(PrivacyPage))
+
+    expect(container.textContent).not.toContain('United States (United States')
+    expect(container.textContent).toContain(
+      'Uploaded files and backups are stored in the United States (Backblaze B2 us-east-005).',
+    )
+  })
+
   it('edge: states the deletion promise with the backup-expiry pointer', () => {
     const { container } = render(React.createElement(PrivacyPage))
 
     expect(container.textContent).toContain(
-      'Email us and we delete your workspace data, including uploaded files, within 30 days. Backups expire on the schedule in the privacy policy.',
+      'Email us and we delete your workspace data, including uploaded files, within 30 days. Backups expire on the schedule below.',
     )
   })
 
@@ -165,7 +192,7 @@ describe('Privacy page', () => {
   })
 
   it('happy: exports title, description and canonical metadata', () => {
-    expect(metadata.title).toMatch(/Privacy/)
+    expect(metadata.title).toBe('Privacy Policy')
     expect(metadata.description).toBeTruthy()
     expect(metadata.alternates?.canonical).toMatch(/\/privacy$/)
   })

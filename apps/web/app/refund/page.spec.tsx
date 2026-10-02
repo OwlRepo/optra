@@ -9,6 +9,18 @@ import RefundPage, { metadata } from './page'
 afterEach(cleanup)
 
 describe('Refund page', () => {
+  it('error: refund title does not repeat the brand the layout template appends', () => {
+    expect(metadata.title).not.toContain('— Optra')
+    expect(metadata.title).not.toContain('Optra')
+  })
+
+  it('regression: seller line says "based in the Philippines", not "based in Philippines"', () => {
+    const { container } = render(React.createElement(RefundPage))
+
+    expect(container.textContent).not.toContain('based in Philippines')
+    expect(container.textContent).toContain('an individual based in the Philippines')
+  })
+
   it('edge: renders no undefined or null text from missing facts', () => {
     const { container } = render(React.createElement(RefundPage))
 
@@ -24,7 +36,7 @@ describe('Refund page', () => {
   })
 
   it('happy: exports title, description and canonical metadata', () => {
-    expect(metadata.title).toMatch(/Refund/)
+    expect(metadata.title).toBe('Refund Policy')
     expect(metadata.description).toBeTruthy()
     expect(metadata.alternates?.canonical).toMatch(/\/refund$/)
   })
