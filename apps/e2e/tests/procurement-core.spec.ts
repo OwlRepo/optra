@@ -287,4 +287,22 @@ test.describe('procurement core: unreadable files', () => {
     await expect(row.getByText(/^No line items were found in this file\./)).toBeVisible()
     await page.context().close()
   })
+
+  // B8. A browser sends the filename as UTF-8; it used to be stored and shown
+  // as latin1 mojibake, and the download carried the same garbled name.
+  test('regression: a purchase order named with accents and CJK characters is listed and downloaded under that name', async ({
+    browser,
+  }) => {
+    const page = await pageAs(browser, 'ownerB')
+    const file = fixture('po.csv', `façture-日本-${state.run}.csv`)
+    await uploadPurchaseOrderFile(page, state.ownerB, file, `PO-CORE-B8-${state.run}`)
+
+    await page.reload()
+    await expect(rowFor(page, file.name).getByText('Ready')).toBeVisible()
+
+    const downloaded = page.waitForEvent('download')
+    await page.getByRole('button', { name: `Download ${file.name}`, exact: true }).click()
+    expect((await downloaded).suggestedFilename()).toBe(file.name)
+    await page.context().close()
+  })
 })

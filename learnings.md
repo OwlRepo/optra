@@ -530,3 +530,12 @@ And one rule the owner made standing: every change now ships with its tests for 
 **Actual:** confirmed — unit, `packages/ai`, API e2e, web and browser cases red then green; full api unit 794/794 and API e2e 99/99 three times, web 673/673, ai 190/190, browser suite 48 passed / 7 parked three times.
 
 **Why different:** not different. **`Promise.all` over paid calls is all-or-nothing: one rejection discards every result already bought. Settle each call, save what came back, and when a write replaces old results, leave out the items this run could not judge.**
+
+## 2026-10-03 — Fix B8: a fixed filename can break the download
+*Learning Contract: the plan's design is the prediction; the diff is below. No live prediction solicited.*
+
+**Predicted (from the approved plan):** re-reading busboy's latin1 filename as UTF-8 stores the real name, and RFC 5987 `filename*` lets it be downloaded.
+
+**Actual:** confirmed — unit (helper, header, both services, web download helper), API e2e and browser cases red then green; full api unit 804/804 twice (one unrelated reconcile flake on the third run), API e2e 101/101 three times, web 677/677, browser 49 passed three times.
+
+**Why different:** not different. **Fixing an encoding at the way in moves the problem to every way out: Node rejects header characters above U+00FF, so the first real `日本` filename would have turned every download of it into a 500. Test the header with `http.validateHeaderValue`, not by string comparison alone.**

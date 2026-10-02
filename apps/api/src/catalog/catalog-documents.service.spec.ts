@@ -246,4 +246,21 @@ describe('CatalogDocumentsService', () => {
       await expect(service.getItemPhoto(workspace.id, item.id)).rejects.toBe(outage)
     })
   })
+
+  describe('non-ASCII filenames (B8)', () => {
+    it('regression: stores a UTF-8 catalog filename the multipart parser read as latin1 under its real name', async () => {
+      const { workspace, vendor } = await seedWorkspaceAndVendor(`${prefix}b8-name@example.com`, 'B8 Catalog Name')
+      const file = {
+        originalname: Buffer.from('catálogo-日本.csv', 'utf8').toString('latin1'),
+        mimetype: 'text/csv',
+        buffer: Buffer.from('sku,description\nA,Widget'),
+      } as Express.Multer.File
+
+      const result = await service.upload(workspace.id, vendor.id, file)
+
+      expect(result.name).toBe('catálogo-日本.csv')
+      const [row] = await db.select().from(catalogs).where(eq(catalogs.id, result.id))
+      expect(row.storageKey).toMatch(/-catálogo-日本\.csv$/)
+    })
+  })
 })
