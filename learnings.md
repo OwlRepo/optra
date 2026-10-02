@@ -476,3 +476,12 @@ And one rule the owner made standing: every change now ships with its tests for 
 **Actual:** confirmed — 9 of 10 new unit cases failed first (the tenth is a deliberate over-reach guard), all pass after a 25-line change; full api unit 780/780 with no existing test edited.
 
 **Why different:** not different. **Two code paths that do the same job must share the same failure rules: the PDF path already refused an empty result, the spreadsheet path silently accepted one.**
+
+## 2026-10-02 — Fix B1: cite the row the reviewer sees
+*Learning Contract: the plan's design is the prediction; the diff is below. No live prediction solicited.*
+
+**Predicted (from the approved plan):** passing SheetJS's `__rowNum__` through the CSV conversion fixes XLSX citations with no change to CSV behaviour.
+
+**Actual:** confirmed — both unit regressions red then green, a citation proven over HTTP, full api unit 782/782 and API e2e 94/94. One RCA sub-claim (data starting at row 2) was withdrawn: it held only for an in-memory sheet.
+
+**Why different:** **probe file formats through the same write/read path production uses; an in-memory object is not a file.**
