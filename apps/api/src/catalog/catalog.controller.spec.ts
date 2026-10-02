@@ -1,3 +1,5 @@
+import { ParseUUIDPipe } from '@nestjs/common'
+import { ROUTE_ARGS_METADATA } from '@nestjs/common/constants'
 import type { Response } from 'express'
 import { CatalogController } from './catalog.controller'
 import type { CatalogDocumentsService } from './catalog-documents.service'
@@ -41,3 +43,42 @@ describe('CatalogController photo', () => {
     expect(res.send).toHaveBeenCalledWith(Buffer.from('png'))
   })
 })
+
+// B13. A path param gets no class-validator pass, so a malformed :vendorId or
+// :catalogId reached a uuid query and Postgres answered 22P02, which surfaced
+// as a 500. Every id the catalog routes take from the path must be parsed as a
+// UUID first, the way :itemId, :matchId and the verify route's :vendorId are.
+describe('CatalogController path ids (B13)', () => {
+  const routesWithIds: Array<[keyof CatalogController, string[]]> = [
+    ['getVendor', ['vendorId']],
+    ['vendorPriceHistory', ['vendorId']],
+    ['vendorExceptionSummary', ['vendorId']],
+    ['createPriceTerm', ['vendorId']],
+    ['listPriceTerms', ['vendorId']],
+    ['uploadCatalog', ['vendorId']],
+    ['scrapeCatalog', ['vendorId']],
+    ['listCatalogs', ['vendorId']],
+    ['listCatalogItems', ['vendorId', 'catalogId']],
+    ['catalogItemPhoto', ['itemId']],
+    ['verifyMatches', ['vendorId']],
+    ['dismissMatch', ['matchId']],
+  ]
+
+  it('error: every id taken from the path is parsed as a UUID before the handler runs', () => {
+    const missing: string[] = []
+    for (const [handler, params] of routesWithIds) {
+      const args = Reflect.getMetadata(ROUTE_ARGS_METADATA, CatalogController, handler) as Record<
+        string,
+        { data?: string; pipes?: unknown[] }
+      >
+      for (const param of params) {
+        const arg = Object.values(args).find((entry) => entry.data === param)
+        const parsed = arg?.pipes?.some((pipe) => pipe instanceof ParseUUIDPipe || pipe === ParseUUIDPipe) ?? false
+        if (!parsed) missing.push(`${String(handler)}(:${param})`)
+      }
+    }
+
+    expect(missing).toEqual([])
+  })
+})
+
