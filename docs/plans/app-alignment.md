@@ -17558,3 +17558,43 @@ Every commit touching a `page.tsx` also changes `apps/e2e/tests/workspace-alignm
 
 ---
 
+
+---
+
+## Execution record (2026-10-02)
+
+### Files touched outside the approved file list (recorded per the blast-radius rule)
+
+| File | Why | Handling |
+|---|---|---|
+| `apps/web/app/layout.tsx` + `layout.spec.ts` | DM Sans' `latin` subset has no U+2192; next/font's auto Arial fallback drew a long arrow where the frames (font stack `"DM Sans", system-ui`) draw system-ui's. The frames also load DM Sans with `opsz`. | `adjustFontFallback: false`, `fallback: ['system-ui','sans-serif']`, `axes: ['opsz']`; two `regression:` cases. Affects every page that uses DM Sans, landing included (closer to its own handoff). |
+| `apps/web/app/workspaces/[id]/{chat,tickets,knowledge-bases/[kbId]}/page.spec.ts` | Disabled-surface specs broke under the new shell (single-placement header actions; "Workspace" group label). | Test-only; no assertion removed (see BC matrix). |
+| `apps/web/app/loading.spec.tsx` | Part 2 spec lacked `cleanup` between renders. | Added `afterEach(cleanup)`. |
+
+### Contract additions found during visual QA (screen frame wins)
+
+`AppShell` `mobileBreadcrumb` / `mobileTitle`; `DefinitionRow` `density` (`compact` 2.9, `roomy` 3.10); `EmptyState` / `PageSection` `descriptionClassName` (default uncapped); `SegmentedControl` `fullWidth` is below-lg only; `formatDelta` in `flag-type.ts`; `leading-[normal]` on authenticated roots; `box-content` on 1040px page containers.
+
+### Frame-by-frame screenshot comparison (Playwright capture, frame vs live route, 1280 / 390)
+
+| Frame | Route / state | Result |
+|---|---|---|
+| 2.1 | `/procurement`, owner | done — differences are seed data only |
+| 2.2 | `/procurement` Invoices, member | done; NOTE frame copy "Members can pick documents to preview the pair" no longer true after the owner dropped member pickers — owner decision pending |
+| 2.4 | PO details modal | done — height and gaps equal the frame (543px) |
+| 2.7 | `/discrepancies?pair` | done — signed delta fixed |
+| 2.9 | review modal | done — citation rows fixed (96px); "units" suffix not derivable |
+| 2.11 / 2.12 | `/catalog-matches` scoped / sidebar entry | done — seed has no matches, so the scoped list shows its empty state; the chip falls back to the line id |
+| 3.1 | `/workspaces` | done — content-box container, 16px names |
+| 3.3 | Overview | done — arrows, Activity width |
+| 3.5 | vendor detail | done |
+| 3.8 | Members | done |
+| 3.10 / 3.11 | Settings owner / member | done — Workspace ID row (140px) |
+| 4.1 | collapsed rail | done |
+| 4.2 | mobile Purchase Orders, Discrepancies, drawer | done — short header, full-width filter; compare panel kept on mobile (no amber note removes it) |
+| 4.5 | 404 | done — within 1px |
+| 2.3, 2.5, 2.6, 2.8, 2.10, 3.2, 3.4, 3.6, 3.7, 3.9, 4.3, 4.4, 4.6 | modal / empty / member / transient states | verified by unit specs + markup review, not screenshot-paired (states the seed cannot produce, or a redirect too fast to capture) |
+
+### Validation
+
+`bun run type-check` 7/7, `bun run lint` 7/7, `bun run build` 6/6; Vitest `packages/ui` 254/254, `apps/web` 782/782; Playwright 53 passed, 7 skipped (parked KB/datasets); `check-test-layers.sh origin/main` clean.
