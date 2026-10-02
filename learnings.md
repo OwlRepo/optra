@@ -431,3 +431,12 @@ And one rule the owner made standing: every change now ships with its tests for 
 **Actual:** confirmed. The new cross-load spec failed in all three cases with the exact production error before the fix and passed after it. A Bun 1.2.22 run, matching the production image, succeeded in both orders. pdfjs 6 destroys through the loading task (`task.destroy()`), not the document; the first attempt called `doc.destroy()` and failed.
 
 **Why different:** not different. The general lesson: **a library that bundles its own copy of a dependency is not "just a wrapper"; two copies of anything that writes a process-wide global will fight.** Check `node_modules/<pkg>/node_modules` for nested copies before adding a convenience wrapper.
+
+## 2026-10-02 — Launch hardening S1: real-world spreadsheets
+*Learning Contract: the plan's design is the prediction; the diff is below. No live prediction solicited.*
+
+**Predicted (from the approved plan):** test-only slices land green with zero guarded-source change.
+
+**Actual:** confirmed — 25 new cases, 745/745 api unit tests green three times, no source file touched. The planning probes changed two expectations before any test was written: SheetJS reads a plain-text `.xlsx` instead of refusing it, and a numeric `5.00` cell becomes `"5"`.
+
+**Why different:** not different, because the expectations were measured rather than assumed. **When a test pins today's behaviour, replay the library on the exact bytes first; intuition about parsers is wrong often enough to matter.**
