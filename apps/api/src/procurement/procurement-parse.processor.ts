@@ -87,7 +87,7 @@ function isPermanentParseError(error: unknown): boolean {
 
 // First sheet only (same as DatasetProfilingProcessor). Converted in memory:
 // the stored original stays byte-for-byte what the user uploaded.
-function convertXlsxToCsv(buffer: Buffer): { csv: string; sheetName: string | null } {
+function convertXlsxToCsv(buffer: Buffer): { csv: string; sheetName: string | null; sourceRows: number[] } {
   let workbook: XLSX.WorkBook
   try {
     workbook = XLSX.read(buffer, { type: 'buffer' })
@@ -97,7 +97,11 @@ function convertXlsxToCsv(buffer: Buffer): { csv: string; sheetName: string | nu
   const firstSheetName = workbook.SheetNames[0]
   const sheet = workbook.Sheets[firstSheetName]
   const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '' })
-  return { csv: Papa.unparse(rows), sheetName: firstSheetName ?? null }
+  // sheet_to_json skips blank rows, so a row's position in `rows` is not its
+  // place in the sheet. SheetJS records that on each row as the 0-based,
+  // non-enumerable `__rowNum__`; the reviewer's row is that plus one.
+  const sourceRows = rows.map((row) => (row as { __rowNum__: number }).__rowNum__ + 1)
+  return { csv: Papa.unparse(rows), sheetName: firstSheetName ?? null, sourceRows }
 }
 
 @Processor('procurement-parse-queue')
@@ -186,7 +190,7 @@ export class ProcurementParseProcessor {
         const isXlsx = extension === '.xlsx'
         const converted = isXlsx ? convertXlsxToCsv(await readFile(tempPath)) : null
         const csvContent = converted ? converted.csv : await readFile(tempPath, 'utf-8')
-        rows = this.parseCsvRows(csvContent, converted?.sheetName ?? null)
+        rows = this.parseCsvRows(csvContent, converted?.sheetName ?? null, converted?.sourceRows ?? null)
         // Rows that all map to nothing mean the headers were not recognised
         // (wrong row, unknown names, an encoding we do not read). Marking that
         // done would show "Ready" and fail only at compare, so it fails here,
@@ -257,7 +261,7 @@ export class ProcurementParseProcessor {
     throw error
   }
 
-  private parseCsvRows(csvContent: string, sourceSheet: string | null): MappedLineItemRow[] {
+  private parseCsvRows(csvContent: string, sourceSheet: string | null, sourceRows: number[] | null): MappedLineItemRow[] {
     // skipEmptyLines is off on purpose: with it on, Papa collapses the array and
     // a row's index no longer corresponds to its line in the file, which is the
     // whole point of sourceRow. Blank rows are dropped below by isEmptyLineItem
@@ -285,13 +289,14 @@ export class ProcurementParseProcessor {
     }
 
     // The index is captured here, before the empty-row filter: afterwards the
-    // position in the file is unrecoverable. Papa consumes the header, so the
-    // file's 1-based row is index + 2.
+    // position in the file is unrecoverable.
     return parsed.data
       .map((row, index) => ({
         ...validateLineItem(mapRowToLineItem(row)),
         rawRow: row,
-        sourceRow: index + 2,
+        // XLSX: the sheet row SheetJS recorded. CSV: Papa consumed the header,
+        // so the file's 1-based row is index + 2.
+        sourceRow: sourceRows ? sourceRows[index] : index + 2,
         sourceSheet,
         extractionConfidence: null,
         extractorVersion: null,
