@@ -5,6 +5,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ToastProvider } from '@repo/ui'
 import WorkspaceOverviewPage from './page'
+import { WorkspaceProvider } from '@/components/workspace-context'
 
 const pushMock = vi.fn()
 const routerMock = { push: pushMock }
@@ -60,9 +61,9 @@ function renderPage() {
     React.createElement(
       ToastProvider,
       undefined,
-      React.createElement(WorkspaceOverviewPage, {
+      React.createElement(WorkspaceProvider, { workspaceId: 'ws-1' }, React.createElement(WorkspaceOverviewPage, {
         params: { id: 'ws-1' },
-      }),
+      })),
     ),
   )
 }

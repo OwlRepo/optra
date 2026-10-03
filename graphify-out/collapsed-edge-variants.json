@@ -3493,7 +3493,7 @@
           "context": "import",
           "confidence": "EXTRACTED",
           "source_file": "apps/web/app/workspaces/[id]/vendors/[vendorId]/page.tsx",
-          "source_location": "L32",
+          "source_location": "L31",
           "weight": 1.0,
           "_origin": "ast"
         },
@@ -3504,7 +3504,7 @@
           "context": "import",
           "confidence": "EXTRACTED",
           "source_file": "apps/web/app/workspaces/[id]/vendors/[vendorId]/page.tsx",
-          "source_location": "L33",
+          "source_location": "L32",
           "weight": 1.0,
           "_origin": "ast"
         }
@@ -3542,27 +3542,27 @@
     },
     {
       "endpoints": [
-        "docs_ai_file_index_repository_map_context_drift",
-        "docs_ai_file_index_repository_map_doc"
+        "docs_ai_risk_register_catalog_match_integrity",
+        "docs_ai_risk_register_launch_hardening_bugs"
       ],
       "variants": [
         {
-          "source": "docs_ai_file_index_repository_map_doc",
-          "target": "docs_ai_file_index_repository_map_context_drift",
+          "source": "docs_ai_risk_register_launch_hardening_bugs",
+          "target": "docs_ai_risk_register_catalog_match_integrity",
           "relation": "references",
           "confidence": "EXTRACTED",
           "confidence_score": 1.0,
-          "source_file": "docs/ai/file-index/repository-map.md",
+          "source_file": "docs/ai/risk-register.md",
           "source_location": null,
           "weight": 1.0
         },
         {
-          "source": "docs_ai_file_index_repository_map_doc",
-          "target": "docs_ai_file_index_repository_map_context_drift",
-          "relation": "references",
+          "source": "docs_ai_risk_register_catalog_match_integrity",
+          "target": "docs_ai_risk_register_launch_hardening_bugs",
+          "relation": "conceptually_related_to",
           "confidence": "EXTRACTED",
           "confidence_score": 1.0,
-          "source_file": "docs/ai/file-index/repository-map.md",
+          "source_file": "docs/ai/risk-register.md",
           "source_location": null,
           "weight": 1.0
         }
@@ -3570,27 +3570,27 @@
     },
     {
       "endpoints": [
-        "docs_ai_file_index_repository_map_doc",
-        "docs_ai_file_index_repository_map_graphify_order"
+        "docs_ai_risk_register_schema_constraints_drizzle_kit",
+        "docs_ai_risk_register_vendor_price_terms_service"
       ],
       "variants": [
         {
-          "source": "docs_ai_file_index_repository_map_doc",
-          "target": "docs_ai_file_index_repository_map_graphify_order",
+          "source": "docs_ai_risk_register_schema_constraints_drizzle_kit",
+          "target": "docs_ai_risk_register_vendor_price_terms_service",
           "relation": "references",
           "confidence": "EXTRACTED",
           "confidence_score": 1.0,
-          "source_file": "docs/ai/file-index/repository-map.md",
+          "source_file": "docs/ai/risk-register.md",
           "source_location": null,
           "weight": 1.0
         },
         {
-          "source": "docs_ai_file_index_repository_map_doc",
-          "target": "docs_ai_file_index_repository_map_graphify_order",
-          "relation": "references",
+          "source": "docs_ai_risk_register_schema_constraints_drizzle_kit",
+          "target": "docs_ai_risk_register_vendor_price_terms_service",
+          "relation": "rationale_for",
           "confidence": "EXTRACTED",
           "confidence_score": 1.0,
-          "source_file": "docs/ai/file-index/repository-map.md",
+          "source_file": "docs/ai/risk-register.md",
           "source_location": null,
           "weight": 1.0
         }

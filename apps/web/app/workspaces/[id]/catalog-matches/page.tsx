@@ -18,8 +18,7 @@ import {
 import { logout } from '@/lib/api/auth'
 import { isForbidden, isUnauthorized } from '@/lib/api/handle-unauthorized'
 import { WorkspaceAccessDenied } from '@/components/workspace-access-denied'
-import { getWorkspace } from '@/lib/api/workspaces'
-import { membershipFrom } from '@/lib/workspace-role'
+import { useWorkspaceContext } from '@/components/workspace-context'
 import {
   dismissCatalogMatch,
   catalogItemPhotoUrl,
@@ -39,9 +38,7 @@ import { MobileTabBar } from '@/components/mobile-tab-bar'
 import { WorkspaceBrandLink } from '@/components/workspace-brand-link'
 import { ScopeChip } from '@/components/procurement/scope-chip'
 
-type Workspace = { id: string; name: string }
 type WorkspaceRole = 'owner' | 'admin' | 'member'
-type WorkspaceMembership = { id: string; role: WorkspaceRole }
 
 const roleLabel: Record<WorkspaceRole, string> = { owner: 'Owner', admin: 'Admin', member: 'Member' }
 
@@ -90,14 +87,14 @@ export default function CatalogMatchesPage({ params }: { params: { id: string } 
     [poLineItemId, invoiceLineItemId],
   )
 
-  const [workspace, setWorkspace] = React.useState<Workspace | null>(null)
-  const [membership, setMembership] = React.useState<WorkspaceMembership | null>(null)
+  const { workspace, membership, status: workspaceStatus } = useWorkspaceContext()
   const [vendors, setVendors] = React.useState<VendorDetail[]>([])
   const [matches, setMatches] = React.useState<CatalogMatch[]>([])
   const [isLoading, setIsLoading] = React.useState(true)
   // B18. Set when the first load answers 403; the page then shows only the
   // no-access state instead of empty content.
-  const [accessDenied, setAccessDenied] = React.useState(false)
+  const [pageAccessDenied, setAccessDenied] = React.useState(false)
+  const accessDenied = pageAccessDenied || workspaceStatus === 'denied'
   const [vendorFilter, setVendorFilter] = React.useState('')
   const [statusFilter, setStatusFilter] = React.useState<CatalogMatchStatus | ''>('')
   const [isSearching, setIsSearching] = React.useState(false)
@@ -157,13 +154,10 @@ export default function CatalogMatchesPage({ params }: { params: { id: string } 
   const loadPage = React.useCallback(async () => {
     try {
       setIsLoading(true)
-      const [workspaceData, vendorList, matchList] = await Promise.all([
-        getWorkspace(workspaceId),
+      const [vendorList, matchList] = await Promise.all([
         listVendors(workspaceId),
         listCatalogMatches(workspaceId, lineScope),
       ])
-      setWorkspace(workspaceData)
-      setMembership(membershipFrom(workspaceData))
       setVendors(Array.isArray(vendorList) ? vendorList : [])
       setMatches(Array.isArray(matchList) ? matchList : [])
     } catch (err) {

@@ -13,6 +13,11 @@ Entry format:
 
 <!-- Entries below, newest first. -->
 
+## 2026-10-03 — Workspaces shell: header data lives in the `[id]` layout, not in each page
+**Predicted:** every sidebar page fetches the workspace again, so the brand shows "Workspace" until it lands.
+**Actual:** Confirmed: each `/workspaces/[id]/*` page owned `workspace = null` state and called `getWorkspace` on mount. `WorkspaceProvider` (`apps/web/src/components/workspace-context.tsx`), mounted by `app/workspaces/[id]/layout.tsx`, now loads name + role once per workspace; pages read `useWorkspaceContext()` and fetch only their own data. Members re-reads on arrival and after invite/remove; Settings writes the rename response into the context.
+**Why different:** A cache library (SWR/react-query) would also dedupe, but adds a dependency for one value. App Router already keeps layouts mounted across child navigations, so the layout is the cache, with zero new deps and an explicit refresh at the two places data changes. `TourProvider` (root layout) still makes its own once-per-workspace role read; deduping it needs the provider hoisted above the tour.
+
 ## 2026-10-03 — Workspaces / RBAC: caller role travels with the resource, never from a paginated list
 **Predicted:** pages had copy-pasted a first-page lookup.
 **Actual:** Confirmed: ten `/workspaces/[id]/**` pages and `TourProvider` found the caller's role by searching page 1 (20 newest) of `listWorkspaces()`, so an owner/admin of an older workspace looked like a guest and lost the manage controls. `GET /workspaces/:workspaceId` now returns `role` from the `WorkspaceMemberGuard` context (zero extra queries) and every page reads it through one helper, `membershipFrom` (`apps/web/src/lib/workspace-role.ts`), which fails closed.

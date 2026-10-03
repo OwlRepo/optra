@@ -43,8 +43,7 @@ import {
 import { listVendors, type VendorDetail } from '@/lib/api/catalog'
 import { isForbidden, isUnauthorized } from '@/lib/api/handle-unauthorized'
 import { WorkspaceAccessDenied } from '@/components/workspace-access-denied'
-import { getWorkspace } from '@/lib/api/workspaces'
-import { membershipFrom } from '@/lib/workspace-role'
+import { useWorkspaceContext } from '@/components/workspace-context'
 import { formatDate } from '@/lib/format-date'
 import { WorkspaceNav, workspacePrimaryTabItems } from '@/components/workspace-nav'
 import { TourReplayButton } from '@/components/tour/tour-replay-button'
@@ -52,9 +51,7 @@ import { TOUR_ANCHORS, tourAttr } from '@/components/tour/tour-anchors'
 import { MobileTabBar } from '@/components/mobile-tab-bar'
 import { WorkspaceBrandLink } from '@/components/workspace-brand-link'
 
-type Workspace = { id: string; name: string }
 type WorkspaceRole = 'owner' | 'admin' | 'member'
-type WorkspaceMembership = { id: string; role: WorkspaceRole }
 type DocTab = 'purchase-orders' | 'invoices' | 'goods-receipts'
 
 // Frame 2.1: Queued and Processing are both "waiting" (neutral); Processing
@@ -185,8 +182,7 @@ export default function ProcurementPage({ params }: { params: { id: string } }) 
   const invoiceFileInputRef = React.useRef<HTMLInputElement>(null)
   const grnFileInputRef = React.useRef<HTMLInputElement>(null)
 
-  const [workspace, setWorkspace] = React.useState<Workspace | null>(null)
-  const [membership, setMembership] = React.useState<WorkspaceMembership | null>(null)
+  const { workspace, membership, status: workspaceStatus } = useWorkspaceContext()
   const [activeTab, setActiveTab] = React.useState<DocTab>('purchase-orders')
   const [purchaseOrders, setPurchaseOrders] = React.useState<ProcurementDoc[]>([])
   const [invoices, setInvoices] = React.useState<ProcurementDoc[]>([])
@@ -220,7 +216,8 @@ export default function ProcurementPage({ params }: { params: { id: string } }) 
 
   // B14. Set when the first load answers 403; the page then shows only the
   // no-access state instead of empty lists.
-  const [accessDenied, setAccessDenied] = React.useState(false)
+  const [pageAccessDenied, setAccessDenied] = React.useState(false)
+  const accessDenied = pageAccessDenied || workspaceStatus === 'denied'
 
   const canManage = membership?.role === 'owner' || membership?.role === 'admin'
 
@@ -260,13 +257,11 @@ export default function ProcurementPage({ params }: { params: { id: string } }) 
 
   const loadPage = React.useCallback(async () => {
     try {
-      const [workspaceData, pos, invs, grns] = await Promise.all([
-        getWorkspace(workspaceId),
+      const [pos, invs, grns] = await Promise.all([
         listPurchaseOrders(workspaceId),
         listInvoices(workspaceId),
         listGoodsReceipts(workspaceId),
       ])
-      setWorkspace(workspaceData)
       // Failure here must not blank the page: without vendors the PO modal
       // shows its empty state, which is a better outcome than no page at all.
       void listVendors(workspaceId)
@@ -275,7 +270,6 @@ export default function ProcurementPage({ params }: { params: { id: string } }) 
       setPurchaseOrders(Array.isArray(pos) ? pos : [])
       setInvoices(Array.isArray(invs) ? invs : [])
       setGoodsReceipts(Array.isArray(grns) ? grns : [])
-      setMembership(membershipFrom(workspaceData))
     } catch (err) {
       if (isUnauthorized(err)) {
         router.push('/login')
