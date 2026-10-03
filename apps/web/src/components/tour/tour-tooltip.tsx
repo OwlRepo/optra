@@ -39,7 +39,7 @@ export function TourTooltip({ index, size, isLastStep, step, backProps, primaryP
       aria-describedby={bodyId}
       className="fade-slide-in w-[min(360px,calc(100vw-32px))] overflow-hidden rounded-[20px] border border-border-panel bg-card text-left text-foreground shadow-modal"
     >
-      <div className="px-[22px] pt-[18px]">
+      <div data-part="body" className="px-[22px] pt-[18px]">
         <div className="flex items-center justify-between gap-3">
           <Eyebrow>{chapter}</Eyebrow>
           <span className="font-mono text-[11px] text-ink-ghost">
@@ -57,23 +57,24 @@ export function TourTooltip({ index, size, isLastStep, step, backProps, primaryP
             {step.title}
           </h2>
         ) : null}
-        <div id={bodyId} className="mb-[18px] mt-2 text-sm leading-relaxed text-ink-ghost">
+        <div id={bodyId} className="mt-2 text-sm leading-relaxed text-ink-ghost">
           {step.content}
         </div>
+        {interactive ? (
+          <p className="mt-3 flex items-center gap-2 text-xs font-medium text-primary-strong">
+            <span aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-primary-strong animate-op-pulse" />
+            {data?.hint ?? 'Use the highlighted control or the button'}
+          </p>
+        ) : null}
+        <div className="h-[18px]" aria-hidden="true" />
       </div>
 
-      <div className="flex items-center justify-between gap-3 rounded-b-[20px] border-t border-border-inner bg-surface-subtle px-[22px] py-3">
+      <div data-part="footer" className="flex items-center justify-between gap-3 rounded-b-[20px] border-t border-border-inner bg-surface-subtle px-[22px] py-3">
         <Button type="button" variant="ghost" size="sm" {...skip}>
           {skipLabel ?? 'Skip tour'}
         </Button>
         {interactive ? (
-          <div className="flex min-w-0 items-center gap-3">
-            <div className="flex min-w-0 items-center gap-2">
-              <span aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-primary-strong animate-op-pulse" />
-              <MicroLabel as="span" tone="teal">
-                {data?.hint ?? 'Use the highlighted control or the button'}
-              </MicroLabel>
-            </div>
+          <div className="flex items-center gap-2">
             {/* The focus trap keeps the spotlighted control out of reach, so the tooltip carries the same action. */}
             <Button
               type="button"

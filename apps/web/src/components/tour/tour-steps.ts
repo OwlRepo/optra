@@ -291,7 +291,9 @@ export function buildTourSteps(input: BuildTourStepsInput): TourStep[] {
       sample: 'compare',
       interactive: true,
       actionLabel: 'Open price flag',
-      placement: 'bottom',
+      // Above the table it covers only the document cards: below hid the other
+      // two rows, beside it hid the finding labels.
+      placement: 'top',
     },
     {
       id: 'sample-citations',
