@@ -2,21 +2,21 @@
 
 ## Coverage
 
-- Detected source files: 1139
-- Source files represented by graph nodes: 1139
-- Semantic files represented: 150
-- Raw extracted relationships retained: 15941
-- Interactive unique endpoint-pair edges: 15584
-- Collapsed edge groups preserved in ledger: 243
+- Detected source files: 1144
+- Source files represented by graph nodes: 1144
+- Semantic files represented: 151
+- Raw extracted relationships retained: 15628
+- Interactive unique endpoint-pair edges: 15259
+- Collapsed edge groups preserved in ledger: 255
 - Zero-symbol files materialized as artifacts: 45
-- Unresolved endpoint IDs materialized as placeholders: 293
+- Unresolved endpoint IDs materialized as placeholders: 294
 
 ## Integrity
 
 - Missing endpoint edges: 0
 - Dangling endpoint edges: 0
 - Self-loop edges: 0
-- Undirected collapsed variants: 291
+- Undirected collapsed variants: 303
 
 Parallel variants are retained in `collapsed-edge-variants.json`; the interactive graph remains an undirected simple graph.
 
