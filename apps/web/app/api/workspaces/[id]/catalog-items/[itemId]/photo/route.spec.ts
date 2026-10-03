@@ -81,6 +81,8 @@ describe('GET /api/workspaces/[id]/catalog-items/[itemId]/photo proxy', () => {
         status: 200,
         headers: {
           'Content-Type': 'image/png',
+          'Content-Disposition': 'inline; filename="hex-bolt.png"',
+          'Set-Cookie': 'sid=backend; HttpOnly',
           'X-Powered-By': 'Express',
           ETag: 'W/"8-abc"',
           'Access-Control-Allow-Origin': '*',
@@ -91,6 +93,8 @@ describe('GET /api/workspaces/[id]/catalog-items/[itemId]/photo proxy', () => {
     const response = await GET(photoRequest(ITEM_ID), params(ITEM_ID))
 
     expect(response.headers.get('Content-Type')).toBe('image/png')
+    expect(response.headers.get('Content-Disposition')).toBe('inline; filename="hex-bolt.png"')
+    expect(response.headers.get('Set-Cookie')).toBeNull()
     expect(response.headers.get('X-Powered-By')).toBeNull()
     expect(response.headers.get('ETag')).toBeNull()
     expect(response.headers.get('Access-Control-Allow-Origin')).toBeNull()
