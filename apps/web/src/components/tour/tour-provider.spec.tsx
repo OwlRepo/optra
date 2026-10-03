@@ -52,6 +52,32 @@ function ReplayButton() {
   )
 }
 
+function StageProbe() {
+  const tour = useTour()
+  return (
+    <>
+      <button type="button" onClick={() => tour?.performStageAction('sample-run')}>
+        probe run
+      </button>
+      <button type="button" onClick={() => tour?.performStageAction('sample-flag')}>
+        probe flag
+      </button>
+      <button type="button" onClick={() => tour?.performStageAction('welcome')}>
+        probe other
+      </button>
+    </>
+  )
+}
+
+function OpenerButton() {
+  const tour = useTour()
+  return (
+    <button type="button" data-tour="tour-replay" onClick={(event) => tour?.startTour(event.currentTarget)}>
+      Take the tour
+    </button>
+  )
+}
+
 function renderProvider() {
   return render(
     <TourProvider>
@@ -80,7 +106,16 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup()
+  Reflect.deleteProperty(window, 'matchMedia')
 })
+
+function stubReducedMotion() {
+  Object.defineProperty(window, 'matchMedia', {
+    configurable: true,
+    writable: true,
+    value: (query: string) => ({ matches: query.includes('reduce'), addEventListener: vi.fn(), removeEventListener: vi.fn() }),
+  })
+}
 
 describe('TourProvider', () => {
   it('error: getCurrentUser rejecting does not auto-start, does not throw, and still renders children', async () => {
@@ -108,6 +143,41 @@ describe('TourProvider', () => {
     expect(screen.getByText('page content')).toBeDefined()
   })
 
+  it('error: Esc (CLOSE) ends the tour as skipped instead of advancing', async () => {
+    renderProvider()
+    await started()
+
+    emit({ type: EVENTS.STEP_AFTER, action: ACTIONS.CLOSE, index: 1, status: STATUS.RUNNING })
+
+    expect(JSON.parse(window.localStorage.getItem(KEY) as string).status).toBe('skipped')
+    expect(screen.getByTestId('tour-runner').getAttribute('data-run')).toBe('false')
+    expect(screen.getByTestId('tour-runner').getAttribute('data-step')).toBe('0')
+  })
+
+  it('error: an EVENTS.ERROR (failed before hook) advances one step like a missing target', async () => {
+    renderProvider()
+    await started()
+
+    emit({ type: EVENTS.ERROR, index: 2, action: ACTIONS.NEXT, status: STATUS.RUNNING })
+
+    expect(screen.getByTestId('tour-runner').getAttribute('data-step')).toBe('3')
+  })
+
+  it('error: leaving the workspace mid-tour writes a skipped record', async () => {
+    const view = renderProvider()
+    await started()
+
+    mocks.pathname = '/workspaces'
+    view.rerender(
+      <TourProvider>
+        <p>page content</p>
+        <ReplayButton />
+      </TourProvider>,
+    )
+
+    expect(JSON.parse(window.localStorage.getItem(KEY) as string).status).toBe('skipped')
+  })
+
   it.each(['/workspaces', '/workspaces/new', '/login', '/'])(
     'edge: on %s renders only children and makes no fetch',
     async (pathname) => {
@@ -122,6 +192,98 @@ describe('TourProvider', () => {
       expect(mocks.listWorkspaces).not.toHaveBeenCalled()
     },
   )
+
+  it('edge: leaving the workspace after the tour finished keeps the completed record', async () => {
+    const view = renderProvider()
+    await started()
+    emit({ type: EVENTS.TOUR_END, status: STATUS.FINISHED, action: ACTIONS.NEXT, index: runner().steps.length - 1 })
+
+    mocks.pathname = '/workspaces'
+    view.rerender(
+      <TourProvider>
+        <p>page content</p>
+      </TourProvider>,
+    )
+
+    expect(JSON.parse(window.localStorage.getItem(KEY) as string).status).toBe('completed')
+  })
+
+  it('edge: a TARGET_NOT_FOUND going back moves one step back', async () => {
+    renderProvider()
+    await started()
+    emit({ type: EVENTS.STEP_AFTER, action: ACTIONS.NEXT, index: 0, status: STATUS.RUNNING })
+    emit({ type: EVENTS.STEP_AFTER, action: ACTIONS.NEXT, index: 1, status: STATUS.RUNNING })
+
+    emit({ type: EVENTS.TARGET_NOT_FOUND, index: 2, action: ACTIONS.PREV, status: STATUS.RUNNING })
+
+    expect(screen.getByTestId('tour-runner').getAttribute('data-step')).toBe('1')
+  })
+
+  it('edge: performStageAction drives the sample stage and advances the tour', async () => {
+    stubReducedMotion()
+    render(
+      <TourProvider>
+        <StageProbe />
+      </TourProvider>,
+    )
+    await started()
+    const runIndex = runner().steps.findIndex((s) => s.id === 'sample-run')
+    emit({ type: EVENTS.STEP_AFTER, action: ACTIONS.NEXT, index: runIndex - 1, status: STATUS.RUNNING })
+    expect(screen.getByTestId('tour-runner').getAttribute('data-step')).toBe(String(runIndex))
+
+    act(() => screen.getByRole('button', { name: 'probe run' }).click())
+    expect(screen.getByTestId('tour-runner').getAttribute('data-step')).toBe(String(runIndex + 1))
+
+    act(() => screen.getByRole('button', { name: 'probe flag' }).click())
+    expect(screen.getByTestId('tour-runner').getAttribute('data-step')).toBe(String(runIndex + 2))
+  })
+
+  it('edge: performStageAction for a step that is not the current stage step does nothing', async () => {
+    render(
+      <TourProvider>
+        <StageProbe />
+      </TourProvider>,
+    )
+    await started()
+
+    act(() => screen.getByRole('button', { name: 'probe other' }).click())
+    act(() => screen.getByRole('button', { name: 'probe run' }).click())
+
+    expect(screen.getByTestId('tour-runner').getAttribute('data-step')).toBe('0')
+  })
+
+  it('edge: ending the tour returns focus to the Take the tour button that opened it', async () => {
+    writeTourRecord(USER_ID, 'completed')
+    render(
+      <TourProvider>
+        <main>content</main>
+        <OpenerButton />
+      </TourProvider>,
+    )
+    await waitFor(() => expect(mocks.getCurrentUser).toHaveBeenCalled())
+    await act(async () => {})
+    const opener = screen.getByRole('button', { name: 'Take the tour' })
+    act(() => opener.click())
+    await started()
+
+    emit({ type: EVENTS.TOUR_END, status: STATUS.SKIPPED, action: ACTIONS.SKIP, index: 1 })
+
+    await waitFor(() => expect(document.activeElement).toBe(opener))
+  })
+
+  it('edge: ending an auto-started tour moves focus to main', async () => {
+    render(
+      <TourProvider>
+        <main>content</main>
+        <OpenerButton />
+      </TourProvider>,
+    )
+    await started()
+
+    emit({ type: EVENTS.TOUR_END, status: STATUS.SKIPPED, action: ACTIONS.SKIP, index: 1 })
+
+    await waitFor(() => expect(document.activeElement).toBe(document.querySelector('main')))
+  })
 
   it('edge: a stored record means no auto-start', async () => {
     writeTourRecord(USER_ID, 'completed')
@@ -208,13 +370,13 @@ describe('TourProvider', () => {
   it('happy: a step with data.sample renders the SampleStage region', async () => {
     renderProvider()
     await started()
-    expect(screen.queryByRole('region', { name: 'Sample comparison' })).toBeNull()
+    expect(screen.queryByRole('region', { name: /sample data/i })).toBeNull()
     const sampleIndex = runner().steps.findIndex((s) => s.data.sample)
     expect(sampleIndex).toBeGreaterThan(0)
 
     emit({ type: EVENTS.STEP_AFTER, action: ACTIONS.NEXT, index: sampleIndex - 1, status: STATUS.RUNNING })
 
     expect(screen.getByTestId('tour-runner').getAttribute('data-step')).toBe(String(sampleIndex))
-    expect(screen.getByRole('region', { name: 'Sample comparison' })).toBeDefined()
+    expect(screen.getByRole('region', { name: /sample data/i })).toBeDefined()
   })
 })

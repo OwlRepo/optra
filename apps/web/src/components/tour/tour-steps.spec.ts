@@ -21,6 +21,7 @@ function targetOf(step: TourStep): string {
 }
 
 afterEach(() => {
+  vi.useRealTimers()
   window.history.pushState({}, '', '/')
 })
 
@@ -36,6 +37,23 @@ describe('buildTourSteps', () => {
       expect(step.data.route ?? '').not.toMatch(SUPPORT_SURFACES)
       expect(targetOf(step)).not.toMatch(SUPPORT_SURFACES)
     }
+  })
+
+  it('error: the default waitFor stops polling once the tour is no longer active', async () => {
+    vi.useFakeTimers()
+    let active = true
+    const { steps } = build({ waitFor: undefined, isActive: () => active })
+    const step = steps.find((s) => s.id === 'procurement-tabs') as TourStep
+    window.history.pushState({}, '', step.data.route as string)
+
+    const pending = step.before?.({} as never)
+    await vi.advanceTimersByTimeAsync(300)
+    expect(vi.getTimerCount()).toBeGreaterThan(0)
+    active = false
+    await vi.advanceTimersByTimeAsync(200)
+    await pending
+
+    expect(vi.getTimerCount()).toBe(0)
   })
 
   it('edge: a member gets centered explanations for upload and add vendor, with the same ids', () => {
@@ -100,6 +118,69 @@ describe('buildTourSteps', () => {
 
     expect(navigate).toHaveBeenCalledWith(step.data.route)
     expect(order).toEqual(['navigate', 'waitFor'])
+  })
+
+  it.each([
+    [true, 'Click'],
+    [false, 'Tap'],
+  ])('edge: isDesktop=%s - interactive copy says "%s" and carries the action button label and hint', (isDesktop, verb) => {
+    const { steps } = build({ isDesktop })
+    const byId = (id: string) => steps.find((s) => s.id === id) as TourStep
+
+    expect(byId('sample-run').content).toContain(`${verb} Run comparison`)
+    expect(byId('sample-flag').content).toContain(`${verb} the price flag`)
+    expect(byId('sample-verify').content).toContain(`${verb} Verify match`)
+    expect(byId('sample-run').data.actionLabel).toBe('Run comparison')
+    expect(byId('sample-flag').data.actionLabel).toBe('Open price flag')
+    expect(byId('sample-verify').data.actionLabel).toBe('Verify match')
+    for (const id of ['sample-run', 'sample-flag', 'sample-verify']) {
+      expect(byId(id).data.hint).toBe(`${verb} the highlighted control or use the button`)
+    }
+    for (const step of steps.filter((s) => !s.data.interactive)) {
+      expect(step.data.actionLabel).toBeUndefined()
+    }
+  })
+
+  it('edge: no Back from the sample stage through the first step after it; other steps keep Back', () => {
+    const { steps } = build()
+    const noBack = ['sample-stage', 'sample-run', 'sample-flag', 'sample-citations', 'sample-photo', 'sample-verify', 'sample-match', 'overview-activity']
+
+    for (const step of steps) {
+      if (noBack.includes(step.id)) {
+        expect(step.data.canGoBack).toBe(false)
+        expect(step.buttons).not.toContain('back')
+        if (!step.data.interactive) expect(step.buttons).toEqual(['primary', 'skip'])
+      } else if (!step.data.interactive) {
+        expect(step.data.canGoBack).toBe(true)
+        expect(step.buttons).toContain('back')
+      }
+    }
+  })
+
+  it('edge: page steps name their destination for the loader', () => {
+    const { steps } = build()
+    const byId = (id: string) => steps.find((s) => s.id === id) as TourStep
+
+    expect(byId('discrepancies-stats').data.loaderLabel).toBe('Opening Discrepancies…')
+    expect(byId('procurement-tabs').data.loaderLabel).toBe('Opening Purchase orders…')
+    for (const step of steps.filter((s) => s.data.route)) {
+      expect(step.data.loaderLabel).toMatch(/^Opening .+…$/)
+    }
+  })
+
+  it('regression: copy only claims what the product does', () => {
+    const owner = build({ canManage: true }).steps
+    const text = (id: string) => (owner.find((s) => s.id === id) as TourStep).content as string
+
+    expect(text('welcome')).not.toMatch(/minutes/i)
+    // Procurement accepts PDF, XLSX and CSV for POs and invoices, spreadsheets only for receipts. No images.
+    expect(text('procurement-upload')).not.toMatch(/image|photo/i)
+    expect(text('procurement-upload')).toMatch(/PDF/)
+    expect(text('procurement-upload')).toMatch(/spreadsheet/)
+    // Review records an outcome decision; dismiss takes no reason.
+    expect(text('discrepancies-filter')).not.toMatch(/reason/i)
+    expect(text('discrepancies-filter')).toMatch(/false positive/i)
+    expect(text('discrepancies-filter')).toMatch(/approved exception/i)
   })
 
   it('regression: only sample-run, sample-flag and sample-verify are interactive, with a skip-only button set', () => {

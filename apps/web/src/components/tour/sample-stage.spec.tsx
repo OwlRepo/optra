@@ -1,9 +1,10 @@
 /** @vitest-environment jsdom */
 
 import React from 'react'
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { SampleStage, type SampleStageProps } from './sample-stage'
+import { SAMPLE_CURRENCY, SAMPLE_MATCHED_LINE } from './sample-scenario'
 import { TOUR_ANCHORS, tourSelector } from './tour-anchors'
 
 const SAMPLE_LABEL = 'Sample data — not your workspace'
@@ -11,7 +12,7 @@ const SAMPLE_LABEL = 'Sample data — not your workspace'
 let fetchSpy: ReturnType<typeof vi.fn>
 
 function setup(props: Partial<SampleStageProps> = {}) {
-  const callbacks = { onRunComplete: vi.fn(), onFlagOpened: vi.fn(), onVerified: vi.fn() }
+  const callbacks = { onRunComplete: vi.fn(), onFlagOpened: vi.fn(), onVerified: vi.fn(), onActionsReady: vi.fn() }
   const view = render(<SampleStage section="compare" {...callbacks} {...props} />)
   return { ...callbacks, ...view }
 }
@@ -20,6 +21,19 @@ function advance(ms: number) {
   act(() => {
     vi.advanceTimersByTime(ms)
   })
+}
+
+type Actions = { run: () => void; openFlag: () => void; verify: () => void }
+
+function actionsOf(onActionsReady: ReturnType<typeof vi.fn>): Actions {
+  const calls = onActionsReady.mock.calls.filter((call) => call[0] !== null)
+  return calls[calls.length - 1][0] as Actions
+}
+
+function liveRegion(): HTMLElement {
+  const region = screen.getAllByRole('status').find((el) => el.classList.contains('sr-only'))
+  if (!region) throw new Error('no sr-only role=status live region')
+  return region
 }
 
 function bySelector(id: (typeof TOUR_ANCHORS)[keyof typeof TOUR_ANCHORS]) {
@@ -77,6 +91,70 @@ describe('SampleStage', () => {
     expect(vi.getTimerCount()).toBe(0)
   })
 
+  it('error: openFlag before the results are visible does nothing', () => {
+    const { onFlagOpened, onActionsReady } = setup({ reducedMotion: true })
+
+    act(() => actionsOf(onActionsReady).openFlag())
+
+    expect(onFlagOpened).not.toHaveBeenCalled()
+    expect(bySelector(TOUR_ANCHORS.sampleCitations)).toBeNull()
+  })
+
+  it('error: onActionsReady is cleared with null on unmount', () => {
+    const { onActionsReady, unmount } = setup()
+    unmount()
+    expect(onActionsReady.mock.calls[onActionsReady.mock.calls.length - 1][0]).toBeNull()
+  })
+
+  it('edge: the exposed actions do exactly what clicking the controls does', () => {
+    const { onRunComplete, onFlagOpened, onActionsReady } = setup({ reducedMotion: true })
+
+    act(() => actionsOf(onActionsReady).run())
+    expect(onRunComplete).toHaveBeenCalledTimes(1)
+    expect(screen.getByRole('button', { name: 'Review sample price flag' })).toBeDefined()
+
+    act(() => actionsOf(onActionsReady).openFlag())
+    expect(onFlagOpened).toHaveBeenCalledTimes(1)
+    expect(bySelector(TOUR_ANCHORS.sampleCitations)).not.toBeNull()
+  })
+
+  it('edge: the exposed verify action fills the meter and fires onVerified', () => {
+    const { onVerified, onActionsReady } = setup({ section: 'photo', reducedMotion: true })
+
+    act(() => actionsOf(onActionsReady).verify())
+
+    expect(onVerified).toHaveBeenCalledTimes(1)
+    expect(bySelector(TOUR_ANCHORS.sampleMatch)).not.toBeNull()
+  })
+
+  it('edge: the matched row takes its numbers from the sample scenario', () => {
+    setup({ reducedMotion: true })
+    fireEvent.click(screen.getByRole('button', { name: 'Run comparison' }))
+
+    const row = screen.getByText('Matched').closest('tr') as HTMLElement
+    const cells = Array.from(row.querySelectorAll('td')).map((cell) => cell.textContent)
+
+    expect(cells).toContain(SAMPLE_MATCHED_LINE.ordered)
+    expect(cells).toContain(SAMPLE_MATCHED_LINE.billed)
+    expect(cells).toContain(SAMPLE_MATCHED_LINE.delta)
+  })
+
+  it('edge: money values show their currency in mono, quantities do not', () => {
+    setup({ reducedMotion: true })
+    fireEvent.click(screen.getByRole('button', { name: 'Run comparison' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Review sample price flag' }))
+
+    const table = screen.getByRole('table')
+    const priceRow = within(table).getByText('Price mismatch').closest('tr') as HTMLElement
+    expect(priceRow.textContent).toMatch(new RegExp(`0\\.42\\s*${SAMPLE_CURRENCY}`))
+    expect(priceRow.textContent).toMatch(new RegExp(`0\\.47\\s*${SAMPLE_CURRENCY}`))
+    expect(priceRow.querySelector('.font-mono')).not.toBeNull()
+    const shortRow = within(table).getByText('Short receipt').closest('tr') as HTMLElement
+    expect(shortRow.textContent).not.toContain(SAMPLE_CURRENCY)
+    const citations = bySelector(TOUR_ANCHORS.sampleCitations)?.textContent ?? ''
+    expect(citations).toMatch(new RegExp(`0\\.42\\s*${SAMPLE_CURRENCY}`))
+  })
+
   it('edge: reducedMotion shows results synchronously and calls onRunComplete without timers', () => {
     const { onRunComplete } = setup({ reducedMotion: true })
 
@@ -113,7 +191,13 @@ describe('SampleStage', () => {
   it.each(['compare', 'photo'] as const)('regression: the "%s" section always shows the sample label', (section) => {
     setup({ section })
     expect(screen.getAllByText(SAMPLE_LABEL).length).toBeGreaterThan(0)
-    expect(screen.getByRole('region', { name: 'Sample comparison' })).toBeDefined()
+    expect(screen.getByRole('region', { name: /sample data/i })).toBeDefined()
+  })
+
+  it('regression: no arbitrary 6px radius is left on the stage', () => {
+    const { container } = setup({ reducedMotion: true })
+    fireEvent.click(screen.getByRole('button', { name: 'Run comparison' }))
+    expect(container.innerHTML).not.toContain('rounded-[6px]')
   })
 
   it('regression: the sample label stays after results and after the flag opens', () => {
@@ -121,6 +205,23 @@ describe('SampleStage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Run comparison' }))
     fireEvent.click(screen.getByRole('button', { name: 'Review sample price flag' }))
     expect(screen.getAllByText(SAMPLE_LABEL).length).toBeGreaterThan(0)
+  })
+
+  it('happy: the live region announces comparing, complete and verified', () => {
+    setup()
+    expect(liveRegion().textContent).toBe('')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Run comparison' }))
+    expect(liveRegion().textContent).toMatch(/comparing/i)
+    advance(3000)
+    expect(liveRegion().textContent).toMatch(/comparison complete/i)
+  })
+
+  it('happy: the live region announces a verified match', () => {
+    setup({ section: 'photo' })
+    fireEvent.click(screen.getByRole('button', { name: 'Verify match' }))
+    advance(1500)
+    expect(liveRegion().textContent).toMatch(/match verified/i)
   })
 
   it('happy: Run comparison shows progress, then three result rows and fires onRunComplete', () => {

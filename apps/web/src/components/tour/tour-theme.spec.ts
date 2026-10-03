@@ -9,6 +9,7 @@ const FALLBACK_RING = 'oklch(0.5 0.09 184 / 0.35)'
 describe('resolveTourTheme', () => {
   afterEach(() => {
     document.documentElement.removeAttribute('style')
+    document.documentElement.classList.remove('dark')
   })
 
   it('error: missing tokens fall back to the documented oklch values', () => {
@@ -30,6 +31,21 @@ describe('resolveTourTheme', () => {
 
     expect(theme.overlayColor).toBe(FALLBACK_OVERLAY)
     expect(theme.spotlight.stroke).toBe(FALLBACK_RING)
+  })
+
+  it('edge: in dark mode the overlay is black at 60% so the scrim stays dark', () => {
+    document.documentElement.classList.add('dark')
+    document.documentElement.style.setProperty('--foreground', 'oklch(0.97 0.01 264)')
+
+    const theme = resolveTourTheme()
+
+    expect(theme.overlayColor).toBe('oklch(0 0 0 / 0.6)')
+  })
+
+  it('edge: in light mode the overlay stays foreground at 40%', () => {
+    document.documentElement.style.setProperty('--foreground', 'oklch(0.238 0.03 264)')
+
+    expect(resolveTourTheme().overlayColor).toBe('oklch(0.238 0.03 264 / 0.4)')
   })
 
   it('edge: backstop colours are never empty strings', () => {
