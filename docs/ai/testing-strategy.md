@@ -429,6 +429,16 @@ Environment traps hit while verifying (they are execution preflight, not test lo
 
 **2026-10-03 — fix B5 (over-long catalog SKU).** `catalog-parse.processor.spec.ts` `describe('over-long SKUs (B5)')` (3): the 200-character boundary is kept, a 201-character SKU in a CSV and in a PDF extraction is stored as no SKU with the text in `rawRow`. The CSV case runs as the final attempt (`attemptsMade: 2`, `attempts: 3`), the only attempt that used to write `failed`. API e2e `catalog.e2e-spec.ts` `describe('over-long catalog SKUs (B5)')` (1) uploads the file over HTTP through the real Bull queue. Seen while validating, unrelated: `auth.e2e-spec.ts` "registers, verifies via the real OTP…" failed once in three full runs with `socket hang up` and passed on the next.
 
+**2026-10-03 — the last live test gaps.**
+- **New sibling specs:**
+  - the seven BFF routes that predate the BFF-spec rule (`invitations/accept/[token]`, `workspaces/[id]/invite`, `members/[userId]`, `vendors/[vendorId]`, its `price-terms` and `exception-summary`, `catalog-items/[itemId]/photo`);
+  - `@repo/ui` `avatar`, `select`, `separator`, `textarea` and `cn`;
+  - `apps/api/src/bootstrap.spec.ts`, which drives `configureApp` against a recording fake app. The validation pipe and cookie parser are executed, not inspected.
+- **`apps/web/src/lib/landing-demo-docs.spec.ts`** recomputes every quoted percentage and quantity from the line's own figures. Its RED caught public copy quoting $0.42 → $0.51 as +18% on four landing surfaces; that is the change measured from the new price, and the true increase is 21.4%. The two landing component specs now derive the same figures from the data.
+- **`landing-example.ts`** had no importer, so it was deleted rather than tested.
+- **Audit:** 0 of 201 live files lack a spec. The script, its disabled-surface rule (chat-only `LineSidebar`/`ShinyText`/`SplitText` included) and its 14-file indirect-coverage list are in `docs/plans/fix-test-gap-closeout.md`, Phase 3.
+- **Not pinned on purpose:** the invite and price-terms POST routes call `request.json()` before the cookie check. A malformed body therefore becomes a Next 500, even for a signed-out caller. That is a follow-up, not policy.
+
 ## Infrastructure / Docker / Deployment Verification
 
 Infra/config/script changes (Dockerfiles, compose files, CI workflows, deploy shell scripts) are not

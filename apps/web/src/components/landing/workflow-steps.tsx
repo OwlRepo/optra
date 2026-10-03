@@ -74,7 +74,7 @@ export function WorkflowSteps() {
                   2 of 14 lines flagged
                 </p>
                 <p className="mt-1.5 text-sm text-[oklch(0.46_0.02_264)]">
-                  Line 3 · +18% price · Line 7 · item mismatch
+                  Line 3 · +21% price · Line 7 · item mismatch
                 </p>
               </div>
             </Step>

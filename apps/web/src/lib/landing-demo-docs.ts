@@ -2,7 +2,7 @@
 // match demo (a document/line walkthrough) and the product tour (four vignettes
 // portraying real app screens). Both read from this one module so the same
 // "PO #4417" story stays identical between them instead of drifting into two
-// hand-copied variants -- the same reason `landing-example.ts` exists.
+// hand-copied variants.
 //
 // Every figure here is a PLACEHOLDER METRIC for a static marketing example --
 // not a measured product statistic and not customer data. Confirm/replace
@@ -10,7 +10,7 @@
 
 // Illustrative catalog photo -- Unsplash, "Grey stainless steel bolt and screw
 // lot" by Marcel Strauss (free for commercial use, hotlinking permitted per
-// Unsplash's guidelines). The same photo already backs `landing-example.ts`.
+// Unsplash's guidelines).
 // PLACEHOLDER ASSET -- replace with real catalog photography before launch.
 export const DEMO_CATALOG_PHOTO =
   'https://images.unsplash.com/photo-1564226591723-659ff3852b2a?q=80&w=400&auto=format&fit=crop'
@@ -70,7 +70,7 @@ export const DEMO_DOCS = [
         catPrice: '$0.51',
         // PLACEHOLDER METRIC
         confidence: '92%',
-        text: 'Vendor catalog lists this SKU at $0.51/unit — 18% above the PO price. The photo matches, so the item is right and the price is not.',
+        text: 'Vendor catalog lists this SKU at $0.51/unit — 21% above the PO price. The photo matches, so the item is right and the price is not.',
         source: 'ironclad-supply/catalog-2026-Q1.pdf · p.14',
       },
       {
@@ -246,7 +246,7 @@ export const TOUR_CHAT_EXCHANGE = {
 // Past-flag history rows shown on the third product card and reused by the
 // history vignette. PLACEHOLDER METRIC values throughout.
 export const DEMO_HISTORY_ROWS = [
-  { date: '2026-01-14', detail: 'flagged +18% · resolved', highlighted: true },
+  { date: '2026-01-14', detail: 'flagged +21% · resolved', highlighted: true },
   { date: '2025-10-02', detail: 'matched · $0.42', highlighted: false },
   { date: '2025-06-19', detail: 'matched · $0.42', highlighted: false },
 ] as const

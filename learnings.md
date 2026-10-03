@@ -629,3 +629,12 @@ And one rule the owner made standing: every change now ships with its tests for 
 **Actual:** the parallel authors never touched the same file, and every literal block applied cleanly (111 operations, 0 mismatches). But the first contract was not enough: twelve amendments (C-3) were needed once the screens were drawn against it — a compact segmented size, a Mono modal title with its own accessible name, a red metric tile, a header slot in the photo comparison, a page-owned mobile action. Integration then surfaced two things no author could see alone: AppShell renders header actions in exactly one place chosen by a media query, and the web test setup reports every viewport as mobile, so the disabled chat page's desktop History button vanished from its spec; and one rewritten spec never cleaned up between renders.
 
 **Why different:** a component contract is written from the component storyboard, but the screens are where the components meet real data and layout, so the screen frames decide the props. **Lock the contract from the screens that consume a primitive, not from the primitive's own sheet**, and run the whole suite, including the specs of pages you think are out of scope, as soon as a shared shell changes.
+
+## 2026-10-03 — Marketing numbers tested by recomputing them
+*Learning Contract: the plan's design is the prediction; the diff is below. No live prediction solicited.*
+
+**Predicted (from the approved plan):** a data spec that recomputes each quoted figure from the prices beside it fails on main for L03 (quoted 18%, true 21.4%) and passes once the copy measures the increase against the PO price.
+
+**Actual:** confirmed — `bun run tdd:red` recorded "failing: regression: the L03 increase is quoted against the PO price, not the catalog price, regression: the vendor-history row records the same increase as L03"; after the fix web 862/862, ui 272/272 and api 836/836 passed, and the targeted specs passed three runs in a row.
+
+**Why different:** not different. **A number on a public page is a claim; derive it in the test from the data next to it, never restate it as a literal, so an arithmetic slip turns the build red instead of shipping.**
