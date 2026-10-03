@@ -126,6 +126,18 @@ describe('ProcurementPage', () => {
     vi.restoreAllMocks()
   })
 
+  it('regression: an owner whose workspace is not on page 1 of listWorkspaces still gets the upload control', async () => {
+    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme', role: 'owner' })
+    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-other', role: 'owner' }], nextCursor: 'page-2' })
+    listPurchaseOrdersMock.mockResolvedValue([])
+    listInvoicesMock.mockResolvedValue([])
+
+    renderPage()
+
+    await screen.findByText('No purchase orders yet')
+    expect(document.querySelector('input[type="file"]')).not.toBeNull()
+  })
+
   it('uploads a purchase order and shows a success toast after refreshing the list', async () => {
     getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme' })
     listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })

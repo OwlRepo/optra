@@ -5,6 +5,13 @@ export interface Workspace {
   createdAt: Date
 }
 
+export type WorkspaceRole = 'owner' | 'admin' | 'member'
+
+/** GET /workspaces/:workspaceId — the workspace plus the caller's role in it. */
+export interface WorkspaceDetail extends Workspace {
+  role: WorkspaceRole
+}
+
 export interface Document {
   id: string
   workspaceId: string

@@ -18,7 +18,7 @@ const mocks = vi.hoisted(() => ({
   pathname: '/workspaces/ws-1/procurement',
   push: vi.fn(),
   getCurrentUser: vi.fn(),
-  listWorkspaces: vi.fn(),
+  getWorkspace: vi.fn(),
   runner: { latest: null as unknown },
 }))
 
@@ -27,7 +27,7 @@ vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: mocks.push, replace: vi.fn(), prefetch: vi.fn() }),
 }))
 vi.mock('@/lib/api/auth', () => ({ getCurrentUser: mocks.getCurrentUser }))
-vi.mock('@/lib/api/workspaces', () => ({ listWorkspaces: mocks.listWorkspaces }))
+vi.mock('@/lib/api/workspaces', () => ({ getWorkspace: mocks.getWorkspace }))
 vi.mock('next/dynamic', () => ({
   default: () =>
     function StubTourRunner(props: RunnerProps) {
@@ -101,7 +101,7 @@ beforeEach(() => {
   mocks.pathname = '/workspaces/ws-1/procurement'
   mocks.push.mockReset()
   mocks.getCurrentUser.mockReset().mockResolvedValue({ userId: USER_ID, email: 'a@b.c' })
-  mocks.listWorkspaces.mockReset().mockResolvedValue({ items: [{ id: 'ws-1', name: 'W', role: 'owner' }] })
+  mocks.getWorkspace.mockReset().mockResolvedValue({ id: 'ws-1', name: 'W', role: 'owner' })
 })
 
 afterEach(() => {
@@ -131,12 +131,12 @@ describe('TourProvider', () => {
     expect(screen.getByText('page content')).toBeDefined()
   })
 
-  it('error: listWorkspaces rejecting does not auto-start either', async () => {
-    mocks.listWorkspaces.mockRejectedValue(new Error('500'))
+  it('error: getWorkspace rejecting does not auto-start either', async () => {
+    mocks.getWorkspace.mockRejectedValue(new Error('500'))
 
     renderProvider()
 
-    await waitFor(() => expect(mocks.listWorkspaces).toHaveBeenCalled())
+    await waitFor(() => expect(mocks.getWorkspace).toHaveBeenCalledWith('ws-1'))
     await act(async () => {})
     const el = screen.queryByTestId('tour-runner')
     expect(el === null || el.getAttribute('data-run') === 'false').toBe(true)
@@ -189,7 +189,7 @@ describe('TourProvider', () => {
       expect(screen.getByText('page content')).toBeDefined()
       expect(screen.queryByTestId('tour-runner')).toBeNull()
       expect(mocks.getCurrentUser).not.toHaveBeenCalled()
-      expect(mocks.listWorkspaces).not.toHaveBeenCalled()
+      expect(mocks.getWorkspace).not.toHaveBeenCalled()
     },
   )
 
@@ -315,8 +315,8 @@ describe('TourProvider', () => {
     expect(screen.getByTestId('tour-runner').getAttribute('data-step')).toBe('1')
   })
 
-  it('regression: the member role is read from listWorkspaces (member gets center upload step)', async () => {
-    mocks.listWorkspaces.mockResolvedValue({ items: [{ id: 'ws-1', name: 'W', role: 'member' }] })
+  it('regression: the member role is read from getWorkspace (member gets center upload step)', async () => {
+    mocks.getWorkspace.mockResolvedValue({ id: 'ws-1', name: 'W', role: 'member' })
 
     renderProvider()
     await started()
