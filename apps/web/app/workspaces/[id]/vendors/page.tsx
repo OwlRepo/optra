@@ -27,7 +27,8 @@ import { logout } from '@/lib/api/auth'
 import { createVendor, listVendors, type VendorDetail } from '@/lib/api/catalog'
 import { isForbidden, isUnauthorized } from '@/lib/api/handle-unauthorized'
 import { WorkspaceAccessDenied } from '@/components/workspace-access-denied'
-import { getWorkspace, listWorkspaces } from '@/lib/api/workspaces'
+import { getWorkspace } from '@/lib/api/workspaces'
+import { membershipFrom } from '@/lib/workspace-role'
 import { formatDate } from '@/lib/format-date'
 import { WorkspaceNav, workspacePrimaryTabItems } from '@/components/workspace-nav'
 import { TOUR_ANCHORS, tourAttr } from '@/components/tour/tour-anchors'
@@ -84,15 +85,13 @@ export default function VendorsPage({ params }: { params: { id: string } }) {
   const loadPage = React.useCallback(async () => {
     try {
       setIsLoading(true)
-      const [workspaceData, vendorData, memberships] = await Promise.all([
+      const [workspaceData, vendorData] = await Promise.all([
         getWorkspace(workspaceId),
         listVendors(workspaceId),
-        listWorkspaces(),
       ])
       setWorkspace(workspaceData)
       setVendors(Array.isArray(vendorData) ? vendorData : [])
-      const membershipItems = Array.isArray(memberships?.items) ? memberships.items : []
-      setMembership(membershipItems.find((entry: WorkspaceMembership) => entry.id === workspaceId) ?? null)
+      setMembership(membershipFrom(workspaceData))
     } catch (err) {
       if (isUnauthorized(err)) {
         router.push('/login')

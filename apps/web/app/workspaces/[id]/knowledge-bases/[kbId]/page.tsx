@@ -34,7 +34,8 @@ import {
 import { logout } from "@/lib/api/auth";
 import { listScrapeRuns, scrapeSite } from "@/lib/api/scrape";
 import { isUnauthorized } from "@/lib/api/handle-unauthorized";
-import { getWorkspace, listWorkspaces } from "@/lib/api/workspaces";
+import { getWorkspace } from "@/lib/api/workspaces";
+import { membershipFrom } from "@/lib/workspace-role";
 import { WorkspaceNav, workspacePrimaryTabItems } from "@/components/workspace-nav";
 import { MobileTabBar } from "@/components/mobile-tab-bar";
 import { WorkspaceBrandLink } from "@/components/workspace-brand-link";
@@ -321,32 +322,14 @@ export default function KnowledgeBasePage({
     workspaceId,
   ]);
 
-  const loadMembership = React.useCallback(async () => {
-    try {
-      const memberships = await listWorkspaces();
-      const items = Array.isArray(memberships?.items)
-        ? memberships.items
-        : [];
-      setMembership(
-        items.find(
-          (entry: WorkspaceMembership) => entry.id === workspaceId,
-        ) ?? null,
-      );
-    } catch (err) {
-      if (isUnauthorized(err)) {
-        router.push("/login");
-      }
-    }
-  }, [router, workspaceId]);
-
   React.useEffect(() => {
     void Promise.all([
       loadDocuments(),
-      loadMembership(),
       loadScrapeRuns(),
       getWorkspace(workspaceId)
         .then((data) => {
           setWorkspace(data);
+          setMembership(membershipFrom(data));
         })
         .catch((err) => {
           if (isUnauthorized(err)) {
@@ -357,7 +340,7 @@ export default function KnowledgeBasePage({
           throw err;
         }),
     ]);
-  }, [loadDocuments, loadMembership, loadScrapeRuns, router, workspaceId]);
+  }, [loadDocuments, loadScrapeRuns, router, workspaceId]);
 
   const handleLogout = React.useCallback(async () => {
     try {

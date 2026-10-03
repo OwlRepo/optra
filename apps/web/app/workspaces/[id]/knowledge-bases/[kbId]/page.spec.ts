@@ -16,7 +16,6 @@ const deleteDocumentMock = vi.fn()
 const deleteDocumentsMock = vi.fn()
 const downloadDocumentMock = vi.fn()
 const downloadDocumentsMock = vi.fn()
-const listWorkspacesMock = vi.fn()
 const getWorkspaceMock = vi.fn()
 const logoutMock = vi.fn()
 
@@ -40,7 +39,6 @@ vi.mock('@/lib/api/scrape', () => ({
 }))
 
 vi.mock('@/lib/api/workspaces', () => ({
-  listWorkspaces: (...args: unknown[]) => listWorkspacesMock(...args),
   getWorkspace: (...args: unknown[]) => getWorkspaceMock(...args),
 }))
 
@@ -79,11 +77,9 @@ describe('KnowledgeBasePage', () => {
     deleteDocumentsMock.mockReset()
     downloadDocumentMock.mockReset()
     downloadDocumentsMock.mockReset()
-    listWorkspacesMock.mockReset()
     getWorkspaceMock.mockReset()
     logoutMock.mockReset()
-    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
-    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme Support' })
+    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme Support', role: 'owner' })
     listScrapeRunsMock.mockResolvedValue({ items: [], nextCursor: null })
   })
 
@@ -582,7 +578,7 @@ describe('KnowledgeBasePage', () => {
   })
 
   it('keeps selected document delete controls hidden from members', async () => {
-    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'member' }], nextCursor: null })
+    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme Support', role: 'member' })
     listDocumentsMock.mockResolvedValue(offsetResponse([
       { id: 'doc-1', title: 'Guide.pdf', status: 'done', createdAt: '2026-06-30T00:00:00.000Z' },
     ]))

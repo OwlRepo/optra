@@ -27,7 +27,8 @@ import { Database, Plus, Trash2 } from 'lucide-react'
 import { logout } from '@/lib/api/auth'
 import { createKnowledgeBase, deleteKnowledgeBase, listKnowledgeBases } from '@/lib/api/knowledge-bases'
 import { isUnauthorized } from '@/lib/api/handle-unauthorized'
-import { getWorkspace, listWorkspaces } from '@/lib/api/workspaces'
+import { getWorkspace } from '@/lib/api/workspaces'
+import { membershipFrom } from '@/lib/workspace-role'
 import { WorkspaceNav, workspacePrimaryTabItems } from '@/components/workspace-nav'
 import { MobileTabBar } from '@/components/mobile-tab-bar'
 import { WorkspaceBrandLink } from '@/components/workspace-brand-link'
@@ -70,16 +71,14 @@ export default function KnowledgeBasesPage({ params }: { params: { id: string } 
   const loadPage = React.useCallback(async () => {
     try {
       setIsLoading(true)
-      const [workspaceData, kbData, memberships] = await Promise.all([
+      const [workspaceData, kbData] = await Promise.all([
         getWorkspace(workspaceId),
         listKnowledgeBases(workspaceId),
-        listWorkspaces(),
       ])
       setWorkspace(workspaceData)
       setKnowledgeBases(Array.isArray(kbData?.items) ? kbData.items : [])
       setKnowledgeBaseNextCursor(kbData?.nextCursor ?? null)
-      const membershipItems = Array.isArray(memberships?.items) ? memberships.items : []
-      setMembership(membershipItems.find((entry: WorkspaceMembership) => entry.id === workspaceId) ?? null)
+      setMembership(membershipFrom(workspaceData))
     } catch (err) {
       if (isUnauthorized(err)) {
         router.push('/login')

@@ -126,9 +126,20 @@ describe('ProcurementPage', () => {
     vi.restoreAllMocks()
   })
 
+  it('regression: an owner whose workspace is not on page 1 of listWorkspaces still gets the upload control', async () => {
+    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme', role: 'owner' })
+    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-other', role: 'owner' }], nextCursor: 'page-2' })
+    listPurchaseOrdersMock.mockResolvedValue([])
+    listInvoicesMock.mockResolvedValue([])
+
+    renderPage()
+
+    await screen.findByText('No purchase orders yet')
+    expect(document.querySelector('input[type="file"]')).not.toBeNull()
+  })
+
   it('uploads a purchase order and shows a success toast after refreshing the list', async () => {
-    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme' })
-    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme', role: 'owner' })
     listPurchaseOrdersMock
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([donePurchaseOrder])
@@ -162,8 +173,7 @@ describe('ProcurementPage', () => {
   })
 
   it('shows an error toast when upload fails', async () => {
-    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme' })
-    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme', role: 'owner' })
     listPurchaseOrdersMock.mockResolvedValue([])
     listInvoicesMock.mockResolvedValue([])
     uploadPurchaseOrderMock.mockRejectedValue({ message: 'File type not supported' })
@@ -187,8 +197,7 @@ describe('ProcurementPage', () => {
   // POLICY v1 #3 makes the vendor mandatory, so a workspace with none cannot
   // complete this form. Saying so beats letting the user submit into a 404.
   it('explains the dead end instead of uploading when the workspace has no vendors', async () => {
-    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme' })
-    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme', role: 'owner' })
     listPurchaseOrdersMock.mockResolvedValue([])
     listInvoicesMock.mockResolvedValue([])
     listVendorsMock.mockResolvedValue([])
@@ -206,8 +215,7 @@ describe('ProcurementPage', () => {
   })
 
   it('runs a comparison and navigates to the discrepancies page with query params', async () => {
-    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme' })
-    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme', role: 'owner' })
     listPurchaseOrdersMock.mockResolvedValue([donePurchaseOrder])
     listInvoicesMock.mockResolvedValue([doneInvoice])
     compareDocumentsMock.mockResolvedValue({
@@ -233,8 +241,7 @@ describe('ProcurementPage', () => {
   })
 
   it('shows the exact backend error message verbatim when comparison fails', async () => {
-    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme' })
-    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme', role: 'owner' })
     listPurchaseOrdersMock.mockResolvedValue([donePurchaseOrder])
     listInvoicesMock.mockResolvedValue([doneInvoice])
     compareDocumentsMock.mockRejectedValue({ message: 'Invoice has not finished parsing yet' })
@@ -254,8 +261,7 @@ describe('ProcurementPage', () => {
   })
 
   it('offers a source download only for rows that have stored bytes', async () => {
-    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme' })
-    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }] })
+    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme', role: 'owner' })
     listPurchaseOrdersMock.mockResolvedValue([
       donePurchaseOrder,
       { ...donePurchaseOrder, id: 'po-2', name: 'no-bytes.csv', hasSourceFile: false },
@@ -269,8 +275,7 @@ describe('ProcurementPage', () => {
   })
 
   it('downloads a purchase order with its kind and id', async () => {
-    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme' })
-    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }] })
+    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme', role: 'owner' })
     listPurchaseOrdersMock.mockResolvedValue([donePurchaseOrder])
     listInvoicesMock.mockResolvedValue([])
     downloadProcurementDocumentMock.mockResolvedValue(undefined)
@@ -287,8 +292,7 @@ describe('ProcurementPage', () => {
   // The list is member-readable and so is the file behind it, unlike upload
   // and compare which are owner/admin.
   it('shows the download control to a member', async () => {
-    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme' })
-    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'member' }] })
+    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme', role: 'member' })
     listPurchaseOrdersMock.mockResolvedValue([donePurchaseOrder])
     listInvoicesMock.mockResolvedValue([])
 
@@ -299,7 +303,6 @@ describe('ProcurementPage', () => {
 
   it('redirects to login on a 401 during initial load', async () => {
     getWorkspaceMock.mockRejectedValue({ statusCode: 401, message: 'Unauthorized' })
-    listWorkspacesMock.mockResolvedValue({ items: [], nextCursor: null })
     listPurchaseOrdersMock.mockResolvedValue([])
     listInvoicesMock.mockResolvedValue([])
 
@@ -318,8 +321,7 @@ describe('ProcurementPage', () => {
   // Each keeps the behaviour it checked.
   describe('design alignment (frames 2.1–2.6)', () => {
     it('edge: a member is told who runs comparisons and gets no pickers', async () => {
-      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme' })
-      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'member' }], nextCursor: null })
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme', role: 'member' })
       listPurchaseOrdersMock.mockResolvedValue([donePurchaseOrder])
       listInvoicesMock.mockResolvedValue([doneInvoice])
 
@@ -335,8 +337,7 @@ describe('ProcurementPage', () => {
     })
 
     it('edge: with nothing Ready the compare panel is faded, explains why, and offers no pickers', async () => {
-      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme' })
-      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme', role: 'owner' })
       listPurchaseOrdersMock.mockResolvedValue([])
       listInvoicesMock.mockResolvedValue([])
 
@@ -352,8 +353,7 @@ describe('ProcurementPage', () => {
     })
 
     it('edge: an owner sees the Run comparison step, not the member chip', async () => {
-      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme' })
-      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme', role: 'owner' })
       listPurchaseOrdersMock.mockResolvedValue([donePurchaseOrder])
       listInvoicesMock.mockResolvedValue([doneInvoice])
 
@@ -365,8 +365,7 @@ describe('ProcurementPage', () => {
     })
 
     it('edge: an empty tab labels its formats from the file input accept list', async () => {
-      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme' })
-      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme', role: 'owner' })
       listPurchaseOrdersMock.mockResolvedValue([])
       listInvoicesMock.mockResolvedValue([])
 
@@ -382,8 +381,7 @@ describe('ProcurementPage', () => {
     })
 
     it('edge: with no vendors the PO form is blocked by an amber prerequisite that links out to vendors', async () => {
-      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme' })
-      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme', role: 'owner' })
       listPurchaseOrdersMock.mockResolvedValue([])
       listInvoicesMock.mockResolvedValue([])
       listVendorsMock.mockResolvedValue([])
@@ -401,8 +399,7 @@ describe('ProcurementPage', () => {
     })
 
     it('edge: only a processing row pulses; a queued row waits without it', async () => {
-      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme' })
-      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme', role: 'owner' })
       listPurchaseOrdersMock.mockResolvedValue([
         { ...donePurchaseOrder, id: 'po-p', name: 'parsing.pdf', status: 'processing', rowCount: null },
         { ...donePurchaseOrder, id: 'po-q', name: 'queued.csv', status: 'pending', rowCount: null },
@@ -421,7 +418,7 @@ describe('ProcurementPage', () => {
       getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme' })
       listPurchaseOrdersMock.mockResolvedValue([donePurchaseOrder])
       listInvoicesMock.mockResolvedValue([doneInvoice])
-      listWorkspacesMock.mockResolvedValueOnce({ items: [{ id: 'ws-1', role: 'member' }], nextCursor: null })
+      getWorkspaceMock.mockResolvedValueOnce({ id: 'ws-1', name: 'Acme', role: 'member' })
 
       const view = renderPage()
 
@@ -431,7 +428,7 @@ describe('ProcurementPage', () => {
 
       view.unmount()
 
-      listWorkspacesMock.mockResolvedValueOnce({ items: [{ id: 'ws-1', role: 'admin' }], nextCursor: null })
+      getWorkspaceMock.mockResolvedValueOnce({ id: 'ws-1', name: 'Acme', role: 'admin' })
       renderPage()
 
       expect((await screen.findAllByRole('button', { name: 'Upload purchase order' })).length).toBeGreaterThan(0)
@@ -443,22 +440,20 @@ describe('ProcurementPage', () => {
       getWorkspaceMock.mockImplementation(
         () => new Promise((resolve) => { resolveWorkspace = resolve }),
       )
-      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
       listPurchaseOrdersMock.mockResolvedValue([])
       listInvoicesMock.mockResolvedValue([])
 
       const { container } = renderPage()
 
       expect(container.querySelector('div[aria-busy="true"]')).not.toBeNull()
-      resolveWorkspace({ id: 'ws-1', name: 'Acme' })
+      resolveWorkspace({ id: 'ws-1', name: 'Acme', role: 'owner' })
 
       await screen.findByText('No purchase orders yet')
       expect(container.querySelector('div[aria-busy="true"]')).toBeNull()
     })
 
     it('regression: renders empty state with correct copy for the active tab', async () => {
-      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme' })
-      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme', role: 'owner' })
       listPurchaseOrdersMock.mockResolvedValue([])
       listInvoicesMock.mockResolvedValue([])
 
@@ -480,8 +475,7 @@ describe('ProcurementPage', () => {
     // S5. A receipt answers exactly one purchase order (POLICY v1 #2), so picking
     // a file opens the same kind of header form the invoice upload uses.
     it('regression: uploads a goods receipt against a chosen purchase order', async () => {
-      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme' })
-      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme', role: 'owner' })
       listPurchaseOrdersMock.mockResolvedValue([donePurchaseOrder])
       listInvoicesMock.mockResolvedValue([])
       listGoodsReceiptsMock.mockResolvedValue([])
@@ -520,8 +514,7 @@ describe('ProcurementPage', () => {
     // Same dead-end handling as the PO modal's no-vendors case: explain it rather
     // than letting the user submit into a guaranteed 404.
     it('regression: explains that a purchase order is needed before a receipt can be uploaded', async () => {
-      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme' })
-      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme', role: 'owner' })
       listPurchaseOrdersMock.mockResolvedValue([])
       listInvoicesMock.mockResolvedValue([])
       listGoodsReceiptsMock.mockResolvedValue([])
@@ -541,8 +534,7 @@ describe('ProcurementPage', () => {
     })
 
     it('happy: each tab carries the count of the list it holds', async () => {
-      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme' })
-      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme', role: 'owner' })
       listPurchaseOrdersMock.mockResolvedValue([donePurchaseOrder, { ...donePurchaseOrder, id: 'po-2', name: 'po-april.csv' }])
       listInvoicesMock.mockResolvedValue([doneInvoice])
       listGoodsReceiptsMock.mockResolvedValue([])
@@ -556,8 +548,7 @@ describe('ProcurementPage', () => {
     })
 
     it('happy: the picked file is held, not uploaded, under the step-2 eyebrow', async () => {
-      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme' })
-      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme', role: 'owner' })
       listPurchaseOrdersMock.mockResolvedValue([])
       listInvoicesMock.mockResolvedValue([])
 
@@ -575,8 +566,7 @@ describe('ProcurementPage', () => {
 
     it('edge: below lg the header shortens to the workspace name and "Purchase orders" (frame 4.2)', async () => {
       stubDesktop(false)
-      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme' })
-      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme', role: 'owner' })
       listPurchaseOrdersMock.mockResolvedValue([])
       listInvoicesMock.mockResolvedValue([])
 
@@ -590,8 +580,7 @@ describe('ProcurementPage', () => {
 
     it('happy: the header names the workspace in the breadcrumb and capitalises the role', async () => {
       stubDesktop(true)
-      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme' })
-      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme', role: 'owner' })
       listPurchaseOrdersMock.mockResolvedValue([])
       listInvoicesMock.mockResolvedValue([])
 
@@ -605,8 +594,7 @@ describe('ProcurementPage', () => {
     // button under the tabs (CSS hides one of the two per breakpoint; jsdom
     // renders both), and it opens the same file input.
     it('happy: the active tab offers its upload again as the mobile button under the tabs', async () => {
-      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme' })
-      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme', role: 'owner' })
       listPurchaseOrdersMock.mockResolvedValue([donePurchaseOrder])
       listInvoicesMock.mockResolvedValue([doneInvoice])
 
@@ -633,7 +621,6 @@ describe('ProcurementPage', () => {
       listPurchaseOrdersMock.mockRejectedValue(denied)
       listInvoicesMock.mockRejectedValue(denied)
       listGoodsReceiptsMock.mockRejectedValue(denied)
-      listWorkspacesMock.mockResolvedValue({ items: [], nextCursor: null })
     }
 
     it('error: a non-member sees the no-access state, not an error toast', async () => {
@@ -650,7 +637,6 @@ describe('ProcurementPage', () => {
       getWorkspaceMock.mockRejectedValue({ statusCode: 500, message: 'Internal server error' })
       listPurchaseOrdersMock.mockResolvedValue([])
       listInvoicesMock.mockResolvedValue([])
-      listWorkspacesMock.mockResolvedValue({ items: [], nextCursor: null })
 
       renderPage()
 

@@ -13,10 +13,11 @@ import {
   UseGuards,
 } from '@nestjs/common'
 import { CurrentUser, type CurrentUserContext } from '../auth/decorators/current-user.decorator'
+import { CurrentWorkspaceMember } from '../auth/decorators/current-workspace-member.decorator'
 import { Roles } from '../auth/decorators/roles.decorator'
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard'
 import { RolesGuard } from '../auth/guards/roles.guard'
-import { WorkspaceMemberGuard } from '../auth/guards/workspace-member.guard'
+import { WorkspaceMemberGuard, type WorkspaceMemberContext } from '../auth/guards/workspace-member.guard'
 import { ListQueryDto } from '../common/dto/list-query.dto'
 import { CreateWorkspaceDto } from './dto/create-workspace.dto'
 import { InviteMemberDto } from './dto/invite-member.dto'
@@ -55,8 +56,13 @@ export class WorkspacesController {
 
   @Get(':workspaceId')
   @UseGuards(JwtAuthGuard, WorkspaceMemberGuard)
-  getOne(@Param('workspaceId') workspaceId: string) {
-    return this.workspacesService.getOne(workspaceId)
+  async getOne(
+    @Param('workspaceId') workspaceId: string,
+    @CurrentWorkspaceMember() member: WorkspaceMemberContext,
+  ) {
+    // The caller's role travels with the workspace (already loaded by the
+    // guard), so pages never derive it from page 1 of /workspaces/me.
+    return { ...(await this.workspacesService.getOne(workspaceId)), role: member.role }
   }
 
   @Post(':workspaceId/invite')

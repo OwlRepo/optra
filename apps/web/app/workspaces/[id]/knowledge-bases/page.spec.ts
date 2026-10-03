@@ -9,7 +9,6 @@ import KnowledgeBasesPage from './page'
 const pushMock = vi.fn()
 const routerMock = { push: pushMock }
 const getWorkspaceMock = vi.fn()
-const listWorkspacesMock = vi.fn()
 const listKnowledgeBasesMock = vi.fn()
 const createKnowledgeBaseMock = vi.fn()
 const deleteKnowledgeBaseMock = vi.fn()
@@ -22,7 +21,6 @@ vi.mock('next/navigation', () => ({
 
 vi.mock('@/lib/api/workspaces', () => ({
   getWorkspace: (...args: unknown[]) => getWorkspaceMock(...args),
-  listWorkspaces: (...args: unknown[]) => listWorkspacesMock(...args),
 }))
 
 vi.mock('@/lib/api/knowledge-bases', () => ({
@@ -51,7 +49,6 @@ describe('KnowledgeBasesPage', () => {
   beforeEach(() => {
     pushMock.mockReset()
     getWorkspaceMock.mockReset()
-    listWorkspacesMock.mockReset()
     listKnowledgeBasesMock.mockReset()
     createKnowledgeBaseMock.mockReset()
     deleteKnowledgeBaseMock.mockReset()
@@ -64,8 +61,7 @@ describe('KnowledgeBasesPage', () => {
   })
 
   it('renders fetched knowledge bases', async () => {
-    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
-    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha', role: 'owner' })
     listKnowledgeBasesMock.mockResolvedValue({
       items: [{ id: 'kb-1', name: 'Policies', workspaceId: 'ws-1', createdAt: '2026-07-01T00:00:00.000Z' }],
       nextCursor: null,
@@ -79,7 +75,7 @@ describe('KnowledgeBasesPage', () => {
   it('renders empty state with manager action and hides it for plain member', async () => {
     getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
     listKnowledgeBasesMock.mockResolvedValue({ items: [], nextCursor: null })
-    listWorkspacesMock.mockResolvedValueOnce({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+    getWorkspaceMock.mockResolvedValueOnce({ id: 'ws-1', name: 'Alpha', role: 'owner' })
 
     const view = renderPage()
 
@@ -88,7 +84,7 @@ describe('KnowledgeBasesPage', () => {
 
     view.unmount()
 
-    listWorkspacesMock.mockResolvedValueOnce({ items: [{ id: 'ws-1', role: 'member' }], nextCursor: null })
+    getWorkspaceMock.mockResolvedValueOnce({ id: 'ws-1', name: 'Alpha', role: 'member' })
     renderPage()
 
     expect(await screen.findByText('No knowledge bases yet')).toBeDefined()
@@ -96,8 +92,7 @@ describe('KnowledgeBasesPage', () => {
   })
 
   it('creates knowledge base from modal and reloads list', async () => {
-    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
-    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha', role: 'owner' })
     listKnowledgeBasesMock
       .mockResolvedValueOnce({ items: [], nextCursor: null })
       .mockResolvedValueOnce({ items: [{ id: 'kb-1', name: 'Policies', workspaceId: 'ws-1' }], nextCursor: null })
@@ -117,8 +112,7 @@ describe('KnowledgeBasesPage', () => {
   })
 
   it('deletes knowledge base after confirmation and reloads list', async () => {
-    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
-    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha', role: 'owner' })
     listKnowledgeBasesMock
       .mockResolvedValueOnce({ items: [{ id: 'kb-1', name: 'Policies', workspaceId: 'ws-1' }], nextCursor: null })
       .mockResolvedValueOnce({ items: [], nextCursor: null })
@@ -138,14 +132,14 @@ describe('KnowledgeBasesPage', () => {
   it('shows create controls only for owner and admin', async () => {
     getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
     listKnowledgeBasesMock.mockResolvedValue({ items: [], nextCursor: null })
-    listWorkspacesMock.mockResolvedValueOnce({ items: [{ id: 'ws-1', role: 'admin' }], nextCursor: null })
+    getWorkspaceMock.mockResolvedValueOnce({ id: 'ws-1', name: 'Alpha', role: 'admin' })
 
     const view = renderPage()
 
     expect((await screen.findAllByRole('button', { name: 'New knowledge base' })).length).toBeGreaterThan(0)
     view.unmount()
 
-    listWorkspacesMock.mockResolvedValueOnce({ items: [{ id: 'ws-1', role: 'member' }], nextCursor: null })
+    getWorkspaceMock.mockResolvedValueOnce({ id: 'ws-1', name: 'Alpha', role: 'member' })
     renderPage()
 
     expect(await screen.findByText('No knowledge bases yet')).toBeDefined()
@@ -153,8 +147,7 @@ describe('KnowledgeBasesPage', () => {
   })
 
   it('loads more knowledge bases without duplicating existing rows', async () => {
-    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
-    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha', role: 'owner' })
     listKnowledgeBasesMock
       .mockResolvedValueOnce({
         items: [{ id: 'kb-1', name: 'Policies', workspaceId: 'ws-1' }],
@@ -178,7 +171,6 @@ describe('KnowledgeBasesPage', () => {
 
   it('redirects to login on unauthorized load/create/delete errors', async () => {
     getWorkspaceMock.mockRejectedValue({ statusCode: 401, message: 'Unauthorized' })
-    listWorkspacesMock.mockResolvedValue({ items: [], nextCursor: null })
     listKnowledgeBasesMock.mockResolvedValue({ items: [], nextCursor: null })
 
     renderPage()

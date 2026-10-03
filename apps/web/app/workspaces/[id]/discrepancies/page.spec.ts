@@ -10,7 +10,6 @@ const pushMock = vi.fn()
 const replaceMock = vi.fn()
 const routerMock = { push: pushMock, replace: replaceMock }
 const getWorkspaceMock = vi.fn()
-const listWorkspacesMock = vi.fn()
 const listDiscrepanciesMock = vi.fn()
 const dismissDiscrepancyMock = vi.fn()
 const logoutMock = vi.fn()
@@ -30,7 +29,6 @@ vi.mock('next/navigation', () => ({
 
 vi.mock('@/lib/api/workspaces', () => ({
   getWorkspace: (...args: unknown[]) => getWorkspaceMock(...args),
-  listWorkspaces: (...args: unknown[]) => listWorkspacesMock(...args),
 }))
 
 vi.mock('@/lib/api/procurement', () => ({
@@ -132,7 +130,6 @@ describe('DiscrepanciesPage', () => {
     pushMock.mockReset()
     replaceMock.mockReset()
     getWorkspaceMock.mockReset()
-    listWorkspacesMock.mockReset()
     listDiscrepanciesMock.mockReset()
     dismissDiscrepancyMock.mockReset()
     logoutMock.mockReset()
@@ -149,8 +146,7 @@ describe('DiscrepanciesPage', () => {
   })
 
   it('renders fetched discrepancy flags with stat counts', async () => {
-    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
-    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha', role: 'owner' })
     listDiscrepanciesMock.mockResolvedValue(listOf([makeFlag()]))
 
     renderPage()
@@ -164,8 +160,7 @@ describe('DiscrepanciesPage', () => {
   // does not crash the page — it renders a blank badge — so nothing but a test
   // like this one notices when the API learns a word the UI does not know.
   it('labels every discrepancy type the API can return', async () => {
-    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
-    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha', role: 'owner' })
     listDiscrepanciesMock.mockResolvedValue(listOf([
       makeFlag({ id: 'f1', sku: 'S-1', flagType: 'quantity_mismatch' }),
       makeFlag({ id: 'f2', sku: 'S-2', flagType: 'price_mismatch' }),
@@ -194,8 +189,7 @@ describe('DiscrepanciesPage', () => {
   // A short receipt without the received quantity is the one number the
   // reviewer is actually deciding on, so the table has to show all three.
   it('shows what was received alongside what was ordered and billed', async () => {
-    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
-    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha', role: 'owner' })
     listDiscrepanciesMock.mockResolvedValue(listOf([
       // Three distinct numbers, so a page that dropped the received column
       // could not pass by rendering one of the other two twice.
@@ -211,8 +205,7 @@ describe('DiscrepanciesPage', () => {
   })
 
   it('summarises receiving exceptions and needs-review flags in the stat cards', async () => {
-    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
-    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha', role: 'owner' })
     listDiscrepanciesMock.mockResolvedValue(listOf([
       makeFlag({ id: 'f1', flagType: 'short_receipt' }),
       makeFlag({ id: 'f2', flagType: 'invoice_exceeds_received' }),
@@ -230,8 +223,7 @@ describe('DiscrepanciesPage', () => {
   // Paginated, that reports the visible page and calls it the total — and the
   // total is the one number a reviewer uses to decide where to start.
   it('reads the stat counts from the server, not from the visible page', async () => {
-    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
-    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha', role: 'owner' })
     listDiscrepanciesMock.mockResolvedValue(
       listOf([makeFlag({ flagType: 'price_mismatch' })], {
         total: 47,
@@ -259,8 +251,7 @@ describe('DiscrepanciesPage', () => {
   })
 
   it('asks the server for the next page instead of slicing what it already has', async () => {
-    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
-    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha', role: 'owner' })
     listDiscrepanciesMock.mockResolvedValue(listOf([makeFlag()], { total: 40, totalPages: 2 }))
 
     renderPage()
@@ -276,8 +267,7 @@ describe('DiscrepanciesPage', () => {
   // S7. The decision routes and their client functions shipped in S2 and had
   // no caller at all until now — a reviewer could only ever dismiss.
   it('opens a review panel for a row and records a decision against it', async () => {
-    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
-    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha', role: 'owner' })
     listDiscrepanciesMock.mockResolvedValue(listOf([makeFlag()]))
 
     renderPage()
@@ -297,8 +287,7 @@ describe('DiscrepanciesPage', () => {
   })
 
   it('refetches the current page after a decision rather than trusting its copy', async () => {
-    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
-    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha', role: 'owner' })
     listDiscrepanciesMock.mockResolvedValue(listOf([makeFlag()], { total: 40, totalPages: 2 }))
 
     renderPage()
@@ -314,8 +303,7 @@ describe('DiscrepanciesPage', () => {
   })
 
   it('renders a positive-toned empty state when no discrepancies are found', async () => {
-    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
-    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha', role: 'owner' })
     listDiscrepanciesMock.mockResolvedValue(listOf([]))
 
     renderPage()
@@ -327,7 +315,7 @@ describe('DiscrepanciesPage', () => {
   it('hides dismiss for member role and shows it for owner/admin', async () => {
     getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
     listDiscrepanciesMock.mockResolvedValue(listOf([makeFlag()]))
-    listWorkspacesMock.mockResolvedValueOnce({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+    getWorkspaceMock.mockResolvedValueOnce({ id: 'ws-1', name: 'Alpha', role: 'owner' })
 
     const view = renderPage()
 
@@ -336,7 +324,7 @@ describe('DiscrepanciesPage', () => {
 
     view.unmount()
 
-    listWorkspacesMock.mockResolvedValueOnce({ items: [{ id: 'ws-1', role: 'member' }], nextCursor: null })
+    getWorkspaceMock.mockResolvedValueOnce({ id: 'ws-1', name: 'Alpha', role: 'member' })
     renderPage()
 
     await screen.findByText('SKU-100')
@@ -345,8 +333,7 @@ describe('DiscrepanciesPage', () => {
   })
 
   it('builds the catalog-matches link using only the non-null line item id', async () => {
-    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
-    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha', role: 'owner' })
     listDiscrepanciesMock.mockResolvedValue(listOf([
       makeFlag({ id: 'flag-2', sku: 'SKU-200', flagType: 'missing_on_po', poLineItemId: null, invoiceLineItemId: 'inv-line-2' }),
     ]))
@@ -360,8 +347,7 @@ describe('DiscrepanciesPage', () => {
   // Since S7 the page refetches rather than splicing the row out locally: on a
   // paginated list a local removal leaves a short page and stale counts.
   it('dismisses a discrepancy and refetches the page', async () => {
-    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
-    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha', role: 'owner' })
     listDiscrepanciesMock.mockResolvedValueOnce(listOf([makeFlag()])).mockResolvedValue(listOf([]))
     dismissDiscrepancyMock.mockResolvedValue(makeFlag({ status: 'dismissed' }))
 
@@ -377,8 +363,7 @@ describe('DiscrepanciesPage', () => {
   })
 
   it('shows an error toast when dismiss fails', async () => {
-    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
-    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha', role: 'owner' })
     listDiscrepanciesMock.mockResolvedValue(listOf([makeFlag()]))
     dismissDiscrepancyMock.mockRejectedValue({ message: 'Something went wrong' })
 
@@ -393,8 +378,7 @@ describe('DiscrepanciesPage', () => {
 
   it('pre-filters by purchaseOrderId and invoiceId from query params', async () => {
     mockSearchParams = new URLSearchParams({ purchaseOrderId: 'po-9', invoiceId: 'inv-9' })
-    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
-    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha', role: 'owner' })
     listDiscrepanciesMock.mockResolvedValue(listOf([]))
 
     renderPage()
@@ -412,7 +396,6 @@ describe('DiscrepanciesPage', () => {
 
   it('redirects to login on unauthorized load error', async () => {
     getWorkspaceMock.mockRejectedValue({ statusCode: 401, message: 'Unauthorized' })
-    listWorkspacesMock.mockResolvedValue({ items: [], nextCursor: null })
     listDiscrepanciesMock.mockResolvedValue(listOf([]))
 
     renderPage()
@@ -428,8 +411,7 @@ describe('DiscrepanciesPage', () => {
   describe('design alignment (frames 2.7–2.8)', () => {
     it('error: a failed pair lookup keeps the ids on the chip and never blocks the list', async () => {
       mockSearchParams = new URLSearchParams({ purchaseOrderId: 'po-9', invoiceId: 'inv-9' })
-      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
-      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha', role: 'owner' })
       listDiscrepanciesMock.mockResolvedValue(listOf([makeFlag()]))
       listPurchaseOrdersMock.mockRejectedValue({ message: 'boom' })
       listInvoicesMock.mockRejectedValue({ message: 'boom' })
@@ -444,8 +426,7 @@ describe('DiscrepanciesPage', () => {
     })
 
     it('edge: with no pair in the URL there is no pair chip and no document lookup', async () => {
-      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
-      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha', role: 'owner' })
       listDiscrepanciesMock.mockResolvedValue(listOf([makeFlag()]))
 
       renderPage()
@@ -458,8 +439,7 @@ describe('DiscrepanciesPage', () => {
 
     it('edge: while the pair lookup is in flight the chip shows the ids', async () => {
       mockSearchParams = new URLSearchParams({ purchaseOrderId: 'po-9', invoiceId: 'inv-9' })
-      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
-      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha', role: 'owner' })
       listDiscrepanciesMock.mockResolvedValue(listOf([makeFlag()]))
       listPurchaseOrdersMock.mockImplementation(() => new Promise(() => {}))
       listInvoicesMock.mockImplementation(() => new Promise(() => {}))
@@ -471,8 +451,7 @@ describe('DiscrepanciesPage', () => {
 
     it('edge: a pair document that is not found falls back to its id', async () => {
       mockSearchParams = new URLSearchParams({ purchaseOrderId: 'po-9', invoiceId: 'inv-9' })
-      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
-      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha', role: 'owner' })
       listDiscrepanciesMock.mockResolvedValue(listOf([makeFlag()]))
       listPurchaseOrdersMock.mockResolvedValue([{ id: 'po-9', name: 'po-9.csv', poNumber: 'PO-2026-1180' }])
       listInvoicesMock.mockResolvedValue([{ id: 'inv-other', name: 'other.csv', invoiceNumber: 'INV-1' }])
@@ -484,8 +463,7 @@ describe('DiscrepanciesPage', () => {
 
     it('edge: × on the pair chip replaces the URL without purchaseOrderId and invoiceId', async () => {
       mockSearchParams = new URLSearchParams({ purchaseOrderId: 'po-9', invoiceId: 'inv-9' })
-      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
-      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha', role: 'owner' })
       listDiscrepanciesMock.mockResolvedValue(listOf([makeFlag()]))
 
       renderPage()
@@ -497,8 +475,7 @@ describe('DiscrepanciesPage', () => {
     })
 
     it('edge: a positive delta reads with a plus sign and a negative one keeps its minus (frame 2.7)', async () => {
-      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
-      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha', role: 'owner' })
       listDiscrepanciesMock.mockResolvedValue(listOf([
         makeFlag({ id: 'f1', sku: 'S-1', flagType: 'price_mismatch', poValue: '1.80', invoiceValue: '2.05', delta: '0.25' }),
         makeFlag({ id: 'f2', sku: 'S-2', flagType: 'short_receipt', poValue: '6', receivedValue: '4', invoiceValue: '6', delta: '-2' }),
@@ -512,8 +489,7 @@ describe('DiscrepanciesPage', () => {
     })
 
     it('edge: a dismissed row offers no Dismiss, even to an owner', async () => {
-      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
-      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha', role: 'owner' })
       listDiscrepanciesMock.mockResolvedValue(listOf([makeFlag({ status: 'dismissed' })]))
 
       renderPage()
@@ -524,8 +500,7 @@ describe('DiscrepanciesPage', () => {
     })
 
     it('regression: refetches with the status filter when changed', async () => {
-      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
-      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha', role: 'owner' })
       listDiscrepanciesMock.mockResolvedValue(listOf([makeFlag()]))
 
       renderPage()
@@ -545,8 +520,7 @@ describe('DiscrepanciesPage', () => {
     })
 
     it('regression: switching back to All drops the status from the request', async () => {
-      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
-      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha', role: 'owner' })
       listDiscrepanciesMock.mockResolvedValue(listOf([makeFlag()]))
 
       renderPage()
@@ -567,8 +541,7 @@ describe('DiscrepanciesPage', () => {
     // Any filter change restarts the queue: page 2 of the old filter is not a
     // meaningful place to land in the new one.
     it('regression: a status change returns to page 1', async () => {
-      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
-      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha', role: 'owner' })
       listDiscrepanciesMock.mockResolvedValue(listOf([makeFlag()], { total: 40, totalPages: 2 }))
 
       renderPage()
@@ -590,8 +563,7 @@ describe('DiscrepanciesPage', () => {
     })
 
     it('regression: pagination stays hidden when nothing matched', async () => {
-      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
-      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha', role: 'owner' })
       listDiscrepanciesMock.mockResolvedValue(listOf([]))
 
       renderPage()
@@ -602,8 +574,7 @@ describe('DiscrepanciesPage', () => {
 
     it('happy: the pair chip names the PO and invoice by their numbers', async () => {
       mockSearchParams = new URLSearchParams({ purchaseOrderId: 'po-9', invoiceId: 'inv-9' })
-      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
-      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha', role: 'owner' })
       listDiscrepanciesMock.mockResolvedValue(listOf([makeFlag()]))
       listPurchaseOrdersMock.mockResolvedValue([{ id: 'po-9', name: 'po-8791.pdf', poNumber: 'PO-2026-1180' }])
       listInvoicesMock.mockResolvedValue([{ id: 'inv-9', name: 'inv-44120.pdf', invoiceNumber: 'INV-44120' }])
@@ -615,8 +586,7 @@ describe('DiscrepanciesPage', () => {
 
     it('happy: a pair document without a number is named by its file name', async () => {
       mockSearchParams = new URLSearchParams({ purchaseOrderId: 'po-9', invoiceId: 'inv-9' })
-      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
-      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha', role: 'owner' })
       listDiscrepanciesMock.mockResolvedValue(listOf([makeFlag()]))
       listPurchaseOrdersMock.mockResolvedValue([{ id: 'po-9', name: 'legacy-po.csv', poNumber: null }])
       listInvoicesMock.mockResolvedValue([{ id: 'inv-9', name: 'legacy-inv.csv', invoiceNumber: null }])
@@ -627,8 +597,7 @@ describe('DiscrepanciesPage', () => {
     })
 
     it('happy: the row action reads "Matches" and keeps "Find catalog matches" as its name', async () => {
-      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
-      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha', role: 'owner' })
       listDiscrepanciesMock.mockResolvedValue(listOf([makeFlag()]))
 
       renderPage()
@@ -641,8 +610,7 @@ describe('DiscrepanciesPage', () => {
     })
 
     it('happy: the all-clear empty state carries the teal "All clear" label', async () => {
-      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
-      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha', role: 'owner' })
       listDiscrepanciesMock.mockResolvedValue(listOf([]))
 
       renderPage()
@@ -652,8 +620,7 @@ describe('DiscrepanciesPage', () => {
     })
 
     it('happy: the toolbar states how many flags exist and how many are shown', async () => {
-      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
-      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha', role: 'owner' })
       listDiscrepanciesMock.mockResolvedValue(listOf([makeFlag()], { total: 40, totalPages: 2 }))
 
       renderPage()
@@ -663,8 +630,7 @@ describe('DiscrepanciesPage', () => {
 
     it('edge: below lg the breadcrumb is the workspace name and the filter spans the width (frame 4.2)', async () => {
       stubDesktop(false)
-      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
-      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'member' }], nextCursor: null })
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha', role: 'member' })
       listDiscrepanciesMock.mockResolvedValue(listOf([makeFlag()]))
 
       renderPage()
@@ -679,8 +645,7 @@ describe('DiscrepanciesPage', () => {
 
     it('happy: the header breadcrumb reads "{workspace} / Matching"', async () => {
       stubDesktop(true)
-      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
-      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'member' }], nextCursor: null })
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha', role: 'member' })
       listDiscrepanciesMock.mockResolvedValue(listOf([]))
 
       renderPage()
@@ -696,7 +661,6 @@ describe('DiscrepanciesPage', () => {
     it('error: a non-member sees the no-access state, not an error toast', async () => {
       getWorkspaceMock.mockRejectedValue(denied)
       listDiscrepanciesMock.mockRejectedValue(denied)
-      listWorkspacesMock.mockResolvedValue({ items: [], nextCursor: null })
 
       renderPage()
 
@@ -708,7 +672,6 @@ describe('DiscrepanciesPage', () => {
     it('edge: a failure that is not a 403 still shows the error toast', async () => {
       getWorkspaceMock.mockRejectedValue({ statusCode: 500, message: 'Internal server error' })
       listDiscrepanciesMock.mockResolvedValue(listOf([]))
-      listWorkspacesMock.mockResolvedValue({ items: [], nextCursor: null })
 
       renderPage()
 

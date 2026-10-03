@@ -5,7 +5,8 @@ import dynamic from 'next/dynamic'
 import { usePathname, useRouter } from 'next/navigation'
 import { ACTIONS, EVENTS, STATUS, type EventData } from 'react-joyride'
 import { getCurrentUser } from '@/lib/api/auth'
-import { listWorkspaces } from '@/lib/api/workspaces'
+import { getWorkspace } from '@/lib/api/workspaces'
+import { membershipFrom } from '@/lib/workspace-role'
 import { SampleStage, type SampleStageActions } from './sample-stage'
 import { TourContext, useTour, type TourContextValue } from './tour-context'
 import { readTourRecord, writeTourRecord, type TourStatus } from './tour-storage'
@@ -36,15 +37,6 @@ function workspaceIdFrom(pathname: string | null): string | null {
 function readIsDesktop(): boolean {
   if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return true
   return window.matchMedia('(min-width: 1024px)').matches
-}
-
-function roleOf(response: unknown, workspaceId: string): string | null {
-  const items = (response as { items?: unknown } | null)?.items
-  if (!Array.isArray(items)) return null
-  const found = items.find((item) => (item as { id?: unknown } | null)?.id === workspaceId) as
-    | { role?: unknown }
-    | undefined
-  return typeof found?.role === 'string' ? found.role : null
 }
 
 export function TourProvider({ children }: { children: React.ReactNode }) {
@@ -132,10 +124,12 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
     setData(null)
     if (!workspaceId) return
     let cancelled = false
-    void Promise.all([getCurrentUser(), listWorkspaces()])
-      .then(([user, workspaces]) => {
+    // Same role source as the pages (GET /workspaces/:id), so the tour's
+    // manager steps always agree with the controls on screen.
+    void Promise.all([getCurrentUser(), getWorkspace(workspaceId)])
+      .then(([user, workspace]) => {
         if (cancelled || !user?.userId) return
-        const role = roleOf(workspaces, workspaceId)
+        const role = membershipFrom(workspace)?.role ?? null
         setData({
           workspaceId,
           userId: user.userId,

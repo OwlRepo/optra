@@ -9,7 +9,6 @@ import MembersPage from './page'
 const pushMock = vi.fn()
 const routerMock = { push: pushMock }
 const getWorkspaceMock = vi.fn()
-const listWorkspacesMock = vi.fn()
 const listMembersMock = vi.fn()
 const inviteMemberMock = vi.fn()
 const removeMemberMock = vi.fn()
@@ -23,7 +22,6 @@ vi.mock('next/navigation', () => ({
 
 vi.mock('@/lib/api/workspaces', () => ({
   getWorkspace: (...args: unknown[]) => getWorkspaceMock(...args),
-  listWorkspaces: (...args: unknown[]) => listWorkspacesMock(...args),
   listMembers: (...args: unknown[]) => listMembersMock(...args),
   inviteMember: (...args: unknown[]) => inviteMemberMock(...args),
   removeMember: (...args: unknown[]) => removeMemberMock(...args),
@@ -65,7 +63,6 @@ describe('MembersPage', () => {
   beforeEach(() => {
     pushMock.mockReset()
     getWorkspaceMock.mockReset()
-    listWorkspacesMock.mockReset()
     listMembersMock.mockReset()
     inviteMemberMock.mockReset()
     removeMemberMock.mockReset()
@@ -83,7 +80,7 @@ describe('MembersPage', () => {
   })
 
   it('error: shows the 403 remove error toast and keeps the list unchanged', async () => {
-    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha', role: 'owner' })
     removeMemberMock.mockRejectedValue({ statusCode: 403, message: 'Cannot remove the last owner' })
 
     renderPage()
@@ -101,7 +98,7 @@ describe('MembersPage', () => {
   })
 
   it('edge: hides Remove for member and admin viewers', async () => {
-    listWorkspacesMock.mockResolvedValueOnce({ items: [{ id: 'ws-1', role: 'member' }], nextCursor: null })
+    getWorkspaceMock.mockResolvedValueOnce({ id: 'ws-1', name: 'Alpha', role: 'member' })
 
     const view = renderPage()
 
@@ -109,7 +106,7 @@ describe('MembersPage', () => {
     expect(screen.queryByRole('button', { name: 'Remove teammate@example.com' })).toBeNull()
     view.unmount()
 
-    listWorkspacesMock.mockResolvedValueOnce({ items: [{ id: 'ws-1', role: 'admin' }], nextCursor: null })
+    getWorkspaceMock.mockResolvedValueOnce({ id: 'ws-1', name: 'Alpha', role: 'admin' })
     renderPage()
 
     await screen.findByText('teammate@example.com')
@@ -118,14 +115,14 @@ describe('MembersPage', () => {
 
   // [RED] the role-gated empty has no "Owners & admins" label today.
   it('edge: members get the "Owners & admins" role-gated empty instead of the invite form; admins get the form', async () => {
-    listWorkspacesMock.mockResolvedValueOnce({ items: [{ id: 'ws-1', role: 'admin' }], nextCursor: null })
+    getWorkspaceMock.mockResolvedValueOnce({ id: 'ws-1', name: 'Alpha', role: 'admin' })
 
     const view = renderPage()
 
     expect(await screen.findByLabelText('Member email')).toBeDefined()
     view.unmount()
 
-    listWorkspacesMock.mockResolvedValueOnce({ items: [{ id: 'ws-1', role: 'member' }], nextCursor: null })
+    getWorkspaceMock.mockResolvedValueOnce({ id: 'ws-1', name: 'Alpha', role: 'member' })
     renderPage()
 
     expect(await screen.findByText('Invite controls hidden')).toBeDefined()
@@ -136,7 +133,7 @@ describe('MembersPage', () => {
 
   // [RED] no search label on the empty today, and the filters must stay reachable.
   it('edge: no results name the search and keep the search and role filter on screen', async () => {
-    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha', role: 'owner' })
 
     renderPage()
 
@@ -153,7 +150,7 @@ describe('MembersPage', () => {
 
   // [RED] amber 3.8 copy: the developer note is replaced.
   it('regression: the invite description is user-facing copy, not a developer note', async () => {
-    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha', role: 'owner' })
 
     renderPage()
 
@@ -163,7 +160,7 @@ describe('MembersPage', () => {
 
   // [RED] amber 3.8: Mono "you" tag on the viewer's own row.
   it('regression: the viewer\'s own row carries a Mono "you" tag and no Remove; other rows do not', async () => {
-    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha', role: 'owner' })
 
     renderPage()
 
@@ -180,7 +177,7 @@ describe('MembersPage', () => {
 
   // [RED] Remove is plain ghost today.
   it('regression: Remove is a ghost button that turns red on hover', async () => {
-    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha', role: 'owner' })
 
     renderPage()
 
@@ -191,7 +188,7 @@ describe('MembersPage', () => {
 
   // [RED] the confirm modal has no eyebrow today.
   it('regression: the remove confirm modal is eyebrowed "Confirm"', async () => {
-    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha', role: 'owner' })
 
     renderPage()
 
@@ -205,7 +202,7 @@ describe('MembersPage', () => {
 
   // [RED] the roster repeated the page description under its title.
   it('regression: search and role filter head the roster table panel, and the roster drops the duplicate description', async () => {
-    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha', role: 'owner' })
 
     renderPage()
 
@@ -222,7 +219,7 @@ describe('MembersPage', () => {
   })
 
   it('happy: renders the fetched member list with local ISO joined dates', async () => {
-    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha', role: 'owner' })
 
     renderPage()
 
@@ -233,7 +230,7 @@ describe('MembersPage', () => {
   })
 
   it('happy: shows Remove only to an owner viewer, on other rows', async () => {
-    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha', role: 'owner' })
 
     renderPage()
 
@@ -243,7 +240,7 @@ describe('MembersPage', () => {
   })
 
   it('happy: submits an invite, resets the form and toasts success', async () => {
-    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha', role: 'owner' })
     inviteMemberMock.mockResolvedValue({ message: 'Invite sent' })
 
     renderPage()
@@ -260,7 +257,7 @@ describe('MembersPage', () => {
   })
 
   it('happy: removes a member after confirmation and reloads the list', async () => {
-    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha', role: 'owner' })
     listMembersMock
       .mockResolvedValueOnce(roster)
       .mockResolvedValueOnce({
@@ -285,7 +282,7 @@ describe('MembersPage', () => {
   })
 
   it('happy: paginates to the next page via the docked pagination', async () => {
-    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha', role: 'owner' })
     listMembersMock.mockResolvedValue({
       items: [{ id: 'mem-1', userId: 'user-owner', email: 'owner@example.com', role: 'owner', joinedAt: '2026-06-01T00:00:00.000Z' }],
       page: 1,
@@ -305,7 +302,7 @@ describe('MembersPage', () => {
   })
 
   it('happy: searches members by email through the backend', async () => {
-    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha', role: 'owner' })
 
     renderPage()
 
@@ -318,7 +315,7 @@ describe('MembersPage', () => {
   })
 
   it('happy: filters members by role through the backend', async () => {
-    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha', role: 'owner' })
 
     renderPage()
 
@@ -336,7 +333,6 @@ describe('MembersPage', () => {
     it('error: a non-member sees the no-access state, not an error toast', async () => {
       getWorkspaceMock.mockRejectedValue(denied)
       listMembersMock.mockRejectedValue(denied)
-      listWorkspacesMock.mockResolvedValue({ items: [], nextCursor: null })
 
       renderPage()
 
@@ -349,7 +345,6 @@ describe('MembersPage', () => {
     it('edge: a failure that is not a 403 still shows the error toast', async () => {
       getWorkspaceMock.mockRejectedValue({ statusCode: 500, message: 'Internal server error' })
       listMembersMock.mockRejectedValue({ statusCode: 500, message: 'Internal server error' })
-      listWorkspacesMock.mockResolvedValue({ items: [], nextCursor: null })
 
       renderPage()
 

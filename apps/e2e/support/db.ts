@@ -54,6 +54,11 @@ export async function addMember(
   )
 }
 
+/** Moves a workspace to the bottom of `/workspaces/me` (newest first). */
+export async function backdateWorkspace(workspaceId: string): Promise<void> {
+  await db().query(`update workspaces set created_at = now() - interval '30 days' where id = $1`, [workspaceId])
+}
+
 export async function seedVendor(workspaceId: string, name: string): Promise<string> {
   const { rows } = await db().query<{ id: string }>(
     `insert into vendors (workspace_id, name) values ($1, $2) returning id`,

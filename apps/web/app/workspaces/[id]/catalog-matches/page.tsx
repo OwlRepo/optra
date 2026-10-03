@@ -18,7 +18,8 @@ import {
 import { logout } from '@/lib/api/auth'
 import { isForbidden, isUnauthorized } from '@/lib/api/handle-unauthorized'
 import { WorkspaceAccessDenied } from '@/components/workspace-access-denied'
-import { getWorkspace, listWorkspaces } from '@/lib/api/workspaces'
+import { getWorkspace } from '@/lib/api/workspaces'
+import { membershipFrom } from '@/lib/workspace-role'
 import {
   dismissCatalogMatch,
   catalogItemPhotoUrl,
@@ -155,15 +156,13 @@ export default function CatalogMatchesPage({ params }: { params: { id: string } 
   const loadPage = React.useCallback(async () => {
     try {
       setIsLoading(true)
-      const [workspaceData, memberships, vendorList, matchList] = await Promise.all([
+      const [workspaceData, vendorList, matchList] = await Promise.all([
         getWorkspace(workspaceId),
-        listWorkspaces(),
         listVendors(workspaceId),
         listCatalogMatches(workspaceId, lineScope),
       ])
       setWorkspace(workspaceData)
-      const membershipItems = Array.isArray(memberships?.items) ? memberships.items : []
-      setMembership(membershipItems.find((entry: WorkspaceMembership) => entry.id === workspaceId) ?? null)
+      setMembership(membershipFrom(workspaceData))
       setVendors(Array.isArray(vendorList) ? vendorList : [])
       setMatches(Array.isArray(matchList) ? matchList : [])
     } catch (err) {
