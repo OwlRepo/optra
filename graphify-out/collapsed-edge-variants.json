@@ -3493,7 +3493,7 @@
           "context": "import",
           "confidence": "EXTRACTED",
           "source_file": "apps/web/app/workspaces/[id]/vendors/[vendorId]/page.tsx",
-          "source_location": "L32",
+          "source_location": "L31",
           "weight": 1.0,
           "_origin": "ast"
         },
@@ -3504,67 +3504,9 @@
           "context": "import",
           "confidence": "EXTRACTED",
           "source_file": "apps/web/app/workspaces/[id]/vendors/[vendorId]/page.tsx",
-          "source_location": "L33",
+          "source_location": "L32",
           "weight": 1.0,
           "_origin": "ast"
-        }
-      ]
-    },
-    {
-      "endpoints": [
-        "apps_web_middleware",
-        "apps_web_src_lib_http_client_ip_clientipheaders"
-      ],
-      "variants": [
-        {
-          "source": "apps_web_middleware",
-          "target": "apps_web_src_lib_http_client_ip_clientipheaders",
-          "relation": "imports",
-          "context": "import",
-          "confidence": "EXTRACTED",
-          "source_file": "apps/web/middleware.ts",
-          "source_location": "L3",
-          "weight": 1.0,
-          "_origin": "ast"
-        },
-        {
-          "source": "apps_web_middleware",
-          "target": "apps_web_src_lib_http_client_ip_clientipheaders",
-          "relation": "calls",
-          "confidence": "EXTRACTED",
-          "confidence_score": 1.0,
-          "source_file": "docs/ai/file-index/repository-map.md",
-          "source_location": null,
-          "weight": 1.0
-        }
-      ]
-    },
-    {
-      "endpoints": [
-        "apps_web_middleware",
-        "apps_web_src_lib_http_set_cookie_accesscookie"
-      ],
-      "variants": [
-        {
-          "source": "apps_web_middleware",
-          "target": "apps_web_src_lib_http_set_cookie_accesscookie",
-          "relation": "imports",
-          "context": "import",
-          "confidence": "EXTRACTED",
-          "source_file": "apps/web/middleware.ts",
-          "source_location": "L2",
-          "weight": 1.0,
-          "_origin": "ast"
-        },
-        {
-          "source": "apps_web_middleware",
-          "target": "apps_web_src_lib_http_set_cookie_accesscookie",
-          "relation": "calls",
-          "confidence": "EXTRACTED",
-          "confidence_score": 1.0,
-          "source_file": "docs/ai/file-index/repository-map.md",
-          "source_location": null,
-          "weight": 1.0
         }
       ]
     },
@@ -3600,29 +3542,27 @@
     },
     {
       "endpoints": [
-        "apps_web_src_components_tour_tour_provider_tourprovider",
-        "apps_web_src_lib_workspace_role_membershipfrom"
+        "docs_ai_risk_register_catalog_match_integrity",
+        "docs_ai_risk_register_launch_hardening_bugs"
       ],
       "variants": [
         {
-          "source": "apps_web_src_components_tour_tour_provider_tourprovider",
-          "target": "apps_web_src_lib_workspace_role_membershipfrom",
-          "relation": "calls",
-          "context": "call",
+          "source": "docs_ai_risk_register_launch_hardening_bugs",
+          "target": "docs_ai_risk_register_catalog_match_integrity",
+          "relation": "references",
           "confidence": "EXTRACTED",
           "confidence_score": 1.0,
-          "source_file": "apps/web/src/components/tour/tour-provider.tsx",
-          "source_location": "L132",
-          "weight": 1.0,
-          "_origin": "ast"
+          "source_file": "docs/ai/risk-register.md",
+          "source_location": null,
+          "weight": 1.0
         },
         {
-          "source": "apps_web_src_components_tour_tour_provider_tourprovider",
-          "target": "apps_web_src_lib_workspace_role_membershipfrom",
-          "relation": "calls",
+          "source": "docs_ai_risk_register_catalog_match_integrity",
+          "target": "docs_ai_risk_register_launch_hardening_bugs",
+          "relation": "conceptually_related_to",
           "confidence": "EXTRACTED",
           "confidence_score": 1.0,
-          "source_file": "docs/ai/file-index/repository-map.md",
+          "source_file": "docs/ai/risk-register.md",
           "source_location": null,
           "weight": 1.0
         }
@@ -3630,58 +3570,27 @@
     },
     {
       "endpoints": [
-        "apps_web_src_lib_http_auth_proxy_getbearer",
-        "apps_web_src_lib_http_auth_proxy_proxyjson"
+        "docs_ai_risk_register_schema_constraints_drizzle_kit",
+        "docs_ai_risk_register_vendor_price_terms_service"
       ],
       "variants": [
         {
-          "source": "apps_web_src_lib_http_auth_proxy_proxyjson",
-          "target": "apps_web_src_lib_http_auth_proxy_getbearer",
-          "relation": "calls",
-          "context": "call",
+          "source": "docs_ai_risk_register_schema_constraints_drizzle_kit",
+          "target": "docs_ai_risk_register_vendor_price_terms_service",
+          "relation": "references",
           "confidence": "EXTRACTED",
-          "source_file": "apps/web/src/lib/http/auth-proxy.ts",
-          "source_location": "L15",
-          "weight": 1.0,
-          "_origin": "ast"
-        },
-        {
-          "source": "apps_web_src_lib_http_auth_proxy_proxyjson",
-          "target": "apps_web_src_lib_http_auth_proxy_getbearer",
-          "relation": "calls",
-          "confidence": "INFERRED",
-          "confidence_score": 0.85,
-          "source_file": "docs/ai/file-index/repository-map.md",
+          "confidence_score": 1.0,
+          "source_file": "docs/ai/risk-register.md",
           "source_location": null,
           "weight": 1.0
-        }
-      ]
-    },
-    {
-      "endpoints": [
-        "apps_web_src_lib_http_auth_proxy_proxyjson",
-        "apps_web_src_lib_http_client_ip_clientipheaders"
-      ],
-      "variants": [
-        {
-          "source": "apps_web_src_lib_http_auth_proxy_proxyjson",
-          "target": "apps_web_src_lib_http_client_ip_clientipheaders",
-          "relation": "calls",
-          "context": "call",
-          "confidence": "EXTRACTED",
-          "confidence_score": 1.0,
-          "source_file": "apps/web/src/lib/http/auth-proxy.ts",
-          "source_location": "L27",
-          "weight": 1.0,
-          "_origin": "ast"
         },
         {
-          "source": "apps_web_src_lib_http_auth_proxy_proxyjson",
-          "target": "apps_web_src_lib_http_client_ip_clientipheaders",
-          "relation": "calls",
+          "source": "docs_ai_risk_register_schema_constraints_drizzle_kit",
+          "target": "docs_ai_risk_register_vendor_price_terms_service",
+          "relation": "rationale_for",
           "confidence": "EXTRACTED",
           "confidence_score": 1.0,
-          "source_file": "docs/ai/file-index/repository-map.md",
+          "source_file": "docs/ai/risk-register.md",
           "source_location": null,
           "weight": 1.0
         }
@@ -4356,66 +4265,6 @@
           "source_location": "L3",
           "weight": 1.0,
           "_origin": "ast"
-        }
-      ]
-    },
-    {
-      "endpoints": [
-        "packages_ai_src_chains_procurement_extraction_extractlineitemsfrompdf",
-        "packages_ai_src_loaders_pdf_loadpdf"
-      ],
-      "variants": [
-        {
-          "source": "packages_ai_src_chains_procurement_extraction_extractlineitemsfrompdf",
-          "target": "packages_ai_src_loaders_pdf_loadpdf",
-          "relation": "calls",
-          "context": "call",
-          "confidence": "EXTRACTED",
-          "confidence_score": 1.0,
-          "source_file": "packages/ai/src/chains/procurement-extraction.ts",
-          "source_location": "L122",
-          "weight": 1.0,
-          "_origin": "ast"
-        },
-        {
-          "source": "packages_ai_src_chains_procurement_extraction_extractlineitemsfrompdf",
-          "target": "packages_ai_src_loaders_pdf_loadpdf",
-          "relation": "calls",
-          "confidence": "EXTRACTED",
-          "confidence_score": 1.0,
-          "source_file": "docs/ai/file-index/repository-map.md",
-          "source_location": null,
-          "weight": 1.0
-        }
-      ]
-    },
-    {
-      "endpoints": [
-        "packages_ai_src_chains_procurement_extraction_extractlineitemsfrompdf",
-        "packages_ai_src_loaders_pdf_render_renderpdftoimages"
-      ],
-      "variants": [
-        {
-          "source": "packages_ai_src_chains_procurement_extraction_extractlineitemsfrompdf",
-          "target": "packages_ai_src_loaders_pdf_render_renderpdftoimages",
-          "relation": "calls",
-          "context": "call",
-          "confidence": "EXTRACTED",
-          "confidence_score": 1.0,
-          "source_file": "packages/ai/src/chains/procurement-extraction.ts",
-          "source_location": "L135",
-          "weight": 1.0,
-          "_origin": "ast"
-        },
-        {
-          "source": "packages_ai_src_chains_procurement_extraction_extractlineitemsfrompdf",
-          "target": "packages_ai_src_loaders_pdf_render_renderpdftoimages",
-          "relation": "calls",
-          "confidence": "EXTRACTED",
-          "confidence_score": 1.0,
-          "source_file": "docs/ai/file-index/repository-map.md",
-          "source_location": null,
-          "weight": 1.0
         }
       ]
     },
@@ -5267,126 +5116,6 @@
           "source_location": "L36",
           "weight": 1.0,
           "_origin": "ast"
-        }
-      ]
-    },
-    {
-      "endpoints": [
-        "packages_ai_src_loaders_pdf_loadpdf",
-        "packages_ai_src_loaders_pdfjs_loadpdfjs"
-      ],
-      "variants": [
-        {
-          "source": "packages_ai_src_loaders_pdf_loadpdf",
-          "target": "packages_ai_src_loaders_pdfjs_loadpdfjs",
-          "relation": "calls",
-          "context": "call",
-          "confidence": "EXTRACTED",
-          "confidence_score": 1.0,
-          "source_file": "packages/ai/src/loaders/pdf.ts",
-          "source_location": "L27",
-          "weight": 1.0,
-          "_origin": "ast"
-        },
-        {
-          "source": "packages_ai_src_loaders_pdf_loadpdf",
-          "target": "packages_ai_src_loaders_pdfjs_loadpdfjs",
-          "relation": "calls",
-          "confidence": "EXTRACTED",
-          "confidence_score": 1.0,
-          "source_file": "docs/ai/file-index/repository-map.md",
-          "source_location": null,
-          "weight": 1.0
-        }
-      ]
-    },
-    {
-      "endpoints": [
-        "packages_ai_src_loaders_pdf_render_renderpdftoimages",
-        "packages_ai_src_loaders_pdfjs_loadpdfjs"
-      ],
-      "variants": [
-        {
-          "source": "packages_ai_src_loaders_pdf_render_renderpdftoimages",
-          "target": "packages_ai_src_loaders_pdfjs_loadpdfjs",
-          "relation": "calls",
-          "context": "call",
-          "confidence": "EXTRACTED",
-          "confidence_score": 1.0,
-          "source_file": "packages/ai/src/loaders/pdf-render.ts",
-          "source_location": "L32",
-          "weight": 1.0,
-          "_origin": "ast"
-        },
-        {
-          "source": "packages_ai_src_loaders_pdf_render_renderpdftoimages",
-          "target": "packages_ai_src_loaders_pdfjs_loadpdfjs",
-          "relation": "calls",
-          "confidence": "EXTRACTED",
-          "confidence_score": 1.0,
-          "source_file": "docs/ai/file-index/repository-map.md",
-          "source_location": null,
-          "weight": 1.0
-        }
-      ]
-    },
-    {
-      "endpoints": [
-        "packages_ai_src_web_crawl_crawlsite",
-        "packages_ai_src_web_limit_createlimit"
-      ],
-      "variants": [
-        {
-          "source": "packages_ai_src_web_crawl_crawlsite",
-          "target": "packages_ai_src_web_limit_createlimit",
-          "relation": "calls",
-          "context": "call",
-          "confidence": "EXTRACTED",
-          "confidence_score": 1.0,
-          "source_file": "packages/ai/src/web/crawl.ts",
-          "source_location": "L215",
-          "weight": 1.0,
-          "_origin": "ast"
-        },
-        {
-          "source": "packages_ai_src_web_crawl_crawlsite",
-          "target": "packages_ai_src_web_limit_createlimit",
-          "relation": "calls",
-          "confidence": "EXTRACTED",
-          "confidence_score": 1.0,
-          "source_file": "docs/ai/file-index/repository-map.md",
-          "source_location": null,
-          "weight": 1.0
-        }
-      ]
-    },
-    {
-      "endpoints": [
-        "packages_ai_src_web_crawl_crawlsite",
-        "packages_ai_src_web_ssrf_assertpublicurl"
-      ],
-      "variants": [
-        {
-          "source": "packages_ai_src_web_crawl_crawlsite",
-          "target": "packages_ai_src_web_ssrf_assertpublicurl",
-          "relation": "calls",
-          "context": "call",
-          "confidence": "EXTRACTED",
-          "confidence_score": 1.0,
-          "source_file": "packages/ai/src/web/crawl.ts",
-          "source_location": "L197",
-          "weight": 1.0,
-          "_origin": "ast"
-        },
-        {
-          "source": "packages_ai_src_web_crawl_crawlsite",
-          "target": "packages_ai_src_web_ssrf_assertpublicurl",
-          "relation": "calls",
-          "confidence": "INFERRED",
-          "confidence_score": 0.85,
-          "source_file": "docs/ai/file-index/repository-map.md",
-          "source_location": null,
-          "weight": 1.0
         }
       ]
     },
