@@ -9,9 +9,11 @@ import { WorkspaceProvider, useWorkspaceContext } from './workspace-context'
 const pushMock = vi.fn()
 const routerMock = { push: pushMock }
 const getWorkspaceMock = vi.fn()
+let pathname = '/workspaces/ws-1'
 
 vi.mock('next/navigation', () => ({
   useRouter: () => routerMock,
+  usePathname: () => pathname,
 }))
 
 vi.mock('@/lib/api/workspaces', () => ({
@@ -42,6 +44,7 @@ describe('WorkspaceProvider', () => {
   beforeEach(() => {
     pushMock.mockReset()
     getWorkspaceMock.mockReset()
+    pathname = '/workspaces/ws-1'
     latest = null
   })
 
@@ -73,10 +76,72 @@ describe('WorkspaceProvider', () => {
     await waitFor(() => expect(screen.getByTestId('probe').textContent).toBe('error|none|none'))
   })
 
+  it('error: a failed refresh keeps the cached name and role instead of wiping them', async () => {
+    getWorkspaceMock.mockResolvedValueOnce({ id: 'ws-1', name: 'Tyvera', role: 'owner' })
+    renderWith('ws-1', <Probe />)
+    await waitFor(() => expect(screen.getByTestId('probe').textContent).toBe('ready|Tyvera|owner'))
+
+    getWorkspaceMock.mockRejectedValueOnce({ statusCode: 500, message: 'Internal server error' })
+    await act(async () => {
+      await latest?.refresh()
+    })
+
+    expect(screen.getByTestId('probe').textContent).toBe('ready|Tyvera|owner')
+  })
+
   it('error: the hook throws when used outside the provider', () => {
     const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
     expect(() => render(<Probe />)).toThrow('useWorkspaceContext must be used inside <WorkspaceProvider>')
     spy.mockRestore()
+  })
+
+  it('edge: after a failed first load, the next page navigation retries it', async () => {
+    getWorkspaceMock.mockRejectedValueOnce(new Error('blip'))
+    const view = renderWith('ws-1', <Probe />)
+    await waitFor(() => expect(screen.getByTestId('probe').textContent).toBe('error|none|none'))
+
+    getWorkspaceMock.mockResolvedValueOnce({ id: 'ws-1', name: 'Tyvera', role: 'owner' })
+    pathname = '/workspaces/ws-1/vendors'
+    view.rerender(
+      <ToastProvider>
+        <WorkspaceProvider workspaceId="ws-1">
+          <Probe />
+        </WorkspaceProvider>
+      </ToastProvider>,
+    )
+
+    await waitFor(() => expect(screen.getByTestId('probe').textContent).toBe('ready|Tyvera|owner'))
+  })
+
+  it('edge: a slow older read never overwrites a newer one', async () => {
+    let resolveOld: (value: unknown) => void = () => {}
+    getWorkspaceMock.mockImplementationOnce(() => new Promise((resolve) => (resolveOld = resolve)))
+    renderWith('ws-1', <Probe />)
+
+    getWorkspaceMock.mockResolvedValueOnce({ id: 'ws-1', name: 'Newer', role: 'owner' })
+    await act(async () => {
+      await latest?.refresh()
+    })
+    await act(async () => {
+      resolveOld({ id: 'ws-1', name: 'Older', role: 'member' })
+    })
+
+    expect(screen.getByTestId('probe').textContent).toBe('ready|Newer|owner')
+  })
+
+  it('edge: a rename lands after an in-flight read and is not overwritten by it', async () => {
+    let resolveOld: (value: unknown) => void = () => {}
+    getWorkspaceMock.mockImplementationOnce(() => new Promise((resolve) => (resolveOld = resolve)))
+    renderWith('ws-1', <Probe />)
+
+    act(() => {
+      latest?.setWorkspace({ id: 'ws-1', name: 'Renamed', role: 'owner' })
+    })
+    await act(async () => {
+      resolveOld({ id: 'ws-1', name: 'Old name', role: 'owner' })
+    })
+
+    expect(screen.getByTestId('probe').textContent).toBe('ready|Renamed|owner')
   })
 
   it('edge: a different workspace id loads that workspace and drops the old name', async () => {
