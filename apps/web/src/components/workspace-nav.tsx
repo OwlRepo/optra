@@ -9,12 +9,11 @@
 import * as React from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Button, cn } from '@repo/ui'
+import { cn } from '@repo/ui'
 // [support-surfaces-off] was: import { BriefcaseBusiness, ClipboardList, Database, FileSpreadsheet, FileWarning, LineChart, MessageSquareText, PackageSearch, Settings, Store, Ticket, Users } from 'lucide-react'
-import { BriefcaseBusiness, ClipboardList, Compass, FileWarning, PackageSearch, Settings, Store, Users } from 'lucide-react'
+import { BriefcaseBusiness, ClipboardList, FileWarning, PackageSearch, Settings, Store, Users } from 'lucide-react'
 import { getUnreadCount } from '@/lib/api/events'
-import { TOUR_ANCHORS, navAnchorFor, tourAttr } from './tour/tour-anchors'
-import { useTour } from './tour/tour-provider'
+import { navAnchorFor, tourAttr } from './tour/tour-anchors'
 // [support-surfaces-off] import { WorkspaceSearch } from './workspace-search'
 
 export type WorkspaceNavGroup = 'matching' | 'workspace'
@@ -79,7 +78,6 @@ export function WorkspaceNav({ workspaceId, collapsed }: { workspaceId: string; 
   }, [workspaceId])
 
   const items = workspaceNavItems(workspaceId)
-  const tour = useTour()
 
   return (
     <nav className={cn('flex flex-col', collapsed ? 'items-center gap-1' : 'gap-[22px]')}>
@@ -162,20 +160,6 @@ export function WorkspaceNav({ workspaceId, collapsed }: { workspaceId: string; 
           </div>
         )
       })}
-      {tour ? (
-        <Button
-          type="button"
-          variant="ghost"
-          size={collapsed ? 'icon' : 'sm'}
-          aria-label={collapsed ? 'Take the tour' : undefined}
-          onClick={(event) => tour.startTour(event.currentTarget)}
-          {...tourAttr(TOUR_ANCHORS.replay)}
-          className={collapsed ? undefined : 'w-full justify-start gap-2.5 px-2.5 text-sm'}
-        >
-          <Compass aria-hidden="true" />
-          {collapsed ? null : 'Take the tour'}
-        </Button>
-      ) : null}
     </nav>
   )
 }
