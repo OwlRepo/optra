@@ -156,7 +156,17 @@ test.describe('as ownerA, happy paths', () => {
     await expect(page.getByRole('heading', { level: 1, name: PROCUREMENT_H1, exact: true })).toBeVisible()
     await expect(skipButton(page)).toHaveCount(0)
 
-    await page.locator('[data-tour="tour-replay"]').getByText('Take the tour').click()
+    // It lives in the sidebar footer, just above the divider over Log out, not in the nav list.
+    const replay = page.locator('[data-tour="tour-replay"]')
+    await expect(page.locator('nav [data-tour="tour-replay"]')).toHaveCount(0)
+    const replayBox = await replay.boundingBox()
+    const settingsBox = await page.locator('aside').getByRole('link', { name: 'Settings' }).boundingBox()
+    const logoutBox = await page.locator('aside').getByRole('button', { name: 'Log out' }).boundingBox()
+    expect(replayBox && settingsBox && logoutBox).toBeTruthy()
+    expect(replayBox!.y).toBeGreaterThan(settingsBox!.y + settingsBox!.height)
+    expect(replayBox!.y + replayBox!.height).toBeLessThan(logoutBox!.y)
+
+    await replay.getByText('Take the tour').click()
 
     await expect(skipButton(page)).toBeVisible()
   })
