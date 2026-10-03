@@ -140,7 +140,7 @@ A layer that genuinely cannot observe the change is skipped with a trailer on th
 
 - **Run locally:** `docker compose up -d --wait postgres redis seaweedfs`, `bunx turbo run build --filter=@repo/api --filter=@repo/web`, then `cd apps/e2e && bun run test:e2e` (one spec: `bunx playwright test tests/procurement.spec.ts`). Root `bun run e2e` does the build and the run. First time: `bunx playwright install chromium`.
 - **Servers** (`playwright.config.ts` `webServer`, all production entry points): the OpenAI stub on :4010 (`stubs/openai-stub.ts` — embeddings, catalog extraction; any other route 404s so a new model call fails loudly), the API as `node dist/main` on :3101, the web app as its standalone server on :3100 (`scripts/start-web.sh`, staged exactly as `apps/web/Dockerfile` stages it).
-- **State:** `scripts/prepare-db.ts optra_pw` drops and recreates the database every run (it refuses any name but `optra_pw`/`optra_e2e`); `tests/auth.setup.ts` empties bucket `optra-pw`, seeds owner A, owner B, member A and an unverified user in SQL, and signs each in once through the real form — specs reuse the saved sessions (three logins per run, under the 10/10-min limit).
+- **State:** `scripts/prepare-db.ts optra_pw` drops and recreates the database every run (it refuses any name but `optra_pw`/`optra_e2e`); `tests/auth.setup.ts` empties bucket `optra-pw`, seeds owner A, owner B, member A and an unverified user in SQL, and signs each in once through the real form — specs reuse the saved sessions (three logins per run, under the 10/10-min limit). Since 2026-10-03 it also writes `optra.tour.v1:<userId>` = `{status:'completed'}` into each saved storage state so the onboarding tour does not auto-start over other suites; a new suite that tests first-run UI must clear that key first (as `onboarding-tour.spec.ts` does).
 - **API env** is `.env.example` plus explicit overrides (`support/env.ts`), never a developer's `.env`. `THROTTLE_DEFAULT_LIMIT` is raised for this API only.
 - **Gotchas learned building it:** poll with `bff()`/`waitForRow()` (in-page `fetch`), not `page.request` — Playwright's request client will not send the BFF's `Secure` cookie over http; match table rows with `rowFor(page, name)`, never `filter({ hasText })` (substring — `po-x.csv` is inside `access-po-x.csv`); read state in `beforeAll`, not at import (files are collected before `setup` runs); a spec that deletes objects works in workspace B so it cannot pull files from under a parallel spec.
 - **Production smoke:** `apps/e2e/playwright.prod.config.ts` + `smoke/`, by hand after a deploy — `docs/ops/prod-smoke.md`.
@@ -207,12 +207,12 @@ track them.
 |---|---|---|
 | `cd apps/api && bun run test` | Jest 30 | 72 (`apps/api/src/**/*.spec.ts`) |
 | `cd apps/api && bun run test:e2e` | Jest 30, e2e config | 16 (`apps/api/test/*.e2e-spec.ts`) |
-| `cd apps/web && bun run test` | Vitest 4.1.9 | 135 (`*.spec.ts(x)`) |
+| `cd apps/web && bun run test` | Vitest 4.1.9 | 154 (`*.spec.ts(x)`; CONTEXT DRIFT fixed 2026-10-03 — this said 135 while `origin/main` had 148, before the onboarding tour added 6 in `apps/web/src/components/tour/`) |
 | `cd packages/ai && bun run test` | Vitest 3.2.6 | 25 (`src/**/*.spec.ts`) |
 | `cd packages/db && bun run test` | Vitest 3.2.6 | 1 (`src/**/*.spec.ts`) |
 | `cd packages/ui && bun run test` | Vitest 4.1.9 | 11 |
 | `bun run db:seed:test` (root) | Vitest, `scripts/seed` | 2 (`scripts/seed/__tests__/*.test.ts`) |
-| `cd apps/e2e && bun run test:e2e` (root `bun run e2e` builds first) | Playwright 1.63 | 16 (`apps/e2e/tests/*.spec.ts`; CONTEXT DRIFT fixed 2026-10-02 — this said 10 while 11 existed, before S4 added 2 and the app alignment added 3) plus the `tests/auth.setup.ts` setup project; `knowledge-base.spec.ts` and `datasets.spec.ts` are parked with `test.skip` while the support surfaces are disabled (`[support-surfaces-off]`, 2026-10-02) |
+| `cd apps/e2e && bun run test:e2e` (root `bun run e2e` builds first) | Playwright 1.63 | 17 (`apps/e2e/tests/*.spec.ts`; 2026-10-03 `onboarding-tour.spec.ts` added; CONTEXT DRIFT fixed 2026-10-02 — this said 10 while 11 existed, before S4 added 2 and the app alignment added 3) plus the `tests/auth.setup.ts` setup project; `knowledge-base.spec.ts` and `datasets.spec.ts` are parked with `test.skip` while the support surfaces are disabled (`[support-surfaces-off]`, 2026-10-02) |
 | `cd apps/e2e && bun run test:smoke` (by hand, after a deploy) | Playwright 1.63, `playwright.prod.config.ts` | 1 (`apps/e2e/smoke/prod.smoke.spec.ts`) |
 | `bun run test:scripts` (root) | `node --test` | 6 (`scripts/**/*.test.mjs`) |
 | `$(cat graphify-out/.graphify_python) -m unittest discover -s scripts/graphify -p 'test_*.py'` (not in CI; graphify is not installed there) | Python `unittest` | 2 (`scripts/graphify/test_*.py`) |
@@ -287,6 +287,14 @@ Shared modal/search UX note as of 2026-07-03:
 - `apps/web/src/lib/ui/modal.spec.ts` covers rerender focus retention so modal panels do not steal focus back from active inputs on each keystroke.
 - `apps/web/src/components/workspace-search.spec.ts` covers `⌘K` autofocus plus no focus loss while typing into workspace search.
 - `apps/web/app/workspaces/[id]/knowledge-bases/[kbId]/page.spec.ts` covers scrape-modal autofocus/focus retention and crawl-row labeling (`In progress`, labeled page counts).
+
+Onboarding tour note as of 2026-10-03 (`docs/plans/onboarding-tour.md`):
+- `apps/web/src/components/tour/tour-storage.spec.ts` covers throwing/blocked storage read as "not seen", corrupt or foreign records ignored, completed/skipped round-trip under `optra.tour.v1:<userId>`.
+- `apps/web/src/components/tour/tour-steps.spec.ts` covers chapter order, every target in `TOUR_ANCHORS`, no support-surfaces-off route, member center fallbacks for upload/add-vendor, and mobile tab-bar/center targets.
+- `apps/web/src/components/tour/tour-anchors.spec.ts` covers `tourAttr`/`tourSelector`/`navAnchorFor`; `tour-theme.spec.ts` covers token reads and oklch fallbacks in `resolveTourTheme`.
+- `apps/web/src/components/tour/sample-stage.spec.tsx` (jsdom) covers the always-rendered sample label, no Next on interactive steps, reduced motion, Run comparison → 3 rows, flag → citations, Verify → Match.
+- `apps/web/src/components/tour/tour-provider.spec.tsx` (jsdom) covers fetch failure (no auto-start, no crash), off-workspace passthrough, first-visit auto-start, finish/skip persistence and `startTour()` replay.
+- Playwright `apps/e2e/tests/onboarding-tour.spec.ts` (owner A + member A, desktop + 390px) covers Skip then reload, member upload fallback, the mobile run, a full run with real taps, replay, and zero non-GET requests to `/api/workspaces/*` while the tour runs. API e2e layer not applicable: no API route changed.
 
 Chat cache note as of 2026-06-30:
 - `apps/api/src/cache/cache.service.spec.ts` covers Redis exact cache versioning + semantic thresholding.
