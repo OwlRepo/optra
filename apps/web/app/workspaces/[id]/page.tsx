@@ -14,7 +14,8 @@ import { logout } from '@/lib/api/auth'
 import { getUnreadCount, listEvents, markEventsSeen } from '@/lib/api/events'
 import { isForbidden, isUnauthorized } from '@/lib/api/handle-unauthorized'
 import { WorkspaceAccessDenied } from '@/components/workspace-access-denied'
-import { getWorkspace, listWorkspaces } from '@/lib/api/workspaces'
+import { getWorkspace } from '@/lib/api/workspaces'
+import { membershipFrom } from '@/lib/workspace-role'
 import { formatDateTime } from '@/lib/format-date'
 import { WorkspaceNav, workspacePrimaryTabItems } from '@/components/workspace-nav'
 import { TOUR_ANCHORS, tourAttr } from '@/components/tour/tour-anchors'
@@ -140,9 +141,8 @@ export default function WorkspaceOverviewPage({ params }: { params: { id: string
 
   const loadPage = React.useCallback(async () => {
     try {
-      const [workspaceData, memberships, eventData, unread] = await Promise.all([
+      const [workspaceData, eventData, unread] = await Promise.all([
         getWorkspace(workspaceId),
-        listWorkspaces(),
         listEvents(workspaceId) as Promise<EventListResponse>,
         // Read here, before markEventsSeen below moves the server's marker, so
         // "N new since your last visit" and the tinted rows describe this
@@ -151,8 +151,7 @@ export default function WorkspaceOverviewPage({ params }: { params: { id: string
         (getUnreadCount(workspaceId) as Promise<UnreadCountResponse>).catch(() => null),
       ])
       setWorkspace(workspaceData)
-      const membershipItems = Array.isArray(memberships?.items) ? memberships.items : []
-      setMembership(membershipItems.find((entry: WorkspaceMembership) => entry.id === workspaceId) ?? null)
+      setMembership(membershipFrom(workspaceData))
       setEvents(Array.isArray(eventData?.items) ? eventData.items : [])
       setEventsNextCursor(eventData?.nextCursor ?? null)
       setUnseenCount(typeof unread?.count === 'number' ? unread.count : 0)

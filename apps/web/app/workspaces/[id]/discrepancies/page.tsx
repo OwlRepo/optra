@@ -23,7 +23,8 @@ import {
 import { logout } from '@/lib/api/auth'
 import { isForbidden, isUnauthorized } from '@/lib/api/handle-unauthorized'
 import { WorkspaceAccessDenied } from '@/components/workspace-access-denied'
-import { getWorkspace, listWorkspaces } from '@/lib/api/workspaces'
+import { getWorkspace } from '@/lib/api/workspaces'
+import { membershipFrom } from '@/lib/workspace-role'
 import {
   dismissDiscrepancy,
   listDiscrepancies,
@@ -169,7 +170,7 @@ export default function DiscrepanciesPage({ params }: { params: { id: string } }
   const loadPage = React.useCallback(async () => {
     try {
       setIsLoading(true)
-      const [workspaceData, flagsData, memberships] = await Promise.all([
+      const [workspaceData, flagsData] = await Promise.all([
         getWorkspace(workspaceId),
         listDiscrepancies(workspaceId, {
           purchaseOrderId: purchaseOrderIdFilter,
@@ -178,7 +179,6 @@ export default function DiscrepanciesPage({ params }: { params: { id: string } }
           page,
           pageSize,
         }),
-        listWorkspaces(),
       ])
       setWorkspace(workspaceData)
       setFlags(Array.isArray(flagsData?.items) ? flagsData.items : [])
@@ -189,8 +189,7 @@ export default function DiscrepanciesPage({ params }: { params: { id: string } }
         total: flagsData?.total ?? 0,
         totalPages: flagsData?.totalPages ?? 0,
       })
-      const membershipItems = Array.isArray(memberships?.items) ? memberships.items : []
-      setMembership(membershipItems.find((entry: WorkspaceMembership) => entry.id === workspaceId) ?? null)
+      setMembership(membershipFrom(workspaceData))
     } catch (err) {
       if (isUnauthorized(err)) {
         router.push('/login')

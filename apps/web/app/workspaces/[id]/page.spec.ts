@@ -9,7 +9,6 @@ import WorkspaceOverviewPage from './page'
 const pushMock = vi.fn()
 const routerMock = { push: pushMock }
 const getWorkspaceMock = vi.fn()
-const listWorkspacesMock = vi.fn()
 const logoutMock = vi.fn()
 const listEventsMock = vi.fn()
 const markEventsSeenMock = vi.fn()
@@ -22,7 +21,6 @@ vi.mock('next/navigation', () => ({
 
 vi.mock('@/lib/api/workspaces', () => ({
   getWorkspace: (...args: unknown[]) => getWorkspaceMock(...args),
-  listWorkspaces: (...args: unknown[]) => listWorkspacesMock(...args),
 }))
 
 vi.mock('@/lib/api/events', () => ({
@@ -74,15 +72,13 @@ function event(id: string, type: string, title: string, detail: string | null = 
 }
 
 function signedInAs(role: 'owner' | 'admin' | 'member') {
-  getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
-  listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role }], nextCursor: null })
+  getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha', role })
 }
 
 describe('WorkspaceOverviewPage', () => {
   beforeEach(() => {
     pushMock.mockReset()
     getWorkspaceMock.mockReset()
-    listWorkspacesMock.mockReset()
     logoutMock.mockReset()
     listEventsMock.mockReset()
     markEventsSeenMock.mockReset()
@@ -99,7 +95,6 @@ describe('WorkspaceOverviewPage', () => {
 
   it('error: redirects to login on unauthorized load error', async () => {
     getWorkspaceMock.mockRejectedValue({ statusCode: 401, message: 'Unauthorized' })
-    listWorkspacesMock.mockResolvedValue({ items: [], nextCursor: null })
 
     renderPage()
 
@@ -110,12 +105,10 @@ describe('WorkspaceOverviewPage', () => {
 
   it('error: surfaces a non-unauthorized load error as a toast', async () => {
     getWorkspaceMock.mockRejectedValue(new Error('boom'))
-    listWorkspacesMock.mockResolvedValue({ items: [], nextCursor: null })
 
     renderPage()
 
-    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
-    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha', role: 'owner' })
 
     renderPage()
 
@@ -311,7 +304,6 @@ describe('WorkspaceOverviewPage', () => {
     it('error: a non-member sees the no-access state, not an error toast', async () => {
       getWorkspaceMock.mockRejectedValue(denied)
       listEventsMock.mockRejectedValue(denied)
-      listWorkspacesMock.mockResolvedValue({ items: [], nextCursor: null })
 
       renderPage()
 
@@ -322,7 +314,6 @@ describe('WorkspaceOverviewPage', () => {
 
     it('edge: a failure that is not a 403 still shows the error toast', async () => {
       getWorkspaceMock.mockRejectedValue({ statusCode: 500, message: 'Internal server error' })
-      listWorkspacesMock.mockResolvedValue({ items: [], nextCursor: null })
 
       renderPage()
 

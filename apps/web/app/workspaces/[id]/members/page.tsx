@@ -29,7 +29,8 @@ import { Mail, Search, Trash2 } from 'lucide-react'
 import { getCurrentUser, logout } from '@/lib/api/auth'
 import { isForbidden, isUnauthorized } from '@/lib/api/handle-unauthorized'
 import { WorkspaceAccessDenied } from '@/components/workspace-access-denied'
-import { getWorkspace, inviteMember, listMembers, listWorkspaces, removeMember } from '@/lib/api/workspaces'
+import { getWorkspace, inviteMember, listMembers, removeMember } from '@/lib/api/workspaces'
+import { membershipFrom } from '@/lib/workspace-role'
 import { formatDate } from '@/lib/format-date'
 import { WorkspaceNav, workspacePrimaryTabItems } from '@/components/workspace-nav'
 import { TOUR_ANCHORS, tourAttr } from '@/components/tour/tour-anchors'
@@ -93,14 +94,12 @@ export default function MembersPage({ params }: { params: { id: string } }) {
   const loadContext = React.useCallback(async () => {
     try {
       setIsLoading(true)
-      const [workspaceData, memberships, currentUser] = await Promise.all([
+      const [workspaceData, currentUser] = await Promise.all([
         getWorkspace(workspaceId),
-        listWorkspaces(),
         getCurrentUser(),
       ])
       setWorkspace(workspaceData)
-      const membershipItems = Array.isArray(memberships?.items) ? memberships.items : []
-      setMembership(membershipItems.find((entry: WorkspaceMembership) => entry.id === workspaceId) ?? null)
+      setMembership(membershipFrom(workspaceData))
       setCurrentUserId(currentUser?.userId ?? null)
     } catch (err) {
       if (isUnauthorized(err)) {

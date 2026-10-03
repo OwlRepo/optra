@@ -9,7 +9,6 @@ import SettingsPage from './page'
 const pushMock = vi.fn()
 const routerMock = { push: pushMock }
 const getWorkspaceMock = vi.fn()
-const listWorkspacesMock = vi.fn()
 const updateWorkspaceMock = vi.fn()
 const logoutMock = vi.fn()
 
@@ -20,7 +19,6 @@ vi.mock('next/navigation', () => ({
 
 vi.mock('@/lib/api/workspaces', () => ({
   getWorkspace: (...args: unknown[]) => getWorkspaceMock(...args),
-  listWorkspaces: (...args: unknown[]) => listWorkspacesMock(...args),
   updateWorkspace: (...args: unknown[]) => updateWorkspaceMock(...args),
 }))
 
@@ -54,28 +52,20 @@ function renderPage() {
 }
 
 function asMember() {
-  listWorkspacesMock.mockResolvedValue({
-    items: [{ id: 'ws-1', name: 'Acme Support', role: 'member' }],
-    nextCursor: null,
-  })
+  getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme Support', role: 'member' })
 }
 
 describe('SettingsPage', () => {
   beforeEach(() => {
     pushMock.mockReset()
     getWorkspaceMock.mockReset()
-    listWorkspacesMock.mockReset()
     updateWorkspaceMock.mockReset()
     logoutMock.mockReset()
     changePasswordMock.mockReset()
     getDigestSettingsMock.mockReset()
     updateDigestSettingsMock.mockReset()
     previewDigestMock.mockReset()
-    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme Support' })
-    listWorkspacesMock.mockResolvedValue({
-      items: [{ id: 'ws-1', name: 'Acme Support', role: 'owner' }],
-      nextCursor: null,
-    })
+    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme Support', role: 'owner' })
     getDigestSettingsMock.mockResolvedValue({ emailEnabled: true, slackWebhookUrl: null, slackEnabled: false })
   })
 
@@ -285,10 +275,7 @@ describe('SettingsPage', () => {
   })
 
   it('happy: an admin sees an editable rename form', async () => {
-    listWorkspacesMock.mockResolvedValue({
-      items: [{ id: 'ws-1', name: 'Acme Support', role: 'admin' }],
-      nextCursor: null,
-    })
+    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme Support', role: 'admin' })
 
     renderPage()
 
@@ -355,7 +342,6 @@ describe('SettingsPage', () => {
 
     it('error: a non-member sees the no-access state, not an error toast', async () => {
       getWorkspaceMock.mockRejectedValue(denied)
-      listWorkspacesMock.mockResolvedValue({ items: [], nextCursor: null })
 
       renderPage()
 
@@ -366,7 +352,6 @@ describe('SettingsPage', () => {
 
     it('edge: a failure that is not a 403 still shows the error toast', async () => {
       getWorkspaceMock.mockRejectedValue({ statusCode: 500, message: 'Internal server error' })
-      listWorkspacesMock.mockResolvedValue({ items: [], nextCursor: null })
 
       renderPage()
 

@@ -43,7 +43,8 @@ import {
 import { listVendors, type VendorDetail } from '@/lib/api/catalog'
 import { isForbidden, isUnauthorized } from '@/lib/api/handle-unauthorized'
 import { WorkspaceAccessDenied } from '@/components/workspace-access-denied'
-import { getWorkspace, listWorkspaces } from '@/lib/api/workspaces'
+import { getWorkspace } from '@/lib/api/workspaces'
+import { membershipFrom } from '@/lib/workspace-role'
 import { formatDate } from '@/lib/format-date'
 import { WorkspaceNav, workspacePrimaryTabItems } from '@/components/workspace-nav'
 import { TOUR_ANCHORS, tourAttr } from '@/components/tour/tour-anchors'
@@ -258,12 +259,11 @@ export default function ProcurementPage({ params }: { params: { id: string } }) 
 
   const loadPage = React.useCallback(async () => {
     try {
-      const [workspaceData, pos, invs, grns, memberships] = await Promise.all([
+      const [workspaceData, pos, invs, grns] = await Promise.all([
         getWorkspace(workspaceId),
         listPurchaseOrders(workspaceId),
         listInvoices(workspaceId),
         listGoodsReceipts(workspaceId),
-        listWorkspaces(),
       ])
       setWorkspace(workspaceData)
       // Failure here must not blank the page: without vendors the PO modal
@@ -274,8 +274,7 @@ export default function ProcurementPage({ params }: { params: { id: string } }) 
       setPurchaseOrders(Array.isArray(pos) ? pos : [])
       setInvoices(Array.isArray(invs) ? invs : [])
       setGoodsReceipts(Array.isArray(grns) ? grns : [])
-      const membershipItems = Array.isArray(memberships?.items) ? memberships.items : []
-      setMembership(membershipItems.find((entry: WorkspaceMembership) => entry.id === workspaceId) ?? null)
+      setMembership(membershipFrom(workspaceData))
     } catch (err) {
       if (isUnauthorized(err)) {
         router.push('/login')

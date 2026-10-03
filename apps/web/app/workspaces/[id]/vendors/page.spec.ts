@@ -9,7 +9,6 @@ import VendorsPage from './page'
 const pushMock = vi.fn()
 const routerMock = { push: pushMock }
 const getWorkspaceMock = vi.fn()
-const listWorkspacesMock = vi.fn()
 const listVendorsMock = vi.fn()
 const createVendorMock = vi.fn()
 const logoutMock = vi.fn()
@@ -21,7 +20,6 @@ vi.mock('next/navigation', () => ({
 
 vi.mock('@/lib/api/workspaces', () => ({
   getWorkspace: (...args: unknown[]) => getWorkspaceMock(...args),
-  listWorkspaces: (...args: unknown[]) => listWorkspacesMock(...args),
 }))
 
 vi.mock('@/lib/api/catalog', () => ({
@@ -57,7 +55,6 @@ describe('VendorsPage', () => {
   beforeEach(() => {
     pushMock.mockReset()
     getWorkspaceMock.mockReset()
-    listWorkspacesMock.mockReset()
     listVendorsMock.mockReset()
     createVendorMock.mockReset()
     logoutMock.mockReset()
@@ -70,7 +67,6 @@ describe('VendorsPage', () => {
 
   it('error: redirects to login on unauthorized load error', async () => {
     getWorkspaceMock.mockRejectedValue({ statusCode: 401, message: 'Unauthorized' })
-    listWorkspacesMock.mockResolvedValue({ items: [], nextCursor: null })
     listVendorsMock.mockResolvedValue([])
 
     renderPage()
@@ -81,8 +77,7 @@ describe('VendorsPage', () => {
   })
 
   it('error: shows an error toast when creating a vendor fails', async () => {
-    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
-    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha', role: 'owner' })
     listVendorsMock.mockResolvedValue([])
     createVendorMock.mockRejectedValue({ message: 'Vendor name already exists' })
 
@@ -102,8 +97,7 @@ describe('VendorsPage', () => {
   // [RED] rewritten probe: C-0 skeletons no longer carry bg-secondary.
   it('edge: shows the loading skeleton as a busy region until vendors resolve', async () => {
     let resolveVendors: (value: unknown) => void = () => {}
-    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
-    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha', role: 'owner' })
     listVendorsMock.mockReturnValue(
       new Promise((resolve) => {
         resolveVendors = resolve
@@ -122,7 +116,7 @@ describe('VendorsPage', () => {
   it('edge: members see the empty state without Add vendor; admins get it', async () => {
     getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
     listVendorsMock.mockResolvedValue([])
-    listWorkspacesMock.mockResolvedValueOnce({ items: [{ id: 'ws-1', role: 'member' }], nextCursor: null })
+    getWorkspaceMock.mockResolvedValueOnce({ id: 'ws-1', name: 'Alpha', role: 'member' })
 
     const view = renderPage()
 
@@ -131,7 +125,7 @@ describe('VendorsPage', () => {
 
     view.unmount()
 
-    listWorkspacesMock.mockResolvedValueOnce({ items: [{ id: 'ws-1', role: 'admin' }], nextCursor: null })
+    getWorkspaceMock.mockResolvedValueOnce({ id: 'ws-1', name: 'Alpha', role: 'admin' })
     renderPage()
 
     expect((await screen.findAllByRole('button', { name: 'Add vendor' })).length).toBeGreaterThan(0)
@@ -139,8 +133,7 @@ describe('VendorsPage', () => {
 
   // [RED] the fallback is not Mono today.
   it('edge: a vendor without createdAt reads "Recently created" in Mono, and no contact as a dash', async () => {
-    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
-    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha', role: 'owner' })
     listVendorsMock.mockResolvedValue([{ id: 'vendor-1', name: 'Acme Supplies', contactInfo: null, createdAt: null }])
 
     renderPage()
@@ -152,8 +145,7 @@ describe('VendorsPage', () => {
 
   // [RED] three per-cell links today.
   it('regression: each vendor row is a single link to its detail page with a trailing arrow', async () => {
-    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
-    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha', role: 'owner' })
     listVendorsMock.mockResolvedValue([
       { id: 'vendor-1', name: 'Acme Supplies', contactInfo: 'orders@acme.com', createdAt: '2026-07-01T00:00:00.000Z' },
     ])
@@ -170,8 +162,7 @@ describe('VendorsPage', () => {
 
   // [RED] label reads "Contact info" today.
   it('regression: the Add vendor modal marks contact info as optional', async () => {
-    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
-    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha', role: 'owner' })
     listVendorsMock.mockResolvedValue([])
 
     renderPage()
@@ -184,8 +175,7 @@ describe('VendorsPage', () => {
   })
 
   it('happy: renders the empty state with its copy', async () => {
-    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
-    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha', role: 'owner' })
     listVendorsMock.mockResolvedValue([])
 
     renderPage()
@@ -195,8 +185,7 @@ describe('VendorsPage', () => {
   })
 
   it('happy: renders fetched vendors in a table, created date as local ISO', async () => {
-    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
-    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha', role: 'owner' })
     listVendorsMock.mockResolvedValue([
       { id: 'vendor-1', name: 'Acme Supplies', contactInfo: 'orders@acme.com', createdAt: new Date(2026, 6, 1, 12, 0).toISOString() },
     ])
@@ -209,8 +198,7 @@ describe('VendorsPage', () => {
   })
 
   it('happy: creates a vendor from the modal, toasts success and reloads the list', async () => {
-    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
-    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha', role: 'owner' })
     listVendorsMock
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([{ id: 'vendor-1', name: 'Acme Supplies', contactInfo: null, createdAt: '2026-07-01T00:00:00.000Z' }])
@@ -236,7 +224,6 @@ describe('VendorsPage', () => {
     it('error: a non-member sees the no-access state, not an error toast', async () => {
       getWorkspaceMock.mockRejectedValue(denied)
       listVendorsMock.mockRejectedValue(denied)
-      listWorkspacesMock.mockResolvedValue({ items: [], nextCursor: null })
 
       renderPage()
 
@@ -248,7 +235,6 @@ describe('VendorsPage', () => {
     it('edge: a failure that is not a 403 still shows the error toast', async () => {
       getWorkspaceMock.mockRejectedValue({ statusCode: 500, message: 'Internal server error' })
       listVendorsMock.mockResolvedValue([])
-      listWorkspacesMock.mockResolvedValue({ items: [], nextCursor: null })
 
       renderPage()
 

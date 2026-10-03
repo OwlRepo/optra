@@ -10,7 +10,8 @@ import { changePassword, logout } from '@/lib/api/auth'
 import { getDigestSettings, previewDigest, updateDigestSettings } from '@/lib/api/digest-settings'
 import { isForbidden, isUnauthorized } from '@/lib/api/handle-unauthorized'
 import { WorkspaceAccessDenied } from '@/components/workspace-access-denied'
-import { getWorkspace, listWorkspaces, updateWorkspace } from '@/lib/api/workspaces'
+import { getWorkspace, updateWorkspace } from '@/lib/api/workspaces'
+import { membershipFrom } from '@/lib/workspace-role'
 import { WorkspaceNav, workspacePrimaryTabItems } from '@/components/workspace-nav'
 import { TOUR_ANCHORS, tourAttr } from '@/components/tour/tour-anchors'
 import { MobileTabBar } from '@/components/mobile-tab-bar'
@@ -111,18 +112,10 @@ export default function SettingsPage({ params }: { params: { id: string } }) {
   React.useEffect(() => {
     const loadPage = async () => {
       try {
-        const [workspaceData, memberships] = await Promise.all([
-          getWorkspace(workspaceId),
-          listWorkspaces(),
-        ])
+        const workspaceData = await getWorkspace(workspaceId)
         setWorkspace(workspaceData)
         reset({ name: workspaceData?.name ?? '' })
-
-        const membershipItems = Array.isArray(memberships?.items) ? memberships.items : []
-        const membership = membershipItems.find(
-          (entry: WorkspaceMembership) => entry.id === workspaceId,
-        )
-        setRole(membership?.role ?? null)
+        setRole(membershipFrom(workspaceData)?.role ?? null)
       } catch (err) {
         if (isUnauthorized(err)) {
           router.push('/login')

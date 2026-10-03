@@ -27,7 +27,8 @@ import { Upload } from 'lucide-react'
 import { logout } from '@/lib/api/auth'
 import { isForbidden, isUnauthorized } from '@/lib/api/handle-unauthorized'
 import { WorkspaceAccessDenied } from '@/components/workspace-access-denied'
-import { getWorkspace, listWorkspaces } from '@/lib/api/workspaces'
+import { getWorkspace } from '@/lib/api/workspaces'
+import { membershipFrom } from '@/lib/workspace-role'
 import type { VendorExceptionSummary, VendorPriceHistoryRow } from '@/lib/api/catalog'
 import {
   catalogItemPhotoUrl,
@@ -140,13 +141,12 @@ export default function VendorDetailPage({ params }: { params: { id: string; ven
   const loadPage = React.useCallback(async () => {
     try {
       setIsLoading(true)
-      const [workspaceData, vendorData, catalogData, memberships, historyData, summaryData] = await Promise.all([
+      const [workspaceData, vendorData, catalogData, historyData, summaryData] = await Promise.all([
         getWorkspace(workspaceId),
         // S9. Fetched by id. This used to load every vendor in the workspace
         // and find this one in the array.
         getVendor(workspaceId, vendorId),
         listCatalogs(workspaceId, vendorId),
-        listWorkspaces(),
         listVendorPriceHistory(workspaceId, vendorId, { pageSize: 50 }),
         getVendorExceptionSummary(workspaceId, vendorId),
       ])
@@ -155,8 +155,7 @@ export default function VendorDetailPage({ params }: { params: { id: string; ven
       setHistory(historyData?.items ?? [])
       setSummary(summaryData ?? null)
       setCatalogs(Array.isArray(catalogData) ? catalogData : [])
-      const membershipItems = Array.isArray(memberships?.items) ? memberships.items : []
-      setMembership(membershipItems.find((entry: WorkspaceMembership) => entry.id === workspaceId) ?? null)
+      setMembership(membershipFrom(workspaceData))
     } catch (err) {
       if (isUnauthorized(err)) {
         router.push('/login')

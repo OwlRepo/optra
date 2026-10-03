@@ -11,7 +11,6 @@ const replaceMock = vi.fn()
 const routerMock = { push: pushMock, replace: replaceMock }
 let mockSearchParams = new URLSearchParams()
 const getWorkspaceMock = vi.fn()
-const listWorkspacesMock = vi.fn()
 const listVendorsMock = vi.fn()
 const listCatalogMatchesMock = vi.fn()
 const searchCatalogMatchesMock = vi.fn()
@@ -27,7 +26,6 @@ vi.mock('next/navigation', () => ({
 
 vi.mock('@/lib/api/workspaces', () => ({
   getWorkspace: (...args: unknown[]) => getWorkspaceMock(...args),
-  listWorkspaces: (...args: unknown[]) => listWorkspacesMock(...args),
 }))
 
 vi.mock('@/lib/api/catalog', () => ({
@@ -76,7 +74,6 @@ describe('CatalogMatchesPage', () => {
     pushMock.mockReset()
     replaceMock.mockReset()
     getWorkspaceMock.mockReset()
-    listWorkspacesMock.mockReset()
     listVendorsMock.mockReset()
     listCatalogMatchesMock.mockReset()
     searchCatalogMatchesMock.mockReset()
@@ -94,7 +91,7 @@ describe('CatalogMatchesPage', () => {
   })
 
   it('renders empty state with neutral copy when there are no matches yet', async () => {
-    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha', role: 'owner' })
     listCatalogMatchesMock.mockResolvedValue([])
 
     renderPage()
@@ -103,7 +100,7 @@ describe('CatalogMatchesPage', () => {
   })
 
   it('renders fetched matches using PhotoCompare with fallback id labels', async () => {
-    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha', role: 'owner' })
     listCatalogMatchesMock.mockResolvedValue([baseMatch])
 
     renderPage()
@@ -114,7 +111,7 @@ describe('CatalogMatchesPage', () => {
   })
 
   it('hides search/verify controls and dismiss when no query params are present', async () => {
-    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha', role: 'owner' })
     listCatalogMatchesMock.mockResolvedValue([baseMatch])
 
     renderPage()
@@ -127,14 +124,14 @@ describe('CatalogMatchesPage', () => {
   it('shows "Search all vendors" for owner/admin when poLineItemId is present, hides it for member', async () => {
     mockSearchParams = new URLSearchParams({ poLineItemId: 'po-line-12345678' })
     listCatalogMatchesMock.mockResolvedValue([])
-    listWorkspacesMock.mockResolvedValueOnce({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+    getWorkspaceMock.mockResolvedValueOnce({ id: 'ws-1', name: 'Alpha', role: 'owner' })
 
     const view = renderPage()
 
     expect(await screen.findByRole('button', { name: 'Search all vendors' })).toBeDefined()
     view.unmount()
 
-    listWorkspacesMock.mockResolvedValueOnce({ items: [{ id: 'ws-1', role: 'member' }], nextCursor: null })
+    getWorkspaceMock.mockResolvedValueOnce({ id: 'ws-1', name: 'Alpha', role: 'member' })
     renderPage()
 
     await screen.findByText('No catalog matches yet')
@@ -143,7 +140,7 @@ describe('CatalogMatchesPage', () => {
 
   it('shows "Verify against this vendor" only when vendorId is also present', async () => {
     mockSearchParams = new URLSearchParams({ poLineItemId: 'po-line-12345678', vendorId: 'vendor-1' })
-    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'admin' }], nextCursor: null })
+    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha', role: 'admin' })
     listCatalogMatchesMock.mockResolvedValue([])
 
     renderPage()
@@ -154,7 +151,7 @@ describe('CatalogMatchesPage', () => {
 
   it('runs a search, shows a success toast, and refreshes the list', async () => {
     mockSearchParams = new URLSearchParams({ poLineItemId: 'po-line-12345678' })
-    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha', role: 'owner' })
     listCatalogMatchesMock
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([baseMatch])
@@ -174,7 +171,7 @@ describe('CatalogMatchesPage', () => {
 
   it('runs verification against a vendor and shows a success toast', async () => {
     mockSearchParams = new URLSearchParams({ invoiceLineItemId: 'inv-line-98765432', vendorId: 'vendor-1' })
-    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha', role: 'owner' })
     listCatalogMatchesMock.mockResolvedValue([])
     verifyCatalogMatchesMock.mockResolvedValue({ matches: [] })
 
@@ -191,7 +188,7 @@ describe('CatalogMatchesPage', () => {
 
   it('shows an error toast reading the error message when search fails', async () => {
     mockSearchParams = new URLSearchParams({ poLineItemId: 'po-line-12345678' })
-    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha', role: 'owner' })
     listCatalogMatchesMock.mockResolvedValue([])
     searchCatalogMatchesMock.mockRejectedValue({ statusCode: 404, message: 'purchaseOrderLineItemId not found' })
 
@@ -206,7 +203,7 @@ describe('CatalogMatchesPage', () => {
   })
 
   it('dismisses an open match for owner/admin and hides Dismiss for member', async () => {
-    listWorkspacesMock.mockResolvedValueOnce({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+    getWorkspaceMock.mockResolvedValueOnce({ id: 'ws-1', name: 'Alpha', role: 'owner' })
     listCatalogMatchesMock
       .mockResolvedValueOnce([baseMatch])
       .mockResolvedValueOnce([{ ...baseMatch, status: 'dismissed' }])
@@ -224,7 +221,7 @@ describe('CatalogMatchesPage', () => {
 
     view.unmount()
 
-    listWorkspacesMock.mockResolvedValueOnce({ items: [{ id: 'ws-1', role: 'member' }], nextCursor: null })
+    getWorkspaceMock.mockResolvedValueOnce({ id: 'ws-1', name: 'Alpha', role: 'member' })
     listCatalogMatchesMock.mockResolvedValueOnce([baseMatch])
     renderPage()
 
@@ -234,7 +231,6 @@ describe('CatalogMatchesPage', () => {
 
   it('redirects to login on a 401 from the initial load', async () => {
     getWorkspaceMock.mockRejectedValue({ statusCode: 401, message: 'Unauthorized' })
-    listWorkspacesMock.mockResolvedValue({ items: [], nextCursor: null })
     listCatalogMatchesMock.mockResolvedValue([])
 
     renderPage()
@@ -246,7 +242,7 @@ describe('CatalogMatchesPage', () => {
 
   it('redirects to login on a 401 from a search action', async () => {
     mockSearchParams = new URLSearchParams({ poLineItemId: 'po-line-12345678' })
-    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha', role: 'owner' })
     listCatalogMatchesMock.mockResolvedValue([])
     searchCatalogMatchesMock.mockRejectedValue({ statusCode: 401, message: 'Unauthorized' })
 
@@ -265,7 +261,7 @@ describe('CatalogMatchesPage', () => {
   // <select>), and the skeleton no longer exposes a `shimmer` class.
   describe('design alignment (frames 2.11–2.12)', () => {
     it('edge: with no line in the URL there is no line-scope chip', async () => {
-      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha', role: 'owner' })
       listCatalogMatchesMock.mockResolvedValue([baseMatch])
 
       renderPage()
@@ -276,7 +272,7 @@ describe('CatalogMatchesPage', () => {
 
     it('edge: the line-scope chip falls back to the line id when no loaded match names a SKU', async () => {
       mockSearchParams = new URLSearchParams({ poLineItemId: 'po-line-12345678' })
-      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha', role: 'owner' })
       listCatalogMatchesMock.mockResolvedValue([])
 
       renderPage()
@@ -286,7 +282,7 @@ describe('CatalogMatchesPage', () => {
 
     it('edge: × on the line-scope chip replaces the URL without the line params and keeps the rest', async () => {
       mockSearchParams = new URLSearchParams({ poLineItemId: 'po-line-12345678', vendorId: 'vendor-1' })
-      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha', role: 'owner' })
       listCatalogMatchesMock.mockResolvedValue([])
 
       renderPage()
@@ -299,7 +295,7 @@ describe('CatalogMatchesPage', () => {
 
     it('edge: a line-scoped empty list offers no Discrepancies link', async () => {
       mockSearchParams = new URLSearchParams({ poLineItemId: 'po-line-12345678' })
-      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha', role: 'owner' })
       listCatalogMatchesMock.mockResolvedValue([])
 
       renderPage()
@@ -309,7 +305,7 @@ describe('CatalogMatchesPage', () => {
     })
 
     it('regression: renders the loading placeholder before data resolves', async () => {
-      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha', role: 'owner' })
       listCatalogMatchesMock.mockResolvedValue([])
 
       renderPage()
@@ -320,7 +316,7 @@ describe('CatalogMatchesPage', () => {
     })
 
     it('regression: refetches the list with new filters when the status segmented control changes', async () => {
-      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha', role: 'owner' })
       listCatalogMatchesMock
         .mockResolvedValueOnce([baseMatch])
         .mockResolvedValueOnce([])
@@ -337,7 +333,7 @@ describe('CatalogMatchesPage', () => {
 
     it('happy: the line-scope chip names the SKU from the loaded query item', async () => {
       mockSearchParams = new URLSearchParams({ poLineItemId: 'po-line-12345678' })
-      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha', role: 'owner' })
       listCatalogMatchesMock.mockResolvedValue([
         { ...baseMatch, queryItem: { id: 'po-line-12345678', sku: 'NG-SW20', description: 'Stretch wrap' } },
       ])
@@ -349,7 +345,7 @@ describe('CatalogMatchesPage', () => {
 
     it('happy: an invoice line is named as an invoice line', async () => {
       mockSearchParams = new URLSearchParams({ invoiceLineItemId: 'inv-line-98765432' })
-      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha', role: 'owner' })
       listCatalogMatchesMock.mockResolvedValue([])
 
       renderPage()
@@ -358,7 +354,7 @@ describe('CatalogMatchesPage', () => {
     })
 
     it('happy: the sidebar-entry empty state links to Discrepancies', async () => {
-      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'member' }], nextCursor: null })
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha', role: 'member' })
       listCatalogMatchesMock.mockResolvedValue([])
 
       renderPage()
@@ -369,7 +365,7 @@ describe('CatalogMatchesPage', () => {
 
     it('happy: Search all vendors is the right-most header action', async () => {
       mockSearchParams = new URLSearchParams({ poLineItemId: 'po-line-12345678', vendorId: 'vendor-1' })
-      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha', role: 'owner' })
       listCatalogMatchesMock.mockResolvedValue([])
 
       renderPage()
@@ -388,7 +384,7 @@ describe('CatalogMatchesPage', () => {
   describe('line scope (B12)', () => {
     it('edge: opened with only an invoice line id, lists matches for that invoice line', async () => {
       mockSearchParams = new URLSearchParams({ invoiceLineItemId: 'inv-line-98765432' })
-      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha', role: 'owner' })
       listCatalogMatchesMock.mockResolvedValue([])
 
       renderPage()
@@ -404,7 +400,7 @@ describe('CatalogMatchesPage', () => {
 
     it('regression: after a search from a flag with both line ids, the refreshed list is scoped to the PO line it searched', async () => {
       mockSearchParams = new URLSearchParams({ poLineItemId: 'po-line-12345678', invoiceLineItemId: 'inv-line-98765432' })
-      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha', role: 'owner' })
       listCatalogMatchesMock.mockResolvedValueOnce([]).mockResolvedValue([baseMatch])
       searchCatalogMatchesMock.mockResolvedValue({ matches: [baseMatch] })
 
@@ -423,7 +419,7 @@ describe('CatalogMatchesPage', () => {
 
     it('regression: opened from a flag with both line ids, lists matches for the PO line it searches', async () => {
       mockSearchParams = new URLSearchParams({ poLineItemId: 'po-line-12345678', invoiceLineItemId: 'inv-line-98765432' })
-      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha', role: 'owner' })
       listCatalogMatchesMock.mockResolvedValue([baseMatch])
 
       renderPage()
@@ -445,7 +441,7 @@ describe('CatalogMatchesPage', () => {
   describe('unjudged candidates (B6)', () => {
     it('edge: a search with candidates left uncompared says how many in a separate warning', async () => {
       mockSearchParams = new URLSearchParams({ poLineItemId: 'po-line-12345678' })
-      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha', role: 'owner' })
       listCatalogMatchesMock.mockResolvedValue([baseMatch])
       searchCatalogMatchesMock.mockResolvedValue({ matches: [baseMatch], unjudged: 2 })
 
@@ -461,7 +457,7 @@ describe('CatalogMatchesPage', () => {
 
     it('edge: a verification with one candidate left uncompared says so in the singular', async () => {
       mockSearchParams = new URLSearchParams({ invoiceLineItemId: 'inv-line-98765432', vendorId: 'vendor-1' })
-      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha', role: 'owner' })
       listCatalogMatchesMock.mockResolvedValue([])
       verifyCatalogMatchesMock.mockResolvedValue({ matches: [], unjudged: 1 })
 
@@ -476,7 +472,7 @@ describe('CatalogMatchesPage', () => {
 
     it('happy: a search with every candidate compared shows no warning', async () => {
       mockSearchParams = new URLSearchParams({ poLineItemId: 'po-line-12345678' })
-      listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha', role: 'owner' })
       listCatalogMatchesMock.mockResolvedValue([baseMatch])
       searchCatalogMatchesMock.mockResolvedValue({ matches: [baseMatch], unjudged: 0 })
 
@@ -496,7 +492,6 @@ describe('CatalogMatchesPage', () => {
     it('error: a non-member sees the no-access state, not an error toast', async () => {
       getWorkspaceMock.mockRejectedValue(denied)
       listCatalogMatchesMock.mockRejectedValue(denied)
-      listWorkspacesMock.mockResolvedValue({ items: [], nextCursor: null })
 
       renderPage()
 
@@ -508,7 +503,6 @@ describe('CatalogMatchesPage', () => {
     it('edge: a failure that is not a 403 still shows the error toast', async () => {
       getWorkspaceMock.mockRejectedValue({ statusCode: 500, message: 'Internal server error' })
       listCatalogMatchesMock.mockResolvedValue([])
-      listWorkspacesMock.mockResolvedValue({ items: [], nextCursor: null })
 
       renderPage()
 

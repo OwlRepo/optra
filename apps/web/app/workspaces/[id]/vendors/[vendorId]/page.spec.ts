@@ -9,7 +9,6 @@ import VendorDetailPage from './page'
 const pushMock = vi.fn()
 const routerMock = { push: pushMock }
 const getWorkspaceMock = vi.fn()
-const listWorkspacesMock = vi.fn()
 const listVendorsMock = vi.fn()
 const getVendorMock = vi.fn()
 const listVendorPriceHistoryMock = vi.fn()
@@ -27,7 +26,6 @@ vi.mock('next/navigation', () => ({
 
 vi.mock('@/lib/api/workspaces', () => ({
   getWorkspace: (...args: unknown[]) => getWorkspaceMock(...args),
-  listWorkspaces: (...args: unknown[]) => listWorkspacesMock(...args),
 }))
 
 vi.mock('@/lib/api/catalog', () => ({
@@ -73,7 +71,6 @@ describe('VendorDetailPage', () => {
   beforeEach(() => {
     pushMock.mockReset()
     getWorkspaceMock.mockReset()
-    listWorkspacesMock.mockReset()
     listVendorsMock.mockReset()
     getVendorMock.mockReset()
     listVendorPriceHistoryMock.mockReset()
@@ -84,12 +81,11 @@ describe('VendorDetailPage', () => {
     listCatalogItemsMock.mockReset()
     logoutMock.mockReset()
 
-    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha' })
+    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha', role: 'owner' })
     listVendorsMock.mockResolvedValue([vendor])
     getVendorMock.mockResolvedValue(vendor)
     listVendorPriceHistoryMock.mockResolvedValue({ items: [], page: 1, pageSize: 50, total: 0, totalPages: 0, skus: [] })
     getVendorExceptionSummaryMock.mockResolvedValue({ counts: {}, openTotal: 0, purchaseOrderCount: 0 })
-    listWorkspacesMock.mockResolvedValue({ items: [{ id: 'ws-1', role: 'owner' }], nextCursor: null })
     listCatalogsMock.mockResolvedValue([])
   })
 
@@ -175,7 +171,7 @@ describe('VendorDetailPage', () => {
   })
 
   it('edge: hides upload/scrape actions for members and shows them for owner/admin', async () => {
-    listWorkspacesMock.mockResolvedValueOnce({ items: [{ id: 'ws-1', role: 'member' }], nextCursor: null })
+    getWorkspaceMock.mockResolvedValueOnce({ id: 'ws-1', name: 'Alpha', role: 'member' })
 
     const view = renderPage()
 
@@ -186,7 +182,7 @@ describe('VendorDetailPage', () => {
 
     view.unmount()
 
-    listWorkspacesMock.mockResolvedValueOnce({ items: [{ id: 'ws-1', role: 'admin' }], nextCursor: null })
+    getWorkspaceMock.mockResolvedValueOnce({ id: 'ws-1', name: 'Alpha', role: 'admin' })
     renderPage()
 
     expect((await screen.findAllByRole('button', { name: 'Upload catalog' })).length).toBeGreaterThan(0)
