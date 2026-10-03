@@ -217,6 +217,13 @@ describe('buildTourSteps', () => {
     expect(text('discrepancies-filter')).toMatch(/approved exception/i)
   })
 
+  it('regression: the price-flag tooltip never opens below the flag, where it hid the other two result rows', () => {
+    for (const isDesktop of [true, false]) {
+      const flag = build({ isDesktop }).steps.find((s) => s.id === 'sample-flag') as TourStep
+      expect(flag.placement).not.toBe('bottom')
+    }
+  })
+
   it('regression: only sample-run, sample-flag and sample-verify are interactive, with a skip-only button set', () => {
     const { steps } = build()
     const interactive = steps.filter((s) => s.data.interactive)

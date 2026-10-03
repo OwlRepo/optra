@@ -86,6 +86,14 @@ describe('TourTooltip', () => {
     expect(screen.queryByRole('button', { name: 'Back' })).toBeNull()
   })
 
+  it('regression: the interactive hint sits in the body on its own line, not squeezed into the footer', () => {
+    // In the footer it wrapped into a narrow uppercase column and was clipped.
+    renderTooltip(makeProps(interactive))
+    const hint = screen.getByText('Tap the highlighted control or use the button')
+    expect(hint.closest('[data-part="body"]')).not.toBeNull()
+    expect(hint.closest('[data-part="footer"]')).toBeNull()
+  })
+
   it('regression: the step counter uses text-ink-ghost and no arbitrary 6px radius is used', () => {
     const { container } = renderTooltip(makeProps({}))
     const counter = screen.getByText('Step 4 of 10')
