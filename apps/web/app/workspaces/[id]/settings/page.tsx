@@ -12,6 +12,7 @@ import { isForbidden, isUnauthorized } from '@/lib/api/handle-unauthorized'
 import { WorkspaceAccessDenied } from '@/components/workspace-access-denied'
 import { getWorkspace, listWorkspaces, updateWorkspace } from '@/lib/api/workspaces'
 import { WorkspaceNav, workspacePrimaryTabItems } from '@/components/workspace-nav'
+import { TOUR_ANCHORS, tourAttr } from '@/components/tour/tour-anchors'
 import { MobileTabBar } from '@/components/mobile-tab-bar'
 import { WorkspaceBrandLink } from '@/components/workspace-brand-link'
 
@@ -297,33 +298,35 @@ export default function SettingsPage({ params }: { params: { id: string } }) {
           <WorkspaceAccessDenied />
         ) : (
           <>
-            <SettingsSection eyebrow="Workspace" title="Workspace name" description="Shown in the sidebar and on invites.">
-              <form onSubmit={onSubmitRename}>
-                <div className="flex flex-col gap-2 px-6 py-[22px]">
-                  <label htmlFor="workspace-name-input" className="text-[14px] font-medium">
-                    Workspace name
-                  </label>
-                  <Input
-                    id="workspace-name-input"
-                    disabled={!canRename}
-                    aria-invalid={errors.name ? true : undefined}
-                    {...register('name')}
-                  />
-                  {errors.name ? <p className="text-[13px] text-destructive-strong-text">{errors.name.message}</p> : null}
-                  {role !== null && !canRename ? (
-                    <p className="text-[13px] text-ink-muted">Only owners and admins can rename the workspace.</p>
-                  ) : null}
-                </div>
-                <DefinitionRow density="roomy" label="Workspace ID" value={workspaceId} className="border-t border-border-definition" />
-                {canRename ? (
-                  <div className="flex justify-end border-t border-border-inner bg-surface-subtle px-6 py-3.5">
-                    <Button type="submit" size="sm" className="h-[38px] px-4" isLoading={isSubmitting} loadingText="Saving">
-                      Save changes
-                    </Button>
+            <div {...tourAttr(TOUR_ANCHORS.settingsWorkspace)}>
+              <SettingsSection eyebrow="Workspace" title="Workspace name" description="Shown in the sidebar and on invites.">
+                <form onSubmit={onSubmitRename}>
+                  <div className="flex flex-col gap-2 px-6 py-[22px]">
+                    <label htmlFor="workspace-name-input" className="text-[14px] font-medium">
+                      Workspace name
+                    </label>
+                    <Input
+                      id="workspace-name-input"
+                      disabled={!canRename}
+                      aria-invalid={errors.name ? true : undefined}
+                      {...register('name')}
+                    />
+                    {errors.name ? <p className="text-[13px] text-destructive-strong-text">{errors.name.message}</p> : null}
+                    {role !== null && !canRename ? (
+                      <p className="text-[13px] text-ink-muted">Only owners and admins can rename the workspace.</p>
+                    ) : null}
                   </div>
-                ) : null}
-              </form>
-            </SettingsSection>
+                  <DefinitionRow density="roomy" label="Workspace ID" value={workspaceId} className="border-t border-border-definition" />
+                  {canRename ? (
+                    <div className="flex justify-end border-t border-border-inner bg-surface-subtle px-6 py-3.5">
+                      <Button type="submit" size="sm" className="h-[38px] px-4" isLoading={isSubmitting} loadingText="Saving">
+                        Save changes
+                      </Button>
+                    </div>
+                  ) : null}
+                </form>
+              </SettingsSection>
+            </div>
 
             <SettingsSection
               eyebrow="Security"

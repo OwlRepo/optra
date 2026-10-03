@@ -32,6 +32,7 @@ import {
   type VendorDetail,
 } from '@/lib/api/catalog'
 import { WorkspaceNav, workspacePrimaryTabItems } from '@/components/workspace-nav'
+import { TOUR_ANCHORS, tourAttr } from '@/components/tour/tour-anchors'
 import { MobileTabBar } from '@/components/mobile-tab-bar'
 import { WorkspaceBrandLink } from '@/components/workspace-brand-link'
 import { ScopeChip } from '@/components/procurement/scope-chip'
@@ -363,7 +364,7 @@ export default function CatalogMatchesPage({ params }: { params: { id: string } 
           <WorkspaceAccessDenied />
         ) : (
           <>
-            <div className="flex flex-wrap items-center gap-3">
+            <div {...tourAttr(TOUR_ANCHORS.catalogActions)} className="flex flex-wrap items-center gap-3">
               {lineScopeLabel ? (
                 <ScopeChip label={lineScopeLabel} clearLabel="Clear line scope" onClear={clearLineScope} />
               ) : null}

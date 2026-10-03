@@ -17,6 +17,7 @@ import { WorkspaceAccessDenied } from '@/components/workspace-access-denied'
 import { getWorkspace, listWorkspaces } from '@/lib/api/workspaces'
 import { formatDateTime } from '@/lib/format-date'
 import { WorkspaceNav, workspacePrimaryTabItems } from '@/components/workspace-nav'
+import { TOUR_ANCHORS, tourAttr } from '@/components/tour/tour-anchors'
 import { MobileTabBar } from '@/components/mobile-tab-bar'
 import { WorkspaceBrandLink } from '@/components/workspace-brand-link'
 
@@ -253,61 +254,63 @@ export default function WorkspaceOverviewPage({ params }: { params: { id: string
               </div>
             </PageSection>
 
-            <PageSection
-              eyebrow={<Eyebrow>Activity</Eyebrow>}
-              title="Activity"
-              description="What this workspace has done on its own — imports, crawls, extractions and comparisons."
-              descriptionClassName="max-w-[60ch]"
-              actions={
-                unseenCount > 0 ? (
-                  <span className="font-mono text-[11px] text-primary-strong-hover">{`${unseenCount} new since your last visit`}</span>
-                ) : undefined
-              }
-            >
-              {events.length === 0 ? (
-                <EmptyState
-                  label="Quiet so far"
-                  labelTone="teal"
-                  title="No activity yet"
-                  description="Work this workspace does on its own will show up here."
-                />
-              ) : (
-                <div className="overflow-hidden rounded-[18px] border border-border-panel bg-card">
-                  <ol className="flex flex-col gap-1.5 p-4">
-                    {events.map((event, index) => (
-                      <li key={event.id}>
-                        {/* Events arrive newest first and the unread count is every
-                            event newer than the last visit, so the first
-                            `unseenCount` rows are exactly the unseen ones. */}
-                        <HistoryRow
-                          eventKey={event.type}
-                          title={event.title}
-                          detail={event.detail ?? undefined}
-                          timestamp={formatDateTime(event.createdAt)}
-                          tone={toneFor(event.type)}
-                          unseen={index < unseenCount}
-                        />
-                      </li>
-                    ))}
-                  </ol>
+            <div {...tourAttr(TOUR_ANCHORS.overviewActivity)}>
+              <PageSection
+                eyebrow={<Eyebrow>Activity</Eyebrow>}
+                title="Activity"
+                description="What this workspace has done on its own — imports, crawls, extractions and comparisons."
+                descriptionClassName="max-w-[60ch]"
+                actions={
+                  unseenCount > 0 ? (
+                    <span className="font-mono text-[11px] text-primary-strong-hover">{`${unseenCount} new since your last visit`}</span>
+                  ) : undefined
+                }
+              >
+                {events.length === 0 ? (
+                  <EmptyState
+                    label="Quiet so far"
+                    labelTone="teal"
+                    title="No activity yet"
+                    description="Work this workspace does on its own will show up here."
+                  />
+                ) : (
+                  <div className="overflow-hidden rounded-[18px] border border-border-panel bg-card">
+                    <ol className="flex flex-col gap-1.5 p-4">
+                      {events.map((event, index) => (
+                        <li key={event.id}>
+                          {/* Events arrive newest first and the unread count is every
+                              event newer than the last visit, so the first
+                              `unseenCount` rows are exactly the unseen ones. */}
+                          <HistoryRow
+                            eventKey={event.type}
+                            title={event.title}
+                            detail={event.detail ?? undefined}
+                            timestamp={formatDateTime(event.createdAt)}
+                            tone={toneFor(event.type)}
+                            unseen={index < unseenCount}
+                          />
+                        </li>
+                      ))}
+                    </ol>
 
-                  {eventsNextCursor ? (
-                    <div className="border-t border-border-inner bg-surface-subtle px-5 py-3.5">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => void loadMoreEvents()}
-                        isLoading={isLoadingMoreEvents}
-                        loadingText="Loading"
-                      >
-                        {!isLoadingMoreEvents ? 'Load more' : null}
-                      </Button>
-                    </div>
-                  ) : null}
-                </div>
-              )}
-            </PageSection>
+                    {eventsNextCursor ? (
+                      <div className="border-t border-border-inner bg-surface-subtle px-5 py-3.5">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => void loadMoreEvents()}
+                          isLoading={isLoadingMoreEvents}
+                          loadingText="Loading"
+                        >
+                          {!isLoadingMoreEvents ? 'Load more' : null}
+                        </Button>
+                      </div>
+                    ) : null}
+                  </div>
+                )}
+              </PageSection>
+            </div>
           </>
         )}
       </div>

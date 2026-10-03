@@ -5,12 +5,19 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { MoreHorizontal } from 'lucide-react'
 import { cn } from '@repo/ui'
+import { navAnchorFor, tourAttr } from './tour/tour-anchors'
 
 export interface MobileTabItem {
   href: string
   label: string
   icon: React.ReactNode
   exact?: boolean
+}
+
+// MobileTabBar takes no workspace id; every tab href already carries it.
+function anchorForTab(href: string) {
+  const workspaceId = /^\/workspaces\/([^/]+)/.exec(href)?.[1]
+  return workspaceId ? navAnchorFor(href, workspaceId, 'tab') : undefined
 }
 
 const TAB_CLASS =
@@ -39,11 +46,14 @@ export function MobileTabBar({
           ? pathname === item.href
           : pathname === item.href || pathname?.startsWith(`${item.href}/`)
 
+        const anchor = anchorForTab(item.href)
+
         return (
           <Link
             key={item.href}
             href={item.href}
             aria-current={isActive ? 'page' : undefined}
+            {...(anchor ? tourAttr(anchor) : {})}
             className={cn(TAB_CLASS, isActive ? TAB_ACTIVE : TAB_INACTIVE)}
           >
             <span className="inline-flex" aria-hidden="true">

@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next'
 import { DM_Sans, JetBrains_Mono, Outfit } from 'next/font/google'
 import { ToastProvider } from '@repo/ui'
 import '@repo/ui/globals.css'
+import { TourProvider } from '@/components/tour/tour-provider'
 import { getUmamiScriptProps } from './umami-script'
 
 const display = Outfit({
@@ -74,7 +75,9 @@ export default function RootLayout({
           <style>{`[data-inview]{opacity:1 !important;transform:none !important}`}</style>
         </noscript>
         {umami && <script async src={umami.src} data-website-id={umami.websiteId} />}
-        <ToastProvider>{children}</ToastProvider>
+        <ToastProvider>
+          <TourProvider>{children}</TourProvider>
+        </ToastProvider>
       </body>
     </html>
   )
