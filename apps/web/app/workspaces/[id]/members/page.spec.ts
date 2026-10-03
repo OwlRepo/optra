@@ -219,15 +219,30 @@ describe('MembersPage', () => {
     expect(within(rosterSection).queryByText('Everyone with access to this workspace.')).toBeNull()
   })
 
-  it('regression: opening Members and sending an invite both refresh the cached workspace role', async () => {
+  it('regression: arriving on Members from another page and sending an invite both refresh the cached workspace role', async () => {
     getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha', role: 'owner' })
     inviteMemberMock.mockResolvedValue({ message: 'Invite sent' })
 
-    renderPage()
-
+    const view = renderPage()
     await screen.findByLabelText('Member email')
+    // A direct open reads the workspace once, in the layout.
+    expect(getWorkspaceMock).toHaveBeenCalledTimes(1)
+
+    // Same layout, new page instance: what App Router does on a sidebar click.
+    view.rerender(
+      React.createElement(
+        ToastProvider,
+        undefined,
+        React.createElement(
+          WorkspaceProvider,
+          { workspaceId: 'ws-1' },
+          React.createElement(MembersPage, { key: 'remounted', params: { id: 'ws-1' } }),
+        ),
+      ),
+    )
     await waitFor(() => expect(getWorkspaceMock).toHaveBeenCalledTimes(2))
 
+    await screen.findByLabelText('Member email')
     fireEvent.change(screen.getByLabelText('Member email'), { target: { value: 'teammate@example.com' } })
     fireEvent.submit(screen.getByRole('button', { name: 'Send invite' }).closest('form') as HTMLFormElement)
 

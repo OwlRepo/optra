@@ -27,8 +27,7 @@ import { Upload } from 'lucide-react'
 import { logout } from '@/lib/api/auth'
 import { isForbidden, isUnauthorized } from '@/lib/api/handle-unauthorized'
 import { WorkspaceAccessDenied } from '@/components/workspace-access-denied'
-import { getWorkspace } from '@/lib/api/workspaces'
-import { membershipFrom } from '@/lib/workspace-role'
+import { useWorkspaceContext } from '@/components/workspace-context'
 import type { VendorExceptionSummary, VendorPriceHistoryRow } from '@/lib/api/catalog'
 import {
   catalogItemPhotoUrl,
@@ -50,7 +49,6 @@ import { WorkspaceNav, workspacePrimaryTabItems } from '@/components/workspace-n
 import { MobileTabBar } from '@/components/mobile-tab-bar'
 import { WorkspaceBrandLink } from '@/components/workspace-brand-link'
 
-type Workspace = { id: string; name: string }
 type WorkspaceMembership = { id: string; role: 'owner' | 'admin' | 'member' }
 
 // Storyboard C03 document status: waiting states read neutral (Processing
@@ -91,7 +89,7 @@ export default function VendorDetailPage({ params }: { params: { id: string; ven
   const toastRef = React.useRef(toast)
   const fileInputRef = React.useRef<HTMLInputElement>(null)
 
-  const [workspace, setWorkspace] = React.useState<Workspace | null>(null)
+  const { workspace, membership, status: workspaceStatus } = useWorkspaceContext()
   const [vendor, setVendor] = React.useState<VendorDetail | null>(null)
   const [catalogs, setCatalogs] = React.useState<Catalog[]>([])
   const [history, setHistory] = React.useState<VendorPriceHistoryRow[]>([])
@@ -110,11 +108,11 @@ export default function VendorDetailPage({ params }: { params: { id: string; ven
     ).length
     return { skuCount: skus.size, offContract }
   }, [history])
-  const [membership, setMembership] = React.useState<WorkspaceMembership | null>(null)
   const [isLoading, setIsLoading] = React.useState(true)
   // B18. Set when the first load answers 403; the page then shows only the
   // no-access state instead of empty content.
-  const [accessDenied, setAccessDenied] = React.useState(false)
+  const [pageAccessDenied, setAccessDenied] = React.useState(false)
+  const accessDenied = pageAccessDenied || workspaceStatus === 'denied'
   const [isUploading, setIsUploading] = React.useState(false)
 
   const [isScrapeModalOpen, setIsScrapeModalOpen] = React.useState(false)
@@ -141,8 +139,7 @@ export default function VendorDetailPage({ params }: { params: { id: string; ven
   const loadPage = React.useCallback(async () => {
     try {
       setIsLoading(true)
-      const [workspaceData, vendorData, catalogData, historyData, summaryData] = await Promise.all([
-        getWorkspace(workspaceId),
+      const [vendorData, catalogData, historyData, summaryData] = await Promise.all([
         // S9. Fetched by id. This used to load every vendor in the workspace
         // and find this one in the array.
         getVendor(workspaceId, vendorId),
@@ -150,12 +147,10 @@ export default function VendorDetailPage({ params }: { params: { id: string; ven
         listVendorPriceHistory(workspaceId, vendorId, { pageSize: 50 }),
         getVendorExceptionSummary(workspaceId, vendorId),
       ])
-      setWorkspace(workspaceData)
       setVendor(vendorData ?? null)
       setHistory(historyData?.items ?? [])
       setSummary(summaryData ?? null)
       setCatalogs(Array.isArray(catalogData) ? catalogData : [])
-      setMembership(membershipFrom(workspaceData))
     } catch (err) {
       if (isUnauthorized(err)) {
         router.push('/login')

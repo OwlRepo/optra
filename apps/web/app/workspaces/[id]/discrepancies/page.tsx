@@ -23,8 +23,7 @@ import {
 import { logout } from '@/lib/api/auth'
 import { isForbidden, isUnauthorized } from '@/lib/api/handle-unauthorized'
 import { WorkspaceAccessDenied } from '@/components/workspace-access-denied'
-import { getWorkspace } from '@/lib/api/workspaces'
-import { membershipFrom } from '@/lib/workspace-role'
+import { useWorkspaceContext } from '@/components/workspace-context'
 import {
   dismissDiscrepancy,
   listDiscrepancies,
@@ -43,9 +42,7 @@ import { DiscrepancyReviewModal } from '@/components/procurement/discrepancy-rev
 import { ScopeChip } from '@/components/procurement/scope-chip'
 import { flagTypeLabel, flagTypeTone, type FlagTone, formatDelta } from '@/components/procurement/flag-type'
 
-type Workspace = { id: string; name: string }
 type WorkspaceRole = 'owner' | 'admin' | 'member'
-type WorkspaceMembership = { id: string; role: WorkspaceRole }
 type StatusFilterValue = '' | DiscrepancyFlagStatus
 
 const roleLabel: Record<WorkspaceRole, string> = { owner: 'Owner', admin: 'Admin', member: 'Member' }
@@ -105,13 +102,13 @@ export default function DiscrepanciesPage({ params }: { params: { id: string } }
   const searchParams = useSearchParams()
   const { toast } = useToast()
   const toastRef = React.useRef(toast)
-  const [workspace, setWorkspace] = React.useState<Workspace | null>(null)
+  const { workspace, membership, status: workspaceStatus } = useWorkspaceContext()
   const [flags, setFlags] = React.useState<DiscrepancyFlag[]>([])
-  const [membership, setMembership] = React.useState<WorkspaceMembership | null>(null)
   const [isLoading, setIsLoading] = React.useState(true)
   // B18. Set when the first load answers 403; the page then shows only the
   // no-access state instead of empty content.
-  const [accessDenied, setAccessDenied] = React.useState(false)
+  const [pageAccessDenied, setAccessDenied] = React.useState(false)
+  const accessDenied = pageAccessDenied || workspaceStatus === 'denied'
   const [statusFilter, setStatusFilter] = React.useState<StatusFilterValue>('')
   const [page, setPage] = React.useState(1)
   const [pageSize, setPageSize] = React.useState(20)
@@ -170,8 +167,7 @@ export default function DiscrepanciesPage({ params }: { params: { id: string } }
   const loadPage = React.useCallback(async () => {
     try {
       setIsLoading(true)
-      const [workspaceData, flagsData] = await Promise.all([
-        getWorkspace(workspaceId),
+      const [flagsData] = await Promise.all([
         listDiscrepancies(workspaceId, {
           purchaseOrderId: purchaseOrderIdFilter,
           invoiceId: invoiceIdFilter,
@@ -180,7 +176,6 @@ export default function DiscrepanciesPage({ params }: { params: { id: string } }
           pageSize,
         }),
       ])
-      setWorkspace(workspaceData)
       setFlags(Array.isArray(flagsData?.items) ? flagsData.items : [])
       setCounts(flagsData?.counts ?? EMPTY_COUNTS)
       setMeta({
@@ -189,7 +184,6 @@ export default function DiscrepanciesPage({ params }: { params: { id: string } }
         total: flagsData?.total ?? 0,
         totalPages: flagsData?.totalPages ?? 0,
       })
-      setMembership(membershipFrom(workspaceData))
     } catch (err) {
       if (isUnauthorized(err)) {
         router.push('/login')

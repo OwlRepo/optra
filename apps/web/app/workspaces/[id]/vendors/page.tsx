@@ -27,8 +27,7 @@ import { logout } from '@/lib/api/auth'
 import { createVendor, listVendors, type VendorDetail } from '@/lib/api/catalog'
 import { isForbidden, isUnauthorized } from '@/lib/api/handle-unauthorized'
 import { WorkspaceAccessDenied } from '@/components/workspace-access-denied'
-import { getWorkspace } from '@/lib/api/workspaces'
-import { membershipFrom } from '@/lib/workspace-role'
+import { useWorkspaceContext } from '@/components/workspace-context'
 import { formatDate } from '@/lib/format-date'
 import { WorkspaceNav, workspacePrimaryTabItems } from '@/components/workspace-nav'
 import { TOUR_ANCHORS, tourAttr } from '@/components/tour/tour-anchors'
@@ -40,7 +39,6 @@ const vendorSchema = z.object({
   contactInfo: z.string().trim().max(1000, 'Contact info is too long').optional(),
 })
 
-type Workspace = { id: string; name: string }
 type WorkspaceMembership = { id: string; role: 'owner' | 'admin' | 'member' }
 type VendorFormData = z.infer<typeof vendorSchema>
 
@@ -59,13 +57,13 @@ export default function VendorsPage({ params }: { params: { id: string } }) {
   const { toast } = useToast()
   const toastRef = React.useRef(toast)
   const workspaceId = params.id
-  const [workspace, setWorkspace] = React.useState<Workspace | null>(null)
+  const { workspace, membership, status: workspaceStatus } = useWorkspaceContext()
   const [vendors, setVendors] = React.useState<VendorDetail[]>([])
-  const [membership, setMembership] = React.useState<WorkspaceMembership | null>(null)
   const [isLoading, setIsLoading] = React.useState(true)
   // B18. Set when the first load answers 403; the page then shows only the
   // no-access state instead of empty content.
-  const [accessDenied, setAccessDenied] = React.useState(false)
+  const [pageAccessDenied, setAccessDenied] = React.useState(false)
+  const accessDenied = pageAccessDenied || workspaceStatus === 'denied'
   const [isCreateModalOpen, setIsCreateModalOpen] = React.useState(false)
 
   const vendorForm = useForm<VendorFormData>({
@@ -85,13 +83,10 @@ export default function VendorsPage({ params }: { params: { id: string } }) {
   const loadPage = React.useCallback(async () => {
     try {
       setIsLoading(true)
-      const [workspaceData, vendorData] = await Promise.all([
-        getWorkspace(workspaceId),
+      const [vendorData] = await Promise.all([
         listVendors(workspaceId),
       ])
-      setWorkspace(workspaceData)
       setVendors(Array.isArray(vendorData) ? vendorData : [])
-      setMembership(membershipFrom(workspaceData))
     } catch (err) {
       if (isUnauthorized(err)) {
         router.push('/login')

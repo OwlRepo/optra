@@ -8,17 +8,15 @@ import { z } from 'zod'
 import { AppShell, Button, DefinitionRow, Eyebrow, Input, MicroLabel, Switch, cn, useToast } from '@repo/ui'
 import { changePassword, logout } from '@/lib/api/auth'
 import { getDigestSettings, previewDigest, updateDigestSettings } from '@/lib/api/digest-settings'
-import { isForbidden, isUnauthorized } from '@/lib/api/handle-unauthorized'
+import { isUnauthorized } from '@/lib/api/handle-unauthorized'
 import { WorkspaceAccessDenied } from '@/components/workspace-access-denied'
-import { getWorkspace, updateWorkspace } from '@/lib/api/workspaces'
-import { membershipFrom } from '@/lib/workspace-role'
+import { updateWorkspace } from '@/lib/api/workspaces'
+import { useWorkspaceContext } from '@/components/workspace-context'
 import { WorkspaceNav, workspacePrimaryTabItems } from '@/components/workspace-nav'
 import { TOUR_ANCHORS, tourAttr } from '@/components/tour/tour-anchors'
 import { MobileTabBar } from '@/components/mobile-tab-bar'
 import { WorkspaceBrandLink } from '@/components/workspace-brand-link'
 
-type Workspace = { id: string; name: string }
-type WorkspaceMembership = { id: string; role: 'owner' | 'admin' | 'member' }
 type DigestSettings = { emailEnabled: boolean; slackWebhookUrl: string | null; slackEnabled: boolean }
 
 const renameSchema = z.object({
@@ -76,11 +74,11 @@ export default function SettingsPage({ params }: { params: { id: string } }) {
   const router = useRouter()
   const { toast } = useToast()
   const workspaceId = params.id
-  const [workspace, setWorkspace] = React.useState<Workspace | null>(null)
-  // B18. Set when the first load answers 403; the page then shows only the
-  // no-access state instead of empty content.
-  const [accessDenied, setAccessDenied] = React.useState(false)
-  const [role, setRole] = React.useState<WorkspaceMembership['role'] | null>(null)
+  // Name and caller role come from the [id] layout (WorkspaceProvider), loaded
+  // once per workspace. B18: a 403 there shows only the no-access state.
+  const { workspace, membership, status: workspaceStatus, setWorkspace } = useWorkspaceContext()
+  const accessDenied = workspaceStatus === 'denied'
+  const role = membership?.role ?? null
   const [digestSettings, setDigestSettings] = React.useState<DigestSettings | null>(null)
   const [slackWebhookInput, setSlackWebhookInput] = React.useState('')
   const [isSavingDigest, setIsSavingDigest] = React.useState(false)
@@ -109,31 +107,10 @@ export default function SettingsPage({ params }: { params: { id: string } }) {
     defaultValues: { currentPassword: '', newPassword: '', confirmPassword: '' },
   })
 
+  const workspaceName = workspace?.name
   React.useEffect(() => {
-    const loadPage = async () => {
-      try {
-        const workspaceData = await getWorkspace(workspaceId)
-        setWorkspace(workspaceData)
-        reset({ name: workspaceData?.name ?? '' })
-        setRole(membershipFrom(workspaceData)?.role ?? null)
-      } catch (err) {
-        if (isUnauthorized(err)) {
-          router.push('/login')
-          return
-        }
-        if (isForbidden(err)) {
-          setAccessDenied(true)
-          return
-        }
-        toast({
-          variant: 'error',
-          title: 'Failed to load workspace',
-          description: err instanceof Error ? err.message : 'Try again in a moment.',
-        })
-      }
-    }
-    void loadPage()
-  }, [reset, router, toast, workspaceId])
+    if (workspaceName !== undefined) reset({ name: workspaceName })
+  }, [reset, workspaceName])
 
   React.useEffect(() => {
     if (role !== 'owner' && role !== 'admin') return

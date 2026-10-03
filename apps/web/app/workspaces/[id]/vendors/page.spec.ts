@@ -195,8 +195,9 @@ describe('VendorsPage', () => {
       ),
     )
 
-    expect(screen.getByText('Tyvera')).toBeDefined()
-    expect(screen.queryByText('Workspace')).toBeNull()
+    // The sidebar brand: the name on first render, never the "Workspace" placeholder.
+    const brand = screen.getAllByRole('link').find((link) => link.getAttribute('href') === '/workspaces')
+    expect(brand?.textContent).toBe('TTyveraSwitch workspace')
     expect(getWorkspaceMock).toHaveBeenCalledTimes(1)
     await waitFor(() => expect(listVendorsMock).toHaveBeenCalledTimes(2))
   })

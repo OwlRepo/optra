@@ -14,18 +14,12 @@ import { logout } from '@/lib/api/auth'
 import { getUnreadCount, listEvents, markEventsSeen } from '@/lib/api/events'
 import { isForbidden, isUnauthorized } from '@/lib/api/handle-unauthorized'
 import { WorkspaceAccessDenied } from '@/components/workspace-access-denied'
-import { getWorkspace } from '@/lib/api/workspaces'
-import { membershipFrom } from '@/lib/workspace-role'
+import { useWorkspaceContext } from '@/components/workspace-context'
 import { formatDateTime } from '@/lib/format-date'
 import { WorkspaceNav, workspacePrimaryTabItems } from '@/components/workspace-nav'
 import { TOUR_ANCHORS, tourAttr } from '@/components/tour/tour-anchors'
 import { MobileTabBar } from '@/components/mobile-tab-bar'
 import { WorkspaceBrandLink } from '@/components/workspace-brand-link'
-
-type Workspace = {
-  id: string
-  name: string
-}
 
 type WorkspaceMembership = {
   id: string
@@ -124,8 +118,7 @@ export default function WorkspaceOverviewPage({ params }: { params: { id: string
   const { toast } = useToast()
   const toastRef = React.useRef(toast)
   const workspaceId = params.id
-  const [workspace, setWorkspace] = React.useState<Workspace | null>(null)
-  const [membership, setMembership] = React.useState<WorkspaceMembership | null>(null)
+  const { workspace, membership, status: workspaceStatus } = useWorkspaceContext()
   const [events, setEvents] = React.useState<WorkspaceEvent[]>([])
   const [eventsNextCursor, setEventsNextCursor] = React.useState<string | null>(null)
   const [isLoadingMoreEvents, setIsLoadingMoreEvents] = React.useState(false)
@@ -133,7 +126,8 @@ export default function WorkspaceOverviewPage({ params }: { params: { id: string
   const hasMarkedSeenRef = React.useRef(false)
   // B18. Set when the first load answers 403; the page then shows only the
   // no-access state instead of empty content.
-  const [accessDenied, setAccessDenied] = React.useState(false)
+  const [pageAccessDenied, setAccessDenied] = React.useState(false)
+  const accessDenied = pageAccessDenied || workspaceStatus === 'denied'
 
   React.useEffect(() => {
     toastRef.current = toast
@@ -141,8 +135,7 @@ export default function WorkspaceOverviewPage({ params }: { params: { id: string
 
   const loadPage = React.useCallback(async () => {
     try {
-      const [workspaceData, eventData, unread] = await Promise.all([
-        getWorkspace(workspaceId),
+      const [eventData, unread] = await Promise.all([
         listEvents(workspaceId) as Promise<EventListResponse>,
         // Read here, before markEventsSeen below moves the server's marker, so
         // "N new since your last visit" and the tinted rows describe this
@@ -150,8 +143,6 @@ export default function WorkspaceOverviewPage({ params }: { params: { id: string
         // A failed read costs only the hint, never the page.
         (getUnreadCount(workspaceId) as Promise<UnreadCountResponse>).catch(() => null),
       ])
-      setWorkspace(workspaceData)
-      setMembership(membershipFrom(workspaceData))
       setEvents(Array.isArray(eventData?.items) ? eventData.items : [])
       setEventsNextCursor(eventData?.nextCursor ?? null)
       setUnseenCount(typeof unread?.count === 'number' ? unread.count : 0)

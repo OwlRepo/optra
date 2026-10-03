@@ -29,8 +29,8 @@ import { Mail, Search, Trash2 } from 'lucide-react'
 import { getCurrentUser, logout } from '@/lib/api/auth'
 import { isForbidden, isUnauthorized } from '@/lib/api/handle-unauthorized'
 import { WorkspaceAccessDenied } from '@/components/workspace-access-denied'
-import { getWorkspace, inviteMember, listMembers, removeMember } from '@/lib/api/workspaces'
-import { membershipFrom } from '@/lib/workspace-role'
+import { inviteMember, listMembers, removeMember } from '@/lib/api/workspaces'
+import { useWorkspaceContext } from '@/components/workspace-context'
 import { formatDate } from '@/lib/format-date'
 import { WorkspaceNav, workspacePrimaryTabItems } from '@/components/workspace-nav'
 import { TOUR_ANCHORS, tourAttr } from '@/components/tour/tour-anchors'
@@ -39,7 +39,6 @@ import { WorkspaceBrandLink } from '@/components/workspace-brand-link'
 
 const inviteSchema = z.object({ email: z.string().email('Enter a valid email address') })
 
-type Workspace = { id: string; name: string }
 type WorkspaceMembership = { id: string; role: 'owner' | 'admin' | 'member' }
 type Member = { id: string; userId: string; email: string; role: 'owner' | 'admin' | 'member'; joinedAt: string }
 type MemberListResponse = { items: Member[]; page: number; pageSize: number; total: number; totalPages: number }
@@ -56,8 +55,11 @@ export default function MembersPage({ params }: { params: { id: string } }) {
   const router = useRouter()
   const { toast } = useToast()
   const workspaceId = params.id
-  const [workspace, setWorkspace] = React.useState<Workspace | null>(null)
-  const [membership, setMembership] = React.useState<WorkspaceMembership | null>(null)
+  const { workspace, membership, status: workspaceStatus, refresh: refreshWorkspace } = useWorkspaceContext()
+  // Members is where roles change, so arriving here from another page of this
+  // workspace re-reads the cached header (name + caller role). A direct open
+  // already has the layout's fresh read in flight.
+  const arrivedWithCachedWorkspace = React.useRef(workspaceStatus !== 'loading')
   const [members, setMembers] = React.useState<Member[]>([])
   const [meta, setMeta] = React.useState({ page: 1, pageSize: 20, total: 0, totalPages: 0 })
   const [page, setPage] = React.useState(1)
@@ -68,7 +70,8 @@ export default function MembersPage({ params }: { params: { id: string } }) {
   const [isLoading, setIsLoading] = React.useState(true)
   // B18. Set when the first load answers 403; the page then shows only the
   // no-access state instead of empty content.
-  const [accessDenied, setAccessDenied] = React.useState(false)
+  const [pageAccessDenied, setAccessDenied] = React.useState(false)
+  const accessDenied = pageAccessDenied || workspaceStatus === 'denied'
   const [isMembersLoading, setIsMembersLoading] = React.useState(false)
   const [pendingRemove, setPendingRemove] = React.useState<Member | null>(null)
   const [currentUserId, setCurrentUserId] = React.useState<string | null>(null)
@@ -94,12 +97,7 @@ export default function MembersPage({ params }: { params: { id: string } }) {
   const loadContext = React.useCallback(async () => {
     try {
       setIsLoading(true)
-      const [workspaceData, currentUser] = await Promise.all([
-        getWorkspace(workspaceId),
-        getCurrentUser(),
-      ])
-      setWorkspace(workspaceData)
-      setMembership(membershipFrom(workspaceData))
+      const currentUser = await getCurrentUser()
       setCurrentUserId(currentUser?.userId ?? null)
     } catch (err) {
       if (isUnauthorized(err)) {
@@ -118,7 +116,7 @@ export default function MembersPage({ params }: { params: { id: string } }) {
     } finally {
       setIsLoading(false)
     }
-  }, [router, toast, workspaceId])
+  }, [router, toast])
 
   const fetchMembers = React.useCallback(async () => {
     try {
@@ -160,6 +158,10 @@ export default function MembersPage({ params }: { params: { id: string } }) {
   }, [loadContext])
 
   React.useEffect(() => {
+    if (arrivedWithCachedWorkspace.current) void refreshWorkspace()
+  }, [refreshWorkspace])
+
+  React.useEffect(() => {
     void fetchMembers()
   }, [fetchMembers])
 
@@ -180,6 +182,7 @@ export default function MembersPage({ params }: { params: { id: string } }) {
         description: `${data.email} can use the invite link to join.`,
       })
       inviteForm.reset()
+      void refreshWorkspace()
     } catch (err) {
       if (isUnauthorized(err)) {
         router.push('/login')
@@ -203,6 +206,7 @@ export default function MembersPage({ params }: { params: { id: string } }) {
         description: `${pendingRemove.email} no longer has access.`,
       })
       setPendingRemove(null)
+      void refreshWorkspace()
       await fetchMembers()
     } catch (err) {
       if (isUnauthorized(err)) {
@@ -215,7 +219,7 @@ export default function MembersPage({ params }: { params: { id: string } }) {
         description: err && typeof err === 'object' && 'message' in err ? String((err as { message: unknown }).message) : 'Try again in a moment.',
       })
     }
-  }, [fetchMembers, pendingRemove, router, toast, workspaceId])
+  }, [fetchMembers, pendingRemove, refreshWorkspace, router, toast, workspaceId])
 
   const inviteEmailError = inviteForm.formState.errors.email
 
