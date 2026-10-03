@@ -144,6 +144,23 @@ describe('Workspaces flow (e2e)', () => {
     expect(membersAsMember.body.items.find((m: any) => m.email === ownerEmail)?.role).toBe('owner')
     expect(membersAsMember.body.items.find((m: any) => m.email === memberEmail)?.role).toBe('member')
 
+    const teamAsOwner = await request(app.getHttpServer())
+      .get(`/workspaces/${teamWorkspaceId}`)
+      .set('Authorization', `Bearer ${owner.accessToken}`)
+      .expect(200)
+    expect(teamAsOwner.body).toMatchObject({ id: teamWorkspaceId, name: 'Team', role: 'owner' })
+
+    const teamAsMember = await request(app.getHttpServer())
+      .get(`/workspaces/${teamWorkspaceId}`)
+      .set('Authorization', `Bearer ${member.accessToken}`)
+      .expect(200)
+    expect(teamAsMember.body).toMatchObject({ id: teamWorkspaceId, role: 'member' })
+
+    await request(app.getHttpServer())
+      .get('/workspaces/not-a-uuid')
+      .set('Authorization', `Bearer ${owner.accessToken}`)
+      .expect(403)
+
     await request(app.getHttpServer())
       .post(`/workspaces/${teamWorkspaceId}/invite`)
       .set('Authorization', `Bearer ${member.accessToken}`)
@@ -202,6 +219,12 @@ describe('Workspaces flow (e2e)', () => {
       .update(workspaceMembers)
       .set({ role: 'admin' })
       .where(and(eq(workspaceMembers.workspaceId, workspaceId), eq(workspaceMembers.userId, admin.user.id)))
+
+    const asAdmin = await request(app.getHttpServer())
+      .get(`/workspaces/${workspaceId}`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .expect(200)
+    expect(asAdmin.body.role).toBe('admin')
 
     const ownerRename = await request(app.getHttpServer())
       .patch(`/workspaces/${workspaceId}`)
