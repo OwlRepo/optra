@@ -3,6 +3,7 @@
 import * as React from 'react'
 import type { ArrowRenderProps, LoaderRenderProps, TooltipRenderProps } from 'react-joyride'
 import { Button, Eyebrow, MicroLabel, Skeleton } from '@repo/ui'
+import { useTour } from './tour-context'
 import type { TourChapter, TourStepData } from './tour-steps'
 
 const CHAPTER_LABEL: Record<TourChapter, string> = {
@@ -20,7 +21,9 @@ export function TourTooltip({ index, size, isLastStep, step, backProps, primaryP
   const titleId = React.useId()
   const bodyId = React.useId()
   const data = step.data as TourStepData | undefined
+  const tour = useTour()
   const interactive = data?.interactive === true
+  const showBack = index > 0 && data?.canGoBack !== false
   const chapter = CHAPTER_LABEL[data?.chapter ?? 'core']
   const progress = size > 0 ? Math.min(100, Math.round(((index + 1) / size) * 100)) : 0
 
@@ -39,7 +42,7 @@ export function TourTooltip({ index, size, isLastStep, step, backProps, primaryP
       <div className="px-[22px] pt-[18px]">
         <div className="flex items-center justify-between gap-3">
           <Eyebrow>{chapter}</Eyebrow>
-          <span className="font-mono text-[11px] text-ink-muted">
+          <span className="font-mono text-[11px] text-ink-ghost">
             Step {index + 1} of {size}
           </span>
         </div>
@@ -64,15 +67,26 @@ export function TourTooltip({ index, size, isLastStep, step, backProps, primaryP
           {skipLabel ?? 'Skip tour'}
         </Button>
         {interactive ? (
-          <div className="flex items-center gap-2">
-            <span aria-hidden="true" className="size-1.5 rounded-full bg-primary-strong animate-op-pulse" />
-            <MicroLabel as="span" tone="teal">
-              Tap the highlighted control
-            </MicroLabel>
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="flex min-w-0 items-center gap-2">
+              <span aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-primary-strong animate-op-pulse" />
+              <MicroLabel as="span" tone="teal">
+                {data?.hint ?? 'Use the highlighted control or the button'}
+              </MicroLabel>
+            </div>
+            {/* The focus trap keeps the spotlighted control out of reach, so the tooltip carries the same action. */}
+            <Button
+              type="button"
+              size="sm"
+              className="shrink-0"
+              onClick={() => tour?.performStageAction(step.id as string)}
+            >
+              {data?.actionLabel ?? 'Continue'}
+            </Button>
           </div>
         ) : (
           <div className="flex items-center gap-2">
-            {index > 0 ? (
+            {showBack ? (
               <Button type="button" variant="outline" size="sm" {...back}>
                 {backLabel ?? 'Back'}
               </Button>
@@ -112,14 +126,15 @@ export function TourArrow({ base, size, placement }: ArrowRenderProps) {
   )
 }
 
-export function TourLoader(_props: LoaderRenderProps) {
+export function TourLoader({ step }: LoaderRenderProps) {
+  const label = (step?.data as TourStepData | undefined)?.loaderLabel ?? 'Loading page…'
   return (
     <div
       role="status"
-      className="flex items-center gap-3 rounded-[12px] bg-card px-4 py-3 shadow-modal"
+      className="fade-slide-in flex items-center gap-3 rounded-xl border border-border-panel bg-card px-4 py-3 shadow-modal"
     >
       <Skeleton className="h-3.5 w-10" />
-      <MicroLabel as="span">Loading page…</MicroLabel>
+      <MicroLabel as="span">{label}</MicroLabel>
     </div>
   )
 }

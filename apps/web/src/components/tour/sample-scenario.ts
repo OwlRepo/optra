@@ -9,6 +9,9 @@ export type SampleDocKind = 'purchase_order' | 'invoice' | 'goods_receipt'
 
 export const SAMPLE_VENDOR = 'Northwind Fasteners'
 
+// Unit prices in the sample are in this currency; quantities have no unit.
+export const SAMPLE_CURRENCY = 'USD'
+
 export const SAMPLE_DOCS: { kind: SampleDocKind; number: string; vendor: string; lines: number }[] = [
   { kind: 'purchase_order', number: 'PO-4417', vendor: SAMPLE_VENDOR, lines: 6 },
   { kind: 'invoice', number: 'INV-8812', vendor: SAMPLE_VENDOR, lines: 6 },
@@ -78,9 +81,12 @@ export const SAMPLE_FLAGS: DiscrepancyFlag[] = [
   },
 ]
 
-export const SAMPLE_MATCHED_LINE: { sku: string; description: string } = {
+export const SAMPLE_MATCHED_LINE: { sku: string; description: string; ordered: string; billed: string; delta: string } = {
   sku: 'NT-M8-ZP',
   description: 'M8 hex nut, zinc plated',
+  ordered: '1000',
+  billed: '1000',
+  delta: '0',
 }
 
 export const SAMPLE_PHOTO_MATCH: {

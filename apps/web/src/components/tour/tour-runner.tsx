@@ -23,10 +23,20 @@ const LOCALE: NonNullable<Props['locale']> = {
 
 // Every visible piece comes from our own components (tooltip, arrow, loader) and
 // tokens. The overlay and spotlight are SVG attributes, so their colours are
-// resolved from computed tokens whenever a tour starts, which keeps light and
-// dark mode in step.
+// resolved from computed tokens when a tour starts and whenever the theme class
+// on <html> changes, which keeps light and dark mode in step.
 export default function TourRunner({ run, stepIndex, steps, onEvent }: TourRunnerProps) {
-  const theme = React.useMemo(() => (run ? resolveTourTheme() : null), [run])
+  // The theme can flip while a tour runs: re-resolve whenever <html> changes class.
+  const [themeVersion, setThemeVersion] = React.useState(0)
+  React.useEffect(() => {
+    if (!run) return
+    const observer = new MutationObserver(() => setThemeVersion((version) => version + 1))
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] })
+    return () => observer.disconnect()
+  }, [run])
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const theme = React.useMemo(() => (run ? resolveTourTheme() : null), [run, themeVersion])
   if (!theme) return null
 
   return (

@@ -304,7 +304,11 @@ export type TourChapter = 'welcome' | 'core' | 'sample' | 'workspace' | 'finish'
 export type SampleSection = 'compare' | 'photo'
 export interface TourStepData {
   chapter: TourChapter
-  interactive: boolean          // tap-to-advance: tooltip hides the primary button
+  interactive: boolean          // tap-to-advance: tooltip hides the primary button, shows `actionLabel` + `hint`
+  canGoBack: boolean            // false from sample-stage through overview-activity (no Back into dead stage states)
+  actionLabel?: string          // interactive only: 'Run comparison' | 'Open price flag' | 'Verify match'
+  hint?: string                 // interactive only: `${Tap|Click} the highlighted control or use the button`
+  loaderLabel?: string          // page steps: `Opening <Destination>…`
   route?: string                // pathname the `before` hook navigates to
   sample?: SampleSection        // the sample stage is open, on this section
 }
@@ -315,6 +319,7 @@ export interface BuildTourStepsInput {
   isDesktop: boolean
   navigate: (href: string) => void
   waitFor?: (selector: string, timeoutMs: number) => Promise<void> // default polls document
+  isActive?: () => boolean      // the default waitFor stops polling once this returns false (tour ended)
 }
 export function buildTourSteps(input: BuildTourStepsInput): TourStep[]
 export const TOUR_TARGET_TIMEOUT_MS = 8000
@@ -334,7 +339,8 @@ Rules:
 export const SAMPLE_DOCS: { kind: 'purchase_order' | 'invoice' | 'goods_receipt'; number: string; vendor: string; lines: number }[]
 // PO-4417, INV-8812, GRN-2203, vendor 'Northwind Fasteners'
 export const SAMPLE_FLAGS: DiscrepancyFlag[]   // exactly 3 rows: price_mismatch (red), short_receipt (amber), and the matched line (see below)
-export const SAMPLE_MATCHED_LINE: { sku: string; description: string }
+export const SAMPLE_CURRENCY = 'USD'
+export const SAMPLE_MATCHED_LINE: { sku: string; description: string; ordered: string; billed: string; delta: string }
 export const SAMPLE_PHOTO_MATCH: PhotoCompareProps-compatible { query, candidate, verdict }  // candidate.photoSrc = DEMO_CATALOG_PHOTO, verdict.score 0.94, isMatch true
 ```
 `SAMPLE_FLAGS` contains only the two real flags (price, short). The matched line is a separate teal "Matched" row, not a `DiscrepancyFlag`, so the results table renders 3 rows. Every `id`/`workspaceId` is prefixed `sample-` and is never sent to the API.
@@ -347,10 +353,11 @@ export interface SampleStageProps {
   onRunComplete: () => void          // results visible
   onFlagOpened: () => void           // review detail visible
   onVerified: () => void             // meter full + Match badge
+  onActionsReady?: (actions: { run: () => void; openFlag: () => void; verify: () => void } | null) => void // null on unmount
 }
 export function SampleStage(props: SampleStageProps): JSX.Element
 ```
-- **Frame.** `role="region"` `aria-label="Sample comparison"`, plus a permanent `<Badge>` text "Sample data — not your workspace". `fixed inset-0 z-[55]`, page-like layout on `bg-background`.
+- **Frame.** `role="region"` `aria-label="Sample comparison, sample data"`, plus a permanent `<Badge>` text "Sample data — not your workspace". `fixed inset-0 z-[55]`, page-like layout on `bg-background`.
 - **compare section.**
   - Three doc cards (PO / Invoice / Goods receipt), each with `Badge` "Ready".
   - "Run comparison" button (`data-tour=sample-run`). On click: phases `running` (`CompareStep`-style 1→2→3 indicator, `SkeletonRows` with `.skeleton-sweep`, `Badge pulse` "Comparing") → `results`, about 2400 ms total.
@@ -365,7 +372,11 @@ export function SampleStage(props: SampleStageProps): JSX.Element
 
 ### `tour-provider.tsx`
 ```tsx
-export interface TourContextValue { startTour: () => void; isRunning: boolean }
+export interface TourContextValue {
+  startTour: (opener?: HTMLElement | null) => void   // opener gets focus back when the tour ends; else <main>
+  isRunning: boolean
+  performStageAction: (stepId: string) => void       // 'sample-run' | 'sample-flag' | 'sample-verify'; the tooltip action button calls it
+}
 export function useTour(): TourContextValue | null   // null outside provider
 export function TourProvider({ children }: { children: React.ReactNode }): JSX.Element
 ```
@@ -379,7 +390,9 @@ export function TourProvider({ children }: { children: React.ReactNode }): JSX.E
 - **Runner.** Renders `<TourRunner run stepIndex steps onEvent ... />`, where `TourRunner = dynamic(() => import('./tour-runner'), { ssr: false })`. The runner wraps `<Joyride>` with the theme below.
 - **onEvent.**
   - `EVENTS.STEP_AFTER` with action next/prev → set the index.
-  - `EVENTS.TARGET_NOT_FOUND` / step failure → advance one step.
+  - `EVENTS.TARGET_NOT_FOUND` / `EVENTS.ERROR` → advance one step (back one when the action was prev).
+  - Esc / any `ACTIONS.CLOSE` → end as skipped (never advances).
+  - Leaving the workspace route while running → `writeTourRecord(userId,'skipped')`.
   - `STATUS.FINISHED` → `writeTourRecord(userId,'completed')`.
   - `STATUS.SKIPPED` (or close) → `writeTourRecord(userId,'skipped')`.
 - **Sample stage.** Renders `<SampleStage section=... />` while `steps[index].data.sample` is set. Its callbacks advance the index by one.

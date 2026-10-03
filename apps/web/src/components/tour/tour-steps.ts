@@ -6,8 +6,16 @@ export type SampleSection = 'compare' | 'photo'
 
 export interface TourStepData {
   chapter: TourChapter
-  /** Tap-to-advance: the tooltip hides the primary button. */
+  /** Tap-to-advance: the tooltip hides the primary button and shows `actionLabel` instead. */
   interactive: boolean
+  /** Whether the tooltip offers Back. Off for the sample stage and the step right after it. */
+  canGoBack: boolean
+  /** Interactive steps: the tooltip button that does what clicking the spotlighted control does. */
+  actionLabel?: string
+  /** Interactive steps: device-aware hint beside the action button. */
+  hint?: string
+  /** Page steps: what the loader says while the destination page loads. */
+  loaderLabel?: string
   /** Pathname the `before` hook navigates to. */
   route?: string
   /** The sample stage is open, on this section. */
@@ -22,6 +30,8 @@ export interface BuildTourStepsInput {
   isDesktop: boolean
   navigate: (href: string) => void
   waitFor?: (selector: string, timeoutMs: number) => Promise<void>
+  /** The default `waitFor` stops polling as soon as this returns false (the tour ended). */
+  isActive?: () => boolean
 }
 
 export const TOUR_TARGET_TIMEOUT_MS = 8000
@@ -30,11 +40,11 @@ const POLL_MS = 100
 
 // Resolves as soon as the selector matches, or when the timeout passes: a miss is
 // reported by Joyride itself as TARGET_NOT_FOUND, which the provider skips.
-function waitForSelector(selector: string, timeoutMs: number): Promise<void> {
+function waitForSelector(selector: string, timeoutMs: number, isActive: () => boolean): Promise<void> {
   return new Promise((resolve) => {
     const startedAt = Date.now()
     const tick = () => {
-      if (document.querySelector(selector) || Date.now() - startedAt >= timeoutMs) {
+      if (!isActive() || document.querySelector(selector) || Date.now() - startedAt >= timeoutMs) {
         resolve()
         return
       }
@@ -57,13 +67,17 @@ interface Spec {
   route?: string
   sample?: SampleSection
   interactive?: boolean
+  /** Interactive steps: label of the tooltip button that performs the stage action. */
+  actionLabel?: string
   /** Fixed-position targets (sidebar, tab bar) need isFixed to stay anchored on scroll. */
   fixed?: boolean
 }
 
 export function buildTourSteps(input: BuildTourStepsInput): TourStep[] {
   const { workspaceId, canManage, isDesktop, navigate } = input
-  const waitFor = input.waitFor ?? waitForSelector
+  const isActive = input.isActive ?? (() => true)
+  const waitFor = input.waitFor ?? ((selector: string, timeoutMs: number) => waitForSelector(selector, timeoutMs, isActive))
+  const verb = isDesktop ? 'Click' : 'Tap'
   const base = `/workspaces/${workspaceId}`
   const routes = {
     overview: base,
@@ -101,6 +115,16 @@ export function buildTourSteps(input: BuildTourStepsInput): TourStep[] {
     }
   }
 
+  const destinationOf = (route: string): string => {
+    if (route === routes.overview) return 'Overview'
+    if (route === routes.procurement) return 'Purchase orders'
+    if (route === routes.discrepancies) return 'Discrepancies'
+    if (route === routes.catalog) return 'Catalog matches'
+    if (route === routes.vendors) return 'Vendors'
+    if (route === routes.members) return 'Members'
+    return 'Settings'
+  }
+
   const gatedAnchor = (anchor: TourAnchorId): TourAnchorId | undefined => (canManage ? anchor : undefined)
   const uploadAnchor = isDesktop ? TOUR_ANCHORS.procurementUpload : TOUR_ANCHORS.procurementUploadMobile
 
@@ -110,7 +134,7 @@ export function buildTourSteps(input: BuildTourStepsInput): TourStep[] {
       chapter: 'welcome',
       title: 'Welcome to Optra',
       content:
-        'Optra checks every purchase order line against your vendor catalog, invoice and goods receipt, and flags what does not add up before you pay. This tour takes about three minutes. You can skip it at any time.',
+        'Optra checks every purchase order line against your vendor catalog, invoice and goods receipt, and flags what does not add up before you pay. You can skip this tour at any time.',
     },
 
     navStep(
@@ -137,7 +161,7 @@ export function buildTourSteps(input: BuildTourStepsInput): TourStep[] {
       chapter: 'core',
       title: 'Upload a document',
       content: canManage
-        ? 'Drop in a PO, invoice or receipt as a PDF, image or spreadsheet. Optra reads the lines for you. Nothing is uploaded during this tour.'
+        ? 'Drop in a purchase order or invoice as a PDF or spreadsheet, or a goods receipt as a spreadsheet. Optra reads the lines for you. Nothing is uploaded during this tour.'
         : 'Owners and admins upload documents here. As a member you can open everything they add, review the discrepancies, and verify catalog matches.',
       anchor: gatedAnchor(uploadAnchor),
       route: routes.procurement,
@@ -176,7 +200,7 @@ export function buildTourSteps(input: BuildTourStepsInput): TourStep[] {
       id: 'discrepancies-filter',
       chapter: 'core',
       title: 'Review or dismiss',
-      content: 'Filter by status, open a finding to read its citations, then review it or dismiss it with a reason.',
+      content: 'Filter by status, open a finding to read its citations, then record a decision: false positive, approved exception, vendor dispute or resolved. Owners and admins can also dismiss a finding.',
       anchor: TOUR_ANCHORS.discrepanciesFilter,
       route: routes.discrepancies,
       placement: 'bottom',
@@ -233,20 +257,22 @@ export function buildTourSteps(input: BuildTourStepsInput): TourStep[] {
       id: 'sample-run',
       chapter: 'sample',
       title: 'Run the comparison',
-      content: 'All three documents are ready. Tap Run comparison and watch Optra match them line by line.',
+      content: `All three documents are ready. ${verb} Run comparison and watch Optra match them line by line.`,
       anchor: TOUR_ANCHORS.sampleRun,
       sample: 'compare',
       interactive: true,
+      actionLabel: 'Run comparison',
       placement: 'bottom',
     },
     {
       id: 'sample-flag',
       chapter: 'sample',
       title: 'Two lines need attention',
-      content: 'Optra found a price that went up and a delivery that came in short. Tap the price flag to see why.',
+      content: `Optra found a price that went up and a delivery that came in short. ${verb} the price flag to see why.`,
       anchor: TOUR_ANCHORS.sampleFlag,
       sample: 'compare',
       interactive: true,
+      actionLabel: 'Open price flag',
       placement: 'bottom',
     },
     {
@@ -271,10 +297,11 @@ export function buildTourSteps(input: BuildTourStepsInput): TourStep[] {
       id: 'sample-verify',
       chapter: 'sample',
       title: 'Verify the match',
-      content: 'Tap Verify match to let Optra score the catalog photo against the request.',
+      content: `${verb} Verify match to let Optra score the catalog photo against the request.`,
       anchor: TOUR_ANCHORS.sampleVerify,
       sample: 'photo',
       interactive: true,
+      actionLabel: 'Verify match',
       placement: 'top',
     },
     {
@@ -324,6 +351,11 @@ export function buildTourSteps(input: BuildTourStepsInput): TourStep[] {
     },
   ]
 
+  // Back never leads into the sample stage's dead states: none from the stage's
+  // steps, nor from the first step after it (it would land back inside the stage).
+  const stageIds = new Set(['sample-stage', 'sample-run', 'sample-flag', 'sample-citations', 'sample-photo', 'sample-verify', 'sample-match'])
+  const afterStageId = 'overview-activity'
+
   return specs
     .filter((spec): spec is Spec => spec !== null)
     .map((spec): TourStep => {
@@ -331,6 +363,7 @@ export function buildTourSteps(input: BuildTourStepsInput): TourStep[] {
       const centered = selector === 'body'
       const interactive = spec.interactive === true
       const route = spec.route
+      const canGoBack = !stageIds.has(spec.id) && spec.id !== afterStageId
 
       const step: TourStep = {
         id: spec.id,
@@ -339,11 +372,20 @@ export function buildTourSteps(input: BuildTourStepsInput): TourStep[] {
         target: selector,
         placement: centered ? 'center' : (spec.placement ?? 'bottom'),
         skipBeacon: true,
-        buttons: interactive ? ['skip'] : ['back', 'primary', 'skip'],
+        buttons: interactive ? ['skip'] : canGoBack ? ['back', 'primary', 'skip'] : ['primary', 'skip'],
         isFixed: spec.fixed === true,
         targetWaitTimeout: TOUR_TARGET_TIMEOUT_MS,
         beforeTimeout: TOUR_TARGET_TIMEOUT_MS + 2000,
-        data: { chapter: spec.chapter, interactive, route, sample: spec.sample },
+        data: {
+          chapter: spec.chapter,
+          interactive,
+          canGoBack,
+          route,
+          sample: spec.sample,
+          actionLabel: spec.actionLabel,
+          hint: interactive ? `${verb} the highlighted control or use the button` : undefined,
+          loaderLabel: route ? `Opening ${destinationOf(route)}…` : undefined,
+        },
       }
 
       if (route) {

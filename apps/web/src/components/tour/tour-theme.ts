@@ -6,6 +6,8 @@ const FALLBACK_OVERLAY = 'oklch(0.238 0.03 264 / 0.4)'
 const FALLBACK_RING = 'oklch(0.5 0.09 184 / 0.35)'
 const FALLBACK_TEXT = 'oklch(0.238 0.03 264)'
 const FALLBACK_PRIMARY = 'oklch(0.5 0.09 184)'
+// In dark mode `--foreground` is near-white, so a tinted scrim would lighten the page.
+const DARK_OVERLAY = 'oklch(0 0 0 / 0.6)'
 const FALLBACK_BACKGROUND = 'oklch(1 0 0)'
 
 export interface TourTheme {
@@ -31,8 +33,9 @@ export function resolveTourTheme(root?: HTMLElement): TourTheme {
   const foreground = token(el, '--foreground')
   const primary = token(el, '--primary-strong')
   const card = token(el, '--card')
+  const dark = document.documentElement.classList.contains('dark')
   return {
-    overlayColor: foreground ? withAlpha(foreground, 0.4) : FALLBACK_OVERLAY,
+    overlayColor: dark ? DARK_OVERLAY : foreground ? withAlpha(foreground, 0.4) : FALLBACK_OVERLAY,
     spotlight: { stroke: primary ? withAlpha(primary, 0.35) : FALLBACK_RING, strokeWidth: 3 },
     primaryColor: primary || FALLBACK_PRIMARY,
     textColor: foreground || FALLBACK_TEXT,

@@ -24,6 +24,7 @@ import { Check } from 'lucide-react'
 import { flagTypeLabel, flagTypeTone, formatDelta } from '@/components/procurement/flag-type'
 import { prefersReducedMotion } from '@/hooks/use-in-view'
 import {
+  SAMPLE_CURRENCY,
   SAMPLE_DOCS,
   SAMPLE_DOC_LABEL,
   SAMPLE_FLAGS,
@@ -42,6 +43,15 @@ const RUN_TOTAL_MS = 2400
 const VERIFY_TICKS = 12
 const VERIFY_TICK_MS = 100
 
+export interface SampleStageActions {
+  /** Same as clicking Run comparison. */
+  run: () => void
+  /** Same as clicking the price flag; does nothing until the results are visible. */
+  openFlag: () => void
+  /** Same as clicking Verify match. */
+  verify: () => void
+}
+
 export interface SampleStageProps {
   section: SampleSection
   /** Defaults to prefers-reduced-motion, read in an effect. */
@@ -52,6 +62,8 @@ export interface SampleStageProps {
   onFlagOpened: () => void
   /** The meter is full and the Match badge is showing. */
   onVerified: () => void
+  /** Hands the stage's actions to the tour tooltip; called with null on unmount. */
+  onActionsReady?: (actions: SampleStageActions | null) => void
 }
 
 type RunPhase = 'idle' | 'running' | 'results'
@@ -75,7 +87,16 @@ function RunStep({ step, label, active, done }: { step: number; label: string; a
   )
 }
 
-export function SampleStage({ section, reducedMotion, onRunComplete, onFlagOpened, onVerified }: SampleStageProps) {
+function Money({ value }: { value: string | null }) {
+  if (value === null) return <>—</>
+  return (
+    <span className="font-mono">
+      {value} {SAMPLE_CURRENCY}
+    </span>
+  )
+}
+
+export function SampleStage({ section, reducedMotion, onRunComplete, onFlagOpened, onVerified, onActionsReady }: SampleStageProps) {
   const [reduced, setReduced] = React.useState(reducedMotion ?? false)
   const [runPhase, setRunPhase] = React.useState<RunPhase>('idle')
   const [runStep, setRunStep] = React.useState(1)
@@ -122,6 +143,7 @@ export function SampleStage({ section, reducedMotion, onRunComplete, onFlagOpene
   }
 
   const handleOpenFlag = () => {
+    if (runPhase !== 'results') return
     setFlagOpen(true)
     callbacks.current.onFlagOpened()
   }
@@ -145,6 +167,31 @@ export function SampleStage({ section, reducedMotion, onRunComplete, onFlagOpene
     }, VERIFY_TICKS * VERIFY_TICK_MS)
   }
 
+  // The tooltip's action button calls these; they always see the latest handlers.
+  const handlers = React.useRef({ run: handleRun, openFlag: handleOpenFlag, verify: handleVerify })
+  handlers.current = { run: handleRun, openFlag: handleOpenFlag, verify: handleVerify }
+  const onActionsReadyRef = React.useRef(onActionsReady)
+  onActionsReadyRef.current = onActionsReady
+  React.useEffect(() => {
+    onActionsReadyRef.current?.({
+      run: () => handlers.current.run(),
+      openFlag: () => handlers.current.openFlag(),
+      verify: () => handlers.current.verify(),
+    })
+    return () => onActionsReadyRef.current?.(null)
+  }, [])
+
+  const announcement =
+    verifyPhase === 'done'
+      ? 'Match verified'
+      : verifyPhase === 'verifying'
+        ? 'Verifying match'
+        : runPhase === 'results'
+          ? 'Comparison complete: 2 findings, 1 line matched'
+          : runPhase === 'running'
+            ? 'Comparing documents'
+            : ''
+
   const priceFlag = SAMPLE_FLAGS[0]
   const citations = [
     { label: 'PO line', value: `Purchase order ${SAMPLE_DOCS[0].number}, row ${priceFlag.poLine?.sourceRow}` },
@@ -158,9 +205,12 @@ export function SampleStage({ section, reducedMotion, onRunComplete, onFlagOpene
   return (
     <div
       role="region"
-      aria-label="Sample comparison"
+      aria-label="Sample comparison, sample data"
       className="fixed inset-0 z-[55] overflow-y-auto bg-background text-foreground"
     >
+      <div role="status" className="sr-only">
+        {announcement}
+      </div>
       <div className="mx-auto w-full max-w-[960px] space-y-6 px-5 py-8 sm:px-8">
         <header className="flex flex-wrap items-end justify-between gap-x-8 gap-y-3">
           <div className="min-w-0">
@@ -245,7 +295,7 @@ export function SampleStage({ section, reducedMotion, onRunComplete, onFlagOpene
                                 aria-label="Review sample price flag"
                                 {...tourAttr(TOUR_ANCHORS.sampleFlag)}
                                 onClick={handleOpenFlag}
-                                className="rounded-[6px] text-primary-strong underline decoration-primary-strong/40 underline-offset-4 hover:text-primary-strong-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-strong"
+                                className="rounded-sm text-primary-strong underline decoration-primary-strong/40 underline-offset-4 hover:text-primary-strong-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-strong"
                               >
                                 {flag.sku}
                               </button>
@@ -253,10 +303,10 @@ export function SampleStage({ section, reducedMotion, onRunComplete, onFlagOpene
                               flag.sku
                             )}
                           </TableCell>
-                          <TableCell numeric>{flag.poValue}</TableCell>
-                          <TableCell numeric>{flag.invoiceValue}</TableCell>
+                          <TableCell numeric>{isPrice ? <Money value={flag.poValue} /> : flag.poValue}</TableCell>
+                          <TableCell numeric>{isPrice ? <Money value={flag.invoiceValue} /> : flag.invoiceValue}</TableCell>
                           <TableCell numeric className={TONE_INK[tone]}>
-                            {flag.delta ? formatDelta(flag.delta) : '—'}
+                            {flag.delta ? isPrice ? <Money value={formatDelta(flag.delta)} /> : formatDelta(flag.delta) : '—'}
                           </TableCell>
                         </TableRow>
                       )
@@ -266,10 +316,10 @@ export function SampleStage({ section, reducedMotion, onRunComplete, onFlagOpene
                         <Badge variant="teal">Matched</Badge>
                       </TableCell>
                       <TableCell className="font-mono text-[13px]">{SAMPLE_MATCHED_LINE.sku}</TableCell>
-                      <TableCell numeric>1000</TableCell>
-                      <TableCell numeric>1000</TableCell>
+                      <TableCell numeric>{SAMPLE_MATCHED_LINE.ordered}</TableCell>
+                      <TableCell numeric>{SAMPLE_MATCHED_LINE.billed}</TableCell>
                       <TableCell numeric className="text-primary-strong">
-                        0
+                        {SAMPLE_MATCHED_LINE.delta}
                       </TableCell>
                     </TableRow>
                   </TableBody>
@@ -288,12 +338,12 @@ export function SampleStage({ section, reducedMotion, onRunComplete, onFlagOpene
                       <span className="text-[13px] text-ink-ghost">{SAMPLE_VENDOR}</span>
                     </div>
                     <div className="grid grid-cols-3 gap-3 p-5">
-                      <MetricTile label="Ordered" value={priceFlag.poValue} />
+                      <MetricTile label="Ordered" value={`${priceFlag.poValue} ${SAMPLE_CURRENCY}`} />
                       <MetricTile label="Received" value={priceFlag.receivedValue ?? '—'} />
-                      <MetricTile label="Billed" value={priceFlag.invoiceValue} tone="red" />
+                      <MetricTile label="Billed" value={`${priceFlag.invoiceValue} ${SAMPLE_CURRENCY}`} tone="red" />
                     </div>
                     <p className="px-5 pb-4 text-[14px] text-ink-body">
-                      Billed <span className="font-mono text-destructive-strong-text">{formatDelta(priceFlag.delta ?? '0')}</span>{' '}
+                      Billed <span className="font-mono text-destructive-strong-text">{formatDelta(priceFlag.delta ?? '0')} {SAMPLE_CURRENCY}</span>{' '}
                       per unit above the agreed price. Every verdict has a citation:
                     </p>
                     <div className="mx-5 mb-5 overflow-hidden rounded-[12px] border border-border-definition">

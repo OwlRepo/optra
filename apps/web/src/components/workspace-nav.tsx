@@ -168,7 +168,7 @@ export function WorkspaceNav({ workspaceId, collapsed }: { workspaceId: string; 
           variant="ghost"
           size={collapsed ? 'icon' : 'sm'}
           aria-label={collapsed ? 'Take the tour' : undefined}
-          onClick={() => tour.startTour()}
+          onClick={(event) => tour.startTour(event.currentTarget)}
           {...tourAttr(TOUR_ANCHORS.replay)}
           className={collapsed ? undefined : 'w-full justify-start gap-2.5 px-2.5 text-sm'}
         >
