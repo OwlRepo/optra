@@ -3481,113 +3481,31 @@
     },
     {
       "endpoints": [
-        "docs_ai_testing_strategy_lesson_pagination_tiebreak",
-        "learnings_s7_commit1"
+        "apps_web_src_components_tour_tour_context",
+        "apps_web_src_components_tour_tour_provider"
       ],
       "variants": [
         {
-          "source": "learnings_s7_commit1",
-          "target": "docs_ai_testing_strategy_lesson_pagination_tiebreak",
-          "relation": "references",
+          "source": "apps_web_src_components_tour_tour_provider",
+          "target": "apps_web_src_components_tour_tour_context",
+          "relation": "imports_from",
+          "context": "import",
           "confidence": "EXTRACTED",
-          "confidence_score": 1.0,
-          "source_file": "learnings.md",
-          "source_location": null,
-          "weight": 1.0
+          "source_file": "apps/web/src/components/tour/tour-provider.tsx",
+          "source_location": "L10",
+          "weight": 1.0,
+          "_origin": "ast"
         },
         {
-          "source": "learnings_s7_commit1",
-          "target": "docs_ai_testing_strategy_lesson_pagination_tiebreak",
-          "relation": "rationale_for",
-          "confidence": "INFERRED",
-          "confidence_score": 0.85,
-          "source_file": "learnings.md",
-          "source_location": null,
-          "weight": 1.0
-        }
-      ]
-    },
-    {
-      "endpoints": [
-        "docs_ai_testing_strategy_node22_bun_mismatch",
-        "learnings_s0e_env_deps"
-      ],
-      "variants": [
-        {
-          "source": "learnings_s0e_env_deps",
-          "target": "docs_ai_testing_strategy_node22_bun_mismatch",
-          "relation": "references",
+          "source": "apps_web_src_components_tour_tour_provider",
+          "target": "apps_web_src_components_tour_tour_context",
+          "relation": "re_exports",
+          "context": "export",
           "confidence": "EXTRACTED",
-          "confidence_score": 1.0,
-          "source_file": "learnings.md",
-          "source_location": null,
-          "weight": 1.0
-        },
-        {
-          "source": "learnings_s0e_env_deps",
-          "target": "docs_ai_testing_strategy_node22_bun_mismatch",
-          "relation": "rationale_for",
-          "confidence": "INFERRED",
-          "confidence_score": 0.85,
-          "source_file": "learnings.md",
-          "source_location": null,
-          "weight": 1.0
-        }
-      ]
-    },
-    {
-      "endpoints": [
-        "docs_ai_testing_strategy_path_ids_spec",
-        "learnings_fix_b16"
-      ],
-      "variants": [
-        {
-          "source": "learnings_fix_b16",
-          "target": "docs_ai_testing_strategy_path_ids_spec",
-          "relation": "references",
-          "confidence": "EXTRACTED",
-          "confidence_score": 1.0,
-          "source_file": "learnings.md",
-          "source_location": null,
-          "weight": 1.0
-        },
-        {
-          "source": "learnings_fix_b16",
-          "target": "docs_ai_testing_strategy_path_ids_spec",
-          "relation": "rationale_for",
-          "confidence": "INFERRED",
-          "confidence_score": 0.85,
-          "source_file": "learnings.md",
-          "source_location": null,
-          "weight": 1.0
-        }
-      ]
-    },
-    {
-      "endpoints": [
-        "docs_ai_testing_strategy_tdd_gate",
-        "docs_ai_testing_strategy_tdd_runner"
-      ],
-      "variants": [
-        {
-          "source": "docs_ai_testing_strategy_tdd_runner",
-          "target": "docs_ai_testing_strategy_tdd_gate",
-          "relation": "conceptually_related_to",
-          "confidence": "EXTRACTED",
-          "confidence_score": 1.0,
-          "source_file": "docs/ai/testing-strategy.md",
-          "source_location": null,
-          "weight": 1.0
-        },
-        {
-          "source": "docs_ai_testing_strategy_tdd_gate",
-          "target": "docs_ai_testing_strategy_tdd_runner",
-          "relation": "calls",
-          "confidence": "EXTRACTED",
-          "confidence_score": 1.0,
-          "source_file": "docs/ai/testing-strategy.md",
-          "source_location": null,
-          "weight": 1.0
+          "source_file": "apps/web/src/components/tour/tour-provider.tsx",
+          "source_location": "L18",
+          "weight": 1.0,
+          "_origin": "ast"
         }
       ]
     },
@@ -3698,62 +3616,6 @@
           "confidence": "EXTRACTED",
           "confidence_score": 1.0,
           "source_file": "docs/plans/app-alignment.md",
-          "source_location": null,
-          "weight": 1.0
-        }
-      ]
-    },
-    {
-      "endpoints": [
-        "learnings_fix_b13",
-        "learnings_fix_b16"
-      ],
-      "variants": [
-        {
-          "source": "learnings_fix_b16",
-          "target": "learnings_fix_b13",
-          "relation": "conceptually_related_to",
-          "confidence": "INFERRED",
-          "confidence_score": 0.75,
-          "source_file": "learnings.md",
-          "source_location": null,
-          "weight": 1.0
-        },
-        {
-          "source": "learnings_fix_b13",
-          "target": "learnings_fix_b16",
-          "relation": "semantically_similar_to",
-          "confidence": "INFERRED",
-          "confidence_score": 0.85,
-          "source_file": "learnings.md",
-          "source_location": null,
-          "weight": 1.0
-        }
-      ]
-    },
-    {
-      "endpoints": [
-        "learnings_s9_commit1",
-        "learnings_s9_commit5"
-      ],
-      "variants": [
-        {
-          "source": "learnings_s9_commit1",
-          "target": "learnings_s9_commit5",
-          "relation": "conceptually_related_to",
-          "confidence": "INFERRED",
-          "confidence_score": 0.75,
-          "source_file": "learnings.md",
-          "source_location": null,
-          "weight": 1.0
-        },
-        {
-          "source": "learnings_s9_commit5",
-          "target": "learnings_s9_commit1",
-          "relation": "semantically_similar_to",
-          "confidence": "INFERRED",
-          "confidence_score": 0.75,
-          "source_file": "learnings.md",
           "source_location": null,
           "weight": 1.0
         }
