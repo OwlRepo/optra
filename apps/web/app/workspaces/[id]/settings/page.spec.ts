@@ -5,6 +5,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ToastProvider } from '@repo/ui'
 import SettingsPage from './page'
+import { WorkspaceProvider } from '@/components/workspace-context'
 
 const pushMock = vi.fn()
 const routerMock = { push: pushMock }
@@ -44,9 +45,9 @@ function renderPage() {
     React.createElement(
       ToastProvider,
       undefined,
-      React.createElement(SettingsPage, {
+      React.createElement(WorkspaceProvider, { workspaceId: 'ws-1' }, React.createElement(SettingsPage, {
         params: { id: 'ws-1' },
-      }),
+      })),
     ),
   )
 }
@@ -246,6 +247,22 @@ describe('SettingsPage', () => {
     const preview = await screen.findByText('Quiet week — nothing notable.')
     expect(preview.tagName).toBe('PRE')
     expect(preview.className).toContain('font-mono')
+  })
+
+  it('regression: a rename updates the sidebar name from the response without refetching the workspace', async () => {
+    updateWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Renamed Co', ownerId: 'u-1', createdAt: '' })
+
+    renderPage()
+
+    const input = await screen.findByLabelText('Workspace name')
+    fireEvent.change(input, { target: { value: 'Renamed Co' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+
+    await waitFor(() => {
+      const brand = screen.getAllByRole('link').find((link) => link.getAttribute('href') === '/workspaces')
+      expect(brand?.textContent).toContain('Renamed Co')
+    })
+    expect(getWorkspaceMock).toHaveBeenCalledTimes(1)
   })
 
   it('happy: renders the current workspace name in the rename field', async () => {

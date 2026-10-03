@@ -5,6 +5,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ToastProvider } from '@repo/ui'
 import MembersPage from './page'
+import { WorkspaceProvider } from '@/components/workspace-context'
 
 const pushMock = vi.fn()
 const routerMock = { push: pushMock }
@@ -48,9 +49,9 @@ function renderPage() {
     React.createElement(
       ToastProvider,
       undefined,
-      React.createElement(MembersPage, {
+      React.createElement(WorkspaceProvider, { workspaceId: 'ws-1' }, React.createElement(MembersPage, {
         params: { id: 'ws-1' },
-      }),
+      })),
     ),
   )
 }
@@ -216,6 +217,21 @@ describe('MembersPage', () => {
 
     const rosterSection = screen.getByRole('heading', { level: 2, name: 'Members' }).closest('section') as HTMLElement
     expect(within(rosterSection).queryByText('Everyone with access to this workspace.')).toBeNull()
+  })
+
+  it('regression: opening Members and sending an invite both refresh the cached workspace role', async () => {
+    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha', role: 'owner' })
+    inviteMemberMock.mockResolvedValue({ message: 'Invite sent' })
+
+    renderPage()
+
+    await screen.findByLabelText('Member email')
+    await waitFor(() => expect(getWorkspaceMock).toHaveBeenCalledTimes(2))
+
+    fireEvent.change(screen.getByLabelText('Member email'), { target: { value: 'teammate@example.com' } })
+    fireEvent.submit(screen.getByRole('button', { name: 'Send invite' }).closest('form') as HTMLFormElement)
+
+    await waitFor(() => expect(getWorkspaceMock).toHaveBeenCalledTimes(3))
   })
 
   it('happy: renders the fetched member list with local ISO joined dates', async () => {

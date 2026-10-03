@@ -5,6 +5,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ToastProvider } from '@repo/ui'
 import VendorsPage from './page'
+import { WorkspaceProvider } from '@/components/workspace-context'
 
 const pushMock = vi.fn()
 const routerMock = { push: pushMock }
@@ -36,9 +37,9 @@ function renderPage() {
     React.createElement(
       ToastProvider,
       undefined,
-      React.createElement(VendorsPage, {
+      React.createElement(WorkspaceProvider, { workspaceId: 'ws-1' }, React.createElement(VendorsPage, {
         params: { id: 'ws-1' },
-      }),
+      })),
     ),
   )
 }
@@ -174,6 +175,32 @@ describe('VendorsPage', () => {
     expect(screen.getByLabelText('Vendor name')).toBeDefined()
   })
 
+  it('regression: a sidebar navigation remounts the page but keeps the cached workspace name and does not refetch it', async () => {
+    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Tyvera', role: 'owner' })
+    listVendorsMock.mockResolvedValue([])
+
+    const view = renderPage()
+    expect(await screen.findByText('Tyvera')).toBeDefined()
+
+    // Same layout, new page instance: what App Router does on a sidebar click.
+    view.rerender(
+      React.createElement(
+        ToastProvider,
+        undefined,
+        React.createElement(
+          WorkspaceProvider,
+          { workspaceId: 'ws-1' },
+          React.createElement(VendorsPage, { key: 'remounted', params: { id: 'ws-1' } }),
+        ),
+      ),
+    )
+
+    expect(screen.getByText('Tyvera')).toBeDefined()
+    expect(screen.queryByText('Workspace')).toBeNull()
+    expect(getWorkspaceMock).toHaveBeenCalledTimes(1)
+    await waitFor(() => expect(listVendorsMock).toHaveBeenCalledTimes(2))
+  })
+
   it('happy: renders the empty state with its copy', async () => {
     getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha', role: 'owner' })
     listVendorsMock.mockResolvedValue([])
@@ -238,7 +265,9 @@ describe('VendorsPage', () => {
 
       renderPage()
 
-      expect(await screen.findByText('Failed to load vendors')).toBeDefined()
+      // The workspace header now loads once in the [id] layout (WorkspaceProvider),
+      // so its failure toasts there, under the workspace title.
+      expect(await screen.findByText('Failed to load workspace')).toBeDefined()
       expect(screen.queryByRole('heading', { name: "You don't have access to this workspace" })).toBeNull()
     })
   })

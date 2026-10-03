@@ -5,6 +5,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ToastProvider } from '@repo/ui'
 import CatalogMatchesPage from './page'
+import { WorkspaceProvider } from '@/components/workspace-context'
 
 const pushMock = vi.fn()
 const replaceMock = vi.fn()
@@ -47,9 +48,9 @@ function renderPage() {
     React.createElement(
       ToastProvider,
       undefined,
-      React.createElement(CatalogMatchesPage, {
+      React.createElement(WorkspaceProvider, { workspaceId: 'ws-1' }, React.createElement(CatalogMatchesPage, {
         params: { id: 'ws-1' },
-      }),
+      })),
     ),
   )
 }
@@ -506,7 +507,9 @@ describe('CatalogMatchesPage', () => {
 
       renderPage()
 
-      expect(await screen.findByText('Failed to load catalog matches')).toBeDefined()
+      // The workspace header loads once in the [id] layout (WorkspaceProvider),
+      // so a failed workspace read toasts there.
+      expect(await screen.findByText('Failed to load workspace')).toBeDefined()
       expect(screen.queryByRole('heading', { name: "You don't have access to this workspace" })).toBeNull()
     })
   })

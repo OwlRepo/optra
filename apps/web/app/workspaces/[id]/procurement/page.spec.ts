@@ -5,6 +5,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ToastProvider } from '@repo/ui'
 import ProcurementPage from './page'
+import { WorkspaceProvider } from '@/components/workspace-context'
 
 const pushMock = vi.fn()
 const routerMock = { push: pushMock }
@@ -91,9 +92,9 @@ function renderPage() {
     React.createElement(
       ToastProvider,
       undefined,
-      React.createElement(ProcurementPage, {
+      React.createElement(WorkspaceProvider, { workspaceId: 'ws-1' }, React.createElement(ProcurementPage, {
         params: { id: 'ws-1' },
-      }),
+      })),
     ),
   )
 }
@@ -640,7 +641,9 @@ describe('ProcurementPage', () => {
 
       renderPage()
 
-      expect(await screen.findByText('Failed to load procurement documents')).toBeDefined()
+      // The workspace header loads once in the [id] layout (WorkspaceProvider),
+      // so a failed workspace read toasts there.
+      expect(await screen.findByText('Failed to load workspace')).toBeDefined()
       expect(screen.queryByRole('heading', { name: "You don't have access to this workspace" })).toBeNull()
     })
 
