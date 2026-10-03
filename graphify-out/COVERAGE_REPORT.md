@@ -2,11 +2,11 @@
 
 ## Coverage
 
-- Detected source files: 1148
-- Source files represented by graph nodes: 1148
+- Detected source files: 1150
+- Source files represented by graph nodes: 1150
 - Semantic files represented: 151
-- Raw extracted relationships retained: 15912
-- Interactive unique endpoint-pair edges: 15551
+- Raw extracted relationships retained: 16105
+- Interactive unique endpoint-pair edges: 15743
 - Collapsed edge groups preserved in ledger: 246
 - Zero-symbol files materialized as artifacts: 45
 - Unresolved endpoint IDs materialized as placeholders: 296

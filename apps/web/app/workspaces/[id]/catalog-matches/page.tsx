@@ -32,6 +32,7 @@ import {
   type VendorDetail,
 } from '@/lib/api/catalog'
 import { WorkspaceNav, workspacePrimaryTabItems } from '@/components/workspace-nav'
+import { TourReplayButton } from '@/components/tour/tour-replay-button'
 import { TOUR_ANCHORS, tourAttr } from '@/components/tour/tour-anchors'
 import { MobileTabBar } from '@/components/mobile-tab-bar'
 import { WorkspaceBrandLink } from '@/components/workspace-brand-link'
@@ -315,6 +316,7 @@ export default function CatalogMatchesPage({ params }: { params: { id: string } 
     <AppShell
       sidebarHeader={({ collapsed }) => <WorkspaceBrandLink name={workspace?.name} collapsed={collapsed} />}
       navigation={({ collapsed }) => <WorkspaceNav workspaceId={workspaceId} collapsed={collapsed} />}
+      userFooter={({ collapsed }) => <TourReplayButton collapsed={collapsed} />}
       mobileTabBar={({ moreActive, onMoreClick }) => (
         <MobileTabBar items={workspacePrimaryTabItems(workspaceId)} moreActive={moreActive} onMoreClick={onMoreClick} />
       )}
