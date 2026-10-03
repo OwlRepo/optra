@@ -46,6 +46,7 @@ import { WorkspaceAccessDenied } from '@/components/workspace-access-denied'
 import { getWorkspace, listWorkspaces } from '@/lib/api/workspaces'
 import { formatDate } from '@/lib/format-date'
 import { WorkspaceNav, workspacePrimaryTabItems } from '@/components/workspace-nav'
+import { TOUR_ANCHORS, tourAttr } from '@/components/tour/tour-anchors'
 import { MobileTabBar } from '@/components/mobile-tab-bar'
 import { WorkspaceBrandLink } from '@/components/workspace-brand-link'
 
@@ -621,6 +622,7 @@ export default function ProcurementPage({ params }: { params: { id: string } }) 
               <Button
                 size="sm"
                 className="hidden lg:inline-flex"
+                {...tourAttr(TOUR_ANCHORS.procurementUpload)}
                 onClick={openPicker}
                 isLoading={isUploading}
                 loadingText="Uploading"
@@ -782,6 +784,7 @@ export default function ProcurementPage({ params }: { params: { id: string } }) 
   const mobileUpload = canManage ? (
     <Button
       className="h-[46px] w-full justify-between rounded-[12px] px-4 text-[15px] lg:hidden"
+      {...tourAttr(TOUR_ANCHORS.procurementUploadMobile)}
       onClick={() => kindState[activeTab].inputRef.current?.click()}
       isLoading={kindState[activeTab].isUploading}
       loadingText="Uploading"
@@ -837,16 +840,18 @@ export default function ProcurementPage({ params }: { params: { id: string } }) 
           <WorkspaceAccessDenied />
         ) : (
           <>
-            <Tabs
-              items={tabItems}
-              value={activeTab}
-              onValueChange={(id) => setActiveTab(id as DocTab)}
-              aria-label="Document type"
-              fullWidth
-            />
+            <div {...tourAttr(TOUR_ANCHORS.procurementTabs)}>
+              <Tabs
+                items={tabItems}
+                value={activeTab}
+                onValueChange={(id) => setActiveTab(id as DocTab)}
+                aria-label="Document type"
+                fullWidth
+              />
+            </div>
             {mobileUpload}
             {renderDocsPanel(activeTab)}
-            {comparePanel}
+            <div {...tourAttr(TOUR_ANCHORS.procurementCompare)}>{comparePanel}</div>
           </>
         )}
       </div>

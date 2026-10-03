@@ -32,6 +32,7 @@ import { WorkspaceAccessDenied } from '@/components/workspace-access-denied'
 import { getWorkspace, inviteMember, listMembers, listWorkspaces, removeMember } from '@/lib/api/workspaces'
 import { formatDate } from '@/lib/format-date'
 import { WorkspaceNav, workspacePrimaryTabItems } from '@/components/workspace-nav'
+import { TOUR_ANCHORS, tourAttr } from '@/components/tour/tour-anchors'
 import { MobileTabBar } from '@/components/mobile-tab-bar'
 import { WorkspaceBrandLink } from '@/components/workspace-brand-link'
 
@@ -239,41 +240,43 @@ export default function MembersPage({ params }: { params: { id: string } }) {
           <WorkspaceAccessDenied />
         ) : (
           <>
-            <PageSection
-              eyebrow={<Eyebrow>Collaborators</Eyebrow>}
-              title="Invite members"
-              description="Invites go out by email. The link joins them to this workspace as a member."
-            >
-              {canManage ? (
-                <form
-                  className="grid gap-3.5 rounded-[18px] border border-border-panel bg-card px-6 py-[22px] md:grid-cols-[minmax(0,1fr)_auto] md:items-end"
-                  onSubmit={submitInvite}
-                >
-                  <div className="flex flex-col gap-2">
-                    <label htmlFor="member-email" className="text-[14px] font-medium">Member email</label>
-                    <Input
-                      id="member-email"
-                      type="email"
-                      placeholder="teammate@example.com"
-                      aria-invalid={inviteEmailError ? true : undefined}
-                      {...inviteForm.register('email')}
-                    />
-                    {inviteEmailError ? <p className="text-[13px] text-destructive-strong-text">{inviteEmailError.message}</p> : null}
-                  </div>
-                  <Button type="submit" isLoading={inviteForm.formState.isSubmitting} loadingText="Sending">
-                    <Mail className="size-4" />
-                    Send invite
-                  </Button>
-                </form>
-              ) : (
-                <EmptyState
-                  label="Owners & admins"
-                  labelTone="neutral"
-                  title="Invite controls hidden"
-                  description="Only owners and admins can invite members to this workspace."
-                />
-              )}
-            </PageSection>
+            <div {...tourAttr(TOUR_ANCHORS.membersInvite)}>
+              <PageSection
+                eyebrow={<Eyebrow>Collaborators</Eyebrow>}
+                title="Invite members"
+                description="Invites go out by email. The link joins them to this workspace as a member."
+              >
+                {canManage ? (
+                  <form
+                    className="grid gap-3.5 rounded-[18px] border border-border-panel bg-card px-6 py-[22px] md:grid-cols-[minmax(0,1fr)_auto] md:items-end"
+                    onSubmit={submitInvite}
+                  >
+                    <div className="flex flex-col gap-2">
+                      <label htmlFor="member-email" className="text-[14px] font-medium">Member email</label>
+                      <Input
+                        id="member-email"
+                        type="email"
+                        placeholder="teammate@example.com"
+                        aria-invalid={inviteEmailError ? true : undefined}
+                        {...inviteForm.register('email')}
+                      />
+                      {inviteEmailError ? <p className="text-[13px] text-destructive-strong-text">{inviteEmailError.message}</p> : null}
+                    </div>
+                    <Button type="submit" isLoading={inviteForm.formState.isSubmitting} loadingText="Sending">
+                      <Mail className="size-4" />
+                      Send invite
+                    </Button>
+                  </form>
+                ) : (
+                  <EmptyState
+                    label="Owners & admins"
+                    labelTone="neutral"
+                    title="Invite controls hidden"
+                    description="Only owners and admins can invite members to this workspace."
+                  />
+                )}
+              </PageSection>
+            </div>
 
             <PageSection eyebrow={<Eyebrow>Roster</Eyebrow>} title="Members">
               <Table

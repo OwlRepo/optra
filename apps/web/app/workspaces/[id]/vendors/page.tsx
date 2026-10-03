@@ -30,6 +30,7 @@ import { WorkspaceAccessDenied } from '@/components/workspace-access-denied'
 import { getWorkspace, listWorkspaces } from '@/lib/api/workspaces'
 import { formatDate } from '@/lib/format-date'
 import { WorkspaceNav, workspacePrimaryTabItems } from '@/components/workspace-nav'
+import { TOUR_ANCHORS, tourAttr } from '@/components/tour/tour-anchors'
 import { MobileTabBar } from '@/components/mobile-tab-bar'
 import { WorkspaceBrandLink } from '@/components/workspace-brand-link'
 
@@ -162,7 +163,7 @@ export default function VendorsPage({ params }: { params: { id: string } }) {
       title="Vendors"
       description="Manage the vendors you source from or verify invoices against."
       badge={membership ? <Badge variant={membership.role === 'member' ? 'neutral' : 'teal'}>{roleLabel[membership.role]}</Badge> : null}
-      actions={canManage ? <Button size="sm" onClick={() => setIsCreateModalOpen(true)}><Plus className="size-4" />Add vendor</Button> : null}
+      actions={canManage ? <Button size="sm" {...tourAttr(TOUR_ANCHORS.vendorsAdd)} onClick={() => setIsCreateModalOpen(true)}><Plus className="size-4" />Add vendor</Button> : null}
       onLogout={handleLogout}
     >
       <div className="flex flex-col gap-6">

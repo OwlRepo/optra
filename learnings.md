@@ -638,3 +638,12 @@ And one rule the owner made standing: every change now ships with its tests for 
 **Actual:** confirmed — `bun run tdd:red` recorded "failing: regression: the L03 increase is quoted against the PO price, not the catalog price, regression: the vendor-history row records the same increase as L03"; after the fix web 862/862, ui 272/272 and api 836/836 passed, and the targeted specs passed three runs in a row.
 
 **Why different:** not different. **A number on a public page is a claim; derive it in the test from the data next to it, never restate it as a literal, so an arithmetic slip turns the build red instead of shipping.**
+
+## 2026-10-03 — Onboarding tour: a first-run overlay is a shared-fixture change
+*Learning Contract: the plan's design is the prediction; the diff is below. No live prediction solicited.*
+
+**Predicted (from the approved plan):** Standard, client-only; main risk = auto-start blocking existing browser suites.
+
+**Actual:** confirmed as the main risk — an overlay that auto-starts on every user's first workspace visit sits over every existing Playwright suite. It was handled once, in `apps/e2e/tests/auth.setup.ts`, by writing the tour-done key (`optra.tour.v1:<userId>`) into each saved storage state, with only `onboarding-tour.spec.ts` clearing it. A second constraint surfaced from the design system: Joyride paints its overlay and spotlight as SVG attributes, which cannot take `var()`, so `resolveTourTheme()` reads the tokens from computed style at each start instead of hard-coding colours.
+
+**Why different:** not different. **Any UI that appears unasked on first visit changes the starting state of every browser test; seed its "already seen" state in the shared setup on day one, and make the one suite that tests it opt back in.**

@@ -35,6 +35,7 @@ import {
   type DiscrepancyFlagType,
 } from '@/lib/api/procurement'
 import { WorkspaceNav, workspacePrimaryTabItems } from '@/components/workspace-nav'
+import { TOUR_ANCHORS, tourAttr } from '@/components/tour/tour-anchors'
 import { MobileTabBar } from '@/components/mobile-tab-bar'
 import { WorkspaceBrandLink } from '@/components/workspace-brand-link'
 import { DiscrepancyReviewModal } from '@/components/procurement/discrepancy-review-modal'
@@ -322,10 +323,15 @@ export default function DiscrepanciesPage({ params }: { params: { id: string } }
           <WorkspaceAccessDenied />
         ) : (
           <>
-            <StatStrip items={statItems} />
+            <div {...tourAttr(TOUR_ANCHORS.discrepanciesStats)}>
+              <StatStrip items={statItems} />
+            </div>
 
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex w-full min-w-0 flex-wrap items-center gap-3 lg:w-auto">
+              <div
+                {...tourAttr(TOUR_ANCHORS.discrepanciesFilter)}
+                className="flex w-full min-w-0 flex-wrap items-center gap-3 lg:w-auto"
+              >
                 <SegmentedControl
                   aria-label="Filter by status"
                   size="md"
