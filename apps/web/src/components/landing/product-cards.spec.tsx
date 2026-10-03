@@ -3,7 +3,7 @@
 import { cleanup, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 import { ProductCards } from './product-cards'
-import { DEMO_HISTORY_ROWS } from '@/lib/landing-demo-docs'
+import { DEMO_DOCS, DEMO_HISTORY_ROWS } from '@/lib/landing-demo-docs'
 
 afterEach(cleanup)
 
@@ -28,8 +28,13 @@ describe('ProductCards', () => {
   it('shows the price delta that makes the first card concrete', () => {
     render(<ProductCards />)
 
-    expect(screen.getByText('IRN-38HXB · $0.51')).not.toBeNull()
-    expect(screen.getByText('+18.0%')).not.toBeNull()
+    // The card restates demo line L03, so its delta is measured the same way:
+    // against the PO price.
+    const l03 = DEMO_DOCS[0].lines[1]
+    const po = Number(l03.poPrice.slice(1))
+    const catalog = Number(l03.catPrice.slice(1))
+    expect(screen.getByText(`IRN-38HXB · ${l03.catPrice}`)).not.toBeNull()
+    expect(screen.getByText(`+${(((catalog - po) / po) * 100).toFixed(1)}%`)).not.toBeNull()
   })
 
   it('compares two photos with a visual-match caption', () => {

@@ -3,6 +3,7 @@
 import { cleanup, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 import { WorkflowSteps } from './workflow-steps'
+import { DEMO_DOCS } from '@/lib/landing-demo-docs'
 
 afterEach(cleanup)
 
@@ -48,6 +49,10 @@ describe('WorkflowSteps', () => {
     render(<WorkflowSteps />)
 
     expect(screen.getByText('2 of 14 lines flagged')).not.toBeNull()
-    expect(screen.getByText('Line 3 · +18% price · Line 7 · item mismatch')).not.toBeNull()
+    // "Line 3" is demo line L03; its increase is measured against the PO price.
+    const l03 = DEMO_DOCS[0].lines[1]
+    const po = Number(l03.poPrice.slice(1))
+    const increase = Math.round(((Number(l03.catPrice.slice(1)) - po) / po) * 100)
+    expect(screen.getByText(`Line 3 · +${increase}% price · Line 7 · item mismatch`)).not.toBeNull()
   })
 })
