@@ -30,7 +30,7 @@ export function ProductCards() {
                 {[
                   { k: 'po line', v: '200 × 3/8in hex bolt', tint: 'text-muted-foreground' },
                   { k: 'catalog', v: 'IRN-38HXB · $0.51', tint: 'text-muted-foreground' },
-                  { k: 'delta', v: '+18.0%', tint: 'text-flag-text' },
+                  { k: 'delta', v: '+21.4%', tint: 'text-flag-text' },
                 ].map((row) => (
                   <div key={row.k} className="flex items-center justify-between gap-3">
                     <dt className="text-muted-foreground">{row.k}</dt>
