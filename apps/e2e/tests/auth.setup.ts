@@ -68,6 +68,14 @@ setup('seed actors and sign each one in', async ({ browser }) => {
     // support surfaces are hidden, [support-surfaces-off]); landing there
     // proves the BFF set both cookies and the middleware accepted them.
     await expect(page).toHaveURL(new RegExp(`/workspaces/${state[role].workspaceId}/`))
+    // Onboarding tour: it auto-starts on a user's first workspace visit and its
+    // overlay would block clicks in every other suite. Save each session with the
+    // tour already marked done (key/shape: apps/web/src/components/tour/
+    // tour-storage.ts). onboarding-tour.spec.ts clears this key to test the tour.
+    await page.evaluate(
+      ([key, value]) => window.localStorage.setItem(key, value),
+      [`optra.tour.v1:${state[role].userId}`, JSON.stringify({ status: 'completed', at: new Date().toISOString() })],
+    )
     await context.storageState({ path: storageStateFor(role) })
     await context.close()
   }
