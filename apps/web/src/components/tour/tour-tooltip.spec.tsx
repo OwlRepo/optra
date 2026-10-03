@@ -100,15 +100,6 @@ describe('TourTooltip', () => {
     expect(counter.className).toContain('text-ink-ghost')
     expect(container.innerHTML).not.toContain('rounded-[6px]')
   })
-
-  it('happy: pressing the action button performs the stage action for this step id', () => {
-    const props = makeProps(interactive)
-    const { context } = renderTooltip({ ...props, step: { ...props.step, id: 'sample-run' } } as TooltipRenderProps)
-
-    fireEvent.click(screen.getByRole('button', { name: 'Run comparison' }))
-
-    expect(context.performStageAction).toHaveBeenCalledWith('sample-run')
-  })
 })
 
 describe('TourLoader', () => {
@@ -128,5 +119,17 @@ describe('TourLoader', () => {
     expect(status.className).toContain('border')
     expect(status.className).toContain('border-border-panel')
     expect(status.className).toContain('fade-slide-in')
+  })
+})
+
+// Happy paths last, so every file declares error > edge > regression > happy.
+describe('TourTooltip happy path', () => {
+  it('happy: pressing the action button performs the stage action for this step id', () => {
+    const props = makeProps(interactive)
+    const { context } = renderTooltip({ ...props, step: { ...props.step, id: 'sample-run' } } as TooltipRenderProps)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Run comparison' }))
+
+    expect(context.performStageAction).toHaveBeenCalledWith('sample-run')
   })
 })
