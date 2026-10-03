@@ -1,7 +1,7 @@
 'use client'
 
 import * as React from 'react'
-import { useRouter } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { useToast } from '@repo/ui'
 import { getWorkspace } from '@/lib/api/workspaces'
 import { isForbidden, isUnauthorized } from '@/lib/api/handle-unauthorized'
@@ -29,6 +29,7 @@ const WorkspaceContext = React.createContext<WorkspaceContextValue | null>(null)
 
 export function WorkspaceProvider({ workspaceId, children }: { workspaceId: string; children?: React.ReactNode }) {
   const router = useRouter()
+  const pathname = usePathname()
   const { toast } = useToast()
   const toastRef = React.useRef(toast)
   const [workspace, setWorkspaceState] = React.useState<WorkspaceSummary | null>(null)
@@ -36,6 +37,9 @@ export function WorkspaceProvider({ workspaceId, children }: { workspaceId: stri
   // Only the latest request may write state, so a slow answer for a previous
   // workspace id never overwrites the current one.
   const requestRef = React.useRef(0)
+  // A refresh that fails keeps the last good read instead of blanking the
+  // header; only the first load of this workspace can land in 'error'.
+  const loadedRef = React.useRef(false)
 
   React.useEffect(() => {
     toastRef.current = toast
@@ -46,6 +50,7 @@ export function WorkspaceProvider({ workspaceId, children }: { workspaceId: stri
     try {
       const data = (await getWorkspace(workspaceId)) as WorkspaceSummary
       if (request !== requestRef.current) return
+      loadedRef.current = true
       setWorkspaceState(data)
       setStatus('ready')
     } catch (err) {
@@ -54,12 +59,17 @@ export function WorkspaceProvider({ workspaceId, children }: { workspaceId: stri
         router.push('/login')
         return
       }
-      setWorkspaceState(null)
       if (isForbidden(err)) {
+        // Membership was revoked: drop the cached name and role.
+        loadedRef.current = false
+        setWorkspaceState(null)
         setStatus('denied')
         return
       }
-      setStatus('error')
+      if (!loadedRef.current) {
+        setWorkspaceState(null)
+        setStatus('error')
+      }
       toastRef.current({
         variant: 'error',
         title: 'Failed to load workspace',
@@ -69,12 +79,27 @@ export function WorkspaceProvider({ workspaceId, children }: { workspaceId: stri
   }, [router, workspaceId])
 
   React.useEffect(() => {
+    loadedRef.current = false
     setWorkspaceState(null)
     setStatus('loading')
     void refresh()
   }, [refresh])
 
+  // The layout never remounts, so a failed first load would otherwise stick
+  // for the whole visit. The next page navigation retries it.
+  const statusRef = React.useRef(status)
+  statusRef.current = status
+  const firstPathRef = React.useRef(pathname)
+  React.useEffect(() => {
+    if (pathname === firstPathRef.current) return
+    firstPathRef.current = pathname
+    if (statusRef.current === 'error') void refresh()
+  }, [pathname, refresh])
+
   const setWorkspace = React.useCallback((next: WorkspaceSummary) => {
+    // Supersedes any read still in flight, so an older GET cannot undo a rename.
+    requestRef.current += 1
+    loadedRef.current = true
     // Keep the known role when the response omits it (PATCH returns no role).
     setWorkspaceState((prev) => ({ ...next, role: next.role ?? prev?.role }))
     setStatus('ready')
