@@ -141,6 +141,40 @@ describe('buildTourSteps', () => {
     }
   })
 
+  it('regression: the default waitFor ignores the old page copy of a target until the route has changed and the new copy is stable', async () => {
+    // Every workspace page mounts its own AppShell, so the nav anchor exists on
+    // the page being left AND the page being opened. Resolving on the old copy
+    // pinned the tooltip to a detached element at the top-left corner.
+    vi.useFakeTimers()
+    const step = build({ waitFor: undefined }).steps.find((s) => s.id === 'nav-discrepancies') as TourStep
+    const route = step.data.route as string
+    const selector = targetOf(step)
+    const anchor = selector.match(/data-tour="([^"]+)"/)?.[1] as string
+    const oldCopy = document.createElement('a')
+    oldCopy.setAttribute('data-tour', anchor)
+    document.body.appendChild(oldCopy)
+    window.history.pushState({}, '', `/workspaces/${WS}/procurement`)
+
+    let resolved = false
+    const pending = Promise.resolve(step.before?.({} as never)).then(() => {
+      resolved = true
+    })
+    await vi.advanceTimersByTimeAsync(400)
+    expect(resolved).toBe(false)
+
+    window.history.pushState({}, '', route)
+    oldCopy.remove()
+    const newCopy = document.createElement('a')
+    newCopy.setAttribute('data-tour', anchor)
+    document.body.appendChild(newCopy)
+    await vi.advanceTimersByTimeAsync(1000)
+    await pending
+
+    expect(resolved).toBe(true)
+    expect(document.querySelector(selector)).toBe(newCopy)
+    newCopy.remove()
+  })
+
   it('edge: no Back from the sample stage through the first step after it; other steps keep Back', () => {
     const { steps } = build()
     const noBack = ['sample-stage', 'sample-run', 'sample-flag', 'sample-citations', 'sample-photo', 'sample-verify', 'sample-match', 'overview-activity']
