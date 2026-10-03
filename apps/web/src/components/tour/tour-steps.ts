@@ -38,16 +38,33 @@ export const TOUR_TARGET_TIMEOUT_MS = 8000
 
 const POLL_MS = 100
 
-// Resolves as soon as the selector matches, or when the timeout passes: a miss is
-// reported by Joyride itself as TARGET_NOT_FOUND, which the provider skips.
-function waitForSelector(selector: string, timeoutMs: number, isActive: () => boolean): Promise<void> {
+// Resolves once the selector matches on the right page and the match has stayed
+// the same connected element for two polls, or when the timeout passes: a miss
+// is reported by Joyride itself as TARGET_NOT_FOUND, which the provider skips.
+// Every workspace page mounts its own AppShell, so a nav anchor also exists on
+// the page being left; resolving on that copy pins the tooltip to a detached
+// element. Hence the route check and the stability check.
+function waitForSelector(
+  selector: string,
+  timeoutMs: number,
+  isActive: () => boolean,
+  route?: string,
+): Promise<void> {
   return new Promise((resolve) => {
     const startedAt = Date.now()
+    let candidate: Element | null = null
     const tick = () => {
-      if (!isActive() || document.querySelector(selector) || Date.now() - startedAt >= timeoutMs) {
+      if (!isActive() || Date.now() - startedAt >= timeoutMs) {
         resolve()
         return
       }
+      const onRoute = !route || window.location.pathname === route
+      const match = onRoute ? document.querySelector(selector) : null
+      if (match && match === candidate && match.isConnected) {
+        resolve()
+        return
+      }
+      candidate = match
       setTimeout(tick, POLL_MS)
     }
     tick()
@@ -76,7 +93,8 @@ interface Spec {
 export function buildTourSteps(input: BuildTourStepsInput): TourStep[] {
   const { workspaceId, canManage, isDesktop, navigate } = input
   const isActive = input.isActive ?? (() => true)
-  const waitFor = input.waitFor ?? ((selector: string, timeoutMs: number) => waitForSelector(selector, timeoutMs, isActive))
+  const waitFor = (selector: string, timeoutMs: number, route?: string) =>
+    input.waitFor ? input.waitFor(selector, timeoutMs) : waitForSelector(selector, timeoutMs, isActive, route)
   const verb = isDesktop ? 'Click' : 'Tap'
   const base = `/workspaces/${workspaceId}`
   const routes = {
@@ -391,7 +409,7 @@ export function buildTourSteps(input: BuildTourStepsInput): TourStep[] {
       if (route) {
         step.before = async () => {
           if (window.location.pathname !== route) navigate(route)
-          if (!centered) await waitFor(selector, TOUR_TARGET_TIMEOUT_MS)
+          if (!centered) await waitFor(selector, TOUR_TARGET_TIMEOUT_MS, route)
         }
       } else if (spec.sample && !centered) {
         // The sample stage mounts in the same commit that moves the tour here.
