@@ -31,6 +31,7 @@ import { getWorkspace } from '@/lib/api/workspaces'
 import { membershipFrom } from '@/lib/workspace-role'
 import { formatDate } from '@/lib/format-date'
 import { WorkspaceNav, workspacePrimaryTabItems } from '@/components/workspace-nav'
+import { TourReplayButton } from '@/components/tour/tour-replay-button'
 import { TOUR_ANCHORS, tourAttr } from '@/components/tour/tour-anchors'
 import { MobileTabBar } from '@/components/mobile-tab-bar'
 import { WorkspaceBrandLink } from '@/components/workspace-brand-link'
@@ -155,6 +156,7 @@ export default function VendorsPage({ params }: { params: { id: string } }) {
         <WorkspaceBrandLink name={workspace?.name} collapsed={collapsed} />
       )}
       navigation={({ collapsed }) => <WorkspaceNav workspaceId={workspaceId} collapsed={collapsed} />}
+      userFooter={({ collapsed }) => <TourReplayButton collapsed={collapsed} />}
       mobileTabBar={({ moreActive, onMoreClick }) => (
         <MobileTabBar items={workspacePrimaryTabItems(workspaceId)} moreActive={moreActive} onMoreClick={onMoreClick} />
       )}
