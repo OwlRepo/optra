@@ -19,28 +19,45 @@ async function openFresh(page: Page, userId: string, workspaceId: string, path =
   await page.goto(`/workspaces/${workspaceId}/${path}`)
 }
 
-const skipButton = (page: Page) => page.getByRole('button', { name: /^Skip/ })
-const nextButton = (page: Page) => page.getByRole('button', { name: 'Next', exact: true })
-const finishButton = (page: Page) => page.getByRole('button', { name: 'Finish', exact: true })
-const runButton = (page: Page) => page.getByRole('button', { name: 'Run comparison' })
-const flagButton = (page: Page) => page.getByRole('button', { name: 'Review sample price flag' })
-const verifyButton = (page: Page) => page.getByRole('button', { name: 'Verify match' })
+const PROCUREMENT_H1 = 'Purchase orders, invoices & goods receipts'
 
-/** Walks the tour: Next on explanation steps, a real tap on each interactive one, until Finish. */
-async function walkToFinish(page: Page) {
+const tooltip = (page: Page) => page.getByRole('alertdialog')
+const skipButton = (page: Page) => tooltip(page).getByRole('button', { name: /^Skip/ })
+const nextButton = (page: Page) => tooltip(page).getByRole('button', { name: 'Next', exact: true })
+const finishButton = (page: Page) => tooltip(page).getByRole('button', { name: 'Finish', exact: true })
+// The tooltip's own action buttons on the three interactive steps.
+const ACTION_LABELS = ['Run comparison', 'Open price flag', 'Verify match'] as const
+const actionButton = (page: Page, label: (typeof ACTION_LABELS)[number]) => tooltip(page).getByRole('button', { name: label, exact: true })
+// The real controls on the sample stage, which the same steps spotlight.
+const stageControl = (page: Page, label: (typeof ACTION_LABELS)[number]) =>
+  label === 'Open price flag'
+    ? page.getByRole('button', { name: 'Review sample price flag' })
+    : page.getByRole('region', { name: /sample data/i }).getByRole('button', { name: label, exact: true })
+
+/**
+ * Walks the tour from the tooltip: Next on explanation steps; on the three
+ * interactive steps either the tooltip's action button (keyboard path) or a real
+ * tap on the spotlighted control. Stops when Finish shows.
+ */
+async function walkToFinish(page: Page, interactive: 'button' | 'control' = 'button') {
   for (let i = 0; i < 40; i += 1) {
-    const actionable = finishButton(page)
-      .or(nextButton(page))
-      .or(runButton(page))
-      .or(flagButton(page))
-      .or(verifyButton(page))
+    let actionable = finishButton(page).or(nextButton(page))
+    for (const label of ACTION_LABELS) actionable = actionable.or(actionButton(page, label))
     await actionable.first().waitFor({ state: 'visible' })
 
     if (await finishButton(page).isVisible()) return
-    if (await verifyButton(page).isVisible()) await verifyButton(page).click()
-    else if (await flagButton(page).isVisible()) await flagButton(page).click()
-    else if (await runButton(page).isVisible()) await runButton(page).click()
-    else await nextButton(page).click()
+    let acted = false
+    for (const label of ACTION_LABELS) {
+      if (await actionButton(page, label).isVisible()) {
+        if (interactive === 'button') await actionButton(page, label).click()
+        else await stageControl(page, label).click()
+        // The step advances when the scripted stage finishes; don't act on it twice.
+        await expect(actionButton(page, label)).toBeHidden()
+        acted = true
+        break
+      }
+    }
+    if (!acted) await nextButton(page).click()
   }
   throw new Error('tour did not reach Finish within 40 actions')
 }
@@ -65,9 +82,19 @@ test.describe('as ownerA', () => {
     expect(await storedStatus(page, state.ownerA.userId)).toBe('skipped')
 
     await page.reload()
-    await expect(page.getByRole('heading', { level: 1, name: 'Purchase orders', exact: true })).toBeVisible()
+    await expect(page.getByRole('heading', { level: 1, name: PROCUREMENT_H1, exact: true })).toBeVisible()
     await page.waitForLoadState('networkidle')
     await expect(skipButton(page)).toHaveCount(0)
+  })
+
+  test('error: Esc ends the tour as skipped instead of advancing it', async ({ page }) => {
+    await openFresh(page, state.ownerA.userId, state.ownerA.workspaceId)
+    await expect(skipButton(page)).toBeVisible()
+
+    await page.keyboard.press('Escape')
+
+    await expect(skipButton(page)).toHaveCount(0)
+    expect(await storedStatus(page, state.ownerA.userId)).toBe('skipped')
   })
 
   test('edge: at 390px the run reaches Finish using tab-bar and centered steps', async ({ page }) => {
@@ -91,8 +118,12 @@ test.describe('as memberA', () => {
     await expect(skipButton(page)).toBeVisible()
 
     const explanation = page.getByText(/owners (and|or) admins/i)
+    const heading = tooltip(page).getByRole('heading', { level: 2 })
     for (let i = 0; i < 10 && !(await explanation.first().isVisible()); i += 1) {
+      const current = (await heading.textContent()) ?? ''
       await nextButton(page).click()
+      // Wait for the next step to render before looking again.
+      await heading.filter({ hasNotText: current }).waitFor()
     }
 
     await expect(explanation.first()).toBeVisible()
@@ -108,7 +139,7 @@ test.describe('as ownerA, happy paths', () => {
     await openFresh(page, state.ownerA.userId, state.ownerA.workspaceId)
     await expect(skipButton(page)).toBeVisible()
 
-    await walkToFinish(page)
+    await walkToFinish(page, 'control')
     await finishButton(page).click()
 
     await expect(finishButton(page)).toHaveCount(0)
@@ -122,7 +153,7 @@ test.describe('as ownerA, happy paths', () => {
   test('happy: the "Take the tour" button replays a finished tour', async ({ page }) => {
     // Storage state already holds a completed record: nothing auto-starts.
     await page.goto(`/workspaces/${state.ownerA.workspaceId}/procurement`)
-    await expect(page.getByRole('heading', { level: 1, name: 'Purchase orders', exact: true })).toBeVisible()
+    await expect(page.getByRole('heading', { level: 1, name: PROCUREMENT_H1, exact: true })).toBeVisible()
     await expect(skipButton(page)).toHaveCount(0)
 
     await page.locator('[data-tour="tour-replay"]').getByText('Take the tour').click()
@@ -133,7 +164,10 @@ test.describe('as ownerA, happy paths', () => {
   test('happy: no non-GET request reaches /api/workspaces/* while the tour and sample stage run', async ({ page }) => {
     const writes: string[] = []
     page.on('request', (request) => {
-      if (request.method() !== 'GET' && new URL(request.url()).pathname.startsWith('/api/workspaces/')) {
+      const { pathname } = new URL(request.url())
+      // The Overview page itself marks its activity feed seen when the tour visits it; that is not the tour or the stage.
+      if (pathname.endsWith('/events/mark-seen')) return
+      if (request.method() !== 'GET' && pathname.startsWith('/api/workspaces/')) {
         writes.push(`${request.method()} ${request.url()}`)
       }
     })
