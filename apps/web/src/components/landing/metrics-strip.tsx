@@ -1,7 +1,7 @@
-// Verifiable facts only: uploads accept PDF/CSV/XLSX, every PO line is
+// Verifiable facts only: uploads accept PDF/CSV/XLSX/Photo, every PO line is
 // compared, and a person records one of four decision outcomes.
 const METRICS = [
-  { label: 'Formats read', value: 'PDF · CSV · XLSX', tint: '' },
+  { label: 'Formats read', value: 'PDF · CSV · XLSX · Photo', tint: '' },
   { label: 'Lines checked', value: 'Each PO line', tint: '' },
   { label: 'Final call', value: 'A person', tint: 'text-primary-strong' },
 ]

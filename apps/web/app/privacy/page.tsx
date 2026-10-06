@@ -30,7 +30,7 @@ export default function PrivacyPage() {
   const processors: string[][] = [
     [
       'OpenAI',
-      'Text and page images of uploaded documents, product photos, and questions you type into chat with the passages retrieved to answer them.',
+      'Text and page images of uploaded documents (including photos of paper documents, with location data removed first), product photos, and questions you type into chat with the passages retrieved to answer them.',
       'AI reading and matching, and chat answers. Provided by OpenAI, L.L.C. in the United States. Not used for training by default; abuse-monitoring logs may be kept up to 30 days.',
     ],
     ['Resend', 'Your email address and the sign-in codes we email you.', 'Email delivery.'],

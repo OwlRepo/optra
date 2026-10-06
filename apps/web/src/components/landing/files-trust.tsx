@@ -1,6 +1,6 @@
 import { Reveal } from '@/components/motion/reveal'
 
-const FILE_TYPES = ['PDF', 'Scanned PDF', 'CSV', 'XLSX']
+const FILE_TYPES = ['PDF', 'Scanned PDF', 'Photo', 'CSV', 'XLSX']
 
 // These four claims must stay accurate to the actual deployment (per-workspace
 // isolation, per-workspace storage, real deletion). Do not add certifications
