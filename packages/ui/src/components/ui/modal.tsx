@@ -27,6 +27,23 @@ export interface ModalProps {
   children: React.ReactNode
   footer?: React.ReactNode
   size?: ModalSize
+  /** Focus target on close; falls back to the element focused before open. */
+  returnFocusRef?: React.RefObject<HTMLElement | null>
+}
+
+const FOCUSABLE_SELECTOR = [
+  'a[href]',
+  'button:not([disabled])',
+  'input:not([disabled]):not([type="hidden"])',
+  'select:not([disabled])',
+  'textarea:not([disabled])',
+  '[tabindex]',
+].join(',')
+
+function getFocusable(panel: HTMLElement): HTMLElement[] {
+  return Array.from(panel.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter(
+    (el) => el.getAttribute('tabindex') !== '-1' && !el.hasAttribute('disabled') && !el.hidden,
+  )
 }
 
 const sizeClasses: Record<ModalSize, string> = {
@@ -52,9 +69,15 @@ export function Modal({
   children,
   footer,
   size = 'md',
+  returnFocusRef,
 }: ModalProps) {
   const panelRef = React.useRef<HTMLDivElement>(null)
   const onCloseRef = React.useRef(onClose)
+  const returnFocusRefRef = React.useRef(returnFocusRef)
+
+  React.useEffect(() => {
+    returnFocusRefRef.current = returnFocusRef
+  }, [returnFocusRef])
 
   React.useEffect(() => {
     onCloseRef.current = onClose
@@ -63,16 +86,44 @@ export function Modal({
   React.useEffect(() => {
     if (!open) return
 
+    const previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null
     panelRef.current?.focus()
 
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === 'Escape') {
         onCloseRef.current()
+        return
+      }
+      if (event.key !== 'Tab') return
+      const panel = panelRef.current
+      if (!panel) return
+      const focusable = getFocusable(panel)
+      if (focusable.length === 0) {
+        event.preventDefault()
+        panel.focus()
+        return
+      }
+      const first = focusable[0]
+      const last = focusable[focusable.length - 1]
+      const active = document.activeElement
+      if (event.shiftKey) {
+        if (active === first || active === panel || !panel.contains(active)) {
+          event.preventDefault()
+          last.focus()
+        }
+      } else if (active === last || active === panel || !panel.contains(active)) {
+        event.preventDefault()
+        first.focus()
       }
     }
 
     document.addEventListener('keydown', handleKeyDown)
-    return () => document.removeEventListener('keydown', handleKeyDown)
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown)
+      const target = returnFocusRefRef.current?.current
+      if (target?.isConnected) target.focus()
+      else if (previouslyFocused?.isConnected) previouslyFocused.focus()
+    }
   }, [open])
 
   if (!open) {
