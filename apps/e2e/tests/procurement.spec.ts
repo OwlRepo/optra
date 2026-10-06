@@ -441,4 +441,35 @@ test.describe('photo and batch intake', () => {
     await expect(modal.getByLabel('Accepted line 2')).toHaveValue(/^3/)
     await expect(modal.getByLabel('Rejected line 2')).toHaveValue(/^1/)
   })
+  test('edge: keyboard focus stays inside the upload dialog and returns to the upload button on Escape', async ({ page }) => {
+    await page.goto(`/workspaces/${state.ownerA.workspaceId}/procurement`)
+    const upload = page.getByRole('button', { name: 'Upload purchase order' }).first()
+    await upload.focus()
+    await upload.click()
+    const dialog = page.getByRole('dialog')
+    await expect(dialog).toBeVisible()
+
+    for (let i = 0; i < 15; i += 1) {
+      await page.keyboard.press('Tab')
+      const inside = await page.evaluate(() => document.activeElement?.closest('[role="dialog"]') !== null)
+      expect(inside, `focus is inside the dialog after Tab ${i + 1}`).toBe(true)
+    }
+
+    await page.keyboard.press('Escape')
+    await expect(dialog).toBeHidden()
+    await expect(upload).toBeFocused()
+  })
+
+  test('edge: arrow keys move between procurement tabs', async ({ page }) => {
+    await page.goto(`/workspaces/${state.ownerA.workspaceId}/procurement`)
+    const first = page.getByRole('tab', { name: /^Purchase Orders/ })
+    await first.focus()
+    await expect(first).toHaveAttribute('aria-selected', 'true')
+
+    await page.keyboard.press('ArrowRight')
+
+    const second = page.getByRole('tab', { name: /^Invoices/ })
+    await expect(second).toHaveAttribute('aria-selected', 'true')
+    await expect(second).toBeFocused()
+  })
 })

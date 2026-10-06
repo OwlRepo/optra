@@ -648,6 +648,27 @@ describe('ProcurementPage', () => {
       expect(dialog()?.getAttribute('data-tab')).toBe('invoices')
     })
 
+    it('edge: the tabs are wired to a tabpanel that is labelled by the active tab and follows it', async () => {
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme', role: 'owner' })
+      listPurchaseOrdersMock.mockResolvedValue([donePurchaseOrder])
+      listInvoicesMock.mockResolvedValue([doneInvoice])
+
+      renderPage()
+
+      const poTab = await screen.findByRole('tab', { name: /^Purchase Orders/ })
+      expect(poTab.id).toBe('procurement-tab-purchase-orders')
+      const panel = screen.getByRole('tabpanel')
+      expect(panel.id).toBe('procurement-panel-purchase-orders')
+      expect(panel.getAttribute('aria-labelledby')).toBe('procurement-tab-purchase-orders')
+      expect(poTab.getAttribute('aria-controls')).toBe(panel.id)
+
+      fireEvent.click(screen.getByRole('tab', { name: /^Invoices/ }))
+
+      const next = screen.getByRole('tabpanel')
+      expect(next.id).toBe('procurement-panel-invoices')
+      expect(next.getAttribute('aria-labelledby')).toBe('procurement-tab-invoices')
+    })
+
     it('regression: both upload buttons keep the data-tour anchors the onboarding tour targets', async () => {
       getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme', role: 'owner' })
       listPurchaseOrdersMock.mockResolvedValue([donePurchaseOrder])

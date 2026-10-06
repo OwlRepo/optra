@@ -300,6 +300,23 @@ describe('DocumentReviewModal', () => {
     )
   })
 
+  it('edge: the page tabs control a tabpanel around the image that follows the active page', async () => {
+    listDocumentLinesMock.mockResolvedValue(pageOf([makeLine()], makeDocument({ pageCount: 3 })))
+    renderModal()
+
+    await screen.findByLabelText('Quantity line 1')
+    const panel = screen.getByRole('tabpanel')
+    expect(panel.id).toBe('review-page-panel-1')
+    expect(panel.getAttribute('aria-labelledby')).toBe('review-page-tab-1')
+    expect(screen.getByRole('tab', { name: 'Page 1' }).getAttribute('aria-controls')).toBe('review-page-panel-1')
+    expect(panel.contains(screen.getByRole('img', { name: /^Page 1 of 3/ }))).toBe(true)
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Page 2' }))
+
+    expect(screen.getByRole('tabpanel').id).toBe('review-page-panel-2')
+    expect(screen.getByRole('tabpanel').getAttribute('aria-labelledby')).toBe('review-page-tab-2')
+  })
+
   it('regression: removing a line leaves it out of the confirmed payload', async () => {
     listDocumentLinesMock.mockResolvedValue(
       pageOf([makeLine({ id: 'l1', lineNumber: 1 }), makeLine({ id: 'l2', lineNumber: 2, sku: 'B-200' })]),
