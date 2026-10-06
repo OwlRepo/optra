@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test'
 import { closeDb, storageKeyOf, type StoredTable } from '../support/db'
 import { objectExists } from '../support/s3'
 import { loadState, storageStateFor, type SeedState } from '../support/state'
-import { batchRow, fillBatchRow, openBatchDialog, submitBatch, uploadInvoiceFile } from '../support/flows'
+import { batchRow, closeBatchDialog, fillBatchRow, openBatchDialog, submitBatch, uploadInvoiceFile } from '../support/flows'
 import {
   bff,
   bffBytes,
@@ -80,6 +80,7 @@ test('a purchase order CSV uploads, parses, and its source downloads byte-for-by
   await fillBatchRow(row, 'purchase-orders', state.ownerA.vendorId, `PO-${state.run}`)
   await submitBatch(page)
   await expect(row).toHaveAttribute('data-status', 'done')
+  await closeBatchDialog(page)
 
   purchaseOrderId = await expectParsedStoredAndDownloadable(page, 'purchase-orders', file)
 })
@@ -92,6 +93,7 @@ test('an invoice linked to that purchase order does the same', async ({ page }) 
   await fillBatchRow(row, 'invoices', purchaseOrderId, `INV-${state.run}`)
   await submitBatch(page)
   await expect(row).toHaveAttribute('data-status', 'done')
+  await closeBatchDialog(page)
 
   await expectParsedStoredAndDownloadable(page, 'invoices', file)
 })
@@ -104,6 +106,7 @@ test('a goods receipt linked to that purchase order does the same', async ({ pag
   await fillBatchRow(row, 'goods-receipts', purchaseOrderId, `GRN-${state.run}`)
   await submitBatch(page)
   await expect(row).toHaveAttribute('data-status', 'done')
+  await closeBatchDialog(page)
 
   await expectParsedStoredAndDownloadable(page, 'goods-receipts', file)
 })

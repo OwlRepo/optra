@@ -60,6 +60,15 @@ export async function submitBatch(page: Page): Promise<void> {
   await page.getByRole('dialog').getByRole('button', { name: 'Upload', exact: true }).click()
 }
 
+/**
+ * The dialog stays open after a run so every row's status stays readable;
+ * close it as a person would before acting on the page behind it.
+ */
+export async function closeBatchDialog(page: Page): Promise<void> {
+  await page.getByRole('dialog').getByRole('button', { name: 'Close dialog' }).click()
+  await expect(page.getByRole('dialog')).toBeHidden()
+}
+
 async function uploadFileViaDialog(
   page: Page,
   owner: Owner,
@@ -74,6 +83,7 @@ async function uploadFileViaDialog(
   await fillBatchRow(row, tab, link, number)
   await submitBatch(page)
   await expect(row).toHaveAttribute('data-status', 'done')
+  await closeBatchDialog(page)
   const parsed = await waitForRow<Doc>(
     page,
     `/api/workspaces/${owner.workspaceId}/procurement/${tab}`,
