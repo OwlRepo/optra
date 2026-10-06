@@ -1,5 +1,6 @@
 import { index, integer, jsonb, numeric, pgTable, text, timestamp, uuid, varchar } from 'drizzle-orm/pg-core'
 import { goodsReceipts } from './goodsReceipts'
+import { users } from './users'
 import { workspaces } from './workspaces'
 
 // workspaceId is denormalized here (not derived via a goodsReceipts join) so
@@ -35,14 +36,16 @@ export const goodsReceiptLineItems = pgTable(
     // Captured, never converted (POLICY v1 #4).
     uom: varchar('uom', { length: 20 }),
     rawRow: jsonb('raw_row'),
-    // Provenance, matching poLineItems minus the two PDF-only columns:
-    // extraction_confidence and extractor_version are written only by the PDF
-    // path, and PDF goods receipts are deferred in S5 (the extraction chain
-    // cannot express received-vs-accepted). Shipping them now would mean two
-    // permanently-null columns; they arrive with PDF support, additively.
+    // Provenance, matching poLineItems. Confidence and version are written by
+    // the photo path; PDF goods receipts remain unsupported.
     sourceSheet: varchar('source_sheet', { length: 200 }),
     sourceRow: integer('source_row'),
+    extractionConfidence: numeric('extraction_confidence'),
+    extractorVersion: varchar('extractor_version', { length: 40 }),
     sourceKind: varchar('source_kind', { length: 20 }).notNull().default('csv'),
+    editedAt: timestamp('edited_at'),
+    editedBy: uuid('edited_by').references(() => users.id, { onDelete: 'set null' }),
+    extractedValues: jsonb('extracted_values'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
   },
   (table) => ({
