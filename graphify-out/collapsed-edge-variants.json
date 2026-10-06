@@ -1811,6 +1811,34 @@
     },
     {
       "endpoints": [
+        "apps_api_src_procurement_comparison_service_spec",
+        "apps_api_src_procurement_comparison_service_spec_cited"
+      ],
+      "variants": [
+        {
+          "source": "apps_api_src_procurement_comparison_service_spec",
+          "target": "apps_api_src_procurement_comparison_service_spec_cited",
+          "relation": "contains",
+          "confidence": "EXTRACTED",
+          "source_file": "apps/api/src/procurement/comparison.service.spec.ts",
+          "source_location": "L2207",
+          "weight": 1.0,
+          "_origin": "ast"
+        },
+        {
+          "source": "apps_api_src_procurement_comparison_service_spec",
+          "target": "apps_api_src_procurement_comparison_service_spec_cited",
+          "relation": "contains",
+          "confidence": "EXTRACTED",
+          "source_file": "apps/api/src/procurement/comparison.service.spec.ts",
+          "source_location": "L3083",
+          "weight": 1.0,
+          "_origin": "ast"
+        }
+      ]
+    },
+    {
+      "endpoints": [
         "apps_api_src_procurement_dto_compare_documents_dto_comparedocumentsdto",
         "apps_api_src_procurement_dto_compare_documents_dto_ts_isuuid"
       ],
@@ -2005,6 +2033,346 @@
     },
     {
       "endpoints": [
+        "apps_api_src_procurement_dto_review_document_dto_reviewlinedto",
+        "apps_api_src_procurement_dto_review_document_dto_ts_isoptional"
+      ],
+      "variants": [
+        {
+          "source": "apps_api_src_procurement_dto_review_document_dto_reviewlinedto",
+          "target": "apps_api_src_procurement_dto_review_document_dto_ts_isoptional",
+          "relation": "references",
+          "confidence": "EXTRACTED",
+          "source_file": "apps/api/src/procurement/dto/review-document.dto.ts",
+          "source_location": "L22",
+          "weight": 1.0,
+          "context": "decorator",
+          "_origin": "ast"
+        },
+        {
+          "source": "apps_api_src_procurement_dto_review_document_dto_reviewlinedto",
+          "target": "apps_api_src_procurement_dto_review_document_dto_ts_isoptional",
+          "relation": "references",
+          "confidence": "EXTRACTED",
+          "source_file": "apps/api/src/procurement/dto/review-document.dto.ts",
+          "source_location": "L26",
+          "weight": 1.0,
+          "context": "decorator",
+          "_origin": "ast"
+        },
+        {
+          "source": "apps_api_src_procurement_dto_review_document_dto_reviewlinedto",
+          "target": "apps_api_src_procurement_dto_review_document_dto_ts_isoptional",
+          "relation": "references",
+          "confidence": "EXTRACTED",
+          "source_file": "apps/api/src/procurement/dto/review-document.dto.ts",
+          "source_location": "L31",
+          "weight": 1.0,
+          "context": "decorator",
+          "_origin": "ast"
+        },
+        {
+          "source": "apps_api_src_procurement_dto_review_document_dto_reviewlinedto",
+          "target": "apps_api_src_procurement_dto_review_document_dto_ts_isoptional",
+          "relation": "references",
+          "confidence": "EXTRACTED",
+          "source_file": "apps/api/src/procurement/dto/review-document.dto.ts",
+          "source_location": "L36",
+          "weight": 1.0,
+          "context": "decorator",
+          "_origin": "ast"
+        },
+        {
+          "source": "apps_api_src_procurement_dto_review_document_dto_reviewlinedto",
+          "target": "apps_api_src_procurement_dto_review_document_dto_ts_isoptional",
+          "relation": "references",
+          "confidence": "EXTRACTED",
+          "source_file": "apps/api/src/procurement/dto/review-document.dto.ts",
+          "source_location": "L41",
+          "weight": 1.0,
+          "context": "decorator",
+          "_origin": "ast"
+        },
+        {
+          "source": "apps_api_src_procurement_dto_review_document_dto_reviewlinedto",
+          "target": "apps_api_src_procurement_dto_review_document_dto_ts_isoptional",
+          "relation": "references",
+          "confidence": "EXTRACTED",
+          "source_file": "apps/api/src/procurement/dto/review-document.dto.ts",
+          "source_location": "L46",
+          "weight": 1.0,
+          "context": "decorator",
+          "_origin": "ast"
+        },
+        {
+          "source": "apps_api_src_procurement_dto_review_document_dto_reviewlinedto",
+          "target": "apps_api_src_procurement_dto_review_document_dto_ts_isoptional",
+          "relation": "references",
+          "confidence": "EXTRACTED",
+          "source_file": "apps/api/src/procurement/dto/review-document.dto.ts",
+          "source_location": "L51",
+          "weight": 1.0,
+          "context": "decorator",
+          "_origin": "ast"
+        },
+        {
+          "source": "apps_api_src_procurement_dto_review_document_dto_reviewlinedto",
+          "target": "apps_api_src_procurement_dto_review_document_dto_ts_isoptional",
+          "relation": "references",
+          "confidence": "EXTRACTED",
+          "source_file": "apps/api/src/procurement/dto/review-document.dto.ts",
+          "source_location": "L56",
+          "weight": 1.0,
+          "context": "decorator",
+          "_origin": "ast"
+        },
+        {
+          "source": "apps_api_src_procurement_dto_review_document_dto_reviewlinedto",
+          "target": "apps_api_src_procurement_dto_review_document_dto_ts_isoptional",
+          "relation": "references",
+          "confidence": "EXTRACTED",
+          "source_file": "apps/api/src/procurement/dto/review-document.dto.ts",
+          "source_location": "L61",
+          "weight": 1.0,
+          "context": "decorator",
+          "_origin": "ast"
+        },
+        {
+          "source": "apps_api_src_procurement_dto_review_document_dto_reviewlinedto",
+          "target": "apps_api_src_procurement_dto_review_document_dto_ts_isoptional",
+          "relation": "references",
+          "confidence": "EXTRACTED",
+          "source_file": "apps/api/src/procurement/dto/review-document.dto.ts",
+          "source_location": "L66",
+          "weight": 1.0,
+          "context": "decorator",
+          "_origin": "ast"
+        }
+      ]
+    },
+    {
+      "endpoints": [
+        "apps_api_src_procurement_dto_review_document_dto_reviewlinedto",
+        "apps_api_src_procurement_dto_review_document_dto_ts_isstring"
+      ],
+      "variants": [
+        {
+          "source": "apps_api_src_procurement_dto_review_document_dto_reviewlinedto",
+          "target": "apps_api_src_procurement_dto_review_document_dto_ts_isstring",
+          "relation": "references",
+          "confidence": "EXTRACTED",
+          "source_file": "apps/api/src/procurement/dto/review-document.dto.ts",
+          "source_location": "L27",
+          "weight": 1.0,
+          "context": "decorator",
+          "_origin": "ast"
+        },
+        {
+          "source": "apps_api_src_procurement_dto_review_document_dto_reviewlinedto",
+          "target": "apps_api_src_procurement_dto_review_document_dto_ts_isstring",
+          "relation": "references",
+          "confidence": "EXTRACTED",
+          "source_file": "apps/api/src/procurement/dto/review-document.dto.ts",
+          "source_location": "L32",
+          "weight": 1.0,
+          "context": "decorator",
+          "_origin": "ast"
+        },
+        {
+          "source": "apps_api_src_procurement_dto_review_document_dto_reviewlinedto",
+          "target": "apps_api_src_procurement_dto_review_document_dto_ts_isstring",
+          "relation": "references",
+          "confidence": "EXTRACTED",
+          "source_file": "apps/api/src/procurement/dto/review-document.dto.ts",
+          "source_location": "L37",
+          "weight": 1.0,
+          "context": "decorator",
+          "_origin": "ast"
+        },
+        {
+          "source": "apps_api_src_procurement_dto_review_document_dto_reviewlinedto",
+          "target": "apps_api_src_procurement_dto_review_document_dto_ts_isstring",
+          "relation": "references",
+          "confidence": "EXTRACTED",
+          "source_file": "apps/api/src/procurement/dto/review-document.dto.ts",
+          "source_location": "L42",
+          "weight": 1.0,
+          "context": "decorator",
+          "_origin": "ast"
+        },
+        {
+          "source": "apps_api_src_procurement_dto_review_document_dto_reviewlinedto",
+          "target": "apps_api_src_procurement_dto_review_document_dto_ts_isstring",
+          "relation": "references",
+          "confidence": "EXTRACTED",
+          "source_file": "apps/api/src/procurement/dto/review-document.dto.ts",
+          "source_location": "L47",
+          "weight": 1.0,
+          "context": "decorator",
+          "_origin": "ast"
+        },
+        {
+          "source": "apps_api_src_procurement_dto_review_document_dto_reviewlinedto",
+          "target": "apps_api_src_procurement_dto_review_document_dto_ts_isstring",
+          "relation": "references",
+          "confidence": "EXTRACTED",
+          "source_file": "apps/api/src/procurement/dto/review-document.dto.ts",
+          "source_location": "L52",
+          "weight": 1.0,
+          "context": "decorator",
+          "_origin": "ast"
+        },
+        {
+          "source": "apps_api_src_procurement_dto_review_document_dto_reviewlinedto",
+          "target": "apps_api_src_procurement_dto_review_document_dto_ts_isstring",
+          "relation": "references",
+          "confidence": "EXTRACTED",
+          "source_file": "apps/api/src/procurement/dto/review-document.dto.ts",
+          "source_location": "L57",
+          "weight": 1.0,
+          "context": "decorator",
+          "_origin": "ast"
+        },
+        {
+          "source": "apps_api_src_procurement_dto_review_document_dto_reviewlinedto",
+          "target": "apps_api_src_procurement_dto_review_document_dto_ts_isstring",
+          "relation": "references",
+          "confidence": "EXTRACTED",
+          "source_file": "apps/api/src/procurement/dto/review-document.dto.ts",
+          "source_location": "L62",
+          "weight": 1.0,
+          "context": "decorator",
+          "_origin": "ast"
+        },
+        {
+          "source": "apps_api_src_procurement_dto_review_document_dto_reviewlinedto",
+          "target": "apps_api_src_procurement_dto_review_document_dto_ts_isstring",
+          "relation": "references",
+          "confidence": "EXTRACTED",
+          "source_file": "apps/api/src/procurement/dto/review-document.dto.ts",
+          "source_location": "L67",
+          "weight": 1.0,
+          "context": "decorator",
+          "_origin": "ast"
+        }
+      ]
+    },
+    {
+      "endpoints": [
+        "apps_api_src_procurement_dto_review_document_dto_reviewlinedto",
+        "apps_api_src_procurement_dto_review_document_dto_ts_matches"
+      ],
+      "variants": [
+        {
+          "source": "apps_api_src_procurement_dto_review_document_dto_reviewlinedto",
+          "target": "apps_api_src_procurement_dto_review_document_dto_ts_matches",
+          "relation": "references",
+          "confidence": "EXTRACTED",
+          "source_file": "apps/api/src/procurement/dto/review-document.dto.ts",
+          "source_location": "L38",
+          "weight": 1.0,
+          "context": "decorator",
+          "_origin": "ast"
+        },
+        {
+          "source": "apps_api_src_procurement_dto_review_document_dto_reviewlinedto",
+          "target": "apps_api_src_procurement_dto_review_document_dto_ts_matches",
+          "relation": "references",
+          "confidence": "EXTRACTED",
+          "source_file": "apps/api/src/procurement/dto/review-document.dto.ts",
+          "source_location": "L43",
+          "weight": 1.0,
+          "context": "decorator",
+          "_origin": "ast"
+        },
+        {
+          "source": "apps_api_src_procurement_dto_review_document_dto_reviewlinedto",
+          "target": "apps_api_src_procurement_dto_review_document_dto_ts_matches",
+          "relation": "references",
+          "confidence": "EXTRACTED",
+          "source_file": "apps/api/src/procurement/dto/review-document.dto.ts",
+          "source_location": "L48",
+          "weight": 1.0,
+          "context": "decorator",
+          "_origin": "ast"
+        },
+        {
+          "source": "apps_api_src_procurement_dto_review_document_dto_reviewlinedto",
+          "target": "apps_api_src_procurement_dto_review_document_dto_ts_matches",
+          "relation": "references",
+          "confidence": "EXTRACTED",
+          "source_file": "apps/api/src/procurement/dto/review-document.dto.ts",
+          "source_location": "L58",
+          "weight": 1.0,
+          "context": "decorator",
+          "_origin": "ast"
+        },
+        {
+          "source": "apps_api_src_procurement_dto_review_document_dto_reviewlinedto",
+          "target": "apps_api_src_procurement_dto_review_document_dto_ts_matches",
+          "relation": "references",
+          "confidence": "EXTRACTED",
+          "source_file": "apps/api/src/procurement/dto/review-document.dto.ts",
+          "source_location": "L63",
+          "weight": 1.0,
+          "context": "decorator",
+          "_origin": "ast"
+        },
+        {
+          "source": "apps_api_src_procurement_dto_review_document_dto_reviewlinedto",
+          "target": "apps_api_src_procurement_dto_review_document_dto_ts_matches",
+          "relation": "references",
+          "confidence": "EXTRACTED",
+          "source_file": "apps/api/src/procurement/dto/review-document.dto.ts",
+          "source_location": "L68",
+          "weight": 1.0,
+          "context": "decorator",
+          "_origin": "ast"
+        }
+      ]
+    },
+    {
+      "endpoints": [
+        "apps_api_src_procurement_dto_review_document_dto_reviewlinedto",
+        "apps_api_src_procurement_dto_review_document_dto_ts_maxlength"
+      ],
+      "variants": [
+        {
+          "source": "apps_api_src_procurement_dto_review_document_dto_reviewlinedto",
+          "target": "apps_api_src_procurement_dto_review_document_dto_ts_maxlength",
+          "relation": "references",
+          "confidence": "EXTRACTED",
+          "source_file": "apps/api/src/procurement/dto/review-document.dto.ts",
+          "source_location": "L28",
+          "weight": 1.0,
+          "context": "decorator",
+          "_origin": "ast"
+        },
+        {
+          "source": "apps_api_src_procurement_dto_review_document_dto_reviewlinedto",
+          "target": "apps_api_src_procurement_dto_review_document_dto_ts_maxlength",
+          "relation": "references",
+          "confidence": "EXTRACTED",
+          "source_file": "apps/api/src/procurement/dto/review-document.dto.ts",
+          "source_location": "L33",
+          "weight": 1.0,
+          "context": "decorator",
+          "_origin": "ast"
+        },
+        {
+          "source": "apps_api_src_procurement_dto_review_document_dto_reviewlinedto",
+          "target": "apps_api_src_procurement_dto_review_document_dto_ts_maxlength",
+          "relation": "references",
+          "confidence": "EXTRACTED",
+          "source_file": "apps/api/src/procurement/dto/review-document.dto.ts",
+          "source_location": "L53",
+          "weight": 1.0,
+          "context": "decorator",
+          "_origin": "ast"
+        }
+      ]
+    },
+    {
+      "endpoints": [
         "apps_api_src_procurement_procurement_controller_procurementcontroller_dismiss",
         "apps_api_src_procurement_procurement_controller_ts_param"
       ],
@@ -2015,7 +2383,7 @@
           "relation": "references",
           "confidence": "EXTRACTED",
           "source_file": "apps/api/src/procurement/procurement.controller.ts",
-          "source_location": "L262",
+          "source_location": "L486",
           "weight": 1.0,
           "context": "decorator",
           "_origin": "ast"
@@ -2026,7 +2394,7 @@
           "relation": "references",
           "confidence": "EXTRACTED",
           "source_file": "apps/api/src/procurement/procurement.controller.ts",
-          "source_location": "L263",
+          "source_location": "L487",
           "weight": 1.0,
           "context": "decorator",
           "_origin": "ast"
@@ -2045,7 +2413,7 @@
           "relation": "references",
           "confidence": "EXTRACTED",
           "source_file": "apps/api/src/procurement/procurement.controller.ts",
-          "source_location": "L207",
+          "source_location": "L254",
           "weight": 1.0,
           "context": "decorator",
           "_origin": "ast"
@@ -2056,7 +2424,7 @@
           "relation": "references",
           "confidence": "EXTRACTED",
           "source_file": "apps/api/src/procurement/procurement.controller.ts",
-          "source_location": "L208",
+          "source_location": "L255",
           "weight": 1.0,
           "context": "decorator",
           "_origin": "ast"
@@ -2075,7 +2443,7 @@
           "relation": "references",
           "confidence": "EXTRACTED",
           "source_file": "apps/api/src/procurement/procurement.controller.ts",
-          "source_location": "L197",
+          "source_location": "L244",
           "weight": 1.0,
           "context": "decorator",
           "_origin": "ast"
@@ -2086,7 +2454,7 @@
           "relation": "references",
           "confidence": "EXTRACTED",
           "source_file": "apps/api/src/procurement/procurement.controller.ts",
-          "source_location": "L198",
+          "source_location": "L245",
           "weight": 1.0,
           "context": "decorator",
           "_origin": "ast"
@@ -2105,7 +2473,7 @@
           "relation": "references",
           "confidence": "EXTRACTED",
           "source_file": "apps/api/src/procurement/procurement.controller.ts",
-          "source_location": "L187",
+          "source_location": "L234",
           "weight": 1.0,
           "context": "decorator",
           "_origin": "ast"
@@ -2116,7 +2484,130 @@
           "relation": "references",
           "confidence": "EXTRACTED",
           "source_file": "apps/api/src/procurement/procurement.controller.ts",
-          "source_location": "L188",
+          "source_location": "L235",
+          "weight": 1.0,
+          "context": "decorator",
+          "_origin": "ast"
+        }
+      ]
+    },
+    {
+      "endpoints": [
+        "apps_api_src_procurement_procurement_controller_procurementcontroller_getgoodsreceiptpage",
+        "apps_api_src_procurement_procurement_controller_ts_param"
+      ],
+      "variants": [
+        {
+          "source": "apps_api_src_procurement_procurement_controller_procurementcontroller_getgoodsreceiptpage",
+          "target": "apps_api_src_procurement_procurement_controller_ts_param",
+          "relation": "references",
+          "confidence": "EXTRACTED",
+          "source_file": "apps/api/src/procurement/procurement.controller.ts",
+          "source_location": "L409",
+          "weight": 1.0,
+          "context": "decorator",
+          "_origin": "ast"
+        },
+        {
+          "source": "apps_api_src_procurement_procurement_controller_procurementcontroller_getgoodsreceiptpage",
+          "target": "apps_api_src_procurement_procurement_controller_ts_param",
+          "relation": "references",
+          "confidence": "EXTRACTED",
+          "source_file": "apps/api/src/procurement/procurement.controller.ts",
+          "source_location": "L410",
+          "weight": 1.0,
+          "context": "decorator",
+          "_origin": "ast"
+        },
+        {
+          "source": "apps_api_src_procurement_procurement_controller_procurementcontroller_getgoodsreceiptpage",
+          "target": "apps_api_src_procurement_procurement_controller_ts_param",
+          "relation": "references",
+          "confidence": "EXTRACTED",
+          "source_file": "apps/api/src/procurement/procurement.controller.ts",
+          "source_location": "L411",
+          "weight": 1.0,
+          "context": "decorator",
+          "_origin": "ast"
+        }
+      ]
+    },
+    {
+      "endpoints": [
+        "apps_api_src_procurement_procurement_controller_procurementcontroller_getinvoicepage",
+        "apps_api_src_procurement_procurement_controller_ts_param"
+      ],
+      "variants": [
+        {
+          "source": "apps_api_src_procurement_procurement_controller_procurementcontroller_getinvoicepage",
+          "target": "apps_api_src_procurement_procurement_controller_ts_param",
+          "relation": "references",
+          "confidence": "EXTRACTED",
+          "source_file": "apps/api/src/procurement/procurement.controller.ts",
+          "source_location": "L359",
+          "weight": 1.0,
+          "context": "decorator",
+          "_origin": "ast"
+        },
+        {
+          "source": "apps_api_src_procurement_procurement_controller_procurementcontroller_getinvoicepage",
+          "target": "apps_api_src_procurement_procurement_controller_ts_param",
+          "relation": "references",
+          "confidence": "EXTRACTED",
+          "source_file": "apps/api/src/procurement/procurement.controller.ts",
+          "source_location": "L360",
+          "weight": 1.0,
+          "context": "decorator",
+          "_origin": "ast"
+        },
+        {
+          "source": "apps_api_src_procurement_procurement_controller_procurementcontroller_getinvoicepage",
+          "target": "apps_api_src_procurement_procurement_controller_ts_param",
+          "relation": "references",
+          "confidence": "EXTRACTED",
+          "source_file": "apps/api/src/procurement/procurement.controller.ts",
+          "source_location": "L361",
+          "weight": 1.0,
+          "context": "decorator",
+          "_origin": "ast"
+        }
+      ]
+    },
+    {
+      "endpoints": [
+        "apps_api_src_procurement_procurement_controller_procurementcontroller_getpurchaseorderpage",
+        "apps_api_src_procurement_procurement_controller_ts_param"
+      ],
+      "variants": [
+        {
+          "source": "apps_api_src_procurement_procurement_controller_procurementcontroller_getpurchaseorderpage",
+          "target": "apps_api_src_procurement_procurement_controller_ts_param",
+          "relation": "references",
+          "confidence": "EXTRACTED",
+          "source_file": "apps/api/src/procurement/procurement.controller.ts",
+          "source_location": "L309",
+          "weight": 1.0,
+          "context": "decorator",
+          "_origin": "ast"
+        },
+        {
+          "source": "apps_api_src_procurement_procurement_controller_procurementcontroller_getpurchaseorderpage",
+          "target": "apps_api_src_procurement_procurement_controller_ts_param",
+          "relation": "references",
+          "confidence": "EXTRACTED",
+          "source_file": "apps/api/src/procurement/procurement.controller.ts",
+          "source_location": "L310",
+          "weight": 1.0,
+          "context": "decorator",
+          "_origin": "ast"
+        },
+        {
+          "source": "apps_api_src_procurement_procurement_controller_procurementcontroller_getpurchaseorderpage",
+          "target": "apps_api_src_procurement_procurement_controller_ts_param",
+          "relation": "references",
+          "confidence": "EXTRACTED",
+          "source_file": "apps/api/src/procurement/procurement.controller.ts",
+          "source_location": "L311",
           "weight": 1.0,
           "context": "decorator",
           "_origin": "ast"
@@ -2135,7 +2626,7 @@
           "relation": "references",
           "confidence": "EXTRACTED",
           "source_file": "apps/api/src/procurement/procurement.controller.ts",
-          "source_location": "L287",
+          "source_location": "L511",
           "weight": 1.0,
           "context": "decorator",
           "_origin": "ast"
@@ -2146,7 +2637,97 @@
           "relation": "references",
           "confidence": "EXTRACTED",
           "source_file": "apps/api/src/procurement/procurement.controller.ts",
-          "source_location": "L288",
+          "source_location": "L512",
+          "weight": 1.0,
+          "context": "decorator",
+          "_origin": "ast"
+        }
+      ]
+    },
+    {
+      "endpoints": [
+        "apps_api_src_procurement_procurement_controller_procurementcontroller_listgoodsreceiptlines",
+        "apps_api_src_procurement_procurement_controller_ts_param"
+      ],
+      "variants": [
+        {
+          "source": "apps_api_src_procurement_procurement_controller_procurementcontroller_listgoodsreceiptlines",
+          "target": "apps_api_src_procurement_procurement_controller_ts_param",
+          "relation": "references",
+          "confidence": "EXTRACTED",
+          "source_file": "apps/api/src/procurement/procurement.controller.ts",
+          "source_location": "L399",
+          "weight": 1.0,
+          "context": "decorator",
+          "_origin": "ast"
+        },
+        {
+          "source": "apps_api_src_procurement_procurement_controller_procurementcontroller_listgoodsreceiptlines",
+          "target": "apps_api_src_procurement_procurement_controller_ts_param",
+          "relation": "references",
+          "confidence": "EXTRACTED",
+          "source_file": "apps/api/src/procurement/procurement.controller.ts",
+          "source_location": "L400",
+          "weight": 1.0,
+          "context": "decorator",
+          "_origin": "ast"
+        }
+      ]
+    },
+    {
+      "endpoints": [
+        "apps_api_src_procurement_procurement_controller_procurementcontroller_listinvoicelines",
+        "apps_api_src_procurement_procurement_controller_ts_param"
+      ],
+      "variants": [
+        {
+          "source": "apps_api_src_procurement_procurement_controller_procurementcontroller_listinvoicelines",
+          "target": "apps_api_src_procurement_procurement_controller_ts_param",
+          "relation": "references",
+          "confidence": "EXTRACTED",
+          "source_file": "apps/api/src/procurement/procurement.controller.ts",
+          "source_location": "L349",
+          "weight": 1.0,
+          "context": "decorator",
+          "_origin": "ast"
+        },
+        {
+          "source": "apps_api_src_procurement_procurement_controller_procurementcontroller_listinvoicelines",
+          "target": "apps_api_src_procurement_procurement_controller_ts_param",
+          "relation": "references",
+          "confidence": "EXTRACTED",
+          "source_file": "apps/api/src/procurement/procurement.controller.ts",
+          "source_location": "L350",
+          "weight": 1.0,
+          "context": "decorator",
+          "_origin": "ast"
+        }
+      ]
+    },
+    {
+      "endpoints": [
+        "apps_api_src_procurement_procurement_controller_procurementcontroller_listpurchaseorderlines",
+        "apps_api_src_procurement_procurement_controller_ts_param"
+      ],
+      "variants": [
+        {
+          "source": "apps_api_src_procurement_procurement_controller_procurementcontroller_listpurchaseorderlines",
+          "target": "apps_api_src_procurement_procurement_controller_ts_param",
+          "relation": "references",
+          "confidence": "EXTRACTED",
+          "source_file": "apps/api/src/procurement/procurement.controller.ts",
+          "source_location": "L299",
+          "weight": 1.0,
+          "context": "decorator",
+          "_origin": "ast"
+        },
+        {
+          "source": "apps_api_src_procurement_procurement_controller_procurementcontroller_listpurchaseorderlines",
+          "target": "apps_api_src_procurement_procurement_controller_ts_param",
+          "relation": "references",
+          "confidence": "EXTRACTED",
+          "source_file": "apps/api/src/procurement/procurement.controller.ts",
+          "source_location": "L300",
           "weight": 1.0,
           "context": "decorator",
           "_origin": "ast"
@@ -2165,7 +2746,7 @@
           "relation": "references",
           "confidence": "EXTRACTED",
           "source_file": "apps/api/src/procurement/procurement.controller.ts",
-          "source_location": "L276",
+          "source_location": "L500",
           "weight": 1.0,
           "context": "decorator",
           "_origin": "ast"
@@ -2176,7 +2757,97 @@
           "relation": "references",
           "confidence": "EXTRACTED",
           "source_file": "apps/api/src/procurement/procurement.controller.ts",
-          "source_location": "L277",
+          "source_location": "L501",
+          "weight": 1.0,
+          "context": "decorator",
+          "_origin": "ast"
+        }
+      ]
+    },
+    {
+      "endpoints": [
+        "apps_api_src_procurement_procurement_controller_procurementcontroller_reviewgoodsreceipt",
+        "apps_api_src_procurement_procurement_controller_ts_param"
+      ],
+      "variants": [
+        {
+          "source": "apps_api_src_procurement_procurement_controller_procurementcontroller_reviewgoodsreceipt",
+          "target": "apps_api_src_procurement_procurement_controller_ts_param",
+          "relation": "references",
+          "confidence": "EXTRACTED",
+          "source_file": "apps/api/src/procurement/procurement.controller.ts",
+          "source_location": "L422",
+          "weight": 1.0,
+          "context": "decorator",
+          "_origin": "ast"
+        },
+        {
+          "source": "apps_api_src_procurement_procurement_controller_procurementcontroller_reviewgoodsreceipt",
+          "target": "apps_api_src_procurement_procurement_controller_ts_param",
+          "relation": "references",
+          "confidence": "EXTRACTED",
+          "source_file": "apps/api/src/procurement/procurement.controller.ts",
+          "source_location": "L423",
+          "weight": 1.0,
+          "context": "decorator",
+          "_origin": "ast"
+        }
+      ]
+    },
+    {
+      "endpoints": [
+        "apps_api_src_procurement_procurement_controller_procurementcontroller_reviewinvoice",
+        "apps_api_src_procurement_procurement_controller_ts_param"
+      ],
+      "variants": [
+        {
+          "source": "apps_api_src_procurement_procurement_controller_procurementcontroller_reviewinvoice",
+          "target": "apps_api_src_procurement_procurement_controller_ts_param",
+          "relation": "references",
+          "confidence": "EXTRACTED",
+          "source_file": "apps/api/src/procurement/procurement.controller.ts",
+          "source_location": "L372",
+          "weight": 1.0,
+          "context": "decorator",
+          "_origin": "ast"
+        },
+        {
+          "source": "apps_api_src_procurement_procurement_controller_procurementcontroller_reviewinvoice",
+          "target": "apps_api_src_procurement_procurement_controller_ts_param",
+          "relation": "references",
+          "confidence": "EXTRACTED",
+          "source_file": "apps/api/src/procurement/procurement.controller.ts",
+          "source_location": "L373",
+          "weight": 1.0,
+          "context": "decorator",
+          "_origin": "ast"
+        }
+      ]
+    },
+    {
+      "endpoints": [
+        "apps_api_src_procurement_procurement_controller_procurementcontroller_reviewpurchaseorder",
+        "apps_api_src_procurement_procurement_controller_ts_param"
+      ],
+      "variants": [
+        {
+          "source": "apps_api_src_procurement_procurement_controller_procurementcontroller_reviewpurchaseorder",
+          "target": "apps_api_src_procurement_procurement_controller_ts_param",
+          "relation": "references",
+          "confidence": "EXTRACTED",
+          "source_file": "apps/api/src/procurement/procurement.controller.ts",
+          "source_location": "L322",
+          "weight": 1.0,
+          "context": "decorator",
+          "_origin": "ast"
+        },
+        {
+          "source": "apps_api_src_procurement_procurement_controller_procurementcontroller_reviewpurchaseorder",
+          "target": "apps_api_src_procurement_procurement_controller_ts_param",
+          "relation": "references",
+          "confidence": "EXTRACTED",
+          "source_file": "apps/api/src/procurement/procurement.controller.ts",
+          "source_location": "L323",
           "weight": 1.0,
           "context": "decorator",
           "_origin": "ast"
@@ -2225,7 +2896,7 @@
           "relation": "contains",
           "confidence": "EXTRACTED",
           "source_file": "apps/api/src/procurement/procurement-parse.processor.spec.ts",
-          "source_location": "L46",
+          "source_location": "L47",
           "weight": 1.0,
           "_origin": "ast"
         },
@@ -2235,7 +2906,7 @@
           "relation": "contains",
           "confidence": "EXTRACTED",
           "source_file": "apps/api/src/procurement/procurement-parse.processor.spec.ts",
-          "source_location": "L52",
+          "source_location": "L53",
           "weight": 1.0,
           "_origin": "ast"
         },
@@ -2245,7 +2916,7 @@
           "relation": "contains",
           "confidence": "EXTRACTED",
           "source_file": "apps/api/src/procurement/procurement-parse.processor.spec.ts",
-          "source_location": "L58",
+          "source_location": "L59",
           "weight": 1.0,
           "_origin": "ast"
         }
@@ -3381,7 +4052,7 @@
           "confidence": "INFERRED",
           "confidence_score": 0.8,
           "source_file": "apps/e2e/tests/matching-alignment.spec.ts",
-          "source_location": "L59",
+          "source_location": "L42",
           "weight": 1.0,
           "_origin": "ast"
         }
@@ -3412,7 +4083,7 @@
           "confidence": "INFERRED",
           "confidence_score": 0.8,
           "source_file": "apps/e2e/tests/procurement.spec.ts",
-          "source_location": "L21",
+          "source_location": "L35",
           "weight": 1.0,
           "_origin": "ast"
         }
@@ -3537,90 +4208,6 @@
           "source_location": "L19",
           "weight": 1.0,
           "_origin": "ast"
-        }
-      ]
-    },
-    {
-      "endpoints": [
-        "docs_ai_risk_register_catalog_match_integrity",
-        "docs_ai_risk_register_launch_hardening_bugs"
-      ],
-      "variants": [
-        {
-          "source": "docs_ai_risk_register_launch_hardening_bugs",
-          "target": "docs_ai_risk_register_catalog_match_integrity",
-          "relation": "references",
-          "confidence": "EXTRACTED",
-          "confidence_score": 1.0,
-          "source_file": "docs/ai/risk-register.md",
-          "source_location": null,
-          "weight": 1.0
-        },
-        {
-          "source": "docs_ai_risk_register_catalog_match_integrity",
-          "target": "docs_ai_risk_register_launch_hardening_bugs",
-          "relation": "conceptually_related_to",
-          "confidence": "EXTRACTED",
-          "confidence_score": 1.0,
-          "source_file": "docs/ai/risk-register.md",
-          "source_location": null,
-          "weight": 1.0
-        }
-      ]
-    },
-    {
-      "endpoints": [
-        "docs_ai_risk_register_schema_constraints_drizzle_kit",
-        "docs_ai_risk_register_vendor_price_terms_service"
-      ],
-      "variants": [
-        {
-          "source": "docs_ai_risk_register_schema_constraints_drizzle_kit",
-          "target": "docs_ai_risk_register_vendor_price_terms_service",
-          "relation": "references",
-          "confidence": "EXTRACTED",
-          "confidence_score": 1.0,
-          "source_file": "docs/ai/risk-register.md",
-          "source_location": null,
-          "weight": 1.0
-        },
-        {
-          "source": "docs_ai_risk_register_schema_constraints_drizzle_kit",
-          "target": "docs_ai_risk_register_vendor_price_terms_service",
-          "relation": "rationale_for",
-          "confidence": "EXTRACTED",
-          "confidence_score": 1.0,
-          "source_file": "docs/ai/risk-register.md",
-          "source_location": null,
-          "weight": 1.0
-        }
-      ]
-    },
-    {
-      "endpoints": [
-        "docs_business_unit_economics_photo_check_unit",
-        "docs_business_unit_economics_solo_plan"
-      ],
-      "variants": [
-        {
-          "source": "docs_business_unit_economics_solo_plan",
-          "target": "docs_business_unit_economics_photo_check_unit",
-          "relation": "references",
-          "confidence": "EXTRACTED",
-          "confidence_score": 1.0,
-          "source_file": "docs/business/unit-economics.md",
-          "source_location": null,
-          "weight": 1.0
-        },
-        {
-          "source": "docs_business_unit_economics_photo_check_unit",
-          "target": "docs_business_unit_economics_solo_plan",
-          "relation": "rationale_for",
-          "confidence": "EXTRACTED",
-          "confidence_score": 1.0,
-          "source_file": "docs/business/unit-economics.md",
-          "source_location": "L45",
-          "weight": 1.0
         }
       ]
     },
