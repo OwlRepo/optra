@@ -86,6 +86,7 @@ async function seedPo(workspaceId: string, options: SeedOptions = {}, lines: Lin
       updatedAt: OLD,
     })
     .returning()
+  if (lines.length === 0) return { po, lines: [] }
   const inserted = await db
     .insert(poLineItems)
     .values(

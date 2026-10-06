@@ -28,3 +28,11 @@ process.env.TZ = 'UTC'
 // socket was reused and the request died as "socket hang up" (about one full
 // run in six). A fresh connection per request removes the stale pool.
 http.globalAgent = new http.Agent({ keepAlive: false })
+
+// Every supertest request comes from 127.0.0.1, so a whole spec file shares
+// one global-throttler bucket (60/min by default) and long suites such as
+// procurement trip 429s unrelated to the behaviour under test. Same reason
+// and value as the browser suite (apps/e2e/support/env.ts). The per-route
+// auth limits (`@Throttle`) are not configurable and keep their own e2e
+// coverage in auth-rate-limit.e2e-spec.ts.
+process.env.THROTTLE_DEFAULT_LIMIT ??= '100000'

@@ -2159,7 +2159,7 @@ describe('Procurement flow (e2e)', () => {
 
     it('error: a non-member of the workspace is refused 403 on lines, pages and review', async () => {
       const { invoiceId, base } = await seedPhotoInvoice('outsider')
-      const outsider = await seedOwnerWithWorkspace(app, `${prefix}photo-outsider@example.com`, 'Photo Outsider')
+      const outsider = await seedOwnerWithWorkspace(app, `${prefix}photo-nonmember@example.com`, 'Photo Outsider')
       const auth = `Bearer ${outsider.accessToken}`
 
       const answers = [

@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test'
 import { closeDb } from '../support/db'
 import { uploadInvoiceFile, uploadPurchaseOrder } from '../support/flows'
 import { loadState, storageStateFor, type SeedState } from '../support/state'
-import { bff, fixture, toast, waitForRow } from '../support/ui'
+import { bff, fixture, toast } from '../support/ui'
 
 // The matching screens' aligned behaviour (frames 2.1, 2.7, 2.9, 2.11), driven
 // the way an owner does it. Serial: one PO + one mismatched invoice are set up
