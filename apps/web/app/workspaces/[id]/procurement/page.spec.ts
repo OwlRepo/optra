@@ -124,8 +124,18 @@ vi.mock('@/components/procurement/document-review-modal', async () => {
       docId: string
       canEdit: boolean
       onReviewed: () => void
-    }) =>
-      props.open
+      returnFocusRef?: { current: HTMLElement | null }
+    }) => {
+      // Mimics the real Modal: on unmount, focus goes to `returnFocusRef`.
+      const returnFocusRef = props.returnFocusRef
+      React.useEffect(
+        () => () => {
+          const target = returnFocusRef?.current
+          if (target?.isConnected) target.focus()
+        },
+        [returnFocusRef],
+      )
+      return props.open
         ? React.createElement(
             'div',
             {
@@ -137,7 +147,8 @@ vi.mock('@/components/procurement/document-review-modal', async () => {
             React.createElement('button', { onClick: props.onReviewed }, 'stub reviewed'),
             React.createElement('button', { onClick: props.onClose }, 'stub review close'),
           )
-        : null,
+        : null
+    },
   }
 })
 

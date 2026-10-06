@@ -189,6 +189,9 @@ export default function ProcurementPage({ params }: { params: { id: string } }) 
   // The Review button that opened the modal, and the tab's upload buttons: the
   // fallback home for focus once Review has gone (a reviewed document loses it).
   const reviewTriggerRef = React.useRef<HTMLElement | null>(null)
+  // Where the review modal hands focus back on close (Modal `returnFocusRef`);
+  // set by the close handlers below, just before the modal unmounts.
+  const reviewReturnRef = React.useRef<HTMLElement | null>(null)
   const desktopUploadRef = React.useRef<HTMLButtonElement>(null)
   const mobileUploadRef = React.useRef<HTMLButtonElement>(null)
 
@@ -610,22 +613,24 @@ export default function ProcurementPage({ params }: { params: { id: string } }) 
     </Card>
   )
 
-  // The modal unmounts with focus inside it. Cancelled: back to the Review
-  // button. Reviewed: that button is about to disappear, so go to the tab's
-  // upload button (the desktop one is display:none below lg and refuses focus,
-  // so the mobile one takes over there), else the active tab.
-  const restoreFocusAfterReview = (reviewed: boolean) => {
+  // The modal unmounts with focus inside it; Modal hands focus to
+  // `reviewReturnRef`. Cancelled: back to the Review button. Reviewed: that
+  // button is about to disappear, so go to the tab's upload button (the desktop
+  // one is display:none below lg and refuses focus, so the mobile one takes
+  // over there), else the active tab.
+  const setReviewReturn = (reviewed: boolean) => {
     const trigger = reviewTriggerRef.current
     reviewTriggerRef.current = null
     if (!reviewed && trigger?.isConnected) {
-      trigger.focus()
+      reviewReturnRef.current = trigger
       return
     }
-    desktopUploadRef.current?.focus()
-    if (document.activeElement === desktopUploadRef.current && desktopUploadRef.current) return
-    mobileUploadRef.current?.focus()
-    if (document.activeElement === mobileUploadRef.current && mobileUploadRef.current) return
-    document.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')?.focus()
+    const shown = (el: HTMLElement | null) => el !== null && getComputedStyle(el).display !== 'none'
+    reviewReturnRef.current = shown(desktopUploadRef.current)
+      ? desktopUploadRef.current
+      : shown(mobileUploadRef.current)
+        ? mobileUploadRef.current
+        : document.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')
   }
 
   // Frame 4.2 (C-3 #13): below lg the active tab's upload is one full-width
@@ -682,11 +687,18 @@ export default function ProcurementPage({ params }: { params: { id: string } }) 
                 value={activeTab}
                 onValueChange={(id) => setActiveTab(id as DocTab)}
                 aria-label="Document type"
+                idPrefix="procurement"
                 fullWidth
               />
             </div>
             {mobileUpload}
-            {renderDocsPanel(activeTab)}
+            <div
+              role="tabpanel"
+              id={`procurement-panel-${activeTab}`}
+              aria-labelledby={`procurement-tab-${activeTab}`}
+            >
+              {renderDocsPanel(activeTab)}
+            </div>
             <div {...tourAttr(TOUR_ANCHORS.procurementCompare)}>{comparePanel}</div>
           </>
         )}
@@ -711,16 +723,17 @@ export default function ProcurementPage({ params }: { params: { id: string } }) 
         <DocumentReviewModal
           open
           onClose={() => {
+            setReviewReturn(false)
             setReviewTarget(null)
-            restoreFocusAfterReview(false)
           }}
           workspaceId={workspaceId}
           kind={reviewTarget.kind}
           docId={reviewTarget.docId}
           canEdit={canManage}
+          returnFocusRef={reviewReturnRef}
           onReviewed={() => {
+            setReviewReturn(true)
             setReviewTarget(null)
-            restoreFocusAfterReview(true)
             void refreshDocs()
           }}
         />

@@ -166,6 +166,7 @@ export function DocumentReviewModal({
   docId,
   canEdit,
   onReviewed,
+  returnFocusRef,
 }: {
   open: boolean
   onClose: () => void
@@ -174,6 +175,8 @@ export function DocumentReviewModal({
   docId: string
   canEdit: boolean
   onReviewed: () => void
+  /** Where focus goes when the modal closes; defaults to whatever opened it. */
+  returnFocusRef?: React.RefObject<HTMLElement | null>
 }) {
   const { toast } = useToast()
   const toastRef = React.useRef(toast)
@@ -284,6 +287,7 @@ export function DocumentReviewModal({
       aria-label="Review document"
       bodyClassName="p-0"
       footer={footer}
+      returnFocusRef={returnFocusRef}
     >
       {loadError !== null ? (
         <div className="p-[26px]">
@@ -316,6 +320,7 @@ export function DocumentReviewModal({
               {pageCount > 1 ? (
                 <Tabs
                   aria-label="Pages"
+                  idPrefix="review-page"
                   items={Array.from({ length: pageCount }, (_, i) => ({ id: String(i + 1), label: `Page ${i + 1}` }))}
                   value={String(pageNumber)}
                   onValueChange={(id) => {
@@ -324,6 +329,16 @@ export function DocumentReviewModal({
                   }}
                 />
               ) : null}
+              {/* A tabpanel only when there are page tabs for it to belong to. */}
+              <div
+                {...(pageCount > 1
+                  ? {
+                      role: 'tabpanel',
+                      id: `review-page-panel-${pageNumber}`,
+                      'aria-labelledby': `review-page-tab-${pageNumber}`,
+                    }
+                  : {})}
+              >
               {imageFailed ? (
                 <p className="rounded-[12px] border border-border-panel bg-surface-subtle p-4 text-[14px] text-ink-body">
                   This page image could not be loaded.
@@ -337,6 +352,7 @@ export function DocumentReviewModal({
                   onError={() => setImageFailed(true)}
                 />
               )}
+              </div>
             </section>
           ) : null}
 
