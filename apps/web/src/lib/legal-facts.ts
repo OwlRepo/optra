@@ -8,7 +8,7 @@ export const DELETION_SLA_DAYS = 30
 export const VPS_BACKUP_COUNT = 7
 export const REFUND_WINDOW_DAYS = 14
 export const TRIAL_DAYS = 14
-// Owner preflight, confirmed 2026-10-06.
+// Owner preflight, confirmed 2026-10-02.
 export const HOSTING_COUNTRY: string | null = 'Singapore' // Hetzner Singapore
 export const OFFSITE_BACKUP_RETENTION_DAYS: number | null = 30
 export const FILE_STORAGE_REGION = 'United States (Backblaze B2 us-east-005)'
