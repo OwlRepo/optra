@@ -43,6 +43,23 @@ const llm = new ChatOpenAI({
   timeout: Number.parseInt(process.env.OPENAI_TIMEOUT_MS ?? '30000', 10),
 })
 
+// Photo path only. A page of 200 lines is far below this; the cap exists so a
+// runaway generation cannot bill an unbounded completion. A separate instance
+// because maxTokens is a constructor option in @langchain/openai ^0.2, and the
+// PDF path must stay exactly as it was.
+const IMAGE_MAX_OUTPUT_TOKENS = 8000
+const imageLlm = new ChatOpenAI({
+  modelName: resolveModel('procurement'),
+  temperature: 0,
+  timeout: Number.parseInt(process.env.OPENAI_TIMEOUT_MS ?? '30000', 10),
+  maxTokens: IMAGE_MAX_OUTPUT_TOKENS,
+})
+
+// Model output is untrusted. Same shape the review DTO accepts, so a value the
+// model produced can always be saved back through the review form.
+const IMAGE_DECIMAL = /^-?\d{1,15}(\.\d{1,8})?$/
+const IMAGE_DESCRIPTION_MAX = 2000
+
 // Stamped onto every line this chain extracts, so a row parsed under an older
 // prompt is distinguishable from one parsed under a newer one. Bump it whenever
 // the prompt or the normalization rules change in a way that could move output.
@@ -239,6 +256,7 @@ export async function extractLineItemsFromImages(
     options.meter,
     imageSystemPrompt(kind),
     normalizeImageResult(kind),
+    imageLlm,
   )
 }
 
@@ -248,12 +266,13 @@ async function invokeAndParse(
   meter?: TokenMeter,
   systemPrompt: string = EXTRACTION_SYSTEM_PROMPT,
   normalize: (parsed: RawExtractionResult) => ProcurementExtractionResult = normalizeResult,
+  model: Pick<ChatOpenAI, 'invoke'> = llm,
 ): Promise<ProcurementExtractionResult> {
   let lastTimeoutError: unknown
 
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
-      const response = await llm.invoke([new SystemMessage(systemPrompt), humanMessage])
+      const response = await model.invoke([new SystemMessage(systemPrompt), humanMessage])
       meter?.record(response)
 
       if (isRefusal(response)) {
@@ -343,15 +362,15 @@ function normalizeImageResult(kind: ProcurementExtractionKind) {
 }
 
 function normalizeImageItem(raw: RawExtractedItem, kind: ProcurementExtractionKind): ExtractedLineItem | null {
-  const base = normalizeItem(raw)
+  const base = normalizeItem(raw, true)
   if (!raw || typeof raw !== 'object') {
     return null
   }
 
   const uom = nullableString(raw.uom)
-  const quantityReceived = nullableNumericString(raw.quantityReceived)
-  const quantityAccepted = nullableNumericString(raw.quantityAccepted)
-  const quantityRejected = nullableNumericString(raw.quantityRejected)
+  const quantityReceived = boundedNumericString(raw.quantityReceived)
+  const quantityAccepted = boundedNumericString(raw.quantityAccepted)
+  const quantityRejected = boundedNumericString(raw.quantityRejected)
   const hasReceiptQuantity =
     kind === 'goods_receipt' && (quantityReceived !== null || quantityAccepted !== null || quantityRejected !== null)
 
@@ -373,16 +392,21 @@ function normalizeImageItem(raw: RawExtractedItem, kind: ProcurementExtractionKi
     : { ...core, uom }
 }
 
-function normalizeItem(raw: RawExtractedItem): ExtractedLineItem | null {
+// `bounded` is the image path: strict numerics and a capped description. The
+// PDF path calls this with the default and is unchanged.
+function normalizeItem(raw: RawExtractedItem, bounded = false): ExtractedLineItem | null {
   if (!raw || typeof raw !== 'object') {
     return null
   }
 
+  const numeric = bounded ? boundedNumericString : nullableNumericString
   const sku = nullableString(raw.sku)
-  const description = nullableString(raw.description)
-  const quantity = nullableNumericString(raw.quantity)
-  const unitPrice = nullableNumericString(raw.unitPrice)
-  const lineTotal = nullableNumericString(raw.lineTotal)
+  const rawDescription = nullableString(raw.description)
+  const description =
+    bounded && rawDescription !== null ? rawDescription.slice(0, IMAGE_DESCRIPTION_MAX) : rawDescription
+  const quantity = numeric(raw.quantity)
+  const unitPrice = numeric(raw.unitPrice)
+  const lineTotal = numeric(raw.lineTotal)
   const confidence = nullableConfidence(raw.confidence)
 
   // Every extracted field is nullable by design (real invoices have partial
@@ -412,6 +436,11 @@ function nullableNumericString(value: unknown): string | null {
     return null
   }
   return Number.isFinite(Number(trimmed)) ? trimmed : null
+}
+
+function boundedNumericString(value: unknown): string | null {
+  const trimmed = nullableString(value)
+  return trimmed !== null && IMAGE_DECIMAL.test(trimmed) ? trimmed : null
 }
 
 function nullableConfidence(value: unknown): number | null {
