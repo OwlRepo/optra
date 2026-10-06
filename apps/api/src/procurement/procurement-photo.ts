@@ -4,9 +4,22 @@ import { PDFDocument } from 'pdf-lib'
 import sharp, { type OutputInfo } from 'sharp'
 
 // Small VPS: one libvips worker, no pixel cache, so five 12MP phone photos
-// cannot pile up in memory.
+// cannot pile up in memory. Both settings are PROCESS-GLOBAL: they apply to every
+// sharp user in this API process (catalog photos too), not just this module.
 sharp.concurrency(1)
 sharp.cache(false)
+
+// sharp.concurrency(1) limits threads per decode, not decodes in flight, so
+// concurrent uploads would still hold several 50MP decodes in memory at once.
+// A process-wide promise queue lets exactly one normalizePhoto decode run.
+let decodeQueue: Promise<unknown> = Promise.resolve()
+
+function withDecodeSlot<T>(task: () => Promise<T>): Promise<T> {
+  const run = decodeQueue.then(task, task)
+  // The queue only orders; a failed task must not poison the next one.
+  decodeQueue = run.catch(() => undefined)
+  return run
+}
 
 export const MAX_PHOTO_PAGES = 5
 export const MAX_PHOTO_EDGE = 2048
@@ -48,11 +61,13 @@ export async function normalizePhoto(buf: Buffer, n: number): Promise<{ data: Bu
   }
 
   try {
-    return await sharp(buf, { limitInputPixels: MAX_INPUT_PIXELS, failOn: 'error' })
-      .rotate()
-      .resize({ width: MAX_PHOTO_EDGE, height: MAX_PHOTO_EDGE, fit: 'inside', withoutEnlargement: true })
-      .jpeg({ quality: 85 })
-      .toBuffer({ resolveWithObject: true })
+    return await withDecodeSlot(() =>
+      sharp(buf, { limitInputPixels: MAX_INPUT_PIXELS, failOn: 'error' })
+        .rotate()
+        .resize({ width: MAX_PHOTO_EDGE, height: MAX_PHOTO_EDGE, fit: 'inside', withoutEnlargement: true })
+        .jpeg({ quality: 85 })
+        .toBuffer({ resolveWithObject: true }),
+    )
   } catch (error) {
     const message = error instanceof Error ? error.message.toLowerCase() : ''
     if (message.includes('pixel limit') || message.includes('exceeds')) {

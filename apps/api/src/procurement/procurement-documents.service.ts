@@ -20,6 +20,9 @@ import { normalizePhoto, photoPageKey, photoStorageKey, stitchPagesToPdf } from 
 
 type InsertedHeader = { id: string; name: string; status: 'pending' | 'processing' | 'done' | 'failed' }
 
+// Characters of the first photo's base name kept for the document name and key.
+const MAX_PHOTO_BASE_NAME = 100
+
 // Columns every header insert carries; the photo path adds the review ones.
 type CommonHeaderValues = {
   workspaceId: string
@@ -170,7 +173,9 @@ export class ProcurementDocumentsService {
     const pdf = Buffer.from(await stitchPagesToPdf(pages))
 
     const firstName = decodeUploadFilename(files[0].originalname)
-    const name = `${basename(firstName, extname(firstName))}.pdf`
+    // Cut before it becomes the document name and the storage key; an upload
+    // filename has no length bound of its own.
+    const name = `${basename(firstName, extname(firstName)).slice(0, MAX_PHOTO_BASE_NAME)}.pdf`
     const storageKey = photoStorageKey(workspaceId, kind, randomUUID(), name)
 
     const savedKeys: string[] = []

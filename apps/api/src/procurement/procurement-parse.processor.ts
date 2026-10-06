@@ -21,12 +21,13 @@ import { isBudgetExceeded } from '../limits/usage.service'
 import { StorageService } from '../storage/storage.service'
 import { StorageObjectNotFoundError } from '../storage/storage.errors'
 import { isEmptyLineItem, mapRowToLineItem, receivedQuantity, validateLineItem } from './column-mapping'
-import { pdfExtractionEnabled } from './procurement-feature-flags'
+import { PHOTO_UPLOADS_DISABLED_MESSAGE, pdfExtractionEnabled } from './procurement-feature-flags'
 import { ProcurementDocKind, ProcurementParseService, RECONCILE_JOB_NAME } from './procurement-parse.service'
 import { ProcurementCompareService } from './procurement-compare.service'
 import { assertUnreachable, docLabel } from './procurement-kind'
 import { ProcurementExtractionService } from './procurement-extraction.service'
 import { photoPageKey } from './procurement-photo'
+import { MAX_REVIEW_LINES } from './procurement-review'
 
 interface MappedLineItemRow {
   sku: string | null
@@ -254,6 +255,12 @@ export class ProcurementParseProcessor {
     kind: ProcurementDocKind,
     doc: { storageKey: string | null; pageCount: number | null; workspaceId: string },
   ): Promise<{ rows: MappedLineItemRow[]; detectedKind: DetectedProcurementKind | undefined }> {
+    // Same flag as the PDF branch: a photo queued before the flag went off must
+    // not reach the model afterwards.
+    if (!pdfExtractionEnabled()) {
+      throw new ProcurementParseInputError(PHOTO_UPLOADS_DISABLED_MESSAGE)
+    }
+
     if (!doc.storageKey || doc.pageCount === null || doc.pageCount < 1) {
       throw new ProcurementParseInputError('This photo document has no pages. Upload it again.')
     }
@@ -284,6 +291,13 @@ export class ProcurementParseProcessor {
       extractionConfidence: item.confidence === null ? null : String(item.confidence),
       extractorVersion: IMAGE_EXTRACTOR_VERSION,
     }))
+    // The review form accepts at most MAX_REVIEW_LINES lines; more than that
+    // would leave a document nobody can confirm. Retrying cannot shrink it.
+    if (rows.length > MAX_REVIEW_LINES) {
+      throw new ProcurementParseInputError(
+        `This photo document has more than ${MAX_REVIEW_LINES} lines. Split it into smaller uploads.`,
+      )
+    }
     return { rows, detectedKind: result.detectedKind }
   }
 

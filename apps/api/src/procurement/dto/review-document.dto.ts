@@ -10,6 +10,7 @@ import {
   MaxLength,
   ValidateNested,
 } from 'class-validator'
+import { MAX_REVIEW_LINES } from '../procurement-review'
 
 // Plain decimal string, as the numeric columns hold it: no separators, no
 // currency symbol, no exponent. Bounded so a pasted blob cannot reach Postgres.
@@ -71,7 +72,7 @@ export class ReviewLineDto {
 export class ReviewDocumentDto {
   @IsArray()
   @ArrayNotEmpty()
-  @ArrayMaxSize(200)
+  @ArrayMaxSize(MAX_REVIEW_LINES)
   @ValidateNested({ each: true })
   @Type(() => ReviewLineDto)
   lines!: ReviewLineDto[]

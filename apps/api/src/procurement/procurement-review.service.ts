@@ -283,7 +283,8 @@ export class ProcurementReviewService {
       keptRows.push({ id: line.id, lineNumber, changed, prior: changed ? JSON.stringify(before) : null, values })
     })
 
-    // Left-out lines go first so renumbering never meets a stale row.
+    // Deleting first keeps the surviving line numbers contiguous: the renumber
+    // below then only has to cover rows that are staying.
     await this.deleteLinesNotIn(tx, kind, workspaceId, docId, ids)
 
     if (keptRows.length > 0) {

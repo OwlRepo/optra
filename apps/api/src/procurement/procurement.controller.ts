@@ -40,8 +40,8 @@ import { MAX_PHOTO_PAGES } from './procurement-photo'
 import { ProcurementReviewService } from './procurement-review.service'
 import type { ProcurementDocKind } from './procurement-parse.service'
 import { ProcurementDocumentsService } from './procurement-documents.service'
-import { pdfExtractionEnabled } from './procurement-feature-flags'
-import { UploadExceptionFilter } from '../common/http/upload-exception.filter'
+import { PHOTO_UPLOADS_DISABLED_MESSAGE, pdfExtractionEnabled } from './procurement-feature-flags'
+import { PhotoUploadExceptionFilter, UploadExceptionFilter } from '../common/http/upload-exception.filter'
 import { maxUploadBytes } from '../common/http/upload-limit'
 
 const MAX_UPLOAD_BYTES = maxUploadBytes()
@@ -109,11 +109,18 @@ const HEIC_EXTENSIONS = new Set(['.heic', '.heif'])
 const HEIC_MIME_TYPES = new Set(['image/heic', 'image/heif'])
 const HEIC_MESSAGE = 'HEIC/HEIF photos are not supported — export as JPEG and upload again'
 
-function photoFileFilter(
+export function photoFileFilter(
   _req: unknown,
   file: Express.Multer.File,
   callback: (error: Error | null, acceptFile: boolean) => void,
 ) {
+  // Photos spend vision tokens like PDFs do, so the same switch; checked first,
+  // before any bytes reach sharp.
+  if (!pdfExtractionEnabled()) {
+    callback(new BadRequestException(PHOTO_UPLOADS_DISABLED_MESSAGE), false)
+    return
+  }
+
   const extension = extname(file.originalname).toLowerCase()
 
   if (HEIC_EXTENSIONS.has(extension) || HEIC_MIME_TYPES.has(file.mimetype.toLowerCase())) {
@@ -273,7 +280,7 @@ export class ProcurementController {
   @Post('purchase-orders/photos')
   @UseGuards(JwtAuthGuard, WorkspaceMemberGuard, RolesGuard)
   @Roles('owner', 'admin')
-  @UseFilters(UploadExceptionFilter)
+  @UseFilters(PhotoUploadExceptionFilter)
   @UseInterceptors(photoUploadInterceptor())
   uploadPurchaseOrderPhotos(
     @Param('workspaceId') workspaceId: string,
@@ -323,7 +330,7 @@ export class ProcurementController {
   @Post('invoices/photos')
   @UseGuards(JwtAuthGuard, WorkspaceMemberGuard, RolesGuard)
   @Roles('owner', 'admin')
-  @UseFilters(UploadExceptionFilter)
+  @UseFilters(PhotoUploadExceptionFilter)
   @UseInterceptors(photoUploadInterceptor())
   uploadInvoicePhotos(
     @Param('workspaceId') workspaceId: string,
@@ -373,7 +380,7 @@ export class ProcurementController {
   @Post('goods-receipts/photos')
   @UseGuards(JwtAuthGuard, WorkspaceMemberGuard, RolesGuard)
   @Roles('owner', 'admin')
-  @UseFilters(UploadExceptionFilter)
+  @UseFilters(PhotoUploadExceptionFilter)
   @UseInterceptors(photoUploadInterceptor())
   uploadGoodsReceiptPhotos(
     @Param('workspaceId') workspaceId: string,
@@ -438,7 +445,8 @@ export class ProcurementController {
       'Content-Disposition': 'inline',
       'X-Content-Type-Options': 'nosniff',
       'Content-Security-Policy': "sandbox; default-src 'none'",
-      'Cache-Control': 'private, max-age=86400',
+      // Photos of financial documents, possibly on a shared device: never kept.
+      'Cache-Control': 'private, no-store',
       'Content-Length': String(buffer.length),
     })
     res.send(buffer)

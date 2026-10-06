@@ -1,6 +1,11 @@
 import { isNotNull, or, eq } from 'drizzle-orm'
 import type { AnyPgColumn } from 'drizzle-orm/pg-core'
 
+// One cap for both ends: a photo read that returns more lines than this cannot
+// be saved back through the review form (ReviewDocumentDto), so the parse
+// refuses it up front instead of leaving a document nobody can confirm.
+export const MAX_REVIEW_LINES = 200
+
 /**
  * Review gate (photo intake). A document is comparable when it never needed a
  * human review, or when a reviewer has confirmed it. Every compare path uses

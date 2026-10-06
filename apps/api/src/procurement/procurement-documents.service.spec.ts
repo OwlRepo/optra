@@ -832,11 +832,12 @@ describe('ProcurementDocumentsService', () => {
 
     it('error: a failed header insert deletes all pages and the PDF', async () => {
       const ws = await seedWorkspace(`${prefix}photo-insert-fail@example.com`, 'Photo Insert Fail')
-      // name is varchar(500): a longer filename fails the insert after every object was saved.
-      const longName = `${'x'.repeat(600)}.jpg`
+      // po_number is varchar(200): a longer value fails the insert after every object was saved.
+      // (A long file name no longer does: it is cut to 100 characters first.)
+      const header = await poHeader(ws.id, { poNumber: 'P'.repeat(300) })
 
       await expect(
-        service.uploadPhotos(ws.id, 'purchase_order', [await photo(longName), await photo('b.jpg')], await poHeader(ws.id)),
+        service.uploadPhotos(ws.id, 'purchase_order', [await photo('a.jpg'), await photo('b.jpg')], header),
       ).rejects.toThrow()
 
       const saved = storage.save.mock.calls.map((c) => c[0] as string)
