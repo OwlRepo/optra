@@ -884,6 +884,22 @@ describe('ProcurementDocumentsService', () => {
       expect(result.name).toBe('Scan 2026-10-06.pdf')
     })
 
+    it('edge: a 300-character photo name is cut to 100 characters before the .pdf name and the storage key', async () => {
+      const ws = await seedWorkspace(`${prefix}photo-longname@example.com`, 'Photo Long Name')
+
+      const result = await service.uploadPhotos(
+        ws.id,
+        'purchase_order',
+        [await photo(`${'n'.repeat(300)}.jpg`)],
+        await poHeader(ws.id),
+      )
+
+      expect(result.name).toBe(`${'n'.repeat(100)}.pdf`)
+      const savedKeys = storage.save.mock.calls.map((c) => c[0] as string)
+      expect(savedKeys.some((key) => key.endsWith(`/${'n'.repeat(100)}.pdf`))).toBe(true)
+      expect(savedKeys.every((key) => !key.includes('n'.repeat(101)))).toBe(true)
+    })
+
     it('edge: the maximum of 5 photos stores 5 pages plus the PDF and records pageCount 5', async () => {
       const ws = await seedWorkspace(`${prefix}photo-five@example.com`, 'Photo Five')
       const files = await Promise.all([1, 2, 3, 4, 5].map((n) => photo(`p${n}.jpg`)))

@@ -1343,6 +1343,72 @@ describe('ProcurementParseProcessor', () => {
       expect(storage.getBuffer).not.toHaveBeenCalled()
     })
 
+    it('error: more than 200 extracted lines fails the photo document permanently, writes no lines and does not enqueue compare', async () => {
+      const workspace = await seedWorkspace(`${prefix}img-toomany@example.com`, prefix)
+      const po = await seedImageDoc('purchase_order', workspace.id)
+      extraction.extractFromImages.mockResolvedValue({
+        detectedKind: 'purchase_order',
+        items: Array.from({ length: 201 }, (_, i) => ({
+          sku: `S${i}`,
+          description: 'Widget',
+          quantity: '1',
+          unitPrice: '1.00',
+          lineTotal: '1.00',
+          uom: null,
+          confidence: 0.9,
+        })),
+      })
+
+      await expect(
+        processor.handleParse(job('job-img-toomany', { kind: 'purchase_order', id: po.id }, 0, 3)),
+      ).resolves.toBeUndefined()
+
+      const [row] = await db.select().from(purchaseOrders).where(eq(purchaseOrders.id, po.id))
+      expect(row.status).toBe('failed')
+      expect(row.lastError).toBe('This photo document has more than 200 lines. Split it into smaller uploads.')
+      expect(await db.select().from(poLineItems).where(eq(poLineItems.purchaseOrderId, po.id))).toHaveLength(0)
+      expect(compareService.enqueueForDocument).not.toHaveBeenCalled()
+    })
+
+    it('error: with the vision flag off a queued photo document fails permanently and never reads pages or calls the model', async () => {
+      const workspace = await seedWorkspace(`${prefix}img-flagoff@example.com`, prefix)
+      const po = await seedImageDoc('purchase_order', workspace.id)
+      process.env.PROCUREMENT_PDF_EXTRACTION_ENABLED = 'false'
+
+      await expect(
+        processor.handleParse(job('job-img-flagoff', { kind: 'purchase_order', id: po.id }, 0, 3)),
+      ).resolves.toBeUndefined()
+
+      const [row] = await db.select().from(purchaseOrders).where(eq(purchaseOrders.id, po.id))
+      expect(row.status).toBe('failed')
+      expect(row.lastError).toBe('Photo uploads are not enabled for this workspace')
+      expect(storage.getBuffer).not.toHaveBeenCalled()
+      expect(extraction.extractFromImages).not.toHaveBeenCalled()
+    })
+
+    it('edge: exactly 200 extracted lines are accepted', async () => {
+      const workspace = await seedWorkspace(`${prefix}img-200@example.com`, prefix)
+      const po = await seedImageDoc('purchase_order', workspace.id)
+      extraction.extractFromImages.mockResolvedValue({
+        detectedKind: 'purchase_order',
+        items: Array.from({ length: 200 }, (_, i) => ({
+          sku: `S${i}`,
+          description: 'Widget',
+          quantity: '1',
+          unitPrice: '1.00',
+          lineTotal: '1.00',
+          uom: null,
+          confidence: 0.9,
+        })),
+      })
+
+      await processor.handleParse(job('job-img-200', { kind: 'purchase_order', id: po.id }, 0, 3))
+
+      const [row] = await db.select().from(purchaseOrders).where(eq(purchaseOrders.id, po.id))
+      expect(row.status).toBe('done')
+      expect(row.rowCount).toBe(200)
+    })
+
     it('error: an exhausted workspace token budget fails permanently with the budget message and no lines', async () => {
       const workspace = await seedWorkspace(`${prefix}img-budget@example.com`, prefix)
       const po = await seedImageDoc('purchase_order', workspace.id)

@@ -1,6 +1,6 @@
 import { BadRequestException } from '@nestjs/common'
 import type { Response } from 'express'
-import { ProcurementController } from './procurement.controller'
+import { ProcurementController, photoFileFilter } from './procurement.controller'
 import { ComparisonService } from './comparison.service'
 import { ProcurementDocumentsService } from './procurement-documents.service'
 import { ProcurementReviewService } from './procurement-review.service'
@@ -143,7 +143,7 @@ describe('ProcurementController photo intake', () => {
       expect(res.send).not.toHaveBeenCalled()
     })
 
-    it('happy: serves image/jpeg inline with nosniff, a sandboxing CSP and a private day-long cache', async () => {
+    it('happy: serves image/jpeg inline with nosniff, a sandboxing CSP and a private no-store cache', async () => {
       review.getPage.mockResolvedValue(Buffer.from('jpeg-bytes'))
       const res = fakeRes()
 
@@ -155,7 +155,7 @@ describe('ProcurementController photo intake', () => {
       expect(headers['Content-Disposition']).toBe('inline')
       expect(headers['X-Content-Type-Options']).toBe('nosniff')
       expect(headers['Content-Security-Policy']).toBe("sandbox; default-src 'none'")
-      expect(headers['Cache-Control']).toBe('private, max-age=86400')
+      expect(headers['Cache-Control']).toBe('private, no-store')
       expect(headers['Content-Length']).toBe(String(Buffer.from('jpeg-bytes').length))
       expect(res.send).toHaveBeenCalledWith(Buffer.from('jpeg-bytes'))
     })
@@ -192,5 +192,46 @@ describe('ProcurementController photo intake', () => {
       expect(review.review).toHaveBeenCalledWith('ws-1', kind, 'doc-1', 'user-1', body)
       expect(result).toMatchObject({ id: 'doc-1', rowCount: 1 })
     })
+  })
+})
+
+// Photos spend gpt-4o vision tokens, so they sit behind the same flag as PDFs.
+describe('photoFileFilter', () => {
+  const original = process.env.PROCUREMENT_PDF_EXTRACTION_ENABLED
+  const jpeg = { originalname: 'a.jpg', mimetype: 'image/jpeg' } as Express.Multer.File
+
+  afterEach(() => {
+    if (original === undefined) delete process.env.PROCUREMENT_PDF_EXTRACTION_ENABLED
+    else process.env.PROCUREMENT_PDF_EXTRACTION_ENABLED = original
+  })
+
+  it('error: with the vision flag off a valid photo is a 400 "Photo uploads are not enabled for this workspace"', () => {
+    process.env.PROCUREMENT_PDF_EXTRACTION_ENABLED = 'false'
+    const callback = jest.fn()
+
+    photoFileFilter(null, jpeg, callback)
+
+    const [error, accepted] = callback.mock.calls[0]
+    expect(error).toBeInstanceOf(BadRequestException)
+    expect((error as Error).message).toBe('Photo uploads are not enabled for this workspace')
+    expect(accepted).toBe(false)
+  })
+
+  it('error: with the flag unset photos are refused too', () => {
+    delete process.env.PROCUREMENT_PDF_EXTRACTION_ENABLED
+    const callback = jest.fn()
+
+    photoFileFilter(null, jpeg, callback)
+
+    expect((callback.mock.calls[0][0] as Error).message).toBe('Photo uploads are not enabled for this workspace')
+  })
+
+  it('happy: with the flag on a JPEG is accepted', () => {
+    process.env.PROCUREMENT_PDF_EXTRACTION_ENABLED = 'true'
+    const callback = jest.fn()
+
+    photoFileFilter(null, jpeg, callback)
+
+    expect(callback).toHaveBeenCalledWith(null, true)
   })
 })

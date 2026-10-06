@@ -5,8 +5,13 @@ const loadPDFMock = vi.fn()
 const renderPdfToImagesMock = vi.fn()
 const readFileMock = vi.fn()
 
+const chatOpenAiFields: Record<string, unknown>[] = []
+
 vi.mock('@langchain/openai', () => ({
   ChatOpenAI: class {
+    constructor(fields: Record<string, unknown>) {
+      chatOpenAiFields.push(fields)
+    }
     invoke = invokeMock
   },
 }))
@@ -373,6 +378,67 @@ describe('extractLineItemsFromImages', () => {
       ProcurementExtractionTimeoutError,
     )
     expect(invokeMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('error: a numeric string with an exponent or too many digits is nulled', async () => {
+    invokeMock.mockResolvedValue({
+      content: JSON.stringify({
+        items: [{ sku: 'A1', quantity: '1e999', unitPrice: '1234567890123456', lineTotal: '1.123456789' }],
+      }),
+    })
+    const { extractLineItemsFromImages } = await import('./procurement-extraction')
+
+    const result = await extractLineItemsFromImages([JPEG_PAGE], 'invoice', {})
+
+    expect(result.items[0]).toMatchObject({ sku: 'A1', quantity: null, unitPrice: null, lineTotal: null })
+  })
+
+  it('edge: plain decimals (negative, 15 digits, 8 decimals) survive the numeric bound', async () => {
+    invokeMock.mockResolvedValue({
+      content: JSON.stringify({
+        items: [{ sku: 'A1', quantity: '-3', unitPrice: '123456789012345', lineTotal: '0.12345678' }],
+      }),
+    })
+    const { extractLineItemsFromImages } = await import('./procurement-extraction')
+
+    const result = await extractLineItemsFromImages([JPEG_PAGE], 'invoice', {})
+
+    expect(result.items[0]).toMatchObject({ quantity: '-3', unitPrice: '123456789012345', lineTotal: '0.12345678' })
+  })
+
+  it('edge: an image-path description longer than 2000 characters is truncated to 2000', async () => {
+    invokeMock.mockResolvedValue({
+      content: JSON.stringify({ items: [{ sku: 'A1', description: 'd'.repeat(5000), quantity: '1' }] }),
+    })
+    const { extractLineItemsFromImages } = await import('./procurement-extraction')
+
+    const result = await extractLineItemsFromImages([JPEG_PAGE], 'invoice', {})
+
+    expect(result.items[0].description).toHaveLength(2000)
+  })
+
+  it('edge: the vision model is built with a maxTokens cap, and the PDF model is left uncapped', async () => {
+    await import('./procurement-extraction')
+
+    const capped = chatOpenAiFields.filter((fields) => fields.maxTokens === 8000)
+    expect(capped).toHaveLength(1)
+    expect(chatOpenAiFields.filter((fields) => fields.maxTokens === undefined).length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('regression: the PDF path keeps the loose numeric check and the untruncated description', async () => {
+    loadPDFMock.mockResolvedValue({
+      content: 'PO-1001\nSKU A1 Widget qty 10 unit price 5.00\nSKU B2 Gadget qty 3 unit price 9.99',
+      metadata: { source: 'x.pdf', fileType: 'pdf', fileName: 'x.pdf', fileSize: 100, pageCount: 1 },
+    })
+    invokeMock.mockResolvedValue({
+      content: JSON.stringify({ items: [{ sku: 'A1', description: 'd'.repeat(3000), quantity: '1e3', unitPrice: null, lineTotal: null }] }),
+    })
+    const { extractLineItemsFromPdf } = await import('./procurement-extraction')
+
+    const result = await extractLineItemsFromPdf('/tmp/x.pdf')
+
+    expect(result.items[0].quantity).toBe('1e3')
+    expect(result.items[0].description).toHaveLength(3000)
   })
 
   it('regression: the PDF path still sends a byte-identical EXTRACTION_SYSTEM_PROMPT', async () => {

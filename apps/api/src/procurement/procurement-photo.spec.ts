@@ -156,6 +156,39 @@ describe('procurement-photo', () => {
       }
     })
 
+    it('edge: two concurrent normalizePhoto calls never decode at the same time', async () => {
+      const a = await jpeg(400, 300)
+      const b = await jpeg(300, 400)
+      let active = 0
+      let peak = 0
+      const spy = jest.spyOn(sharp.prototype, 'toBuffer').mockImplementation(function (this: unknown) {
+        active += 1
+        peak = Math.max(peak, active)
+        return new Promise((resolve) => {
+          setTimeout(() => {
+            active -= 1
+            resolve({ data: Buffer.from('x'), info: {} })
+          }, 20)
+        }) as never
+      })
+
+      try {
+        await Promise.all([normalizePhoto(a, 1), normalizePhoto(b, 2), normalizePhoto(a, 3)])
+      } finally {
+        spy.mockRestore()
+      }
+
+      expect(peak).toBe(1)
+    })
+
+    it('regression: a failing decode releases the slot so the next photo still runs', async () => {
+      await expect(normalizePhoto(await jpeg(100, 100).then((j) => j.subarray(0, 40)), 1)).rejects.toBeInstanceOf(PhotoInputError)
+
+      const ok = await normalizePhoto(await jpeg(100, 100), 2)
+
+      expect(ok.info.format).toBe('jpeg')
+    })
+
     it('happy: a normal JPEG comes back as a JPEG buffer', async () => {
       const { data, info } = await normalizePhoto(await jpeg(640, 480), 1)
 

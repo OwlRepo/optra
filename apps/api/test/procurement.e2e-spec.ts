@@ -1979,6 +1979,18 @@ describe('Procurement flow (e2e)', () => {
     let jpegA: Buffer
     let jpegB: Buffer
 
+    // Photos share the vision-spend flag with PDFs; the suite must not depend on the host env.
+    const originalVisionFlag = process.env.PROCUREMENT_PDF_EXTRACTION_ENABLED
+
+    afterAll(() => {
+      if (originalVisionFlag === undefined) delete process.env.PROCUREMENT_PDF_EXTRACTION_ENABLED
+      else process.env.PROCUREMENT_PDF_EXTRACTION_ENABLED = originalVisionFlag
+    })
+
+    beforeEach(() => {
+      process.env.PROCUREMENT_PDF_EXTRACTION_ENABLED = 'true'
+    })
+
     beforeAll(async () => {
       jpegA = await sharp({ create: { width: 320, height: 240, channels: 3, background: '#ffffff' } }).jpeg().toBuffer()
       jpegB = await sharp({ create: { width: 200, height: 300, channels: 3, background: '#eeeeee' } }).jpeg().toBuffer()
@@ -2048,6 +2060,32 @@ describe('Procurement flow (e2e)', () => {
       expect(res.status).toBe(400)
       expect(res.body.message).toBe('Too many files')
       expect(await db.select().from(invoices).where(eq(invoices.workspaceId, owner.workspaceId))).toHaveLength(0)
+    })
+
+    it('error: with the vision flag off a photo upload answers 400 "Photo uploads are not enabled for this workspace" and creates nothing', async () => {
+      const { owner, poId } = await seedWorkspaceWithPo('flagoff')
+      process.env.PROCUREMENT_PDF_EXTRACTION_ENABLED = 'false'
+
+      const res = await photoInvoiceRequest(owner, poId, [[jpegA, 'p.jpg']])
+
+      expect(res.status).toBe(400)
+      expect(res.body.message).toBe('Photo uploads are not enabled for this workspace')
+      expect(await db.select().from(invoices).where(eq(invoices.workspaceId, owner.workspaceId))).toHaveLength(0)
+    })
+
+    it('regression: a single-file route keeps its plain "Unexpected field" answer for a wrong field name', async () => {
+      const { owner, vendorId } = await seedWorkspaceWithPo('wrongfield')
+
+      const res = await request(app.getHttpServer())
+        .post(`/workspaces/${owner.workspaceId}/procurement/purchase-orders`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .field('vendorId', vendorId)
+        .field('poNumber', 'PO-WRONG-FIELD')
+        .field('currency', 'USD')
+        .attach('files', Buffer.from(csvPo), 'po.csv')
+
+      expect(res.status).toBe(400)
+      expect(res.body.message).toBe('Unexpected field')
     })
 
     it('error: no files answers 400 "files are required"', async () => {
@@ -2370,7 +2408,7 @@ describe('Procurement flow (e2e)', () => {
       expect(res.headers['content-disposition']).toBe('inline')
       expect(res.headers['x-content-type-options']).toBe('nosniff')
       expect(res.headers['content-security-policy']).toBe("sandbox; default-src 'none'")
-      expect(res.headers['cache-control']).toBe('private, max-age=86400')
+      expect(res.headers['cache-control']).toBe('private, no-store')
       const meta = await sharp(res.body as Buffer).metadata()
       expect(meta.format).toBe('jpeg')
       expect([meta.width, meta.height]).toEqual([200, 300])
