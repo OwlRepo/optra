@@ -91,7 +91,7 @@ describe('Privacy page', () => {
     const { container } = render(React.createElement(PrivacyPage))
 
     expect(container.textContent).toContain(
-      'Text and page images of uploaded documents, product photos, and questions you type into chat with the passages retrieved to answer them',
+      'Text and page images of uploaded documents (including photos of paper documents, with location data removed first), product photos, and questions you type into chat with the passages retrieved to answer them',
     )
     expect(container.textContent).toMatch(/OpenAI, L\.L\.C\./)
     expect(container.textContent).toMatch(/OpenAI, L\.L\.C\.[^.]*United States/)

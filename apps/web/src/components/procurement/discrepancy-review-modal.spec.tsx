@@ -269,6 +269,67 @@ describe('DiscrepancyReviewModal', () => {
       expect(await screen.findByText('Invoice line 7 · read from PDF, 100% confidence')).toBeDefined()
     })
 
+    it('edge: a photo line reads "read from photo" with a rounded confidence', async () => {
+      renderModal({
+        flag: makeFlag({
+          poLine: makeCitation({ sourceRow: null, extractionConfidence: 0.925, sourceKind: 'image-extraction' }),
+        }),
+      })
+
+      expect(await screen.findByText('PO line 7 · read from photo, 93% confidence')).toBeDefined()
+    })
+
+    it('edge: a line added during review reads "added by reviewer"', async () => {
+      renderModal({
+        flag: makeFlag({ invoiceLine: makeCitation({ sourceRow: null, sourceKind: 'manual', documentId: 'inv-doc-1' }) }),
+      })
+
+      expect(await screen.findByText('Invoice line 7 · added by reviewer')).toBeDefined()
+    })
+
+    it('edge: an edited line reads "edited by reviewer" and wins over every other source', async () => {
+      renderModal({
+        flag: makeFlag({
+          poLine: makeCitation({
+            sourceRow: null,
+            extractionConfidence: 0.9,
+            sourceKind: 'image-extraction',
+            editedAt: '2026-10-06T09:00:00.000Z',
+          }),
+          receiptLine: makeCitation({
+            sourceRow: null,
+            sourceKind: 'manual',
+            editedAt: '2026-10-06T09:00:00.000Z',
+            documentId: 'grn-doc-1',
+          }),
+        }),
+      })
+
+      expect(await screen.findByText('PO line 7 · edited by reviewer')).toBeDefined()
+      expect(screen.getByText('Receipt line 7 · edited by reviewer')).toBeDefined()
+      expect(document.body.textContent ?? '').not.toMatch(/read from photo|added by reviewer/)
+    })
+
+    it('edge: a manual line outranks the photo wording when it carries a confidence', async () => {
+      renderModal({
+        flag: makeFlag({
+          poLine: makeCitation({ sourceRow: null, extractionConfidence: 0.8, sourceKind: 'manual' }),
+        }),
+      })
+
+      expect(await screen.findByText('PO line 7 · added by reviewer')).toBeDefined()
+    })
+
+    it('regression: a PDF citation with a null sourceKind and no edit keeps the PDF wording', async () => {
+      renderModal({
+        flag: makeFlag({
+          poLine: makeCitation({ sourceRow: null, extractionConfidence: 0.925, sourceKind: null, editedAt: null }),
+        }),
+      })
+
+      expect(await screen.findByText('PO line 7 · read from PDF, 93% confidence')).toBeDefined()
+    })
+
     it('regression: no citation wording mentions a page', async () => {
       renderModal({
         flag: makeFlag({

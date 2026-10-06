@@ -41,7 +41,7 @@ describe('FilesTrust', () => {
   it('happy: lists exactly the accepted file types', () => {
     render(<FilesTrust />)
 
-    for (const type of ['PDF', 'Scanned PDF', 'CSV', 'XLSX']) {
+    for (const type of ['PDF', 'Scanned PDF', 'Photo', 'CSV', 'XLSX']) {
       expect(screen.getByText(type)).not.toBeNull()
     }
   })

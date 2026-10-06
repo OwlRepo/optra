@@ -1,7 +1,16 @@
 import { expect, test, type Browser, type Page } from '@playwright/test'
-import { uploadGoodsReceiptFile, uploadInvoiceFile, uploadPurchaseOrder, uploadPurchaseOrderFile } from '../support/flows'
+import {
+  batchRow,
+  fillBatchRow,
+  openBatchDialog,
+  submitBatch,
+  uploadGoodsReceiptFile,
+  uploadInvoiceFile,
+  uploadPurchaseOrder,
+  uploadPurchaseOrderFile,
+} from '../support/flows'
 import { loadState, storageStateFor, type Role, type SeedState } from '../support/state'
-import { bff, chooseFile, fixture, rowFor, toast, waitForRow } from '../support/ui'
+import { bff, chooseFiles, fixture, rowFor, toast, waitForRow } from '../support/ui'
 
 // The procurement paths a launch rests on, driven as a person drives them.
 // Mutating flows run as owner B in workspace B (docs/ai/testing-strategy.md,
@@ -295,13 +304,13 @@ test.describe('procurement core: unreadable files', () => {
     const ws = state.ownerB.workspaceId
     const file = fixture('po-headers-only.csv', `core-headers-only-${state.run}.csv`)
 
-    await page.goto(`/workspaces/${ws}/procurement`)
-    await chooseFile(page, 'Upload purchase order', file)
-    const dialog = page.getByRole('dialog')
-    await dialog.locator('#po-vendor').selectOption(state.ownerB.vendorId)
-    await dialog.locator('#po-number').fill(`PO-CORE-EMPTY-${state.run}`)
-    await dialog.getByRole('button', { name: 'Upload', exact: true }).click()
-    await expect(toast(page, 'Purchase order uploaded')).toBeVisible()
+    await openBatchDialog(page, state.ownerB, 'purchase-orders')
+    await chooseFiles(page, 'Add files', [file])
+    const dialogRow = batchRow(page, file.name)
+    await fillBatchRow(dialogRow, 'purchase-orders', state.ownerB.vendorId, `PO-CORE-EMPTY-${state.run}`)
+    await submitBatch(page)
+    // The upload itself succeeds; the parser fails afterwards, in the list.
+    await expect(dialogRow).toHaveAttribute('data-status', 'done')
 
     const failed = await waitForRow<{ id: string; name: string; status: string; lastError: string | null }>(
       page,

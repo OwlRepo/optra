@@ -41,6 +41,7 @@ const mockEmbedQuery = jest.fn()
 
 jest.mock('@repo/ai', () => ({
   EXTRACTOR_VERSION: 'procurement-extraction@1',
+  IMAGE_EXTRACTOR_VERSION: 'procurement-image-extraction@1',
   embedQuery: (...args: unknown[]) => mockEmbedQuery(...args),
   ProcurementExtractionUnsupportedError: class ProcurementExtractionUnsupportedError extends Error {
     constructor(message = 'PDF has no extractable text — scanned or image-only PDFs are not supported yet') {
@@ -86,8 +87,8 @@ async function cleanupFixtures(prefix: string) {
 describe('ProcurementParseProcessor', () => {
   const prefix = `procurement-parse-proc-spec-${Date.now()}-`
   let dir: string
-  let storage: { getToTempFile: jest.Mock; save: jest.Mock }
-  let extraction: { extract: jest.Mock }
+  let storage: { getToTempFile: jest.Mock; save: jest.Mock; getBuffer: jest.Mock }
+  let extraction: { extract: jest.Mock; extractFromImages: jest.Mock }
   let parseService: { reconcile: jest.Mock }
   let compareService: { enqueueForDocument: jest.Mock }
   let processor: ProcurementParseProcessor
@@ -97,8 +98,12 @@ describe('ProcurementParseProcessor', () => {
     jest.clearAllMocks()
     process.env.PROCUREMENT_PDF_EXTRACTION_ENABLED = 'true'
     dir = mkdtempSync(join(tmpdir(), 'procurement-parse-proc-spec-'))
-    storage = { getToTempFile: jest.fn(), save: jest.fn().mockResolvedValue(undefined) }
-    extraction = { extract: jest.fn() }
+    storage = {
+      getToTempFile: jest.fn(),
+      save: jest.fn().mockResolvedValue(undefined),
+      getBuffer: jest.fn().mockResolvedValue(Buffer.from('jpeg page bytes')),
+    }
+    extraction = { extract: jest.fn(), extractFromImages: jest.fn() }
     parseService = { reconcile: jest.fn().mockResolvedValue(undefined) }
     compareService = { enqueueForDocument: jest.fn().mockResolvedValue(undefined) }
     processor = new ProcurementParseProcessor(
@@ -1263,6 +1268,296 @@ describe('ProcurementParseProcessor', () => {
         ['A3', 4, 'Sheet1'],
         ['A5', 6, 'Sheet1'],
       ])
+    })
+  })
+
+  // Photo intake: a header with sourceKind 'image' is read page by page by the
+  // vision chain, never through getToTempFile / CSV / PDF.
+  describe('photo documents', () => {
+    const PAGE_DIR = 'ws/procurement/x-pages'
+
+    async function seedImageDoc(
+      kind: 'purchase_order' | 'invoice' | 'goods_receipt',
+      workspaceId: string,
+      overrides: { pageCount?: number | null; name?: string } = {},
+    ) {
+      const pageCount = overrides.pageCount === undefined ? 2 : overrides.pageCount
+      const common = {
+        workspaceId,
+        name: overrides.name ?? 'scan.pdf',
+        storageKey: `${PAGE_DIR}/${overrides.name ?? 'scan.pdf'}`,
+        status: 'pending' as const,
+        sourceKind: 'image',
+        reviewRequired: true,
+        pageCount,
+      }
+      if (kind === 'purchase_order') {
+        const [row] = await db.insert(purchaseOrders).values(common).returning()
+        return row
+      }
+      if (kind === 'invoice') {
+        const [row] = await db.insert(invoices).values(common).returning()
+        return row
+      }
+      const [po] = await db.insert(purchaseOrders).values({ workspaceId, name: 'linked.csv', status: 'done' }).returning()
+      const [row] = await db.insert(goodsReceipts).values({ ...common, purchaseOrderId: po.id }).returning()
+      return row
+    }
+
+    const INVOICE_RESULT = {
+      detectedKind: 'invoice',
+      items: [
+        { sku: 'A1', description: 'Widget', quantity: '10', unitPrice: '5.00', lineTotal: '50.00', uom: 'EA', confidence: 0.92 },
+        { sku: 'B2', description: 'Gadget', quantity: '3', unitPrice: null, lineTotal: null, uom: null, confidence: null },
+      ],
+    }
+
+    it('error: a missing page object fails the document at once, with the client-safe message, and never calls the model', async () => {
+      const workspace = await seedWorkspace(`${prefix}img-missing@example.com`, prefix)
+      const po = await seedImageDoc('purchase_order', workspace.id)
+      storage.getBuffer.mockResolvedValueOnce(Buffer.from('page 1')).mockRejectedValueOnce(new StorageObjectNotFoundError(`${PAGE_DIR}/2.jpg`))
+
+      await expect(
+        processor.handleParse(job('job-img-missing', { kind: 'purchase_order', id: po.id }, 0, 3)),
+      ).resolves.toBeUndefined()
+
+      const [row] = await db.select().from(purchaseOrders).where(eq(purchaseOrders.id, po.id))
+      expect(row.status).toBe('failed')
+      expect(row.lastError).toBe('The stored file is missing. Upload it again.')
+      expect(extraction.extractFromImages).not.toHaveBeenCalled()
+      expect(compareService.enqueueForDocument).not.toHaveBeenCalled()
+    })
+
+    it('error: a photo document with no pages is a permanent failure and never calls the model', async () => {
+      const workspace = await seedWorkspace(`${prefix}img-nopages@example.com`, prefix)
+      const po = await seedImageDoc('purchase_order', workspace.id, { pageCount: null })
+
+      await expect(
+        processor.handleParse(job('job-img-nopages', { kind: 'purchase_order', id: po.id }, 0, 3)),
+      ).resolves.toBeUndefined()
+
+      const [row] = await db.select().from(purchaseOrders).where(eq(purchaseOrders.id, po.id))
+      expect(row.status).toBe('failed')
+      expect(row.lastError).toBeTruthy()
+      expect(extraction.extractFromImages).not.toHaveBeenCalled()
+      expect(storage.getBuffer).not.toHaveBeenCalled()
+    })
+
+    it('error: an exhausted workspace token budget fails permanently with the budget message and no lines', async () => {
+      const workspace = await seedWorkspace(`${prefix}img-budget@example.com`, prefix)
+      const po = await seedImageDoc('purchase_order', workspace.id)
+      extraction.extractFromImages.mockRejectedValue(new HttpException('Workspace monthly token budget reached', 402))
+
+      await expect(
+        processor.handleParse(job('job-img-budget', { kind: 'purchase_order', id: po.id }, 0, 3)),
+      ).resolves.toBeUndefined()
+
+      const [row] = await db.select().from(purchaseOrders).where(eq(purchaseOrders.id, po.id))
+      expect(row.status).toBe('failed')
+      expect(row.lastError).toBe('Workspace monthly token budget reached')
+      expect(await db.select().from(poLineItems).where(eq(poLineItems.purchaseOrderId, po.id))).toHaveLength(0)
+    })
+
+    it('error: a model refusal and an empty read both fail permanently with their own message', async () => {
+      const { ProcurementExtractionRefusalError, ProcurementExtractionEmptyError } = jest.requireMock('@repo/ai') as {
+        ProcurementExtractionRefusalError: new () => Error
+        ProcurementExtractionEmptyError: new () => Error
+      }
+      const workspace = await seedWorkspace(`${prefix}img-permanent@example.com`, prefix)
+      const refused = await seedImageDoc('invoice', workspace.id)
+      const empty = await seedImageDoc('invoice', workspace.id)
+
+      extraction.extractFromImages.mockRejectedValueOnce(new ProcurementExtractionRefusalError())
+      await processor.handleParse(job('job-img-refuse', { kind: 'invoice', id: refused.id }, 0, 3))
+      extraction.extractFromImages.mockRejectedValueOnce(new ProcurementExtractionEmptyError())
+      await processor.handleParse(job('job-img-empty', { kind: 'invoice', id: empty.id }, 0, 3))
+
+      const [r] = await db.select().from(invoices).where(eq(invoices.id, refused.id))
+      const [e] = await db.select().from(invoices).where(eq(invoices.id, empty.id))
+      expect(r).toMatchObject({ status: 'failed', lastError: 'Model refused procurement extraction request' })
+      expect(e).toMatchObject({ status: 'failed', lastError: 'No line items were found in this document' })
+    })
+
+    it('edge: a transient model failure before the last attempt rethrows and leaves the document processing', async () => {
+      const workspace = await seedWorkspace(`${prefix}img-transient@example.com`, prefix)
+      const po = await seedImageDoc('purchase_order', workspace.id)
+      extraction.extractFromImages.mockRejectedValue(new Error('socket hang up'))
+
+      await expect(
+        processor.handleParse(job('job-img-t1', { kind: 'purchase_order', id: po.id }, 0, 3)),
+      ).rejects.toThrow('socket hang up')
+
+      const [row] = await db.select().from(purchaseOrders).where(eq(purchaseOrders.id, po.id))
+      expect(row.status).toBe('processing')
+      expect(row.lastError).toBeNull()
+    })
+
+    it('edge: pages are read in order from <storageKey dir>/<n>.jpg and sent as image/jpeg; the CSV/PDF temp-file path is not used', async () => {
+      const workspace = await seedWorkspace(`${prefix}img-pages@example.com`, prefix)
+      const po = await seedImageDoc('purchase_order', workspace.id, { pageCount: 3 })
+      storage.getBuffer
+        .mockResolvedValueOnce(Buffer.from('p1'))
+        .mockResolvedValueOnce(Buffer.from('p2'))
+        .mockResolvedValueOnce(Buffer.from('p3'))
+      extraction.extractFromImages.mockResolvedValue({ ...INVOICE_RESULT, detectedKind: 'purchase_order' })
+
+      await processor.handleParse(job('job-img-pages', { kind: 'purchase_order', id: po.id }))
+
+      expect(storage.getBuffer.mock.calls.map((c) => c[0])).toEqual([
+        `${PAGE_DIR}/1.jpg`,
+        `${PAGE_DIR}/2.jpg`,
+        `${PAGE_DIR}/3.jpg`,
+      ])
+      expect(extraction.extractFromImages).toHaveBeenCalledWith(
+        [
+          { buffer: Buffer.from('p1'), mime: 'image/jpeg' },
+          { buffer: Buffer.from('p2'), mime: 'image/jpeg' },
+          { buffer: Buffer.from('p3'), mime: 'image/jpeg' },
+        ],
+        'purchase_order',
+        workspace.id,
+      )
+      expect(storage.getToTempFile).not.toHaveBeenCalled()
+      expect(extraction.extract).not.toHaveBeenCalled()
+    })
+
+    it('edge: the review gate survives the parse: reviewRequired stays true and reviewedAt stays null', async () => {
+      const workspace = await seedWorkspace(`${prefix}img-gate@example.com`, prefix)
+      const inv = await seedImageDoc('invoice', workspace.id)
+      extraction.extractFromImages.mockResolvedValue(INVOICE_RESULT)
+
+      await processor.handleParse(job('job-img-gate', { kind: 'invoice', id: inv.id }))
+
+      const [row] = await db.select().from(invoices).where(eq(invoices.id, inv.id))
+      expect(row).toMatchObject({ status: 'done', reviewRequired: true, reviewedAt: null, rowCount: 2 })
+    })
+
+    it('edge: re-running the parse replaces the lines instead of duplicating them', async () => {
+      const workspace = await seedWorkspace(`${prefix}img-rerun@example.com`, prefix)
+      const po = await seedImageDoc('purchase_order', workspace.id)
+      extraction.extractFromImages.mockResolvedValue({ ...INVOICE_RESULT, detectedKind: 'purchase_order' })
+
+      await processor.handleParse(job('job-img-rerun-1', { kind: 'purchase_order', id: po.id }))
+      await processor.handleParse(job('job-img-rerun-2', { kind: 'purchase_order', id: po.id }))
+
+      expect(await db.select().from(poLineItems).where(eq(poLineItems.purchaseOrderId, po.id))).toHaveLength(2)
+    })
+
+    it('edge: a detectedKind of "unknown" is stored as-is', async () => {
+      const workspace = await seedWorkspace(`${prefix}img-unknown@example.com`, prefix)
+      const po = await seedImageDoc('purchase_order', workspace.id)
+      extraction.extractFromImages.mockResolvedValue({ ...INVOICE_RESULT, detectedKind: 'unknown' })
+
+      await processor.handleParse(job('job-img-unknown', { kind: 'purchase_order', id: po.id }))
+
+      const [row] = await db.select().from(purchaseOrders).where(eq(purchaseOrders.id, po.id))
+      expect(row.detectedKind).toBe('unknown')
+    })
+
+    it('edge: a stitched-PDF name ending in .pdf does not trigger the PDF-receipt refusal for a photo goods receipt', async () => {
+      const workspace = await seedWorkspace(`${prefix}img-grn-pdfname@example.com`, prefix)
+      const grn = await seedImageDoc('goods_receipt', workspace.id, { name: 'grn.pdf' })
+      extraction.extractFromImages.mockResolvedValue({
+        detectedKind: 'goods_receipt',
+        items: [{ sku: 'A1', description: 'Widget', quantityReceived: '10', quantityAccepted: '8', quantityRejected: '2', uom: 'EA', confidence: 0.7 }],
+      })
+
+      await processor.handleParse(job('job-img-grn-name', { kind: 'goods_receipt', id: grn.id }))
+
+      const [row] = await db.select().from(goodsReceipts).where(eq(goodsReceipts.id, grn.id))
+      expect(row.status).toBe('done')
+    })
+
+    it('regression: a PDF goods receipt (not a photo) is still refused', async () => {
+      const workspace = await seedWorkspace(`${prefix}img-regress-pdfgrn@example.com`, prefix)
+      const [po] = await db.insert(purchaseOrders).values({ workspaceId: workspace.id, name: 'l.csv', status: 'done' }).returning()
+      const [grn] = await db
+        .insert(goodsReceipts)
+        .values({ workspaceId: workspace.id, purchaseOrderId: po.id, name: 'grn.pdf', storageKey: `k/${randomUUID()}`, status: 'pending', sourceKind: 'pdf' })
+        .returning()
+
+      await processor.handleParse(job('job-img-regress-pdfgrn', { kind: 'goods_receipt', id: grn.id }, 0, 3))
+
+      const [row] = await db.select().from(goodsReceipts).where(eq(goodsReceipts.id, grn.id))
+      expect(row).toMatchObject({ status: 'failed', lastError: 'Goods receipts must be CSV or XLSX; PDF is not supported yet' })
+      expect(extraction.extractFromImages).not.toHaveBeenCalled()
+    })
+
+    it('regression: a CSV goods receipt still stores no confidence or extractor version', async () => {
+      const workspace = await seedWorkspace(`${prefix}img-regress-csvgrn@example.com`, prefix)
+      const grn = await seedGoodsReceipt(['sku,qty received,qty accepted', 'A1,10,8'].join('\n'), workspace.id)
+
+      await processor.handleParse(job('job-img-regress-csvgrn', { kind: 'goods_receipt', id: grn.id }))
+
+      const [line] = await db.select().from(goodsReceiptLineItems).where(eq(goodsReceiptLineItems.goodsReceiptId, grn.id))
+      expect(line.extractionConfidence).toBeNull()
+      expect(line.extractorVersion).toBeNull()
+      const [row] = await db.select().from(goodsReceipts).where(eq(goodsReceipts.id, grn.id))
+      expect(row.detectedKind).toBeNull()
+    })
+
+    it('happy: a photo invoice is parsed with IMAGE_EXTRACTOR_VERSION, sourceKind image-extraction and detectedKind stored', async () => {
+      const workspace = await seedWorkspace(`${prefix}img-happy@example.com`, prefix)
+      const inv = await seedImageDoc('invoice', workspace.id)
+      extraction.extractFromImages.mockResolvedValue(INVOICE_RESULT)
+
+      await processor.handleParse(job('job-img-happy', { kind: 'invoice', id: inv.id }))
+
+      const [row] = await db.select().from(invoices).where(eq(invoices.id, inv.id))
+      expect(row).toMatchObject({ status: 'done', rowCount: 2, detectedKind: 'invoice', lastError: null })
+      const lines = await db.select().from(invoiceLineItems).where(eq(invoiceLineItems.invoiceId, inv.id)).orderBy(invoiceLineItems.lineNumber)
+      expect(lines[0]).toMatchObject({
+        sku: 'A1',
+        description: 'Widget',
+        quantity: '10',
+        unitPrice: '5.00',
+        lineTotal: '50.00',
+        uom: 'EA',
+        extractionConfidence: '0.92',
+        extractorVersion: 'procurement-image-extraction@1',
+        sourceKind: 'image-extraction',
+        sourceRow: null,
+        sourceSheet: null,
+        editedAt: null,
+      })
+      expect(lines[1].extractionConfidence).toBeNull()
+      expect(extraction.extractFromImages).toHaveBeenCalledWith(expect.any(Array), 'invoice', workspace.id)
+      expect(compareService.enqueueForDocument).toHaveBeenCalledWith('invoice', inv.id)
+    })
+
+    it('happy: a photo goods receipt stores the three quantities, confidence and extractor version', async () => {
+      const workspace = await seedWorkspace(`${prefix}img-grn@example.com`, prefix)
+      const grn = await seedImageDoc('goods_receipt', workspace.id)
+      extraction.extractFromImages.mockResolvedValue({
+        detectedKind: 'goods_receipt',
+        items: [
+          { sku: 'A1', description: 'Widget', quantityReceived: '10', quantityAccepted: '8', quantityRejected: '2', uom: 'EA', confidence: 0.81 },
+          { sku: 'B2', description: 'Gadget', quantityReceived: null, quantityAccepted: '4', quantityRejected: null, uom: null, confidence: 0.5 },
+        ],
+      })
+
+      await processor.handleParse(job('job-img-grn', { kind: 'goods_receipt', id: grn.id }))
+
+      const lines = await db
+        .select()
+        .from(goodsReceiptLineItems)
+        .where(eq(goodsReceiptLineItems.goodsReceiptId, grn.id))
+        .orderBy(goodsReceiptLineItems.lineNumber)
+      expect(lines[0]).toMatchObject({
+        quantityReceived: '10',
+        quantityAccepted: '8',
+        quantityRejected: '2',
+        uom: 'EA',
+        extractionConfidence: '0.81',
+        extractorVersion: 'procurement-image-extraction@1',
+        sourceKind: 'image-extraction',
+      })
+      // Null is not zero (POLICY v1 #14): an unstated quantity stays NULL.
+      expect(lines[1].quantityReceived).toBeNull()
+      expect(lines[1].quantityRejected).toBeNull()
+      expect(lines[1].quantityAccepted).toBe('4')
+      const [row] = await db.select().from(goodsReceipts).where(eq(goodsReceipts.id, grn.id))
+      expect(row.detectedKind).toBe('goods_receipt')
     })
   })
 })

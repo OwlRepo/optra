@@ -93,7 +93,7 @@ describe('Home', () => {
       'Email us and we delete your workspace data, including uploaded files, within 30 days. Backups expire on the schedule in the privacy policy.',
     )
     expect(container.textContent).toContain(
-      'Vendor catalogs with product photos, purchase orders and invoices as PDF (scanned too), CSV or XLSX, and goods receipts as CSV or XLSX.',
+      'Vendor catalogs with product photos, purchase orders and invoices as PDF (scanned too), CSV, XLSX or phone photos, and goods receipts as CSV, XLSX or phone photos. Up to 5 files per upload.',
     )
   })
 

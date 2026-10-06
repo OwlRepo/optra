@@ -29,6 +29,16 @@ describe('WorkflowSteps', () => {
     expect(screen.getByRole('heading', { name: 'You review the exceptions' })).not.toBeNull()
   })
 
+  it('regression: the drop-step body names phone photos beside PDF, scan and spreadsheet', () => {
+    render(<WorkflowSteps />)
+
+    expect(
+      screen.getByText(
+        'Catalogs, POs, invoices — PDF, scan, spreadsheet or phone photo. Nothing needs reformatting first.',
+      ),
+    ).not.toBeNull()
+  })
+
   it('shows accepted formats in the drop zone', () => {
     render(<WorkflowSteps />)
 

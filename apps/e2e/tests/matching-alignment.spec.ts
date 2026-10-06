@@ -1,8 +1,8 @@
 import { expect, test, type Page } from '@playwright/test'
 import { closeDb } from '../support/db'
-import { uploadPurchaseOrder } from '../support/flows'
+import { uploadInvoiceFile, uploadPurchaseOrder } from '../support/flows'
 import { loadState, storageStateFor, type SeedState } from '../support/state'
-import { bff, chooseFile, fixture, toast, waitForRow } from '../support/ui'
+import { bff, fixture, toast, waitForRow } from '../support/ui'
 
 // The matching screens' aligned behaviour (frames 2.1, 2.7, 2.9, 2.11), driven
 // the way an owner does it. Serial: one PO + one mismatched invoice are set up
@@ -26,24 +26,7 @@ const pairDiscrepanciesPage = () =>
   `/workspaces/${state.ownerA.workspaceId}/discrepancies?purchaseOrderId=${purchaseOrderId}&invoiceId=${invoiceId}`
 
 async function uploadMismatchedInvoice(page: Page, fileName: string): Promise<string> {
-  const file = fixture('invoice-mismatch.csv', fileName)
-  await page.goto(procurementPage())
-  await page.getByRole('tab', { name: 'Invoices' }).click()
-  await chooseFile(page, 'Upload invoice', file)
-
-  const dialog = page.getByRole('dialog')
-  await dialog.locator('#invoice-po').selectOption(purchaseOrderId)
-  await dialog.locator('#invoice-number').fill(invoiceNumber())
-  await dialog.getByRole('button', { name: 'Upload', exact: true }).click()
-  await expect(toast(page, 'Invoice uploaded')).toBeVisible()
-
-  const row = await waitForRow<{ id: string; name: string; status: string }>(
-    page,
-    `/api/workspaces/${state.ownerA.workspaceId}/procurement/invoices`,
-    (candidate) => candidate.name === file.name,
-    'done',
-  )
-  return row.id
+  return uploadInvoiceFile(page, state.ownerA, purchaseOrderId, fixture('invoice-mismatch.csv', fileName), invoiceNumber())
 }
 
 test.beforeAll(async ({ browser }) => {

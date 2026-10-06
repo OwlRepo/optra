@@ -207,10 +207,11 @@ describe('buildTourSteps', () => {
     const text = (id: string) => (owner.find((s) => s.id === id) as TourStep).content as string
 
     expect(text('welcome')).not.toMatch(/minutes/i)
-    // Procurement accepts PDF, XLSX and CSV for POs and invoices, spreadsheets only for receipts. No images.
-    expect(text('procurement-upload')).not.toMatch(/image|photo/i)
-    expect(text('procurement-upload')).toMatch(/PDF/)
-    expect(text('procurement-upload')).toMatch(/spreadsheet/)
+    // POs and invoices take a PDF, spreadsheet or phone photo; receipts a spreadsheet or photo (not a PDF).
+    expect(text('procurement-upload')).toBe(
+      'Drop in a purchase order or invoice as a PDF, spreadsheet or phone photo, or a goods receipt as a spreadsheet or photo. Optra reads the lines for you. Nothing is uploaded during this tour.',
+    )
+    expect(text('procurement-upload')).toMatch(/phone photo/)
     // Review records an outcome decision; dismiss takes no reason.
     expect(text('discrepancies-filter')).not.toMatch(/reason/i)
     expect(text('discrepancies-filter')).toMatch(/false positive/i)

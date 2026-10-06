@@ -233,4 +233,105 @@ describe('ProcurementCompareService', () => {
 
     expect(queue.add).not.toHaveBeenCalled()
   })
+
+  // Photo intake: a document read from a photo is not compared until a human
+  // confirmed it (review_required AND reviewed_at IS NULL => never compared).
+  describe('review gate (photo intake)', () => {
+    const REVIEWED = new Date('2026-10-05T00:00:00.000Z')
+    const pending = { sourceKind: 'image', reviewRequired: true, reviewedAt: null }
+    const reviewed = { sourceKind: 'image', reviewRequired: true, reviewedAt: REVIEWED }
+
+    async function addReceipt(
+      workspaceId: string,
+      purchaseOrderId: string,
+      patch: Partial<typeof goodsReceipts.$inferInsert> = {},
+    ) {
+      const [grn] = await db
+        .insert(goodsReceipts)
+        .values({ workspaceId, purchaseOrderId, name: 'grn.pdf', grnNumber: 'GRN-1', status: 'done', ...patch })
+        .returning()
+      return grn
+    }
+
+    it('error: an unreviewed purchase order enqueues nothing, whichever document triggers', async () => {
+      const { workspace, po, invoice } = await seedPair(`${prefix}gate-po@example.com`, 'Gate PO')
+      await db.update(purchaseOrders).set(pending).where(eq(purchaseOrders.id, po.id))
+      const grn = await addReceipt(workspace.id, po.id)
+
+      await service.enqueueForDocument('purchase_order', po.id)
+      await service.enqueueForDocument('invoice', invoice.id)
+      await service.enqueueForDocument('goods_receipt', grn.id)
+
+      expect(queue.add).not.toHaveBeenCalled()
+    })
+
+    it('error: an unreviewed invoice enqueues nothing, from its own parse or from its purchase order', async () => {
+      const { po, invoice } = await seedPair(`${prefix}gate-inv@example.com`, 'Gate Invoice')
+      await db.update(invoices).set(pending).where(eq(invoices.id, invoice.id))
+
+      await service.enqueueForDocument('invoice', invoice.id)
+      await service.enqueueForDocument('purchase_order', po.id)
+
+      expect(queue.add).not.toHaveBeenCalled()
+    })
+
+    it('error: with two invoices on one order only the reviewed one is enqueued', async () => {
+      const { workspace, po, invoice } = await seedPair(`${prefix}gate-two@example.com`, 'Gate Two')
+      await db.update(invoices).set(reviewed).where(eq(invoices.id, invoice.id))
+      const [unreviewed] = await db
+        .insert(invoices)
+        .values({ workspaceId: workspace.id, name: 'inv-photo.pdf', status: 'done', purchaseOrderId: po.id, ...pending })
+        .returning()
+
+      await service.enqueueForDocument('purchase_order', po.id)
+
+      expect(queue.add).toHaveBeenCalledTimes(1)
+      const jobIds = queue.add.mock.calls.map((c) => c[1].jobId as string)
+      expect(jobIds[0]).toContain(invoice.id)
+      expect(jobIds.join(',')).not.toContain(unreviewed.id)
+    })
+
+    it('edge: a done goods receipt that is still unreviewed defers the comparison, from any trigger', async () => {
+      const { workspace, po, invoice } = await seedPair(`${prefix}gate-grn-defer@example.com`, 'Gate GRN Defer')
+      const grn = await addReceipt(workspace.id, po.id, pending)
+
+      await service.enqueueForDocument('purchase_order', po.id)
+      await service.enqueueForDocument('invoice', invoice.id)
+      await service.enqueueForDocument('goods_receipt', grn.id)
+
+      expect(queue.add).not.toHaveBeenCalled()
+    })
+
+    it('edge: an unreviewed receipt whose parse failed does not defer (nothing will ever review it)', async () => {
+      const { workspace, po, invoice } = await seedPair(`${prefix}gate-grn-failed@example.com`, 'Gate GRN Failed')
+      await addReceipt(workspace.id, po.id, { ...pending, status: 'failed' })
+
+      await service.enqueueForDocument('purchase_order', po.id)
+
+      expect(queue.add).toHaveBeenCalledTimes(1)
+      expect(queue.add.mock.calls[0][1].jobId).toBe(await expectedJobId(po.id, invoice.id))
+    })
+
+    it('regression: a CSV pair and receipt (review_required=false) enqueue as before', async () => {
+      const { workspace, po, invoice } = await seedPair(`${prefix}gate-csv@example.com`, 'Gate CSV')
+      await addReceipt(workspace.id, po.id)
+
+      await service.enqueueForDocument('purchase_order', po.id)
+
+      expect(queue.add).toHaveBeenCalledTimes(1)
+      expect(queue.add.mock.calls[0][1].jobId).toBe(await expectedJobId(po.id, invoice.id))
+    })
+
+    it('happy: once the photo purchase order, invoice and receipt are reviewed the pair is enqueued', async () => {
+      const { workspace, po, invoice } = await seedPair(`${prefix}gate-reviewed@example.com`, 'Gate Reviewed')
+      await db.update(purchaseOrders).set(reviewed).where(eq(purchaseOrders.id, po.id))
+      await db.update(invoices).set(reviewed).where(eq(invoices.id, invoice.id))
+      await addReceipt(workspace.id, po.id, reviewed)
+
+      await service.enqueueForDocument('invoice', invoice.id)
+
+      expect(queue.add).toHaveBeenCalledTimes(1)
+      expect(queue.add.mock.calls[0][1].jobId).toBe(await expectedJobId(po.id, invoice.id))
+    })
+  })
 })

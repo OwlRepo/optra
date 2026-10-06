@@ -31,6 +31,30 @@ describe('UploadExceptionFilter', () => {
     else process.env.MAX_UPLOAD_MB = originalMax
   })
 
+  it('error: LIMIT_UNEXPECTED_FILE (a 6th file) answers 400 "Too many files"', () => {
+    const { host, res } = fakeHost()
+
+    filter.catch(new MulterError('LIMIT_UNEXPECTED_FILE', 'files'), host)
+
+    expect(res.status).toHaveBeenCalledWith(400)
+    expect(res.json).toHaveBeenCalledWith({ statusCode: 400, message: 'Too many files' })
+  })
+
+  it('edge: the "Too many files" message does not echo the field name', () => {
+    const { host, res } = fakeHost()
+
+    filter.catch(new MulterError('LIMIT_UNEXPECTED_FILE', 'someInternalField'), host)
+
+    expect(JSON.stringify(res.json.mock.calls[0][0])).not.toContain('someInternalField')
+  })
+
+  it('edge: other multer codes are not swallowed by the Too-many-files mapping', () => {
+    const { host } = fakeHost()
+    const other = new MulterError('LIMIT_FIELD_COUNT')
+
+    expect(() => filter.catch(other, host)).toThrow(other)
+  })
+
   it('answers 413 with the limit for the PayloadTooLargeException FileInterceptor actually throws', () => {
     const { host, res } = fakeHost()
 

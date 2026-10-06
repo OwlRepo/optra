@@ -163,6 +163,43 @@ describe('proxyRaw', () => {
     expect(response.headers.get('X-Content-Type-Options')).toBe('nosniff')
   })
 
+  it('edge: a response without Content-Security-Policy gets none invented', async () => {
+    vi.spyOn(global, 'fetch').mockResolvedValue(
+      new Response(Buffer.from('bytes'), { status: 200, headers: { 'Content-Type': 'application/pdf' } }),
+    )
+
+    const response = await proxyRaw(
+      makeRequest('http://localhost:3000/api/workspaces/ws-1/procurement/purchase-orders/doc-1/download'),
+      '/workspaces/ws-1/procurement/purchase-orders/doc-1/download',
+      { method: 'GET' },
+    )
+
+    expect(response.headers.get('Content-Security-Policy')).toBeNull()
+  })
+
+  // The page route serves user-derived JPEGs inline from our own origin; its
+  // sandbox CSP is the second wall after nosniff, so the proxy must not drop it.
+  it('happy: forwards Content-Security-Policy so inline photo pages stay sandboxed', async () => {
+    vi.spyOn(global, 'fetch').mockResolvedValue(
+      new Response(Buffer.from('jpeg'), {
+        status: 200,
+        headers: {
+          'Content-Type': 'image/jpeg',
+          'X-Content-Type-Options': 'nosniff',
+          'Content-Security-Policy': "sandbox; default-src 'none'",
+        },
+      }),
+    )
+
+    const response = await proxyRaw(
+      makeRequest('http://localhost:3000/api/workspaces/ws-1/procurement/invoices/doc-1/pages/1'),
+      '/workspaces/ws-1/procurement/invoices/doc-1/pages/1',
+      { method: 'GET' },
+    )
+
+    expect(response.headers.get('Content-Security-Policy')).toBe("sandbox; default-src 'none'")
+  })
+
   it('returns 401 without calling the backend when the auth cookie is missing', async () => {
     const fetchMock = vi.spyOn(global, 'fetch')
 

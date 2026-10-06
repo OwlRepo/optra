@@ -4,7 +4,8 @@
 // The API reaches it through OPENAI_BASE_URL, which openai@4 reads in its
 // constructor and @langchain/openai passes through. It answers only what the
 // storage paths need: embeddings for knowledge-base ingest and dataset
-// profiling, and chat completions for catalog page extraction and match comparison. Anything else
+// profiling, and chat completions for catalog page extraction, match comparison
+// and photo line extraction. Anything else
 // is a 404, so a new model call shows up as a failing test, not a silent pass.
 //
 // Run: `bun stubs/openai-stub.ts` (PORT defaults to 4010).
@@ -16,6 +17,37 @@ export const CATALOG_STUB_ITEMS = [
   { sku: 'E2E-1', description: 'E2E widget', confidence: 0.9 },
   { sku: 'E2E-2', description: 'E2E gadget', confidence: 0.9 },
 ]
+
+// Photo intake (extractLineItemsFromImages in packages/ai). The human message
+// carries a text part - imageInstruction(kind) - ahead of the image_url parts.
+// That text must contain the literal phrase "photographed paper" and the line
+// "Document kind: <purchase_order|invoice|goods_receipt>"; this stub keys on
+// both. promptText() only reads `text` parts, so image bytes never reach it.
+// Numbers are strings because normalizeItem accepts nothing else. The second
+// row is read at 0.45 confidence on purpose: the review modal tints it.
+export const PHOTO_PROMPT_MARKER = 'photographed paper'
+
+type PhotoKind = 'purchase_order' | 'invoice' | 'goods_receipt'
+
+function photoItems(kind: PhotoKind) {
+  if (kind === 'goods_receipt') {
+    return [
+      { sku: 'A1', description: 'Widget', quantityReceived: '10', quantityAccepted: '10', quantityRejected: '0', uom: 'EA', confidence: 0.93 },
+      { sku: 'B2', description: 'Gadget', quantityReceived: '4', quantityAccepted: '3', quantityRejected: '1', uom: 'EA', confidence: 0.45 },
+    ]
+  }
+  // The invoice disagrees with the PO on purpose: B2 is billed at 15.00 against 12.50.
+  const b2 = kind === 'invoice' ? { unitPrice: '15.00', lineTotal: '60.00' } : { unitPrice: '12.50', lineTotal: '50.00' }
+  return [
+    { sku: 'A1', description: 'Widget', quantity: '10', unitPrice: '5.00', lineTotal: '50.00', uom: 'EA', confidence: kind === 'invoice' ? 0.91 : 0.92 },
+    { sku: 'B2', description: 'Gadget', quantity: '4', uom: 'EA', confidence: 0.45, ...b2 },
+  ]
+}
+
+function photoExtraction(prompt: string): string {
+  const kind = (/Document kind: (purchase_order|invoice|goods_receipt)/.exec(prompt)?.[1] ?? 'purchase_order') as PhotoKind
+  return JSON.stringify({ items: photoItems(kind), detectedKind: kind })
+}
 
 /** Deterministic unit vector per text, so identical inputs embed identically. */
 function embed(text: string): Float32Array {
@@ -67,7 +99,10 @@ function chatCompletion(body: any): unknown {
   // A candidate described with E2E-UNJUDGED gets an unparseable verdict, the
   // way a model sometimes answers, so a browser test can watch a search skip
   // one candidate (B6). No fixture outside that test uses the marker.
-  const content = /candidate product from a vendor catalog/i.test(prompt)
+  // Checked before the catalog prompts: a photo prompt never contains their wording.
+  const content = prompt.includes(PHOTO_PROMPT_MARKER)
+    ? photoExtraction(prompt)
+    : /candidate product from a vendor catalog/i.test(prompt)
     ? /E2E-UNJUDGED/.test(prompt)
       ? 'not a verdict'
       : JSON.stringify({ isMatch: true, score: 0.9, reason: 'E2E stub match' })

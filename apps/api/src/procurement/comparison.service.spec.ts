@@ -1,3 +1,4 @@
+import { BadRequestException } from '@nestjs/common'
 import { eq, like } from 'drizzle-orm'
 import {
   comparisonRunGoodsReceipts,
@@ -2338,6 +2339,8 @@ describe('ComparisonService', () => {
         sourceSheet: null,
         extractionConfidence: null,
         documentId: grn.id,
+        sourceKind: 'csv',
+        editedAt: null,
       })
     })
 
@@ -2383,6 +2386,8 @@ describe('ComparisonService', () => {
         sourceSheet: null,
         extractionConfidence: null,
         documentId: po.id,
+        sourceKind: 'csv',
+        editedAt: null,
       })
       expect(item.invoiceLine).toMatchObject({ sourceRow: 2, documentId: invoice.id })
       expect(item.receiptLine).toBeNull()
@@ -2919,6 +2924,218 @@ describe('ComparisonService', () => {
       const result = await service.compare(workspace.id, po.id, invoice.id)
 
       expect(result.flags[0].reason).toBe('Quantity mismatch for A1: PO=10 Invoice=8')
+    })
+  })
+
+  // Photo intake. A document read from a photo (review_required) can only be
+  // compared once a reviewer confirmed it; documents that never needed review
+  // (CSV/XLSX/PDF: review_required=false) are unaffected.
+  describe('review gate (photo intake)', () => {
+    async function seedPair(
+      workspaceId: string,
+      overrides: {
+        po?: { reviewRequired?: boolean; reviewedAt?: Date | null }
+        invoice?: { reviewRequired?: boolean; reviewedAt?: Date | null }
+      } = {},
+    ) {
+      const { po, invoice } = await seedReadyPoAndInvoice(
+        workspaceId,
+        [{ sku: 'A1', quantity: '10', unitPrice: '5.00' }],
+        [{ sku: 'A1', quantity: '8', unitPrice: '5.00' }],
+        true,
+      )
+      if (overrides.po) {
+        await db.update(purchaseOrders).set({ sourceKind: 'image', ...overrides.po }).where(eq(purchaseOrders.id, po.id))
+      }
+      if (overrides.invoice) {
+        await db.update(invoices).set({ sourceKind: 'image', ...overrides.invoice }).where(eq(invoices.id, invoice.id))
+      }
+      return { po, invoice }
+    }
+
+    it('error: comparing an unreviewed photo purchase order is a 400 with the review message', async () => {
+      const { workspace } = await seedWorkspace(`${prefix}gate-po@example.com`, 'Gate PO')
+      const { po, invoice } = await seedPair(workspace.id, { po: { reviewRequired: true, reviewedAt: null } })
+
+      const err = await service.compare(workspace.id, po.id, invoice.id).catch((e: unknown) => e)
+
+      expect(err).toBeInstanceOf(BadRequestException)
+      expect((err as Error).message).toBe('Purchase order needs review before it can be compared')
+      expect(await db.select().from(comparisonRuns).where(eq(comparisonRuns.workspaceId, workspace.id))).toHaveLength(0)
+    })
+
+    it('error: comparing an unreviewed photo invoice is a 400 with the review message', async () => {
+      const { workspace } = await seedWorkspace(`${prefix}gate-inv@example.com`, 'Gate Invoice')
+      const { po, invoice } = await seedPair(workspace.id, { invoice: { reviewRequired: true, reviewedAt: null } })
+
+      const err = await service.compare(workspace.id, po.id, invoice.id).catch((e: unknown) => e)
+
+      expect(err).toBeInstanceOf(BadRequestException)
+      expect((err as Error).message).toBe('Invoice needs review before it can be compared')
+    })
+
+    it('error: a linked done goods receipt that is unreviewed blocks the comparison', async () => {
+      const { workspace } = await seedWorkspace(`${prefix}gate-grn@example.com`, 'Gate GRN')
+      const { po, invoice } = await seedPair(workspace.id)
+      const grn = await seedGoodsReceipt(workspace.id, po.id, [{ sku: 'A1', quantityAccepted: '8' }])
+      await db.update(goodsReceipts).set({ sourceKind: 'image', reviewRequired: true, reviewedAt: null }).where(eq(goodsReceipts.id, grn.id))
+
+      const err = await service.compare(workspace.id, po.id, invoice.id).catch((e: unknown) => e)
+
+      expect(err).toBeInstanceOf(BadRequestException)
+      expect((err as Error).message).toBe('A linked goods receipt needs review before comparing')
+    })
+
+    it('error: the parsing message still wins for a photo purchase order that is not done', async () => {
+      const { workspace } = await seedWorkspace(`${prefix}gate-parsing@example.com`, 'Gate Parsing')
+      const { po, invoice } = await seedPair(workspace.id, { po: { reviewRequired: true, reviewedAt: null } })
+      await db.update(purchaseOrders).set({ status: 'processing' }).where(eq(purchaseOrders.id, po.id))
+
+      await expect(service.compare(workspace.id, po.id, invoice.id)).rejects.toThrow('has not finished parsing yet')
+    })
+
+    it('edge: an unreviewed receipt that is not done (pending/failed) does not block the comparison', async () => {
+      const { workspace } = await seedWorkspace(`${prefix}gate-grn-notdone@example.com`, 'Gate GRN Not Done')
+      const { po, invoice } = await seedPair(workspace.id)
+      for (const status of ['pending', 'failed'] as const) {
+        const grn = await seedGoodsReceipt(workspace.id, po.id, [{ sku: 'A1', quantityAccepted: '8' }], `GRN-${status}`, status)
+        await db.update(goodsReceipts).set({ sourceKind: 'image', reviewRequired: true, reviewedAt: null }).where(eq(goodsReceipts.id, grn.id))
+      }
+
+      const result = await service.compare(workspace.id, po.id, invoice.id)
+
+      expect(result.counts.quantity_mismatch).toBe(1)
+    })
+
+    it('edge: the gate is checked before any engine work: an unreviewed pair never reaches DuckDB', async () => {
+      const { workspace } = await seedWorkspace(`${prefix}gate-noengine@example.com`, 'Gate No Engine')
+      const { po, invoice } = await seedPair(workspace.id, { po: { reviewRequired: true, reviewedAt: null } })
+      const engine = { runReadOnlyMultiTableQuery: jest.fn() }
+      const gated = new ComparisonService(engine as unknown as DuckDbQueryService)
+
+      await expect(gated.compare(workspace.id, po.id, invoice.id)).rejects.toBeInstanceOf(BadRequestException)
+
+      expect(engine.runReadOnlyMultiTableQuery).not.toHaveBeenCalled()
+    })
+
+    it('regression: a CSV pair (review_required=false, never reviewed) compares exactly as before', async () => {
+      const { workspace } = await seedWorkspace(`${prefix}gate-csv@example.com`, 'Gate CSV')
+      const { po, invoice } = await seedPair(workspace.id)
+
+      const result = await service.compare(workspace.id, po.id, invoice.id)
+
+      expect(result.counts.quantity_mismatch).toBe(1)
+      expect(result.flags).toHaveLength(1)
+    })
+
+    it('regression: a receipt with review_required=false and no reviewedAt does not block', async () => {
+      const { workspace } = await seedWorkspace(`${prefix}gate-grn-csv@example.com`, 'Gate GRN CSV')
+      const { po, invoice } = await seedPair(workspace.id)
+      await seedGoodsReceipt(workspace.id, po.id, [{ sku: 'A1', quantityAccepted: '8' }])
+
+      const result = await service.compare(workspace.id, po.id, invoice.id)
+
+      expect(result.counts.short_receipt).toBe(1)
+    })
+
+    it('happy: reviewed photo documents (PO, invoice, receipt) compare', async () => {
+      const { workspace } = await seedWorkspace(`${prefix}gate-reviewed@example.com`, 'Gate Reviewed')
+      const reviewedAt = new Date('2026-10-05T00:00:00Z')
+      const { po, invoice } = await seedPair(workspace.id, {
+        po: { reviewRequired: true, reviewedAt },
+        invoice: { reviewRequired: true, reviewedAt },
+      })
+      const grn = await seedGoodsReceipt(workspace.id, po.id, [{ sku: 'A1', quantityAccepted: '8' }])
+      await db.update(goodsReceipts).set({ sourceKind: 'image', reviewRequired: true, reviewedAt }).where(eq(goodsReceipts.id, grn.id))
+
+      const result = await service.compare(workspace.id, po.id, invoice.id)
+
+      expect(result.counts.short_receipt).toBe(1)
+    })
+  })
+
+  describe('photo line citations (photo intake)', () => {
+    async function seedFlagFixture(workspaceId: string) {
+      const { po, invoice } = await seedReadyPoAndInvoice(
+        workspaceId,
+        [{ sku: 'A1', quantity: '10', unitPrice: '5.00' }],
+        [{ sku: 'A1', quantity: '10', unitPrice: '6.00' }],
+        true,
+      )
+      const [poLine] = await db.select().from(poLineItems).where(eq(poLineItems.purchaseOrderId, po.id))
+      const [invLine] = await db.select().from(invoiceLineItems).where(eq(invoiceLineItems.invoiceId, invoice.id))
+      const grn = await seedGoodsReceipt(workspaceId, po.id, [{ sku: 'A1', quantityAccepted: '7' }])
+      const [receiptLine] = await db.select().from(goodsReceiptLineItems).where(eq(goodsReceiptLineItems.goodsReceiptId, grn.id))
+      await db.insert(discrepancyFlags).values({
+        workspaceId,
+        purchaseOrderId: po.id,
+        invoiceId: invoice.id,
+        poLineItemId: poLine.id,
+        invoiceLineItemId: invLine.id,
+        goodsReceiptLineItemId: receiptLine.id,
+        sku: 'A1',
+        flagType: 'price_mismatch',
+        reason: 'Price differs.',
+      })
+      return { po, invoice, poLine, invLine, receiptLine, grn }
+    }
+
+    type Cited = { poLine: Record<string, unknown> | null; invoiceLine: Record<string, unknown> | null; receiptLine: Record<string, unknown> | null }
+
+    it('edge: a line read from a photo cites sourceKind image-extraction with its confidence and no editedAt', async () => {
+      const { workspace } = await seedWorkspace(`${prefix}cite-photo@example.com`, 'Cite Photo')
+      const { poLine, invLine } = await seedFlagFixture(workspace.id)
+      await db.update(poLineItems).set({ sourceKind: 'image-extraction', extractionConfidence: '0.92' }).where(eq(poLineItems.id, poLine.id))
+      await db.update(invoiceLineItems).set({ sourceKind: 'image-extraction', extractionConfidence: '0.5' }).where(eq(invoiceLineItems.id, invLine.id))
+
+      const [item] = (await service.listFlags(workspace.id, {})).items as unknown as Cited[]
+
+      expect(item.poLine).toMatchObject({ sourceKind: 'image-extraction', extractionConfidence: 0.92, editedAt: null })
+      expect(item.invoiceLine).toMatchObject({ sourceKind: 'image-extraction', extractionConfidence: 0.5 })
+    })
+
+    it('edge: an edited line cites editedAt as an ISO string', async () => {
+      const { workspace } = await seedWorkspace(`${prefix}cite-edited@example.com`, 'Cite Edited')
+      const { poLine } = await seedFlagFixture(workspace.id)
+      const editedAt = new Date('2026-10-05T10:11:12.000Z')
+      await db.update(poLineItems).set({ sourceKind: 'image-extraction', editedAt }).where(eq(poLineItems.id, poLine.id))
+
+      const [item] = (await service.listFlags(workspace.id, {})).items as unknown as Cited[]
+
+      expect(item.poLine?.editedAt).toBe('2026-10-05T10:11:12.000Z')
+    })
+
+    it('edge: a line added by the reviewer cites sourceKind manual', async () => {
+      const { workspace } = await seedWorkspace(`${prefix}cite-manual@example.com`, 'Cite Manual')
+      const { invLine } = await seedFlagFixture(workspace.id)
+      await db.update(invoiceLineItems).set({ sourceKind: 'manual' }).where(eq(invoiceLineItems.id, invLine.id))
+
+      const [item] = (await service.listFlags(workspace.id, {})).items as unknown as Cited[]
+
+      expect(item.invoiceLine).toMatchObject({ sourceKind: 'manual' })
+    })
+
+    it('edge: a receipt line read from a photo cites its real confidence, not null', async () => {
+      const { workspace } = await seedWorkspace(`${prefix}cite-receipt-photo@example.com`, 'Cite Receipt Photo')
+      const { receiptLine } = await seedFlagFixture(workspace.id)
+      await db
+        .update(goodsReceiptLineItems)
+        .set({ sourceKind: 'image-extraction', extractionConfidence: '0.64', editedAt: new Date('2026-10-05T00:00:00Z') })
+        .where(eq(goodsReceiptLineItems.id, receiptLine.id))
+
+      const [item] = (await service.listFlags(workspace.id, {})).items as unknown as Cited[]
+
+      expect(item.receiptLine).toMatchObject({ sourceKind: 'image-extraction', extractionConfidence: 0.64, editedAt: '2026-10-05T00:00:00.000Z' })
+    })
+
+    it('regression: CSV lines cite sourceKind csv and editedAt null', async () => {
+      const { workspace } = await seedWorkspace(`${prefix}cite-csv-kind@example.com`, 'Cite CSV Kind')
+      await seedFlagFixture(workspace.id)
+
+      const [item] = (await service.listFlags(workspace.id, {})).items as unknown as Cited[]
+
+      expect(item.poLine).toMatchObject({ sourceKind: 'csv', editedAt: null })
+      expect(item.receiptLine).toMatchObject({ sourceKind: 'csv', editedAt: null, extractionConfidence: null })
     })
   })
 })

@@ -46,7 +46,7 @@ describe('Hero', () => {
 
     expect(
       screen.getByText(
-        '14-day free trial · reads the PDFs, CSVs and spreadsheets you already have',
+        '14-day free trial · reads the PDFs, spreadsheets and phone photos you already have',
       ),
     ).not.toBeNull()
   })
