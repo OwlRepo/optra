@@ -6,6 +6,9 @@ import { trustProxySetting } from './common/trust-proxy'
 
 /** Everything main.ts applies to the app, shared with the e2e suites that need production behaviour. */
 export function configureApp(app: NestExpressApplication): void {
+  // A photo review posts up to 200 lines; Express's 100kb default would refuse
+  // it. Raised, not removed (the throttler still bounds request volume).
+  app.useBodyParser('json', { limit: '1mb' })
   app.use(cookieParser())
   app.useGlobalPipes(new ValidationPipe({ whitelist: true }))
   app.useGlobalFilters(new AllExceptionsFilter())

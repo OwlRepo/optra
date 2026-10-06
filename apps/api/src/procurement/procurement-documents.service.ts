@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto'
-import { extname } from 'path'
+import { basename, extname } from 'path'
 import { ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common'
 import { and, desc, eq, inArray } from 'drizzle-orm'
 import {
@@ -16,6 +16,20 @@ import { readOrNotFound } from '../storage/storage.errors'
 import { ProcurementDocKind, ProcurementParseService } from './procurement-parse.service'
 import { assertUnreachable, docLabel } from './procurement-kind'
 import { decodeUploadFilename } from '../common/http/upload-filename'
+import { normalizePhoto, photoPageKey, photoStorageKey, stitchPagesToPdf } from './procurement-photo'
+
+type InsertedHeader = { id: string; name: string; status: 'pending' | 'processing' | 'done' | 'failed' }
+
+// Columns every header insert carries; the photo path adds the review ones.
+type CommonHeaderValues = {
+  workspaceId: string
+  name: string
+  storageKey: string
+  status: 'pending'
+  sourceKind: string
+  reviewRequired?: boolean
+  pageCount?: number
+}
 
 // Header metadata supplied by the user at upload time (S3b). Nothing in the
 // repo extracts document-level fields, and POLICY v1 #2/#3 want the vendor and
@@ -116,65 +130,11 @@ export class ProcurementDocumentsService {
       sourceKind,
     }
 
-    // Normalized here, not in the DTO: validator's isISO4217 is
-    // case-INSENSITIVE, so "usd" and "USD" both pass validation and would both
-    // reach the column. POLICY v1 #6 compares currencies between a PO and its
-    // invoice in S6; two spellings of the same currency would read as a
-    // mismatch and manufacture exactly the false discrepancy this product
-    // exists to remove. The global ValidationPipe runs without `transform`, so
-    // a class-transformer @Transform would never fire — it has to be here.
-    //
-    // Lives per-branch rather than in `common` because a goods receipt has no
-    // currency column at all.
-    const normalizedCurrency = (value: string) => value.toUpperCase()
-
     // The object is written first; if the row cannot be created the object
     // would be unreachable forever, so remove it before surfacing the error.
-    let inserted: { id: string; name: string; status: 'pending' | 'processing' | 'done' | 'failed' }[]
+    let doc: InsertedHeader
     try {
-      switch (kind) {
-        case 'purchase_order': {
-          const poHeader = header as ProcurementPoHeader
-          inserted = await db
-            .insert(purchaseOrders)
-            .values({
-              ...common,
-              currency: normalizedCurrency(poHeader.currency),
-              vendorId: poHeader.vendorId,
-              poNumber: poHeader.poNumber,
-              orderedAt: poHeader.orderedAt ? new Date(poHeader.orderedAt) : null,
-            })
-            .returning()
-          break
-        }
-        case 'invoice': {
-          const invoiceHeader = header as ProcurementInvoiceHeader
-          inserted = await db
-            .insert(invoices)
-            .values({
-              ...common,
-              currency: normalizedCurrency(invoiceHeader.currency),
-              purchaseOrderId: invoiceHeader.purchaseOrderId,
-              invoiceNumber: invoiceHeader.invoiceNumber,
-            })
-            .returning()
-          break
-        }
-        case 'goods_receipt': {
-          const grnHeader = header as ProcurementGrnHeader
-          inserted = await db
-            .insert(goodsReceipts)
-            .values({
-              ...common,
-              purchaseOrderId: grnHeader.purchaseOrderId,
-              grnNumber: grnHeader.grnNumber,
-            })
-            .returning()
-          break
-        }
-        default:
-          return assertUnreachable(kind)
-      }
+      doc = await this.insertHeader(kind, common, header)
     } catch (error) {
       await this.storage.delete(storageKey).catch((cleanupError: unknown) => {
         this.logger.warn(
@@ -183,18 +143,67 @@ export class ProcurementDocumentsService {
       })
       throw error
     }
-    const [doc] = inserted
 
+    return this.queueOrFail(kind, doc)
+  }
+
+  /**
+   * Photo intake: 1..5 phone photos of one paper document become ONE document.
+   * Pages are normalised (upright, <=2048px, EXIF/GPS stripped) before anything
+   * is stored, saved as `<n>.jpg`, then stitched into a PDF that doubles as
+   * `storageKey` so the existing download route keeps working. The row needs a
+   * human review before it can be compared.
+   */
+  async uploadPhotos(
+    workspaceId: string,
+    kind: ProcurementDocKind,
+    files: Express.Multer.File[],
+    header: ProcurementHeader,
+  ) {
+    await this.assertHeaderInWorkspace(workspaceId, kind, header)
+
+    // Decoded one at a time: a batch of 12MP photos must not sit in memory at once.
+    const pages: Buffer[] = []
+    for (const [index, file] of files.entries()) {
+      pages.push((await normalizePhoto(file.buffer, index + 1)).data)
+    }
+    const pdf = Buffer.from(await stitchPagesToPdf(pages))
+
+    const firstName = decodeUploadFilename(files[0].originalname)
+    const name = `${basename(firstName, extname(firstName))}.pdf`
+    const storageKey = photoStorageKey(workspaceId, kind, randomUUID(), name)
+
+    const savedKeys: string[] = []
+    let doc: InsertedHeader
     try {
-      await this.parse.queueDoc(kind, doc.id)
+      for (const [index, page] of pages.entries()) {
+        const key = photoPageKey(storageKey, index + 1)
+        savedKeys.push(key)
+        await this.storage.save(key, page, 'image/jpeg')
+      }
+      savedKeys.push(storageKey)
+      await this.storage.save(storageKey, pdf, 'application/pdf')
+
+      doc = await this.insertHeader(
+        kind,
+        {
+          workspaceId,
+          name,
+          storageKey,
+          status: 'pending',
+          sourceKind: 'image',
+          reviewRequired: true,
+          pageCount: pages.length,
+        },
+        header,
+      )
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
-      await this.markFailed(kind, doc.id, `Queue enqueue failed: ${message}`)
-      this.logger.error(`Procurement upload enqueue failed kind=${kind} id=${doc.id}: ${message}`)
+      // No row exists: every saved object is unreachable, remove them all.
+      await this.deleteQuietly(savedKeys, kind)
       throw error
     }
 
-    return { id: doc.id, name: doc.name, status: doc.status }
+    return this.queueOrFail(kind, doc)
   }
 
   /**
@@ -215,6 +224,11 @@ export class ProcurementDocumentsService {
         status: purchaseOrders.status,
         rowCount: purchaseOrders.rowCount,
         lastError: purchaseOrders.lastError,
+        sourceKind: purchaseOrders.sourceKind,
+        pageCount: purchaseOrders.pageCount,
+        reviewRequired: purchaseOrders.reviewRequired,
+        reviewedAt: purchaseOrders.reviewedAt,
+        detectedKind: purchaseOrders.detectedKind,
         createdAt: purchaseOrders.createdAt,
         storageKey: purchaseOrders.storageKey,
         poNumber: purchaseOrders.poNumber,
@@ -242,6 +256,11 @@ export class ProcurementDocumentsService {
         status: invoices.status,
         rowCount: invoices.rowCount,
         lastError: invoices.lastError,
+        sourceKind: invoices.sourceKind,
+        pageCount: invoices.pageCount,
+        reviewRequired: invoices.reviewRequired,
+        reviewedAt: invoices.reviewedAt,
+        detectedKind: invoices.detectedKind,
         createdAt: invoices.createdAt,
         storageKey: invoices.storageKey,
         invoiceNumber: invoices.invoiceNumber,
@@ -263,6 +282,11 @@ export class ProcurementDocumentsService {
         status: goodsReceipts.status,
         rowCount: goodsReceipts.rowCount,
         lastError: goodsReceipts.lastError,
+        sourceKind: goodsReceipts.sourceKind,
+        pageCount: goodsReceipts.pageCount,
+        reviewRequired: goodsReceipts.reviewRequired,
+        reviewedAt: goodsReceipts.reviewedAt,
+        detectedKind: goodsReceipts.detectedKind,
         createdAt: goodsReceipts.createdAt,
         storageKey: goodsReceipts.storageKey,
         grnNumber: goodsReceipts.grnNumber,
@@ -324,11 +348,19 @@ export class ProcurementDocumentsService {
     }
 
     if (doc.storageKey) {
-      await this.storage.delete(doc.storageKey).catch((error: unknown) => {
-        this.logger.warn(
-          `Failed to delete storage object ${doc.storageKey}: ${error instanceof Error ? error.message : String(error)}`,
-        )
-      })
+      const keys = [doc.storageKey]
+      if (doc.sourceKind === 'image' && doc.pageCount) {
+        for (let n = 1; n <= doc.pageCount; n += 1) {
+          keys.push(photoPageKey(doc.storageKey, n))
+        }
+      }
+      for (const key of keys) {
+        await this.storage.delete(key).catch((error: unknown) => {
+          this.logger.warn(
+            `Failed to delete storage object ${key}: ${error instanceof Error ? error.message : String(error)}`,
+          )
+        })
+      }
     }
 
     switch (kind) {
@@ -346,6 +378,91 @@ export class ProcurementDocumentsService {
     }
 
     return { message: `${docLabel(kind)} deleted` }
+  }
+
+  private async queueOrFail(kind: ProcurementDocKind, doc: InsertedHeader) {
+    try {
+      await this.parse.queueDoc(kind, doc.id)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      await this.markFailed(kind, doc.id, `Queue enqueue failed: ${message}`)
+      this.logger.error(`Procurement upload enqueue failed kind=${kind} id=${doc.id}: ${message}`)
+      throw error
+    }
+
+    return { id: doc.id, name: doc.name, status: doc.status }
+  }
+
+  private async deleteQuietly(keys: string[], kind: ProcurementDocKind) {
+    for (const key of keys) {
+      await this.storage.delete(key).catch((cleanupError: unknown) => {
+        this.logger.warn(
+          `Procurement upload cleanup failed kind=${kind} key=${key}: ${cleanupError instanceof Error ? cleanupError.message : String(cleanupError)}`,
+        )
+      })
+    }
+  }
+
+  private async insertHeader(
+    kind: ProcurementDocKind,
+    common: CommonHeaderValues,
+    header: ProcurementHeader,
+  ): Promise<InsertedHeader> {
+    // Normalized here, not in the DTO: validator's isISO4217 is
+    // case-INSENSITIVE, so "usd" and "USD" both pass validation and would both
+    // reach the column. POLICY v1 #6 compares currencies between a PO and its
+    // invoice in S6; two spellings of the same currency would read as a
+    // mismatch and manufacture exactly the false discrepancy this product
+    // exists to remove. The global ValidationPipe runs without `transform`, so
+    // a class-transformer @Transform would never fire — it has to be here.
+    //
+    // Lives per-branch rather than in `common` because a goods receipt has no
+    // currency column at all.
+    const normalizedCurrency = (value: string) => value.toUpperCase()
+
+    switch (kind) {
+      case 'purchase_order': {
+        const poHeader = header as ProcurementPoHeader
+        const [row] = await db
+          .insert(purchaseOrders)
+          .values({
+            ...common,
+            currency: normalizedCurrency(poHeader.currency),
+            vendorId: poHeader.vendorId,
+            poNumber: poHeader.poNumber,
+            orderedAt: poHeader.orderedAt ? new Date(poHeader.orderedAt) : null,
+          })
+          .returning()
+        return row
+      }
+      case 'invoice': {
+        const invoiceHeader = header as ProcurementInvoiceHeader
+        const [row] = await db
+          .insert(invoices)
+          .values({
+            ...common,
+            currency: normalizedCurrency(invoiceHeader.currency),
+            purchaseOrderId: invoiceHeader.purchaseOrderId,
+            invoiceNumber: invoiceHeader.invoiceNumber,
+          })
+          .returning()
+        return row
+      }
+      case 'goods_receipt': {
+        const grnHeader = header as ProcurementGrnHeader
+        const [row] = await db
+          .insert(goodsReceipts)
+          .values({
+            ...common,
+            purchaseOrderId: grnHeader.purchaseOrderId,
+            grnNumber: grnHeader.grnNumber,
+          })
+          .returning()
+        return row
+      }
+      default:
+        return assertUnreachable(kind)
+    }
   }
 
   /**

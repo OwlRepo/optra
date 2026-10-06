@@ -6,6 +6,7 @@ import { ProcurementParseService } from './procurement-parse.service'
 import { ProcurementParseProcessor } from './procurement-parse.processor'
 import { ProcurementExtractionService } from './procurement-extraction.service'
 import { ComparisonService } from './comparison.service'
+import { ProcurementReviewService } from './procurement-review.service'
 import { ProcurementCompareService } from './procurement-compare.service'
 import { ProcurementCompareProcessor } from './procurement-compare.processor'
 import { EventsModule } from '../events/events.module'
@@ -36,6 +37,7 @@ import { StructuredQueryModule } from '../structured-query/structured-query.modu
     ComparisonService,
     ProcurementCompareService,
     ProcurementCompareProcessor,
+    ProcurementReviewService,
   ],
   exports: [ProcurementDocumentsService],
 })

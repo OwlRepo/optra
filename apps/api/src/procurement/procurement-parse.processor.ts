@@ -9,6 +9,9 @@ import * as XLSX from 'xlsx'
 import { eq } from 'drizzle-orm'
 import {
   EXTRACTOR_VERSION,
+  IMAGE_EXTRACTOR_VERSION,
+  ImagePage,
+  DetectedProcurementKind,
   ProcurementExtractionEmptyError,
   ProcurementExtractionRefusalError,
   ProcurementExtractionUnsupportedError,
@@ -23,6 +26,7 @@ import { ProcurementDocKind, ProcurementParseService, RECONCILE_JOB_NAME } from 
 import { ProcurementCompareService } from './procurement-compare.service'
 import { assertUnreachable, docLabel } from './procurement-kind'
 import { ProcurementExtractionService } from './procurement-extraction.service'
+import { photoPageKey } from './procurement-photo'
 
 interface MappedLineItemRow {
   sku: string | null
@@ -143,6 +147,17 @@ export class ProcurementParseProcessor {
     let tempPath: string | undefined
 
     try {
+      // Photo documents are read page by page from the stored JPEGs. Checked
+      // BEFORE the extension: the stitched PDF is named `<x>.pdf`, which would
+      // otherwise trip the PDF branch and the PDF-receipt refusal below.
+      if (doc.sourceKind === 'image') {
+        const result = await this.extractPhotoRows(kind, doc)
+        await this.replaceLineItemsAndFinish(kind, id, doc.workspaceId, result.rows, 'image-extraction', result.detectedKind)
+        await this.enqueueCompare(kind, id)
+        this.logger.log(`Procurement parse completed kind=${kind} id=${id} jobId=${String(job.id)}`)
+        return
+      }
+
       const extension = extname(doc.name).toLowerCase()
       const isPdf = extension === '.pdf'
 
@@ -212,14 +227,7 @@ export class ProcurementParseProcessor {
       // The feature flag is checked inside `enqueueForDocument`, not here. One
       // check, in the place that owns the behaviour, rather than two places to
       // remember; it returns before touching the database when the flag is off.
-      await this.compareService
-        .enqueueForDocument(kind, id)
-        .catch((error: unknown) =>
-          this.logger.warn(
-            `Auto-compare enqueue failed kind=${kind} id=${id}: ` +
-              `${error instanceof Error ? error.message : 'unknown error'}`,
-          ),
-        )
+      await this.enqueueCompare(kind, id)
 
       this.logger.log(`Procurement parse completed kind=${kind} id=${id} jobId=${String(job.id)}`)
     } catch (error) {
@@ -229,6 +237,54 @@ export class ProcurementParseProcessor {
         await unlink(tempPath).catch(() => undefined)
       }
     }
+  }
+
+  private async enqueueCompare(kind: ProcurementDocKind, id: string) {
+    await this.compareService
+      .enqueueForDocument(kind, id)
+      .catch((error: unknown) =>
+        this.logger.warn(
+          `Auto-compare enqueue failed kind=${kind} id=${id}: ` +
+            `${error instanceof Error ? error.message : 'unknown error'}`,
+        ),
+      )
+  }
+
+  private async extractPhotoRows(
+    kind: ProcurementDocKind,
+    doc: { storageKey: string | null; pageCount: number | null; workspaceId: string },
+  ): Promise<{ rows: MappedLineItemRow[]; detectedKind: DetectedProcurementKind | undefined }> {
+    if (!doc.storageKey || doc.pageCount === null || doc.pageCount < 1) {
+      throw new ProcurementParseInputError('This photo document has no pages. Upload it again.')
+    }
+
+    // Sequential on purpose: at most 5 pages, and a missing object must stop
+    // the read before any model call is made.
+    const pages: ImagePage[] = []
+    for (let n = 1; n <= doc.pageCount; n += 1) {
+      pages.push({ buffer: await this.storage.getBuffer(photoPageKey(doc.storageKey, n)), mime: 'image/jpeg' })
+    }
+
+    const result = await this.extraction.extractFromImages(pages, kind, doc.workspaceId)
+    const rows = result.items.map((item) => ({
+      ...validateLineItem({
+        sku: item.sku,
+        description: item.description,
+        quantity: item.quantity,
+        unitPrice: item.unitPrice,
+        lineTotal: item.lineTotal,
+        uom: item.uom ?? null,
+        quantityReceived: item.quantityReceived ?? null,
+        quantityAccepted: item.quantityAccepted ?? null,
+        quantityRejected: item.quantityRejected ?? null,
+      }),
+      rawRow: { ...item },
+      sourceRow: null,
+      sourceSheet: null,
+      extractionConfidence: item.confidence === null ? null : String(item.confidence),
+      extractorVersion: IMAGE_EXTRACTOR_VERSION,
+    }))
+    return { rows, detectedKind: result.detectedKind }
   }
 
   // Document problems fail now and return (Bull records success, no retry).
@@ -313,6 +369,7 @@ export class ProcurementParseProcessor {
     workspaceId: string,
     rows: MappedLineItemRow[],
     sourceKind: string,
+    detectedKind?: DetectedProcurementKind,
   ) {
     const lineValues = rows.map((row, index) => ({
       workspaceId,
@@ -333,7 +390,14 @@ export class ProcurementParseProcessor {
       extractionConfidence: row.extractionConfidence,
       extractorVersion: row.extractorVersion,
     }))
-    const done = { status: 'done' as const, rowCount: rows.length, lastError: null, updatedAt: new Date() }
+    const done = {
+      status: 'done' as const,
+      rowCount: rows.length,
+      lastError: null,
+      updatedAt: new Date(),
+      // Photo path only; absent for CSV/XLSX/PDF so their header is untouched.
+      ...(detectedKind ? { detectedKind } : {}),
+    }
 
     await db.transaction(async (tx) => {
       switch (kind) {
@@ -379,6 +443,8 @@ export class ProcurementParseProcessor {
                 sourceKind: value.sourceKind,
                 sourceRow: value.sourceRow,
                 sourceSheet: value.sourceSheet,
+                extractionConfidence: value.extractionConfidence,
+                extractorVersion: value.extractorVersion,
               })),
             )
           }

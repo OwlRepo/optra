@@ -21,6 +21,9 @@ import { maxUploadMb } from './upload-limit'
  * framework's "File too large" instead of naming the limit. Both shapes are
  * handled here, and the real one is pinned by API e2e on every upload route.
  */
+// What multer says for LIMIT_UNEXPECTED_FILE; @nestjs/platform-express forwards it verbatim.
+const UNEXPECTED_FILE_MESSAGE = 'Unexpected field'
+
 @Catch(MulterError, BadRequestException, PayloadTooLargeException)
 export class UploadExceptionFilter implements ExceptionFilter {
   // Read per instance, through the same function each controller sizes
@@ -35,6 +38,18 @@ export class UploadExceptionFilter implements ExceptionFilter {
       (exception instanceof MulterError && exception.code === 'LIMIT_FILE_SIZE')
     ) {
       response.status(413).json({ statusCode: 413, message: `File exceeds ${this.maxUploadMb}MB upload limit` })
+      return
+    }
+
+    // multer's "more files than the interceptor allows" arrives either as the raw
+    // MulterError, or, through FileInterceptor, already converted to a
+    // BadRequestException carrying multer's own text. Both read the same to the
+    // user, and neither echoes the field name.
+    if (
+      (exception instanceof MulterError && exception.code === 'LIMIT_UNEXPECTED_FILE') ||
+      (exception instanceof BadRequestException && exception.message === UNEXPECTED_FILE_MESSAGE)
+    ) {
+      response.status(400).json({ statusCode: 400, message: 'Too many files' })
       return
     }
 
