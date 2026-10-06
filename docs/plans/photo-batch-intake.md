@@ -485,3 +485,15 @@ Also:
   - members uploading receipts (a roles change)
   - catalog readers skipping unreviewed lines
   - PDF goods receipts (the extraction now supports them)
+
+---
+
+## Addendum (owner-approved 2026-10-06): shared Modal focus trap + Tabs ARIA
+
+Found by the WCAG 2.1 AA audit of this feature's dialogs; owner approved the RCA + fix and shipping it in this PR as separate commits.
+
+- Classification: `BUG_FIX` · Standard · UI shared primitives · no contract/schema impact. Docs loaded: `planning.md, plan-template.md`.
+- RCA: `packages/ui/src/components/ui/modal.tsx` `Modal` only focuses the panel and handles Escape — no Tab containment (focus escapes despite `aria-modal`) and no focus restore (drops to `<body>`); 12 consumers. `packages/ui/src/components/ui/tabs.tsx` `Tabs` renders `role="tablist"`/`role="tab"` with every tab tabbable, no arrow/Home/End keys, no `aria-controls`/`tabpanel`; consumers: procurement page, `DocumentReviewModal` page picker.
+- Fix: Modal stores `document.activeElement` on open; Tab/Shift+Tab wrap among focusable descendants (`a[href]`, enabled `button|input|select|textarea`, `[tabindex]` — all excluding `tabindex="-1"`); on close restore to optional `returnFocusRef` prop, else the stored element when still connected. Tabs: roving tabindex (selected 0, others -1), ArrowLeft/Right/Home/End move focus + select (automatic activation, as clicks select today), optional `idPrefix` → tab `id=${idPrefix}-tab-${id}`, `aria-controls=${idPrefix}-panel-${id}`; procurement page + review modal render `role="tabpanel"` `id`/`aria-labelledby`.
+- Tests: `packages/ui/src/components/ui/modal.spec.tsx`, `tabs.spec.tsx` (RED first); Playwright: Tab stays inside the upload dialog and Escape returns focus to the upload button; API e2e not applicable (`Test-Layers-Skip`).
+- Backward compatibility: new props optional; existing `role`/name selectors unchanged; Modal consumers gain containment only.
