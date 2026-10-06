@@ -113,6 +113,70 @@ describe('Tabs', () => {
   })
 })
 
+describe('Tabs keyboard pattern and ARIA wiring', () => {
+  it('error: without idPrefix tabs have no id and no aria-controls', () => {
+    setup()
+    for (const tab of screen.getAllByRole('tab')) {
+      expect(tab.getAttribute('aria-controls')).toBeNull()
+      expect(tab.getAttribute('id')).toBeNull()
+    }
+  })
+
+  it('edge: only the selected tab is tabbable', () => {
+    setup({ value: 'tickets' })
+    expect(screen.getByRole('tab', { name: 'Docs' }).getAttribute('tabindex')).toBe('-1')
+    expect(screen.getByRole('tab', { name: 'Tickets' }).getAttribute('tabindex')).toBe('0')
+    expect(screen.getByRole('tab', { name: 'Chat' }).getAttribute('tabindex')).toBe('-1')
+  })
+
+  it('edge: ArrowRight/ArrowLeft select the neighbour, wrap, and move focus', () => {
+    const { onValueChange } = setup({ value: 'chat' })
+    fireEvent.keyDown(screen.getByRole('tab', { name: 'Chat' }), { key: 'ArrowRight' })
+    expect(onValueChange).toHaveBeenLastCalledWith('docs')
+    expect(document.activeElement).toBe(screen.getByRole('tab', { name: 'Docs' }))
+    fireEvent.keyDown(screen.getByRole('tab', { name: 'Chat' }), { key: 'ArrowLeft' })
+    expect(onValueChange).toHaveBeenLastCalledWith('tickets')
+    expect(document.activeElement).toBe(screen.getByRole('tab', { name: 'Tickets' }))
+  })
+
+  it('edge: Home and End jump to the first and last tab', () => {
+    const { onValueChange } = setup({ value: 'tickets' })
+    fireEvent.keyDown(screen.getByRole('tab', { name: 'Tickets' }), { key: 'Home' })
+    expect(onValueChange).toHaveBeenLastCalledWith('docs')
+    expect(document.activeElement).toBe(screen.getByRole('tab', { name: 'Docs' }))
+    fireEvent.keyDown(screen.getByRole('tab', { name: 'Tickets' }), { key: 'End' })
+    expect(onValueChange).toHaveBeenLastCalledWith('chat')
+    expect(document.activeElement).toBe(screen.getByRole('tab', { name: 'Chat' }))
+  })
+
+  it('edge: idPrefix wires tab ids and aria-controls for consumer tabpanels', () => {
+    setup({ idPrefix: 'po' })
+    const tab = screen.getByRole('tab', { name: 'Tickets' })
+    expect(tab.getAttribute('id')).toBe('po-tab-tickets')
+    expect(tab.getAttribute('aria-controls')).toBe('po-panel-tickets')
+  })
+
+  it('regression: shortLabel keeps the full aria-label and clicking still selects', () => {
+    const onValueChange = vi.fn()
+    render(
+      <Tabs
+        items={[
+          { id: 'docs', label: 'Purchase Orders', shortLabel: 'POs' },
+          { id: 'tickets', label: 'Tickets' },
+        ]}
+        value="tickets"
+        onValueChange={onValueChange}
+        aria-label="Sections"
+        idPrefix="x"
+      />,
+    )
+    const tab = screen.getByRole('tab', { name: 'Purchase Orders' })
+    expect(tab.getAttribute('aria-label')).toBe('Purchase Orders')
+    fireEvent.click(tab)
+    expect(onValueChange).toHaveBeenCalledWith('docs')
+  })
+})
+
 describe('SegmentedControl', () => {
   const options = [
     { value: '', label: 'All' },

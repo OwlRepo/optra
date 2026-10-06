@@ -2,6 +2,7 @@
 
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import * as React from 'react'
 import { Modal } from './modal'
 
 afterEach(() => {
@@ -197,5 +198,140 @@ describe('Modal', () => {
     expect(footer.className).toContain('border-border-inner')
     expect(footer.className).toContain('justify-end')
     expect(footer.className).toContain('px-[26px]')
+  })
+})
+
+describe('Modal focus containment', () => {
+  function tab(shift = false) {
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Tab', shiftKey: shift })
+  }
+
+  function renderTrap(extra?: React.ReactNode) {
+    return render(
+      <Modal open onClose={() => {}} title="Trap" footer={<button type="button">Last</button>}>
+        <button type="button">First</button>
+        {extra}
+      </Modal>,
+    )
+  }
+
+  it('error: with no focusable child, Tab keeps focus on the panel', () => {
+    render(
+      <Modal open onClose={() => {}}>
+        <p>Body</p>
+      </Modal>,
+    )
+    const dialog = screen.getByRole('dialog')
+    expect(document.activeElement).toBe(dialog)
+    tab()
+    expect(document.activeElement).toBe(dialog)
+    tab(true)
+    expect(document.activeElement).toBe(dialog)
+  })
+
+  it('error: closing after the opener left the DOM does not throw or focus a detached node', () => {
+    const opener = document.createElement('button')
+    document.body.appendChild(opener)
+    opener.focus()
+    const view = render(
+      <Modal open onClose={() => {}} title="T">
+        <p>Body</p>
+      </Modal>,
+    )
+    opener.remove()
+    expect(() => view.rerender(<Modal open={false} onClose={() => {}} title="T"><p>Body</p></Modal>)).not.toThrow()
+    expect(document.activeElement).not.toBe(opener)
+  })
+
+  it('edge: Tab from the last focusable wraps to the first', () => {
+    renderTrap()
+    screen.getByRole('button', { name: 'Last' }).focus()
+    tab()
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Close dialog' }))
+  })
+
+  it('edge: Shift+Tab from the first focusable wraps to the last', () => {
+    renderTrap()
+    screen.getByRole('button', { name: 'Close dialog' }).focus()
+    tab(true)
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Last' }))
+  })
+
+  it('edge: Shift+Tab from the panel itself wraps to the last focusable', () => {
+    renderTrap()
+    expect(document.activeElement).toBe(screen.getByRole('dialog'))
+    tab(true)
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Last' }))
+  })
+
+  it('edge: tabindex=-1, disabled and hidden inputs are skipped when wrapping', () => {
+    render(
+      <Modal open onClose={() => {}}>
+        <button type="button">Real first</button>
+        <button type="button" tabIndex={-1}>Roving</button>
+        <button type="button" disabled>Off</button>
+        <input type="hidden" name="h" />
+        <a href="/x">Real last</a>
+        <button type="button" tabIndex={-1}>Trailing roving</button>
+        <button type="button" disabled>Trailing off</button>
+      </Modal>,
+    )
+    screen.getByRole('link', { name: 'Real last' }).focus()
+    tab()
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Real first' }))
+    tab(true)
+    expect(document.activeElement).toBe(screen.getByRole('link', { name: 'Real last' }))
+  })
+
+  it('edge: Tab in the middle is left to the browser (not prevented)', () => {
+    renderTrap(<button type="button">Middle</button>)
+    screen.getByRole('button', { name: 'First' }).focus()
+    const notPrevented = fireEvent.keyDown(document.activeElement as Element, { key: 'Tab' })
+    expect(notPrevented).toBe(true)
+  })
+
+  it('edge: closing returns focus to the element focused before open', () => {
+    const opener = document.createElement('button')
+    document.body.appendChild(opener)
+    opener.focus()
+    const view = render(
+      <Modal open={false} onClose={() => {}} title="T">
+        <p>Body</p>
+      </Modal>,
+    )
+    view.rerender(<Modal open onClose={() => {}} title="T"><p>Body</p></Modal>)
+    expect(document.activeElement).toBe(screen.getByRole('dialog'))
+    view.rerender(<Modal open={false} onClose={() => {}} title="T"><p>Body</p></Modal>)
+    expect(document.activeElement).toBe(opener)
+    opener.remove()
+  })
+
+  it('edge: returnFocusRef wins over the previously focused element', () => {
+    const opener = document.createElement('button')
+    const target = document.createElement('button')
+    document.body.append(opener, target)
+    opener.focus()
+    const ref = { current: target }
+    const view = render(
+      <Modal open={false} onClose={() => {}} title="T" returnFocusRef={ref}>
+        <p>Body</p>
+      </Modal>,
+    )
+    view.rerender(<Modal open onClose={() => {}} title="T" returnFocusRef={ref}><p>Body</p></Modal>)
+    view.rerender(<Modal open={false} onClose={() => {}} title="T" returnFocusRef={ref}><p>Body</p></Modal>)
+    expect(document.activeElement).toBe(target)
+    opener.remove()
+    target.remove()
+  })
+
+  it('regression: Escape still closes', () => {
+    const onClose = vi.fn()
+    render(
+      <Modal open onClose={onClose} title="T">
+        <button type="button">A</button>
+      </Modal>,
+    )
+    fireEvent.keyDown(document.activeElement as Element, { key: 'Escape' })
+    expect(onClose).toHaveBeenCalledTimes(1)
   })
 })
