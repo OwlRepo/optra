@@ -166,7 +166,9 @@ describe('BatchUploadDialog', () => {
     expect(within(screen.getByRole('group', { name: 'b.csv' })).queryByRole('button', { name: /^Retry/ })).toBeNull()
 
     uploadPurchaseOrderMock.mockResolvedValueOnce({ id: 'doc-a', name: 'a.csv', status: 'pending' })
-    fireEvent.click(within(failed).getByRole('button', { name: /^Retry/ }))
+    const retry = within(failed).getByRole('button', { name: 'Retry a.csv' })
+    expect(retry.textContent).toBe('Retry')
+    fireEvent.click(retry)
 
     await waitFor(() => expect(screen.getByRole('group', { name: 'a.csv' }).getAttribute('data-status')).toBe('done'))
     expect(uploadPurchaseOrderMock).toHaveBeenCalledTimes(3)
@@ -204,6 +206,61 @@ describe('BatchUploadDialog', () => {
     renderDialog()
 
     expect(uploadButton().disabled).toBe(true)
+  })
+
+  it('error: a missing field is flagged next to its own input (aria-invalid + aria-describedby) in readable text', () => {
+    renderDialog()
+    pick(filesInput(), [csv('a.csv')])
+    const row = screen.getByRole('group', { name: 'a.csv' })
+    const number = within(row).getByLabelText('PO number')
+    const vendor = within(row).getByLabelText('Vendor')
+
+    expect(number.getAttribute('aria-invalid')).toBe('true')
+    expect(vendor.getAttribute('aria-invalid')).toBe('true')
+    const message = document.getElementById(number.getAttribute('aria-describedby') as string)
+    expect(message?.textContent).toBe('Enter the PO number')
+    expect(message?.className).toContain('text-ink-body')
+    expect(message?.className).not.toContain('text-[11px]')
+    expect(message?.className).not.toContain('text-ink-muted')
+    expect(document.getElementById(vendor.getAttribute('aria-describedby') as string)?.textContent).toBe('Choose a vendor')
+
+    fillPo(row, 'PO-A')
+
+    expect(within(row).getByLabelText('PO number').getAttribute('aria-invalid')).toBeNull()
+    expect(within(row).queryByText('Enter the PO number')).toBeNull()
+  })
+
+  it('error: while Upload is disabled by missing fields a footer hint says what to do; with no rows or a valid form there is none', () => {
+    renderDialog()
+    expect(screen.queryByText('Fill in the highlighted fields to upload.')).toBeNull()
+
+    pick(filesInput(), [csv('a.csv')])
+    expect(screen.getByText('Fill in the highlighted fields to upload.')).toBeDefined()
+
+    fillPo(screen.getByRole('group', { name: 'a.csv' }), 'PO-A')
+    expect(screen.queryByText('Fill in the highlighted fields to upload.')).toBeNull()
+  })
+
+  it('error: Close and Escape do nothing while an upload run is in progress, and say why', async () => {
+    let release: (value: unknown) => void = () => {}
+    uploadPurchaseOrderMock.mockImplementationOnce(() => new Promise((resolve) => { release = resolve }))
+    const { onClose } = renderDialog()
+    pick(filesInput(), [csv('a.csv')])
+    fillPo(screen.getByRole('group', { name: 'a.csv' }), 'PO-A')
+
+    fireEvent.click(uploadButton())
+    await waitFor(() => expect(uploadPurchaseOrderMock).toHaveBeenCalled())
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close dialog' }))
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(onClose).not.toHaveBeenCalled()
+    expect(screen.getByText(/wait for the upload to finish/i).className).toContain('sr-only')
+
+    release({ id: 'doc-a', name: 'a.csv', status: 'pending' })
+    await waitFor(() => expect(screen.getByRole('group', { name: 'a.csv' }).getAttribute('data-status')).toBe('done'))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close dialog' }))
+    expect(onClose).toHaveBeenCalledTimes(1)
   })
 
   // POLICY v1 #3: the vendor is mandatory, so with none the form cannot be
@@ -311,6 +368,50 @@ describe('BatchUploadDialog', () => {
 
     pick(filesInput(), [csv('6.csv')])
     expect(rows()).toHaveLength(5)
+  })
+
+  it('edge: one polite live region announces progress, each result and the final tally', async () => {
+    let releaseFirst: (value: unknown) => void = () => {}
+    uploadPurchaseOrderMock
+      .mockImplementationOnce(() => new Promise((resolve) => { releaseFirst = resolve }))
+      .mockRejectedValueOnce({ message: 'File type not supported' })
+    renderDialog()
+    pick(filesInput(), [csv('a.csv'), csv('b.csv')])
+    fillPo(screen.getByRole('group', { name: 'a.csv' }), 'PO-A')
+    fillPo(screen.getByRole('group', { name: 'b.csv' }), 'PO-B')
+    const live = screen.getByTestId('batch-live-status')
+    expect(live.getAttribute('role')).toBe('status')
+    expect(live.getAttribute('aria-live')).toBe('polite')
+    expect(live.className).toContain('sr-only')
+
+    fireEvent.click(uploadButton())
+
+    await waitFor(() => expect(live.textContent).toBe('Uploading 1 of 2'))
+    releaseFirst({ id: 'doc-a', name: 'a.csv', status: 'pending' })
+    await waitFor(() => expect(live.textContent).toBe('1 of 2 uploaded, 1 failed'))
+  })
+
+  it('edge: after a run that finished a photo row a success banner says to review before comparing; a file-only run shows none', async () => {
+    renderDialog()
+    pick(photosInput(), [jpg('p1.jpg')])
+    fillPo(screen.getByRole('group', { name: 'p1.jpg' }), 'PO-P')
+    expect(screen.queryByText(/Photo documents show Needs review/)).toBeNull()
+
+    fireEvent.click(uploadButton())
+
+    expect(
+      await screen.findByText(
+        'Uploaded. Photo documents show Needs review once they are read — open Review to check the lines before comparing.',
+      ),
+    ).toBeDefined()
+    cleanup()
+
+    renderDialog()
+    pick(filesInput(), [csv('a.csv')])
+    fillPo(screen.getByRole('group', { name: 'a.csv' }), 'PO-A')
+    fireEvent.click(uploadButton())
+    await waitFor(() => expect(screen.getByRole('group', { name: 'a.csv' }).getAttribute('data-status')).toBe('done'))
+    expect(screen.queryByText(/Photo documents show Needs review/)).toBeNull()
   })
 
   it('edge: each row starts ready and the picked file is held, not uploaded, until Upload', () => {

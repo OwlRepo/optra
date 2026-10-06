@@ -783,6 +783,36 @@ describe('ProcurementPage', () => {
       await waitFor(() => expect(screen.queryByText('Needs review')).toBeNull())
       expect(listPurchaseOrdersMock).toHaveBeenCalledTimes(2)
     })
+
+    it('edge: after the review is confirmed and its Review button is gone, focus lands on the tab’s upload button', async () => {
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme', role: 'owner' })
+      listPurchaseOrdersMock
+        .mockResolvedValueOnce([photoPendingPo])
+        .mockResolvedValueOnce([{ ...photoPendingPo, reviewedAt: '2026-10-06T00:00:00.000Z' }])
+      listInvoicesMock.mockResolvedValue([])
+      renderPage()
+      fireEvent.click(await screen.findByRole('button', { name: 'Review po-photo.pdf' }))
+
+      fireEvent.click(screen.getByRole('button', { name: 'stub reviewed' }))
+
+      await waitFor(() => expect(screen.queryByText('Needs review')).toBeNull())
+      expect(document.activeElement?.textContent).toContain('Upload purchase order')
+      expect(document.activeElement).not.toBe(document.body)
+    })
+
+    it('edge: cancelling the review puts focus back on that document’s Review button', async () => {
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme', role: 'owner' })
+      listPurchaseOrdersMock.mockResolvedValue([photoPendingPo])
+      listInvoicesMock.mockResolvedValue([])
+      renderPage()
+      const trigger = await screen.findByRole('button', { name: 'Review po-photo.pdf' })
+      trigger.focus()
+      fireEvent.click(trigger)
+
+      fireEvent.click(screen.getByRole('button', { name: 'stub review close' }))
+
+      expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Review po-photo.pdf' }))
+    })
   })
 
   // B14. A 403 on load used to fall through to the empty lists: an error toast,

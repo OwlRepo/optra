@@ -16,6 +16,15 @@ describe('FilesTrust', () => {
     expect(container.textContent).not.toMatch(/JPG|PNG/)
   })
 
+  it('error: does not promise that any readable file can be parsed; photos are confirmed by a person', () => {
+    const { container } = render(<FilesTrust />)
+
+    expect(container.textContent).not.toMatch(/If a person could read the file/)
+    expect(container.textContent).toContain(
+      'No portal for vendors to log into, no template to enforce. Optra reads line items from the files and phone photos vendors already send, and you confirm what it read from a photo before anything is compared.',
+    )
+  })
+
   it('regression: isolation and sign-off rows drop the absolute wording', () => {
     const { container } = render(<FilesTrust />)
 

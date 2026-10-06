@@ -353,7 +353,7 @@ test.describe('photo and batch intake', () => {
     await photoRow(page, photoPoName).getByRole('button', { name: `Review ${photoPoName}` }).click()
 
     const modal = page.getByRole('dialog')
-    const image = modal.getByRole('img', { name: 'Page 1' })
+    const image = modal.getByRole('img', { name: /^Page 1 of \d+, photo of / })
     await expect(image).toBeVisible()
     await expect.poll(() => image.evaluate((img: HTMLImageElement) => img.naturalWidth)).toBeGreaterThan(0)
     // The stub reads B2 at 0.45 confidence and A1 at 0.92.
@@ -369,7 +369,7 @@ test.describe('photo and batch intake', () => {
 
     await modal.getByRole('button', { name: 'Confirm' }).click()
 
-    await expect(toast(page, 'Document reviewed')).toBeVisible()
+    await expect(toast(page, `${photoPoName} reviewed`)).toBeVisible()
     await page.keyboard.press('Escape')
     await expect(photoRow(page, photoPoName).getByText('Needs review')).toHaveCount(0)
     const lines = JSON.parse((await bff(page, `${poUrl()}/${photoPoId}/lines`)).body)
@@ -401,7 +401,7 @@ test.describe('photo and batch intake', () => {
     // Confirm with no edits: the reviewer read it back and agrees.
     await page.getByRole('button', { name: `Review ${photoInvoiceName}` }).click()
     await page.getByRole('dialog').getByRole('button', { name: 'Confirm' }).click()
-    await expect(toast(page, 'Document reviewed')).toBeVisible()
+    await expect(toast(page, `${photoInvoiceName} reviewed`)).toBeVisible()
     await page.keyboard.press('Escape')
 
     await page.getByRole('tab', { name: 'Purchase Orders' }).click()

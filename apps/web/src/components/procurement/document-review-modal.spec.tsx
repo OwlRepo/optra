@@ -1,7 +1,7 @@
 /** @vitest-environment jsdom */
 
 import React from 'react'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ToastProvider } from '@repo/ui'
 import { DocumentReviewModal } from '@/components/procurement/document-review-modal'
@@ -95,19 +95,35 @@ describe('DocumentReviewModal', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Confirm' }))
 
-    expect(await screen.findByText('already reviewed')).toBeDefined()
+    expect(await screen.findAllByText('already reviewed')).not.toHaveLength(0)
+    // In-modal banner, not only a toast that may already be gone.
+    expect(within(screen.getByRole('dialog')).getByRole('alert').textContent).toContain('already reviewed')
     expect((screen.getByLabelText('Quantity line 1') as HTMLInputElement).value).toBe('15')
     expect(onReviewed).not.toHaveBeenCalled()
     expect(onClose).not.toHaveBeenCalled()
     expect((screen.getByRole('button', { name: 'Confirm' }) as HTMLButtonElement).disabled).toBe(false)
   })
 
-  it('error: a failed load toasts the reason and does not offer Confirm', async () => {
+  it('error: a failed load shows an in-modal error banner with Try again, no skeleton and no Confirm', async () => {
     listDocumentLinesMock.mockRejectedValue({ message: 'Document not found' })
     renderModal()
 
-    expect(await screen.findByText('Document not found')).toBeDefined()
+    const dialog = screen.getByRole('dialog')
+    expect((await within(dialog).findByRole('alert')).textContent).toContain('Document not found')
+    expect(within(dialog).getByRole('button', { name: 'Try again' })).toBeDefined()
     expect(screen.queryByRole('button', { name: 'Confirm' })).toBeNull()
+    expect(document.querySelector('[aria-busy="true"]')).toBeNull()
+  })
+
+  it('error: Try again reloads the document and shows the lines', async () => {
+    listDocumentLinesMock.mockRejectedValueOnce({ message: 'Document not found' })
+    renderModal()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Try again' }))
+
+    expect(await screen.findByLabelText('Quantity line 1')).toBeDefined()
+    expect(listDocumentLinesMock).toHaveBeenCalledTimes(2)
+    expect(screen.queryByRole('alert')).toBeNull()
   })
 
   it('error: Confirm is disabled while there are no lines to confirm', async () => {
@@ -126,6 +142,7 @@ describe('DocumentReviewModal', () => {
     renderModal()
 
     expect(document.querySelector('[aria-busy="true"]')).not.toBeNull()
+    expect(screen.getByText('Loading the page and lines…')).toBeDefined()
     expect(screen.queryByLabelText('Quantity line 1')).toBeNull()
 
     release(pageOf([makeLine()]))
@@ -178,6 +195,34 @@ describe('DocumentReviewModal', () => {
     for (const n of [2, 3, 4]) {
       expect(rowOf(`Quantity line ${n}`).getAttribute('data-low-confidence')).not.toBe('true')
     }
+  })
+
+  it('edge: a low-confidence row’s inputs are described by a screen-reader hint; other rows’ are not', async () => {
+    listDocumentLinesMock.mockResolvedValue(
+      pageOf([
+        makeLine({ id: 'l1', lineNumber: 1, extractionConfidence: 0.3 }),
+        makeLine({ id: 'l2', lineNumber: 2, extractionConfidence: 0.9 }),
+      ]),
+    )
+    renderModal()
+    const low = await screen.findByLabelText('Quantity line 1')
+
+    const hintId = low.getAttribute('aria-describedby')
+    expect(hintId).toBeTruthy()
+    const hint = document.getElementById(hintId as string)
+    expect(hint?.textContent).toBe('Low confidence — check against the page')
+    expect(hint?.className).toContain('sr-only')
+    expect(screen.getByLabelText('Quantity line 2').getAttribute('aria-describedby')).toBeNull()
+  })
+
+  it('edge: a document that did not come from photos shows no page image and no page tabs', async () => {
+    listDocumentLinesMock.mockResolvedValue(pageOf([makeLine()], makeDocument({ sourceKind: 'csv', pageCount: 3 })))
+    renderModal()
+
+    await screen.findByLabelText('Quantity line 1')
+
+    expect(screen.queryByRole('img')).toBeNull()
+    expect(screen.queryAllByRole('tab')).toHaveLength(0)
   })
 
   it('edge: a member sees the lines read-only with no Confirm, Add line or Remove', async () => {
@@ -244,13 +289,13 @@ describe('DocumentReviewModal', () => {
 
     await screen.findByLabelText('Quantity line 1')
     expect(screen.getAllByRole('tab', { name: /^Page \d$/ })).toHaveLength(3)
-    expect(screen.getByRole('img', { name: 'Page 1' }).getAttribute('src')).toBe(
+    expect(screen.getByRole('img', { name: 'Page 1 of 3, photo of po-photo.pdf' }).getAttribute('src')).toBe(
       '/api/workspaces/ws-1/procurement/purchase-orders/doc-1/pages/1',
     )
 
     fireEvent.click(screen.getByRole('tab', { name: 'Page 2' }))
 
-    expect(screen.getByRole('img', { name: 'Page 2' }).getAttribute('src')).toBe(
+    expect(screen.getByRole('img', { name: 'Page 2 of 3, photo of po-photo.pdf' }).getAttribute('src')).toBe(
       '/api/workspaces/ws-1/procurement/purchase-orders/doc-1/pages/2',
     )
   })
@@ -289,7 +334,7 @@ describe('DocumentReviewModal', () => {
     expect(body.lines[1]).toMatchObject({ description: 'Added by hand', quantity: '3' })
     expect('id' in body.lines[1]).toBe(false)
     await waitFor(() => expect(onReviewed).toHaveBeenCalledTimes(1))
-    expect(await screen.findByText('Document reviewed')).toBeDefined()
+    expect(await screen.findByText('po-photo.pdf reviewed')).toBeDefined()
   })
 
   it('happy: shows the first page image beside the lines', async () => {
@@ -297,7 +342,7 @@ describe('DocumentReviewModal', () => {
 
     await screen.findByLabelText('Quantity line 1')
 
-    expect(screen.getByRole('img', { name: 'Page 1' }).getAttribute('src')).toBe(
+    expect(screen.getByRole('img', { name: 'Page 1 of 1, photo of po-photo.pdf' }).getAttribute('src')).toBe(
       '/api/workspaces/ws-1/procurement/purchase-orders/doc-1/pages/1',
     )
     expect(listDocumentLinesMock).toHaveBeenCalledWith('ws-1', 'purchase-orders', 'doc-1', { page: 1, pageSize: 100 })
