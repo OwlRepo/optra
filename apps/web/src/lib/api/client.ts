@@ -80,3 +80,34 @@ export async function uploadFile(path: string, file: File, fields?: Record<strin
 
   throw data
 }
+
+/**
+ * Photo intake: several files under the one `files` field (multer's
+ * FilesInterceptor). Header `fields` go first for the same reason as in
+ * `uploadFile`, and the 401 refresh retry is identical.
+ */
+export async function uploadFiles(path: string, files: File[], fields?: Record<string, string>) {
+  const formData = new FormData()
+  for (const [key, value] of Object.entries(fields ?? {})) {
+    formData.append(key, value)
+  }
+  for (const file of files) {
+    formData.append('files', file)
+  }
+
+  const res = await fetch(path, { method: 'POST', body: formData })
+  const data = await res.json()
+  if (res.ok) return data
+
+  if (res.status === 401) {
+    const refreshed = await refreshSession()
+    if (refreshed) {
+      const retryRes = await fetch(path, { method: 'POST', body: formData })
+      const retryData = await retryRes.json()
+      if (retryRes.ok) return retryData
+      throw retryData
+    }
+  }
+
+  throw data
+}
