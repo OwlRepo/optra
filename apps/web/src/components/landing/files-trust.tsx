@@ -36,8 +36,9 @@ export function FilesTrust() {
             Reads what your vendors already send
           </h2>
           <p className="mt-4 max-w-[48ch] text-[17px] leading-[1.7] text-[oklch(0.46_0.02_264)]">
-            No portal for vendors to log into, no template to enforce. If a person could read the
-            file, Optra can pull line items out of it.
+            No portal for vendors to log into, no template to enforce. Optra reads line items from the
+            files and phone photos vendors already send, and you confirm what it read from a photo
+            before anything is compared.
           </p>
           <ul className="mt-6 flex flex-wrap gap-2">
             {FILE_TYPES.map((type) => (

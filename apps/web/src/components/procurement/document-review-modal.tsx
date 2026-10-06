@@ -182,6 +182,10 @@ export function DocumentReviewModal({
   const [isSaving, setIsSaving] = React.useState(false)
   const [pageNumber, setPageNumber] = React.useState(1)
   const [imageFailed, setImageFailed] = React.useState(false)
+  const [loadError, setLoadError] = React.useState<string | null>(null)
+  const [saveError, setSaveError] = React.useState<string | null>(null)
+  // Bumped by "Try again" to re-run the load effect.
+  const [loadAttempt, setLoadAttempt] = React.useState(0)
 
   React.useEffect(() => {
     toastRef.current = toast
@@ -195,6 +199,8 @@ export function DocumentReviewModal({
     setLines(null)
     setPageNumber(1)
     setImageFailed(false)
+    setLoadError(null)
+    setSaveError(null)
 
     void (async () => {
       try {
@@ -209,19 +215,17 @@ export function DocumentReviewModal({
         setLines(items.map(toDraft))
       } catch (err) {
         if (cancelled) return
-        toastRef.current({
-          variant: 'error',
-          title: 'Could not load the document',
-          description: messageOf(err, 'Try again in a moment.'),
-        })
+        // An in-modal banner, not a toast: the toast fades and left a skeleton forever.
+        setLoadError(messageOf(err, 'Try again in a moment.'))
       }
     })()
 
     return () => {
       cancelled = true
     }
-  }, [open, workspaceId, kind, docId])
+  }, [open, workspaceId, kind, docId, loadAttempt])
 
+  const isPhoto = document_?.sourceKind === 'image'
   const isReceipt = kind === 'goods-receipts'
   const columns = isReceipt ? RECEIPT_FIELDS : PRICED_FIELDS
   const readOnly = !canEdit || document_?.reviewedAt != null
@@ -241,12 +245,18 @@ export function DocumentReviewModal({
   const confirm = async () => {
     if (!lines || lines.length === 0) return
     setIsSaving(true)
+    setSaveError(null)
     try {
       await reviewDocument(workspaceId, kind, docId, { lines: lines.map((line) => toInput(line, kind)) })
-      toastRef.current({ variant: 'success', title: 'Document reviewed', description: 'It can now be compared.' })
+      toastRef.current({
+        variant: 'success',
+        title: `${document_?.name ?? 'Document'} reviewed`,
+        description: 'It can now be compared.',
+      })
       onReviewed()
     } catch (err) {
       // Edits stay in state: a failed save must never cost the reviewer's work.
+      setSaveError(messageOf(err, 'Try again in a moment.'))
       toastRef.current({
         variant: 'error',
         title: 'Could not save the review',
@@ -275,40 +285,65 @@ export function DocumentReviewModal({
       bodyClassName="p-0"
       footer={footer}
     >
-      {lines === null ? (
-        <div aria-busy="true" className="p-[26px]">
+      {loadError !== null ? (
+        <div className="p-[26px]">
+          <StatusBanner
+            variant="error"
+            title="Could not load the document"
+            description={loadError}
+            action={
+              <Button variant="outline" size="sm" onClick={() => setLoadAttempt((n) => n + 1)}>
+                Try again
+              </Button>
+            }
+          />
+        </div>
+      ) : lines === null ? (
+        <div aria-busy="true" className="flex flex-col gap-4 p-[26px]">
+          <p className="text-[14px] text-ink-body">Loading the page and lines…</p>
           <SkeletonRows rows={5} columns={4} />
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-6 p-[26px] lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
-          <section aria-label="Page image" className="flex flex-col gap-3">
-            {pageCount > 1 ? (
-              <Tabs
-                aria-label="Pages"
-                items={Array.from({ length: pageCount }, (_, i) => ({ id: String(i + 1), label: `Page ${i + 1}` }))}
-                value={String(pageNumber)}
-                onValueChange={(id) => {
-                  setPageNumber(Number(id))
-                  setImageFailed(false)
-                }}
-              />
-            ) : null}
-            {imageFailed ? (
-              <p className="rounded-[12px] border border-border-panel bg-surface-subtle p-4 text-[14px] text-ink-body">
-                This page image could not be loaded.
-              </p>
-            ) : (
-              // eslint-disable-next-line @next/next/no-img-element -- served by the BFF with the bearer; next/image cannot proxy that
-              <img
-                src={documentPageUrl(workspaceId, kind, docId, pageNumber)}
-                alt={`Page ${pageNumber}`}
-                className="w-full rounded-[12px] border border-border-panel bg-card"
-                onError={() => setImageFailed(true)}
-              />
-            )}
-          </section>
+        <div
+          className={
+            isPhoto
+              ? 'grid grid-cols-1 gap-6 p-[26px] lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]'
+              : 'grid grid-cols-1 gap-6 p-[26px]'
+          }
+        >
+          {isPhoto ? (
+            <section aria-label="Page image" className="flex flex-col gap-3">
+              {pageCount > 1 ? (
+                <Tabs
+                  aria-label="Pages"
+                  items={Array.from({ length: pageCount }, (_, i) => ({ id: String(i + 1), label: `Page ${i + 1}` }))}
+                  value={String(pageNumber)}
+                  onValueChange={(id) => {
+                    setPageNumber(Number(id))
+                    setImageFailed(false)
+                  }}
+                />
+              ) : null}
+              {imageFailed ? (
+                <p className="rounded-[12px] border border-border-panel bg-surface-subtle p-4 text-[14px] text-ink-body">
+                  This page image could not be loaded.
+                </p>
+              ) : (
+                // eslint-disable-next-line @next/next/no-img-element -- served by the BFF with the bearer; next/image cannot proxy that
+                <img
+                  src={documentPageUrl(workspaceId, kind, docId, pageNumber)}
+                  alt={`Page ${pageNumber} of ${pageCount}, photo of ${document_?.name ?? 'the document'}`}
+                  className="w-full rounded-[12px] border border-border-panel bg-card"
+                  onError={() => setImageFailed(true)}
+                />
+              )}
+            </section>
+          ) : null}
 
           <section aria-label="Lines read" className="flex min-w-0 flex-col gap-4">
+            {saveError ? (
+              <StatusBanner variant="error" title="Could not save the review" description={saveError} />
+            ) : null}
             {mismatch ? (
               <StatusBanner
                 variant="warning"
@@ -359,15 +394,21 @@ export function DocumentReviewModal({
                         <TableCell className="font-mono text-[13px]">
                           {n}
                           {low ? (
-                            <Badge variant="amber" className="mt-1">
-                              Check
-                            </Badge>
+                            <>
+                              <Badge variant="amber" className="mt-1">
+                                Check
+                              </Badge>
+                              <span id={`${line.key}-low-confidence`} className="sr-only">
+                                Low confidence — check against the page
+                              </span>
+                            </>
                           ) : null}
                         </TableCell>
                         {columns.map(({ field, label, numeric }) => (
                           <TableCell key={field}>
                             <Input
                               aria-label={`${label} line ${n}`}
+                              aria-describedby={low ? `${line.key}-low-confidence` : undefined}
                               value={line[field]}
                               readOnly={readOnly}
                               inputMode={numeric ? 'decimal' : undefined}

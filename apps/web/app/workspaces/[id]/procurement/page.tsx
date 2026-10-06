@@ -186,6 +186,11 @@ export default function ProcurementPage({ params }: { params: { id: string } }) 
   const [batchOpen, setBatchOpen] = React.useState(false)
   // Photo intake: the document whose AI-read lines are being reviewed.
   const [reviewTarget, setReviewTarget] = React.useState<{ kind: DocTab; docId: string } | null>(null)
+  // The Review button that opened the modal, and the tab's upload buttons: the
+  // fallback home for focus once Review has gone (a reviewed document loses it).
+  const reviewTriggerRef = React.useRef<HTMLElement | null>(null)
+  const desktopUploadRef = React.useRef<HTMLButtonElement>(null)
+  const mobileUploadRef = React.useRef<HTMLButtonElement>(null)
 
   // B14. Set when the first load answers 403; the page then shows only the
   // no-access state instead of empty lists.
@@ -398,7 +403,10 @@ export default function ProcurementPage({ params }: { params: { id: string } }) 
                       variant="outline"
                       size="sm"
                       aria-label={`Review ${doc.name}`}
-                      onClick={() => setReviewTarget({ kind, docId: doc.id })}
+                      onClick={(event) => {
+                        reviewTriggerRef.current = event.currentTarget
+                        setReviewTarget({ kind, docId: doc.id })
+                      }}
                     >
                       Review
                     </Button>
@@ -445,6 +453,7 @@ export default function ProcurementPage({ params }: { params: { id: string } }) 
                   (frame 4.2), so this one only shows from lg up. */}
               <Button
                 size="sm"
+                ref={desktopUploadRef}
                 className="hidden lg:inline-flex"
                 {...tourAttr(TOUR_ANCHORS.procurementUpload)}
                 onClick={openPicker}
@@ -601,10 +610,29 @@ export default function ProcurementPage({ params }: { params: { id: string } }) 
     </Card>
   )
 
+  // The modal unmounts with focus inside it. Cancelled: back to the Review
+  // button. Reviewed: that button is about to disappear, so go to the tab's
+  // upload button (the desktop one is display:none below lg and refuses focus,
+  // so the mobile one takes over there), else the active tab.
+  const restoreFocusAfterReview = (reviewed: boolean) => {
+    const trigger = reviewTriggerRef.current
+    reviewTriggerRef.current = null
+    if (!reviewed && trigger?.isConnected) {
+      trigger.focus()
+      return
+    }
+    desktopUploadRef.current?.focus()
+    if (document.activeElement === desktopUploadRef.current && desktopUploadRef.current) return
+    mobileUploadRef.current?.focus()
+    if (document.activeElement === mobileUploadRef.current && mobileUploadRef.current) return
+    document.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')?.focus()
+  }
+
   // Frame 4.2 (C-3 #13): below lg the active tab's upload is one full-width
   // h46 r12 primary button directly under the tabs; it opens the same dialog.
   const mobileUpload = canManage ? (
     <Button
+      ref={mobileUploadRef}
       className="h-[46px] w-full justify-between rounded-[12px] px-4 text-[15px] lg:hidden"
       {...tourAttr(TOUR_ANCHORS.procurementUploadMobile)}
       onClick={() => setBatchOpen(true)}
@@ -682,13 +710,17 @@ export default function ProcurementPage({ params }: { params: { id: string } }) 
       {reviewTarget ? (
         <DocumentReviewModal
           open
-          onClose={() => setReviewTarget(null)}
+          onClose={() => {
+            setReviewTarget(null)
+            restoreFocusAfterReview(false)
+          }}
           workspaceId={workspaceId}
           kind={reviewTarget.kind}
           docId={reviewTarget.docId}
           canEdit={canManage}
           onReviewed={() => {
             setReviewTarget(null)
+            restoreFocusAfterReview(true)
             void refreshDocs()
           }}
         />

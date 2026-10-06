@@ -83,6 +83,8 @@ export function BatchUploadDialog({
   const rowsRef = React.useRef<BatchRow[]>([])
   const [pickError, setPickError] = React.useState<string | null>(null)
   const [isRunning, setIsRunning] = React.useState(false)
+  const [announcement, setAnnouncement] = React.useState('')
+  const [photoUploaded, setPhotoUploaded] = React.useState(false)
 
   const commit = React.useCallback((next: BatchRow[]) => {
     rowsRef.current = next
@@ -100,7 +102,16 @@ export function BatchUploadDialog({
     if (!open) return
     commit([])
     setPickError(null)
+    setAnnouncement('')
+    setPhotoUploaded(false)
   }, [open, tab, commit])
+
+  // The loop below reads rowsRef: closing mid-run would orphan the rows it has
+  // not reached. Close, Escape and the backdrop all go through here.
+  const handleClose = () => {
+    if (isRunning) return
+    onClose()
+  }
 
   const missingVendors = tab === 'purchase-orders' && vendors.length === 0
   const missingPurchaseOrders = tab !== 'purchase-orders' && purchaseOrders.length === 0
@@ -157,23 +168,32 @@ export function BatchUploadDialog({
   const run = async (ids: string[]) => {
     setIsRunning(true)
     let uploaded = false
+    let succeeded = 0
+    let failed = 0
     try {
-      for (const id of ids) {
+      for (const [index, id] of ids.entries()) {
         const row = rowsRef.current.find((candidate) => candidate.id === id)
         if (!row) continue
         patchRow(id, { status: 'uploading', error: undefined })
+        setAnnouncement(`Uploading ${index + 1} of ${ids.length}`)
         try {
           await send(row)
           patchRow(id, { status: 'done' })
           uploaded = true
+          succeeded += 1
+          if (row.kind === 'photos') setPhotoUploaded(true)
+          setAnnouncement(`Uploaded ${rowName(row)}`)
         } catch (err) {
           if (isUnauthorized(err)) {
             router.push('/login')
             return
           }
           patchRow(id, { status: 'error', error: messageOf(err) })
+          failed += 1
+          setAnnouncement(`Failed: ${rowName(row)}`)
         }
       }
+      setAnnouncement(`${succeeded} of ${ids.length} uploaded, ${failed} failed`)
     } finally {
       setIsRunning(false)
       if (uploaded) onUploaded()
@@ -181,8 +201,9 @@ export function BatchUploadDialog({
   }
 
   const readyRows = rows.filter((row) => row.status === 'ready')
-  const canUpload =
-    !isRunning && readyRows.length > 0 && readyRows.every((row) => Object.keys(rowErrors(row, tab)).length === 0)
+  const rowsValid = readyRows.every((row) => Object.keys(rowErrors(row, tab)).length === 0)
+  const canUpload = !isRunning && readyRows.length > 0 && rowsValid
+  const needsFields = !isRunning && readyRows.length > 0 && !rowsValid
 
   const filesInput = (
     <input
@@ -219,7 +240,22 @@ export function BatchUploadDialog({
     const editable = row.status === 'ready' || row.status === 'error'
     const badge = STATUS_BADGE[row.status]
     const id = (field: string) => `${row.id}-${field}`
+    const numberField = tab === 'purchase-orders' ? 'poNumber' : tab === 'invoices' ? 'invoiceNumber' : 'grnNumber'
     const text = (field: string) => row.header[field] ?? ''
+    // A missing field is flagged beside its own input and tied to it for
+    // assistive tech; readers must not have to hunt a summary line.
+    const showErrors = row.status === 'ready' || row.status === 'error'
+    const fieldError = (field: string) => (showErrors ? errors[field] : undefined)
+    const aria = (field: string) =>
+      fieldError(field)
+        ? ({ 'aria-invalid': true, 'aria-describedby': id(`${field}-error`) } as const)
+        : {}
+    const errorText = (field: string) =>
+      fieldError(field) ? (
+        <p id={id(`${field}-error`)} className="text-[12px] leading-[1.4] text-ink-body">
+          {fieldError(field)}
+        </p>
+      ) : null
 
     return (
       <div
@@ -276,6 +312,7 @@ export function BatchUploadDialog({
                 id={id('vendor')}
                 disabled={!editable}
                 value={text('vendorId')}
+                {...aria('vendorId')}
                 onChange={(event) => setField(row.id, 'vendorId', event.target.value)}
               >
                 <option value="">Select a vendor</option>
@@ -285,6 +322,7 @@ export function BatchUploadDialog({
                   </option>
                 ))}
               </Select>
+              {errorText('vendorId')}
             </div>
           ) : (
             <div className="flex flex-col gap-2">
@@ -295,6 +333,7 @@ export function BatchUploadDialog({
                 id={id('po')}
                 disabled={!editable}
                 value={text('purchaseOrderId')}
+                {...aria('purchaseOrderId')}
                 onChange={(event) => setField(row.id, 'purchaseOrderId', event.target.value)}
               >
                 <option value="">Select a purchase order</option>
@@ -304,6 +343,7 @@ export function BatchUploadDialog({
                   </option>
                 ))}
               </Select>
+              {errorText('purchaseOrderId')}
             </div>
           )}
 
@@ -318,6 +358,7 @@ export function BatchUploadDialog({
               maxLength={200}
               value={text(tab === 'purchase-orders' ? 'poNumber' : tab === 'invoices' ? 'invoiceNumber' : 'grnNumber')}
               placeholder={tab === 'purchase-orders' ? 'PO-2026-1180' : tab === 'invoices' ? 'INV-44120' : 'GRN-9001'}
+              {...aria(numberField)}
               onChange={(event) =>
                 setField(
                   row.id,
@@ -326,6 +367,7 @@ export function BatchUploadDialog({
                 )
               }
             />
+            {errorText(numberField)}
           </div>
 
           {/* Goods receipts carry no currency: a receipt records what arrived, not what it cost. */}
@@ -341,8 +383,10 @@ export function BatchUploadDialog({
                 maxLength={3}
                 value={text('currency')}
                 placeholder="USD"
+                {...aria('currency')}
                 onChange={(event) => setField(row.id, 'currency', event.target.value.toUpperCase())}
               />
+              {errorText('currency')}
             </div>
           ) : null}
 
@@ -365,10 +409,6 @@ export function BatchUploadDialog({
           ) : null}
         </div>
 
-        {row.status === 'ready' && Object.keys(errors).length > 0 ? (
-          <p className="font-mono text-[11px] text-ink-muted">{Object.values(errors).join(' · ')}</p>
-        ) : null}
-
         {row.status === 'error' ? (
           <div className="flex flex-wrap items-center justify-between gap-3">
             <p role="alert" className="min-w-0 flex-1 text-[13px] leading-[1.5] text-destructive-strong-text">
@@ -377,10 +417,11 @@ export function BatchUploadDialog({
             <Button
               variant="outline"
               size="sm"
+              aria-label={`Retry ${name}`}
               disabled={isRunning || Object.keys(errors).length > 0}
               onClick={() => void run([row.id])}
             >
-              Retry {name}
+              Retry
             </Button>
           </div>
         ) : null}
@@ -420,20 +461,25 @@ export function BatchUploadDialog({
   return (
     <Modal
       open={open}
-      onClose={onClose}
+      onClose={handleClose}
       size="xl"
       eyebrow="Upload · one batch"
       title={TITLE[tab]}
       footer={
         deadEnd ? undefined : (
-          <Button
-            onClick={() => void run(readyRows.map((row) => row.id))}
-            isLoading={isRunning}
-            loadingText="Uploading"
-            disabled={!canUpload}
-          >
-            Upload
-          </Button>
+          <>
+            {needsFields ? (
+              <p className="mr-auto text-[13px] text-ink-body">Fill in the highlighted fields to upload.</p>
+            ) : null}
+            <Button
+              onClick={() => void run(readyRows.map((row) => row.id))}
+              isLoading={isRunning}
+              loadingText="Uploading"
+              disabled={!canUpload}
+            >
+              Upload
+            </Button>
+          </>
         )
       }
     >
@@ -441,6 +487,12 @@ export function BatchUploadDialog({
         <div className="flex flex-col gap-[18px]">
           {filesInput}
           {photosInput}
+          <div data-testid="batch-live-status" role="status" aria-live="polite" className="sr-only">
+            {announcement}
+          </div>
+          {isRunning ? (
+            <p className="sr-only">Uploading. Wait for the upload to finish before closing this dialog.</p>
+          ) : null}
           <div className="flex flex-wrap items-center gap-[10px]">
             <Button variant="outline" size="sm" onClick={() => filesInputRef.current?.click()}>
               Add files
@@ -458,6 +510,12 @@ export function BatchUploadDialog({
             Each row is one document. Photos picked together become one document, one page per photo.
           </p>
           {pickError ? <StatusBanner variant="error" title={pickError} /> : null}
+          {photoUploaded ? (
+            <StatusBanner
+              variant="success"
+              title="Uploaded. Photo documents show Needs review once they are read — open Review to check the lines before comparing."
+            />
+          ) : null}
           {rows.length > 0 ? <div className="flex flex-col gap-[14px]">{rows.map(renderRow)}</div> : null}
         </div>
       )}
