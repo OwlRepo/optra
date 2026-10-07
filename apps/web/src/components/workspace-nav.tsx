@@ -11,7 +11,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { cn } from '@repo/ui'
 // [support-surfaces-off] was: import { BriefcaseBusiness, ClipboardList, Database, FileSpreadsheet, FileWarning, LineChart, MessageSquareText, PackageSearch, Settings, Store, Ticket, Users } from 'lucide-react'
-import { BriefcaseBusiness, ClipboardList, FileWarning, PackageSearch, Settings, Store, Users } from 'lucide-react'
+import { BriefcaseBusiness, ClipboardList, CreditCard, FileWarning, PackageSearch, Settings, Store, Users } from 'lucide-react'
 import { getUnreadCount } from '@/lib/api/events'
 import { navAnchorFor, tourAttr } from './tour/tour-anchors'
 // [support-surfaces-off] import { WorkspaceSearch } from './workspace-search'
@@ -48,6 +48,7 @@ export function workspaceNavItems(workspaceId: string): WorkspaceNavItem[] {
     // [support-surfaces-off] { label: 'Tickets', href: `/workspaces/${workspaceId}/tickets`, icon: <Ticket className="size-4" /> },
     // [support-surfaces-off] { label: 'Insights', href: `/workspaces/${workspaceId}/insights`, icon: <LineChart className="size-4" /> },
     { label: 'Settings', href: `/workspaces/${workspaceId}/settings`, icon: <Settings className="size-4" />, group: 'workspace' },
+    { label: 'Billing', href: `/workspaces/${workspaceId}/billing`, icon: <CreditCard className="size-4" />, group: 'workspace' },
   ]
 }
 
