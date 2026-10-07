@@ -310,14 +310,14 @@ describe('BillingGateService', () => {
     const solo = await seedWorkspace('solo')
     const exempt = await seedWorkspace('exempt')
 
-    await gate.assertMatchedLines(trial, 'po-k', 'inv-k', 1, NOW)
-    await gate.assertMatchedLines(solo, 'po-k', 'inv-k', 1, NOW)
-    await gate.assertMatchedLines(exempt, 'po-k', 'inv-k', 1, NOW)
+    await gate.assertMatchedLines(trial, 'po-k1', 'inv-k1', 1, NOW)
+    await gate.assertMatchedLines(solo, 'po-k2', 'inv-k2', 1, NOW)
+    await gate.assertMatchedLines(exempt, 'po-k3', 'inv-k3', 1, NOW)
 
     // Trial ends NOW + 5 days and lasts 14 days, so its window starts 2026-09-29.
-    expect((await rowsOf(trial, 'matched_line'))[0].idempotencyKey).toBe('cmp:po-k:inv-k:2026-09-29')
-    expect((await rowsOf(solo, 'matched_line'))[0].idempotencyKey).toBe('cmp:po-k:inv-k:2026-10-01')
-    expect((await rowsOf(exempt, 'matched_line'))[0].idempotencyKey).toBe('cmp:po-k:inv-k:2026-10-01')
+    expect((await rowsOf(trial, 'matched_line'))[0].idempotencyKey).toBe('cmp:po-k1:inv-k1:2026-09-29')
+    expect((await rowsOf(solo, 'matched_line'))[0].idempotencyKey).toBe('cmp:po-k2:inv-k2:2026-10-01')
+    expect((await rowsOf(exempt, 'matched_line'))[0].idempotencyKey).toBe('cmp:po-k3:inv-k3:2026-10-01')
   })
 
   it('edge: the same pair, same period, same line count adds no row; enforcement off uses the UTC month key', async () => {
@@ -351,12 +351,12 @@ describe('BillingGateService', () => {
     const ws = await seedWorkspace('solo')
     const nextMonth = new Date('2026-11-08T12:00:00.000Z')
 
-    await gate.assertMatchedLines(ws, 'po-n', 'inv-n', 10, NOW)
-    await gate.assertMatchedLines(ws, 'po-n', 'inv-n', 10, nextMonth)
+    await gate.assertMatchedLines(ws, 'po-n2', 'inv-n2', 10, NOW)
+    await gate.assertMatchedLines(ws, 'po-n2', 'inv-n2', 10, nextMonth)
 
     const rows = await rowsOf(ws, 'matched_line')
     expect(rows.map((row) => row.quantity)).toEqual([10, 10])
-    expect(rows.map((row) => row.idempotencyKey).sort()).toEqual(['cmp:po-n:inv-n:2026-10-01', 'cmp:po-n:inv-n:2026-11-01'])
+    expect(rows.map((row) => row.idempotencyKey).sort()).toEqual(['cmp:po-n2:inv-n2:2026-10-01', 'cmp:po-n2:inv-n2:2026-11-01'])
   })
 
   it('regression: the refusal is an HttpException with status 402, so isBudgetExceeded is true', async () => {

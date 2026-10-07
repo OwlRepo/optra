@@ -1109,7 +1109,7 @@ describe('ChatService', () => {
       )
       const failure = new Error('graph failed after the rewrite call')
       ;(answerQuestion as jest.Mock).mockImplementation(async (...args: unknown[]) => {
-        ;(args[6] as { total: number }).total = 800
+        (args[6] as { total: number }).total = 800
         throw failure
       })
 
@@ -1141,7 +1141,7 @@ describe('ChatService', () => {
         })(),
       )
       ;(answerQuestion as jest.Mock).mockImplementation(async (...args: unknown[]) => {
-        ;(args[6] as { total: number }).total = 900
+        (args[6] as { total: number }).total = 900
         return { sources: [], stream: (async function* () { yield 'never read' })(), isFallback: false }
       })
 
@@ -1235,7 +1235,7 @@ describe('ChatService', () => {
         })(),
       )
       ;(answerQuestion as jest.Mock).mockImplementation(async (...args: unknown[]) => {
-        ;(args[6] as { total: number }).total = 1500
+        (args[6] as { total: number }).total = 1500
         return { sources: [], stream: (async function* () { yield 'hello' })(), isFallback: false }
       })
 

@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
+import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DEFAULT_MODEL, resolveModel, type ModelRole } from './models'
 import { MODEL_PRICES, priceFor } from '../pricing'
@@ -50,7 +50,7 @@ describe('default models have a price row', () => {
   })
 
   it('edge: every model named in .env.example (OPENAI_*_MODEL, RAGAS_JUDGE_MODEL) has a price row', () => {
-    const text = readFileSync(fileURLToPath(new URL('../../../../.env.example', import.meta.url)), 'utf8')
+    const text = readFileSync(join(__dirname, '../../../../.env.example'), 'utf8')
     const models = [...text.matchAll(/^(?:OPENAI_[A-Z_]*MODEL|RAGAS_JUDGE_MODEL)=(\S+)/gm)].map((match) => match[1])
 
     expect(models.length).toBeGreaterThan(0)
