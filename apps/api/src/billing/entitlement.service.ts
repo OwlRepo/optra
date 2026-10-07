@@ -3,16 +3,43 @@ import { ConfigService } from '@nestjs/config'
 import { eq } from 'drizzle-orm'
 import { db, workspaceSubscriptions, workspaces } from '@repo/db'
 import type { BillingSummary } from '@repo/types'
-import { TRIAL_DAYS, TRIAL_QUOTAS, isEntitledStatus, quotasFor } from './plans'
+import {
+  TRIAL_DAYS,
+  TRIAL_QUOTAS,
+  aiCapMicroUsd,
+  currentMonthPeriod,
+  isEntitledStatus,
+  quotasFor,
+} from './plans'
+import { UsageLedgerService } from './usage-ledger.service'
 
 const DAY_MS = 24 * 60 * 60 * 1000
 
+export interface AiBudget {
+  usedMicroUsd: number
+  capMicroUsd: number
+}
+
 @Injectable()
 export class EntitlementService {
-  constructor(private readonly config: ConfigService) {}
+  constructor(
+    private readonly config: ConfigService,
+    private readonly ledger: UsageLedgerService,
+  ) {}
 
-  /** Computes only: no gate, no refusal, no side effect (gates ship in S4). */
   async resolve(workspaceId: string, now: Date = new Date()): Promise<BillingSummary> {
+    return (await this.load(workspaceId, now)).summary
+  }
+
+  /** The summary plus the period's AI spend and cap, from the same two reads (the gate's single call). */
+  async resolveWithAiBudget(
+    workspaceId: string,
+    now: Date = new Date(),
+  ): Promise<{ summary: BillingSummary; ai: AiBudget }> {
+    return this.load(workspaceId, now)
+  }
+
+  private async load(workspaceId: string, now: Date): Promise<{ summary: BillingSummary; ai: AiBudget }> {
     const [[workspace], [sub]] = await Promise.all([
       db
         .select({ trialEndsAt: workspaces.trialEndsAt, billingExempt: workspaces.billingExempt })
@@ -42,37 +69,53 @@ export class EntitlementService {
       trialEndsAt: workspace.trialEndsAt?.toISOString() ?? null,
       renewsAt: sub?.renewsAt?.toISOString() ?? null,
       endsAt: sub?.endsAt?.toISOString() ?? null,
-      used: { matchedLines: null, photoChecks: null },
     }
+
+    let state: BillingSummary['state']
+    let period: BillingSummary['period'] = null
+    let quotas: BillingSummary['quotas'] = null
+    let capMicroUsd = 0
+    let plan = base.plan
 
     if (workspace.billingExempt) {
-      return { ...base, state: 'exempt', period: null, quotas: { matchedLines: null, photoChecks: null } }
-    }
-
-    if (sub && isEntitledStatus(sub.status, sub.endsAt, now)) {
-      const y = now.getUTCFullYear()
-      const m = now.getUTCMonth()
-      return {
-        ...base,
-        state: 'subscribed',
-        period: { start: new Date(Date.UTC(y, m, 1)).toISOString(), end: new Date(Date.UTC(y, m + 1, 1)).toISOString() },
-        quotas: quotasFor(sub.plan, sub.seats),
+      state = 'exempt'
+      quotas = { matchedLines: null, photoChecks: null }
+      capMicroUsd = aiCapMicroUsd('exempt', 1, this.config)
+    } else if (sub && isEntitledStatus(sub.status, sub.endsAt, now)) {
+      state = 'subscribed'
+      const month = currentMonthPeriod(now)
+      period = { start: month.start.toISOString(), end: month.end.toISOString() }
+      quotas = quotasFor(sub.plan, sub.seats)
+      capMicroUsd = aiCapMicroUsd(sub.plan, sub.seats, this.config)
+    } else if (workspace.trialEndsAt && now.getTime() < workspace.trialEndsAt.getTime()) {
+      state = 'trialing'
+      plan = null
+      period = {
+        start: new Date(workspace.trialEndsAt.getTime() - TRIAL_DAYS * DAY_MS).toISOString(),
+        end: workspace.trialEndsAt.toISOString(),
       }
+      quotas = { ...TRIAL_QUOTAS }
+      capMicroUsd = aiCapMicroUsd('trial', 1, this.config)
+    } else {
+      state = 'none'
     }
 
-    if (workspace.trialEndsAt && now.getTime() < workspace.trialEndsAt.getTime()) {
-      return {
-        ...base,
-        state: 'trialing',
-        plan: null,
-        period: {
-          start: new Date(workspace.trialEndsAt.getTime() - TRIAL_DAYS * DAY_MS).toISOString(),
-          end: workspace.trialEndsAt.toISOString(),
-        },
-        quotas: { ...TRIAL_QUOTAS },
-      }
-    }
+    // Exempt and none have no quota window; their meters read the UTC calendar month.
+    const window = period ? { start: new Date(period.start), end: new Date(period.end) } : currentMonthPeriod(now)
+    const sums = await this.ledger.sumsByKind(workspaceId, window)
 
-    return { ...base, state: 'none', period: null, quotas: null }
+    const summary: BillingSummary = {
+      ...base,
+      plan,
+      state,
+      period,
+      quotas,
+      used: {
+        matchedLines: sums.matchedLines,
+        photoChecks: sums.photoChecks,
+        aiBudgetPercent: capMicroUsd > 0 ? Math.min(100, Math.floor((100 * sums.llmCostMicroUsd) / capMicroUsd)) : 0,
+      },
+    }
+    return { summary, ai: { usedMicroUsd: sums.llmCostMicroUsd, capMicroUsd } }
   }
 }

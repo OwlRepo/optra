@@ -9,6 +9,8 @@ import { BillingController } from './billing.controller'
 import { BillingService } from './billing.service'
 import { EntitlementService } from './entitlement.service'
 import { LemonSqueezyClient } from './lemonsqueezy.client'
+import { BillingGateService } from './billing-gate.service'
+import { UsageLedgerService } from './usage-ledger.service'
 
 @Module({
   imports: [AuthModule],
@@ -17,11 +19,13 @@ import { LemonSqueezyClient } from './lemonsqueezy.client'
     BillingService,
     BillingWebhookService,
     EntitlementService,
+    UsageLedgerService,
+    BillingGateService,
     LemonSqueezyClient,
     JwtAuthGuard,
     WorkspaceMemberGuard,
     RolesGuard,
   ],
-  exports: [EntitlementService],
+  exports: [EntitlementService, BillingGateService],
 })
 export class BillingModule {}

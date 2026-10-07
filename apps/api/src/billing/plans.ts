@@ -57,3 +57,32 @@ export function isEntitledStatus(status: string, endsAt: Date | null, now: Date)
   if (ENTITLED_STATUSES.has(status)) return true
   return status === 'cancelled' && endsAt !== null && now.getTime() < endsAt.getTime()
 }
+
+export type AiCapKind = 'trial' | 'solo' | 'team' | 'exempt'
+
+const AI_CAP_DEFAULT_USD: Record<AiCapKind, number> = { trial: 4, solo: 6, team: 15, exempt: 25 }
+const AI_CAP_ENV: Record<AiCapKind, string> = {
+  trial: 'BILLING_AI_CAP_TRIAL_USD',
+  solo: 'BILLING_AI_CAP_SOLO_USD',
+  team: 'BILLING_AI_CAP_TEAM_SEAT_USD',
+  exempt: 'BILLING_AI_CAP_EXEMPT_USD',
+}
+
+/**
+ * Monthly AI cost cap in integer micro-USD. Team multiplies by billed buyers
+ * (the env value is per buyer). A blank, zero, negative or non-numeric env falls
+ * back to the default: a malformed value must never widen the cap
+ * (same rule as positiveIntEnv in catalog-match.service.ts).
+ */
+export function aiCapMicroUsd(kind: AiCapKind, seats: number, env: EnvReader): number {
+  const raw = Number(env.get(AI_CAP_ENV[kind])?.trim())
+  const usd = Number.isFinite(raw) && raw > 0 ? raw : AI_CAP_DEFAULT_USD[kind]
+  return Math.round(usd * 1_000_000) * (kind === 'team' ? seats : 1)
+}
+
+/** The UTC calendar month containing `now`: [start, end). */
+export function currentMonthPeriod(now: Date): { start: Date; end: Date } {
+  const y = now.getUTCFullYear()
+  const m = now.getUTCMonth()
+  return { start: new Date(Date.UTC(y, m, 1)), end: new Date(Date.UTC(y, m + 1, 1)) }
+}
