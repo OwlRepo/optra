@@ -10,6 +10,11 @@ export function signBody(body: string): string {
   return createHmac('sha256', LS_WEBHOOK_SECRET).update(Buffer.from(body, 'utf8')).digest('hex')
 }
 
+/** The `workspace_sig` the API's checkout puts in custom_data: hex HMAC-SHA256 of the workspace id. */
+export function workspaceSig(workspaceId: string): string {
+  return createHmac('sha256', LS_WEBHOOK_SECRET).update(workspaceId, 'utf8').digest('hex')
+}
+
 export interface SubscriptionEventInput {
   workspaceId: string
   subscriptionId: string
@@ -29,7 +34,7 @@ export function subscriptionEvent(input: SubscriptionEventInput): string {
   return JSON.stringify({
     meta: {
       event_name: input.eventName ?? 'subscription_created',
-      custom_data: { workspace_id: input.workspaceId },
+      custom_data: { workspace_id: input.workspaceId, workspace_sig: workspaceSig(input.workspaceId) },
     },
     data: {
       type: 'subscriptions',
