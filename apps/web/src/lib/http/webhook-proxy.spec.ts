@@ -54,6 +54,28 @@ describe('forwardRaw', () => {
     expect(response.status).toBe(502)
   })
 
+  it.each([
+    ['TimeoutError', 'The operation timed out.'],
+    ['AbortError', 'This operation was aborted'],
+  ])('error: an aborted fetch (%s) is 504 Gateway Timeout, not 502', async (name, message) => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new DOMException(message, name)))
+
+    const response = await forwardRaw(webhookRequest('{}'), '/billing/webhooks/lemonsqueezy')
+
+    expect(response.status).toBe(504)
+  })
+
+  it('edge: the API fetch carries an AbortSignal so a hung API cannot hold the webhook open', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(apiResponse(200, { received: true }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await forwardRaw(webhookRequest('{}'), '/billing/webhooks/lemonsqueezy')
+
+    const signal = fetchMock.mock.calls[0][1].signal
+    expect(signal).toBeInstanceOf(AbortSignal)
+    expect(signal.aborted).toBe(false)
+  })
+
   it('edge: a missing X-Signature is forwarded as absent (the API answers 401)', async () => {
     const fetchMock = vi.fn().mockResolvedValue(apiResponse(401, { message: 'Invalid signature' }))
     vi.stubGlobal('fetch', fetchMock)

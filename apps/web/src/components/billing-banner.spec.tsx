@@ -1,7 +1,7 @@
 /** @vitest-environment jsdom */
 
 import React from 'react'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { BillingSummary } from '@repo/types'
 import { BillingBanner } from './billing-banner'
@@ -107,6 +107,43 @@ describe('BillingBanner', () => {
     getBillingMock.mockResolvedValueOnce(trialing(0))
     await renderBanner()
     expect(await screen.findByText(/Your free trial ends today\./)).toBeTruthy()
+  })
+
+  it('edge: the visible text includes an action: "View billing" for trialing, "Choose a plan" for none', async () => {
+    getBillingMock.mockResolvedValueOnce(trialing(2 * DAY))
+    const first = await renderBanner()
+    const trialLink = await screen.findByRole('link', { name: /View billing/ })
+    expect(trialLink.textContent).toContain('View billing')
+    expect(trialLink.textContent).toContain('Your free trial ends in 2 days.')
+    first.unmount()
+
+    getBillingMock.mockResolvedValueOnce(summary({ state: 'none', enforced: true }))
+    await renderBanner()
+    const noneLink = await screen.findByRole('link', { name: /Choose a plan$/ })
+    expect(screen.getByText('Choose a plan')).toBeTruthy()
+    expect(noneLink.textContent).toContain('Choose a plan')
+  })
+
+  it('regression: the link name contains its visible text (WCAG 2.5.3), with no live region inside the link', async () => {
+    getBillingMock.mockResolvedValue(trialing(2 * DAY))
+
+    await renderBanner()
+
+    const link = await screen.findByRole('link', { name: /Your free trial ends in 2 days\..*View billing/ })
+    const visible = (link.textContent ?? '').replace(/\s+/g, ' ').trim()
+    const label = link.getAttribute('aria-label')
+    if (label !== null) expect(label).toContain(visible)
+    expect(link.querySelector('[role="status"]')).toBeNull()
+  })
+
+  it('regression: the banner is wrapped in <aside aria-label="Billing notice">', async () => {
+    getBillingMock.mockResolvedValue(trialing(2 * DAY))
+
+    await renderBanner()
+
+    const aside = await screen.findByRole('complementary', { name: 'Billing notice' })
+    expect(aside.tagName).toBe('ASIDE')
+    expect(within(aside).getByRole('link')).toBeTruthy()
   })
 
   it('happy: trialing with 3 days left links to the billing page', async () => {

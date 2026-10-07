@@ -1,5 +1,5 @@
 import { createHmac } from 'crypto'
-import { verifySignature } from './webhook-signature'
+import { signWorkspaceBinding, verifySignature } from './webhook-signature'
 
 const SECRET = 'whsec-unit-test'
 const sign = (body: Buffer, secret = SECRET) => createHmac('sha256', secret).update(body).digest('hex')
@@ -44,6 +44,18 @@ describe('verifySignature', () => {
   it('edge: a body with non-ASCII bytes verifies over the raw bytes', () => {
     const raw = Buffer.from('{"data":{"attributes":{"user_name":"José Müller 王 \u{1F680}"}}}', 'utf8')
     expect(verifySignature(raw, sign(raw), SECRET)).toBe(true)
+  })
+
+  it('error: signWorkspaceBinding differs per workspace id and per secret', () => {
+    const a = '11111111-1111-4111-8111-111111111111'
+    const b = '22222222-2222-4222-8222-222222222222'
+    expect(signWorkspaceBinding(a, SECRET)).not.toBe(signWorkspaceBinding(b, SECRET))
+    expect(signWorkspaceBinding(a, SECRET)).not.toBe(signWorkspaceBinding(a, 'other-secret'))
+  })
+
+  it('happy: signWorkspaceBinding is the lowercase hex HMAC-SHA256 of the workspace id under the webhook secret', () => {
+    const id = '11111111-1111-4111-8111-111111111111'
+    expect(signWorkspaceBinding(id, SECRET)).toBe(createHmac('sha256', SECRET).update(id).digest('hex'))
   })
 
   it('happy: the correct HMAC-SHA256 hex of the raw bytes verifies', () => {

@@ -30,6 +30,7 @@ const PASSWORD = 'password123'
 const DAY = 24 * 60 * 60 * 1000
 
 const sign = (body: Buffer | string) => createHmac('sha256', SECRET).update(body).digest('hex')
+const bindingSig = (workspaceId: string) => createHmac('sha256', SECRET).update(workspaceId).digest('hex')
 const sha = (body: Buffer) => createHash('sha256').update(body).digest('hex')
 
 // In-process stand-in for the Lemon Squeezy REST API. Records every checkout
@@ -81,12 +82,17 @@ interface EventInput {
   storeId?: number
   endsAt?: string | null
   userName?: string
+  workspaceSig?: string | null
 }
 
 function eventBody(input: EventInput): Buffer {
   return Buffer.from(
     JSON.stringify({
-      meta: { event_name: input.name ?? 'subscription_created', custom_data: { workspace_id: input.workspaceId } },
+      meta: { event_name: input.name ?? 'subscription_created', custom_data: {
+          workspace_id: input.workspaceId,
+          ...(input.workspaceSig === null ? {} : { workspace_sig: input.workspaceSig ?? bindingSig(input.workspaceId) }),
+        },
+      },
       data: {
         type: 'subscriptions',
         id: input.subscriptionId ?? `sub-${randomUUID()}`,
@@ -353,6 +359,63 @@ describe('Billing (e2e)', () => {
     expect(await eventRow(body)).toBeUndefined()
   })
 
+  it('edge: a signed subscription_created whose workspace_sig is missing or forged is 200, records "workspace binding" and writes no row', async () => {
+    const id = await freshWorkspace()
+    const missing = eventBody({ workspaceId: id, workspaceSig: null })
+    const forged = eventBody({ workspaceId: id, workspaceSig: 'a'.repeat(64) })
+
+    await signedWebhook(missing).expect(200)
+    await signedWebhook(forged).expect(200)
+
+    expect((await eventRow(missing)).lastError).toMatch(/workspace binding/)
+    expect((await eventRow(forged)).lastError).toMatch(/workspace binding/)
+    expect(await subscriptionRow(id)).toBeUndefined()
+  })
+
+  it('edge: an unknown variant or unset store id is 500 with processed_at null, and a resend after the env is fixed succeeds', async () => {
+    const id = await freshWorkspace()
+    const body = eventBody({ workspaceId: id, variantId: Number(VARIANT_TEAM) })
+    const original = process.env.LEMONSQUEEZY_STORE_ID
+    process.env.LEMONSQUEEZY_STORE_ID = ''
+    try {
+      await signedWebhook(body).expect(500)
+    } finally {
+      process.env.LEMONSQUEEZY_STORE_ID = original
+    }
+    const failed = await eventRow(body)
+    expect(failed.lastError).toBeTruthy()
+    expect(failed.processedAt).toBeNull()
+
+    await signedWebhook(body).expect(200)
+
+    expect((await eventRow(body)).processedAt).not.toBeNull()
+    expect((await subscriptionRow(id)).status).toBe('active')
+  })
+
+  it.each([0, -1, 1.5, 26])('edge: a signed team event with quantity %p is 200 "invalid quantity" and writes no row', async (quantity) => {
+    const id = await freshWorkspace()
+    const body = eventBody({ workspaceId: id, variantId: Number(VARIANT_TEAM), quantity })
+
+    await signedWebhook(body).expect(200)
+
+    expect((await eventRow(body)).lastError).toMatch(/invalid quantity/)
+    expect(await subscriptionRow(id)).toBeUndefined()
+  })
+
+  it('edge: two concurrent signed first deliveries for one workspace leave one row', async () => {
+    const id = await freshWorkspace()
+    const updatedAt = new Date().toISOString()
+    const a = eventBody({ workspaceId: id, updatedAt })
+    const b = eventBody({ workspaceId: id, updatedAt })
+
+    await Promise.all([signedWebhook(a).expect(200), signedWebhook(b).expect(200)])
+
+    const rows = await db.select().from(workspaceSubscriptions).where(eq(workspaceSubscriptions.workspaceId, id))
+    expect(rows).toHaveLength(1)
+    const errors = [(await eventRow(a)).lastError, (await eventRow(b)).lastError]
+    expect(errors.filter((e) => e && /already has an active subscription/.test(e))).toHaveLength(1)
+  })
+
   it('edge: a signed event for a wrong store is 200 and records last_error', async () => {
     const id = await freshWorkspace()
     const body = eventBody({ workspaceId: id, storeId: 31337 })
@@ -425,7 +488,7 @@ describe('Billing (e2e)', () => {
     expect(res.body.url).toMatch(new RegExp(`^${ls.url}/checkout/`))
     expect(ls.checkouts).toHaveLength(1)
     const attributes = ls.checkouts[0].data.attributes
-    expect(attributes.checkout_data.custom).toEqual({ workspace_id: id })
+    expect(attributes.checkout_data.custom).toEqual({ workspace_id: id, workspace_sig: bindingSig(id) })
     expect(attributes.checkout_data.email).toBe(owner.email)
     expect(attributes.product_options.redirect_url).toBe(
       `${process.env.WEB_URL || 'http://localhost:3000'}/workspaces/${id}/billing?checkout=success`,

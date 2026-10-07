@@ -1,4 +1,4 @@
-import { BadRequestException, InternalServerErrorException, ServiceUnavailableException, UnauthorizedException } from '@nestjs/common'
+import { BadRequestException, InternalServerErrorException, Logger, ServiceUnavailableException, UnauthorizedException } from '@nestjs/common'
 import type { ConfigService } from '@nestjs/config'
 import { createHash, createHmac, randomUUID } from 'crypto'
 import { eq, inArray, like } from 'drizzle-orm'
@@ -26,6 +26,8 @@ const service = new BillingWebhookService(configWith())
 
 const sign = (body: Buffer) => createHmac('sha256', SECRET).update(body).digest('hex')
 const sha = (body: Buffer) => createHash('sha256').update(body).digest('hex')
+// Same HMAC the checkout puts in custom_data.workspace_sig (webhook secret over the workspace id).
+const bindingSig = (workspaceId: string, secret = SECRET) => createHmac('sha256', secret).update(workspaceId).digest('hex')
 
 interface EventInput {
   name?: string
@@ -41,15 +43,21 @@ interface EventInput {
   endsAt?: string | null
   userName?: string
   customerId?: number
+  /** null omits workspace_sig; a string overrides it; undefined signs the workspace id. */
+  workspaceSig?: string | null
+  userEmail?: string
 }
 
 function eventBody(input: EventInput): Buffer {
-  const custom =
+  const custom: Record<string, unknown> =
     'customWorkspaceId' in input
       ? { workspace_id: input.customWorkspaceId }
       : input.workspaceId === null
         ? {}
         : { workspace_id: input.workspaceId }
+  if (typeof custom.workspace_id === 'string' && input.workspaceSig !== null) {
+    custom.workspace_sig = input.workspaceSig ?? bindingSig(custom.workspace_id)
+  }
   const body = {
     meta: { event_name: input.name ?? 'subscription_created', custom_data: custom },
     data: {
@@ -65,6 +73,7 @@ function eventBody(input: EventInput): Buffer {
         ends_at: input.endsAt ?? null,
         updated_at: input.updatedAt ?? '2026-10-08T12:00:00.000000Z',
         user_name: input.userName ?? 'Test Buyer',
+        ...(input.userEmail ? { user_email: input.userEmail } : {}),
       },
     },
   }
@@ -169,13 +178,85 @@ describe('BillingWebhookService', () => {
     expect(await subscriptionOf(workspaceId)).toBeUndefined()
   })
 
-  it('error: an unknown variant is acknowledged with last_error and writes no subscription', async () => {
+  it('error: an unknown variant is a retryable 500 with last_error and processed_at null, and writes no subscription', async () => {
     const workspaceId = await seedWorkspace()
     const body = eventBody({ workspaceId, subscriptionId: uniqueSub(), variantId: 123456 })
 
+    await expect(deliver(body)).rejects.toBeInstanceOf(InternalServerErrorException)
+
+    const event = await eventFor(body)
+    expect(event.lastError).toMatch(/unknown variant/)
+    expect(event.processedAt).toBeNull()
+    expect(await subscriptionOf(workspaceId)).toBeUndefined()
+  })
+
+  it.each([
+    ['LEMONSQUEEZY_STORE_ID', ''],
+    ['LEMONSQUEEZY_STORE_ID', undefined],
+    ['LEMONSQUEEZY_VARIANT_TEAM', ''],
+    ['LEMONSQUEEZY_VARIANT_TEAM', undefined],
+  ])('error: %s set to %p is a retryable 500, not a terminal ack', async (key, value) => {
+    const workspaceId = await seedWorkspace()
+    const body = eventBody({ workspaceId, subscriptionId: uniqueSub(), variantId: 9002 })
+    const misconfigured = new BillingWebhookService(configWith({ [key]: value }))
+
+    await expect(deliver(body, { svc: misconfigured })).rejects.toBeInstanceOf(InternalServerErrorException)
+
+    const event = await eventFor(body)
+    expect(event.lastError).toBeTruthy()
+    expect(event.processedAt).toBeNull()
+    expect(await subscriptionOf(workspaceId)).toBeUndefined()
+  })
+
+  it('error: a resend of the same body after the env is fixed is processed (misconfig then fix)', async () => {
+    const workspaceId = await seedWorkspace()
+    const subscriptionId = uniqueSub()
+    const body = eventBody({ workspaceId, subscriptionId, variantId: 9002, quantity: 2 })
+    const misconfigured = new BillingWebhookService(configWith({ LEMONSQUEEZY_STORE_ID: undefined, LEMONSQUEEZY_VARIANT_TEAM: undefined }))
+    await expect(deliver(body, { svc: misconfigured })).rejects.toBeInstanceOf(InternalServerErrorException)
+    expect((await eventFor(body)).processedAt).toBeNull()
+
     await expect(deliver(body)).resolves.toEqual({ received: true })
 
-    expect((await eventFor(body)).lastError).toMatch(/unknown variant/)
+    const event = await eventFor(body)
+    expect(event.processedAt).not.toBeNull()
+    expect(event.lastError).toBeNull()
+    expect(await eventsStored(body)).toBe(1)
+    expect((await subscriptionOf(workspaceId)).lsSubscriptionId).toBe(subscriptionId)
+  })
+
+  it.each(['subscription_created', 'subscription_updated'])(
+    'error: %s with a missing, forged or other-workspace workspace_sig is a terminal 200 "workspace binding" reject with no row',
+    async (name) => {
+      const workspaceId = await seedWorkspace()
+      const otherWorkspace = await seedWorkspace()
+      const bodies = [
+        eventBody({ name, workspaceId, subscriptionId: uniqueSub(), workspaceSig: null, userName: 'no sig' }),
+        eventBody({ name, workspaceId, subscriptionId: uniqueSub(), workspaceSig: 'f'.repeat(64), userName: 'forged sig' }),
+        eventBody({ name, workspaceId, subscriptionId: uniqueSub(), workspaceSig: bindingSig(otherWorkspace), userName: 'other ws sig' }),
+        eventBody({ name, workspaceId, subscriptionId: uniqueSub(), workspaceSig: bindingSig(workspaceId, 'another-secret'), userName: 'wrong secret' }),
+      ]
+
+      for (const body of bodies) {
+        await expect(deliver(body)).resolves.toEqual({ received: true })
+        const event = await eventFor(body)
+        expect(event.lastError).toMatch(/workspace binding/)
+        expect(event.processedAt).not.toBeNull()
+      }
+      expect(await subscriptionOf(workspaceId)).toBeUndefined()
+      expect(await subscriptionOf(otherWorkspace)).toBeUndefined()
+    },
+  )
+
+  it.each([0, -1, 1.5, 26])('error: team quantity %p is a terminal 200 "invalid quantity" reject with no row', async (quantity) => {
+    const workspaceId = await seedWorkspace()
+    const body = eventBody({ workspaceId, subscriptionId: uniqueSub(), variantId: 9002, quantity })
+
+    await expect(deliver(body)).resolves.toEqual({ received: true })
+
+    const event = await eventFor(body)
+    expect(event.lastError).toMatch(/invalid quantity/)
+    expect(event.processedAt).not.toBeNull()
     expect(await subscriptionOf(workspaceId)).toBeUndefined()
   })
 
@@ -219,15 +300,45 @@ describe('BillingWebhookService', () => {
 
   it('error: a database failure during the upsert throws 500, stores last_error and leaves processed_at null', async () => {
     const workspaceId = await seedWorkspace()
-    // 99999999999 overflows the integer seats column, so the upsert itself fails.
-    const body = eventBody({ workspaceId, subscriptionId: uniqueSub(), quantity: 99_999_999_999 })
+    const body = eventBody({ workspaceId, subscriptionId: uniqueSub() })
+    const failing = jest.spyOn(db, 'transaction').mockRejectedValueOnce(new Error('connection terminated unexpectedly'))
 
-    await expect(deliver(body)).rejects.toBeInstanceOf(InternalServerErrorException)
+    try {
+      await expect(deliver(body)).rejects.toBeInstanceOf(InternalServerErrorException)
+    } finally {
+      failing.mockRestore()
+    }
+
+    const event = await eventFor(body)
+    expect(event.lastError).toMatch(/connection terminated/)
+    expect(event.processedAt).toBeNull()
+    expect(await subscriptionOf(workspaceId)).toBeUndefined()
+  })
+
+  it('error: a database failure whose message echoes the customer email never reaches the log or last_error', async () => {
+    const workspaceId = await seedWorkspace()
+    const email = `leak-${randomUUID()}@buyer.example`
+    const body = eventBody({ workspaceId, subscriptionId: uniqueSub(), userEmail: email })
+    const failing = jest
+      .spyOn(db, 'transaction')
+      .mockRejectedValueOnce(new Error(`Failed query: insert into "workspace_subscriptions" ... params: ${email}`))
+    const logged = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined)
+
+    try {
+      await expect(deliver(body)).rejects.toBeInstanceOf(InternalServerErrorException)
+      const logLines = logged.mock.calls.map((call) => call.map(String).join(' ')).join('\n')
+      expect(logLines).not.toContain(email)
+      expect(logLines).not.toContain('buyer.example')
+    } finally {
+      failing.mockRestore()
+      logged.mockRestore()
+    }
 
     const event = await eventFor(body)
     expect(event.lastError).toBeTruthy()
+    expect(event.lastError).not.toContain(email)
+    expect(event.lastError).not.toContain('buyer.example')
     expect(event.processedAt).toBeNull()
-    expect(await subscriptionOf(workspaceId)).toBeUndefined()
   })
 
   it('edge: a duplicate delivery of a processed body does not touch the row again', async () => {
@@ -348,6 +459,42 @@ describe('BillingWebhookService', () => {
 
     expect((await eventFor(second)).lastError).toMatch(/already has an active subscription/)
     expect((await subscriptionOf(workspaceId)).lsSubscriptionId).toBe(first)
+  })
+
+  it('edge: a first delivery for subscription A older than the workspace row (subscription B) does not replace B', async () => {
+    const workspaceId = await seedWorkspace()
+    const subB = uniqueSub()
+    await deliver(eventBody({ workspaceId, subscriptionId: subB, status: 'expired', updatedAt: '2026-10-08T12:00:00.000000Z' }))
+
+    const older = eventBody({ workspaceId, subscriptionId: uniqueSub(), status: 'active', updatedAt: '2026-10-08T11:00:00.000000Z' })
+    await expect(deliver(older)).resolves.toEqual({ received: true })
+
+    const row = await subscriptionOf(workspaceId)
+    expect(row.lsSubscriptionId).toBe(subB)
+    expect(row.status).toBe('expired')
+    expect(row.lsUpdatedAt.toISOString()).toBe('2026-10-08T12:00:00.000Z')
+    const event = await eventFor(older)
+    expect(event.processedAt).not.toBeNull()
+    expect(event.lastError).toMatch(/stale/)
+  })
+
+  it('edge: two concurrent first deliveries with different subscription ids leave exactly one row and reject the other as already active', async () => {
+    const workspaceId = await seedWorkspace()
+    const first = uniqueSub()
+    const second = uniqueSub()
+    const a = eventBody({ workspaceId, subscriptionId: first, status: 'active', updatedAt: '2026-10-08T12:00:00.000000Z' })
+    const b = eventBody({ workspaceId, subscriptionId: second, status: 'active', updatedAt: '2026-10-08T12:00:00.000000Z' })
+
+    await Promise.all([deliver(a), deliver(b)])
+
+    const rows = await db.select().from(workspaceSubscriptions).where(eq(workspaceSubscriptions.workspaceId, workspaceId))
+    expect(rows).toHaveLength(1)
+    const [eventA, eventB] = [await eventFor(a), await eventFor(b)]
+    const rejected = [eventA, eventB].filter((event) => event.lastError)
+    expect(rejected).toHaveLength(1)
+    expect(rejected[0].lastError).toMatch(/already has an active subscription/)
+    const winner = eventA.lastError ? second : first
+    expect(rows[0].lsSubscriptionId).toBe(winner)
   })
 
   it('regression: created, then updated to past_due, then cancelled with ends_at, then expired ends as expired and resolves to none', async () => {

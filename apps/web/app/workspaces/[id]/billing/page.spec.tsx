@@ -256,7 +256,7 @@ describe('BillingPage', () => {
     expect(screen.queryByLabelText('Number of buyers')).toBeNull()
   })
 
-  it('edge: the seat stepper stops at 1 and 25', async () => {
+  it('edge: the seat stepper stops at 1 and 25 and marks the bound with aria-disabled, not disabled', async () => {
     getBillingMock.mockResolvedValue(trialingSummary())
 
     renderPage()
@@ -264,22 +264,134 @@ describe('BillingPage', () => {
     // aria-label sits on the stepper container; its first button lowers, its last raises.
     const stepper = screen.getByLabelText('Number of buyers')
     const [decrease, increase] = [within(stepper).getAllByRole('button')[0], within(stepper).getAllByRole('button').at(-1)!]
+    const atBound = (button: HTMLElement) => button.getAttribute('aria-disabled') === 'true'
 
-    expect((decrease as HTMLButtonElement).disabled).toBe(true)
-    for (let i = 0; i < 30; i++) {
-      if ((increase as HTMLButtonElement).disabled) break
-      fireEvent.click(increase)
-    }
-    expect((increase as HTMLButtonElement).disabled).toBe(true)
-    expect(stepper.textContent).toContain('25')
+    expect(atBound(decrease)).toBe(true)
     expect((decrease as HTMLButtonElement).disabled).toBe(false)
     for (let i = 0; i < 30; i++) {
-      if ((decrease as HTMLButtonElement).disabled) break
+      if (atBound(increase)) break
+      fireEvent.click(increase)
+    }
+    expect(atBound(increase)).toBe(true)
+    expect((increase as HTMLButtonElement).disabled).toBe(false)
+    expect(stepper.textContent).toContain('25')
+    expect(atBound(decrease)).toBe(false)
+    for (let i = 0; i < 30; i++) {
+      if (atBound(decrease)) break
       fireEvent.click(decrease)
     }
-    expect((decrease as HTMLButtonElement).disabled).toBe(true)
+    expect(atBound(decrease)).toBe(true)
     expect(stepper.textContent).toContain('1')
     expect(stepper.textContent).not.toContain('25')
+  })
+
+  it('edge: clicking a stepper button at its bound is a no-op', async () => {
+    getBillingMock.mockResolvedValue(trialingSummary())
+
+    renderPage()
+    await screen.findByText(/days left/i)
+    const stepper = screen.getByLabelText('Number of buyers')
+    const [decrease, increase] = [within(stepper).getAllByRole('button')[0], within(stepper).getAllByRole('button').at(-1)!]
+
+    fireEvent.click(decrease)
+    expect(within(stepper).getByText('1')).toBeTruthy()
+    for (let i = 0; i < 24; i++) fireEvent.click(increase)
+    expect(within(stepper).getByText('25')).toBeTruthy()
+    fireEvent.click(increase)
+    expect(within(stepper).getByText('25')).toBeTruthy()
+  })
+
+  it('edge: the seat count is announced politely (aria-live=polite)', async () => {
+    getBillingMock.mockResolvedValue(trialingSummary())
+
+    renderPage()
+    await screen.findByText(/days left/i)
+    const stepper = screen.getByLabelText('Number of buyers')
+
+    expect(within(stepper).getByText('1').closest('[aria-live]')?.getAttribute('aria-live')).toBe('polite')
+  })
+
+  it('edge: the loading skeleton is role=status with screen-reader text "Loading billing"', async () => {
+    getBillingMock.mockReturnValue(new Promise(() => {}))
+
+    renderPage()
+
+    const text = screen.getByText('Loading billing')
+    expect(text.className).toContain('sr-only')
+    expect(text.closest('[role="status"]')).not.toBeNull()
+  })
+
+  it('edge: the allowance line is hidden when the summary has no quotas', async () => {
+    getBillingMock.mockResolvedValue(trialingSummary({ quotas: null }))
+
+    renderPage()
+
+    expect(await screen.findByText(/days left/i)).toBeTruthy()
+    expect(screen.queryByText(/Solo allowance/i)).toBeNull()
+    expect(document.body.textContent).not.toMatch(/0 matched lines/)
+  })
+
+  it('edge: a non-owner does not see the seat stepper', async () => {
+    asRole('member')
+    getBillingMock.mockResolvedValue(trialingSummary())
+
+    renderPage()
+
+    await screen.findByText('Only the workspace owner can change billing.')
+    expect(screen.queryByLabelText('Number of buyers')).toBeNull()
+    expect(screen.queryByRole('button', { name: /(increase|decrease) buyers/i })).toBeNull()
+  })
+
+  it('edge: the owner-only note sits in the "Choose a plan" section and is referenced via aria-describedby', async () => {
+    asRole('member')
+    getBillingMock.mockResolvedValue(trialingSummary())
+
+    const { container } = renderPage()
+
+    const note = await screen.findByText('Only the workspace owner can change billing.')
+    const heading = screen.getByRole('heading', { name: 'Choose a plan' })
+    expect(heading.closest('section')?.contains(note)).toBe(true)
+    expect(note.id).not.toBe('')
+    expect(container.querySelector(`[aria-describedby~="${note.id}"]`)).not.toBeNull()
+  })
+
+  it('edge: after a checkout failure focus returns to the Subscribe button that was clicked', async () => {
+    getBillingMock.mockResolvedValue(trialingSummary())
+    // Browsers drop focus when a focused button becomes disabled; model that.
+    startCheckoutMock.mockImplementation(async () => {
+      ;(document.activeElement as HTMLElement | null)?.blur()
+      throw { statusCode: 502, message: 'down' }
+    })
+
+    renderPage()
+    await screen.findByText(/days left/i)
+    const solo = subscribeSolo()
+    solo.focus()
+    fireEvent.click(solo)
+
+    await screen.findByText("Couldn't reach billing. Try again in a moment.")
+    await waitFor(() => expect(document.activeElement).toBe(subscribeSolo()))
+  })
+
+  it('edge: Retry keeps focus and the error banner stays mounted while the reload is in flight', async () => {
+    let resolveSecond: (value: BillingSummary) => void = () => {}
+    getBillingMock.mockRejectedValueOnce({ statusCode: 500, message: 'boom' })
+    getBillingMock.mockReturnValueOnce(new Promise<BillingSummary>((resolve) => (resolveSecond = resolve)))
+
+    renderPage()
+    await screen.findByText("Couldn't load billing.")
+    const retry = screen.getByRole('button', { name: /retry/i })
+    retry.focus()
+    fireEvent.click(retry)
+
+    await waitFor(() => expect(getBillingMock).toHaveBeenCalledTimes(2))
+    expect(screen.getByText("Couldn't load billing.")).toBeTruthy()
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: /retry/i }))
+
+    await act(async () => {
+      resolveSecond(trialingSummary())
+    })
+    expect(await screen.findByText(/days left/i)).toBeTruthy()
   })
 
   it('edge: ?checkout=success polls every 2 s until subscribed and then stops', async () => {
@@ -321,6 +433,40 @@ describe('BillingPage', () => {
 
     await flush(60_000)
     expect(getBillingMock).toHaveBeenCalledTimes(reads)
+  })
+
+  it('regression: ?checkout=success keeps one persistent role=status region whose text goes Payment received, then Your plan is active.', async () => {
+    vi.useFakeTimers()
+    searchParams = new URLSearchParams('checkout=success')
+    getBillingMock.mockResolvedValueOnce(trialingSummary()).mockResolvedValue(subscribedSummary())
+
+    renderPage()
+    await flush()
+    const region = screen.getByText('Payment received. Activating your plan…').closest('[role="status"]') as HTMLElement
+    expect(region).not.toBeNull()
+
+    await flush(2000)
+
+    expect(region.isConnected).toBe(true)
+    expect(region.textContent).toContain('Your plan is active.')
+    expect(region.textContent).not.toContain('Payment received')
+    expect(screen.getByText('Your plan is active.').closest('[role="status"]')).toBe(region)
+  })
+
+  it('regression: ?checkout=success region text switches to "This is taking longer than usual. Refresh in a minute." in the same node', async () => {
+    vi.useFakeTimers()
+    searchParams = new URLSearchParams('checkout=success')
+    getBillingMock.mockResolvedValue(trialingSummary())
+
+    renderPage()
+    await flush()
+    const region = screen.getByText('Payment received. Activating your plan…').closest('[role="status"]') as HTMLElement
+    expect(region).not.toBeNull()
+
+    await flush(60_000)
+
+    expect(region.isConnected).toBe(true)
+    expect(region.textContent).toContain('This is taking longer than usual. Refresh in a minute.')
   })
 
   it('regression: a null used value renders the allowance, never a 0 of N meter', async () => {
