@@ -209,9 +209,9 @@ describe('BillingGateService', () => {
 
   it('edge: a pair already counted is still refused for state none', async () => {
     const ws = await seedWorkspace('none')
-    await seedRow(ws, 'matched_line', 10, NOW, 'cmp:po-c:inv-c')
+    await seedRow(ws, 'matched_line', 10, NOW, 'cmp:po-d:inv-d')
 
-    await expectStop(gate.assertMatchedLines(ws, 'po-c', 'inv-c', 10, NOW), 'SUBSCRIPTION_REQUIRED')
+    await expectStop(gate.assertMatchedLines(ws, 'po-d', 'inv-d', 10, NOW), 'SUBSCRIPTION_REQUIRED')
   })
 
   it('edge: exempt has no line or photo limit and a 25 USD AI guard over the calendar month', async () => {

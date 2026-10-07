@@ -406,7 +406,7 @@ describe('Chat flow (e2e)', () => {
         .send({ message })
 
     function answerWithUsage() {
-      ;(embedQuery as jest.Mock).mockResolvedValue([0.4, 0.5, 0.6])
+      (embedQuery as jest.Mock).mockResolvedValue([0.4, 0.5, 0.6])
       ;(answerQuestion as jest.Mock).mockImplementation(
         async (_q: string, _ws: string, _limit: unknown, _embedding: unknown, _filters: unknown, _history: unknown, meter: { record: (r: unknown, m?: string) => void }) => ({
           sources: [],

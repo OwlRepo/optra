@@ -270,7 +270,7 @@ describe('RefineService', () => {
     })
 
     it('error: a model refusal still writes the ledger row for tokens spent', async () => {
-      ;(refineMessage as jest.Mock).mockImplementation(async (_text: string, options: { meter: { record: (r: unknown) => void } }) => {
+      (refineMessage as jest.Mock).mockImplementation(async (_text: string, options: { meter: { record: (r: unknown) => void } }) => {
         options.meter.record(USAGE)
         throw new RefineRefusalError()
       })
@@ -283,7 +283,7 @@ describe('RefineService', () => {
     })
 
     it('edge: enforcement off does not read the Redis token budget for refine', async () => {
-      ;(refineMessage as jest.Mock).mockImplementation(async (_text: string, options: { meter: { record: (r: unknown) => void } }) => {
+      (refineMessage as jest.Mock).mockImplementation(async (_text: string, options: { meter: { record: (r: unknown) => void } }) => {
         options.meter.record(USAGE)
         return 'Refined'
       })
@@ -296,7 +296,7 @@ describe('RefineService', () => {
     })
 
     it('edge: refine writes one llm_cost row through ledgerOnly', async () => {
-      ;(refineMessage as jest.Mock).mockImplementation(async (_text: string, options: { meter: { record: (r: unknown) => void } }) => {
+      (refineMessage as jest.Mock).mockImplementation(async (_text: string, options: { meter: { record: (r: unknown) => void } }) => {
         options.meter.record(USAGE)
         return 'Refined'
       })
@@ -308,13 +308,13 @@ describe('RefineService', () => {
     })
 
     it('regression: the result shape is still {original, refined}', async () => {
-      ;(refineMessage as jest.Mock).mockResolvedValue('Refined text')
+      (refineMessage as jest.Mock).mockResolvedValue('Refined text')
 
       await expect(metered.refine('ws-1', 'raw text')).resolves.toEqual({ original: 'raw text', refined: 'Refined text' })
     })
 
     it('happy: refine passes the workspace id and a meter to refineMessage', async () => {
-      ;(refineMessage as jest.Mock).mockResolvedValue('Refined text')
+      (refineMessage as jest.Mock).mockResolvedValue('Refined text')
 
       await service.refine('ws-9', 'raw text')
 

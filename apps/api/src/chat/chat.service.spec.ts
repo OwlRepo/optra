@@ -659,6 +659,7 @@ describe('ChatService', () => {
       [0.1],
       undefined,
       passedHistory,
+      expect.anything(),
     )
 
     // Condense tokens are charged from the provider's own count through
@@ -721,6 +722,7 @@ describe('ChatService', () => {
       [0.2],
       undefined,
       [],
+      expect.anything(),
     )
     expect(usage.addUsage).toHaveBeenLastCalledWith(
       workspace.id,
