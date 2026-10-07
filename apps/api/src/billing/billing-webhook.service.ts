@@ -9,9 +9,9 @@ import {
 } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { createHash } from 'crypto'
-import { and, eq, ne } from 'drizzle-orm'
+import { and, eq, ne, sql } from 'drizzle-orm'
 import { billingEvents, db, workspaceSubscriptions, workspaces } from '@repo/db'
-import { isEntitledStatus, planForVariant } from './plans'
+import { SEATS_MAX, SEATS_MIN, isEntitledStatus, planForVariant } from './plans'
 import { verifySignature } from './webhook-signature'
 
 const SUBSCRIPTION_EVENTS = new Set([
@@ -38,7 +38,26 @@ interface ParsedEvent {
 
 const isObject = (value: unknown): value is Json => typeof value === 'object' && value !== null && !Array.isArray(value)
 
+/** Acknowledged with 200: resending the same body can never succeed. */
 class TerminalRejection extends Error {}
+
+/** Answered with 500 so Lemon Squeezy resends: a fix on our side makes it succeed. */
+class RetryableFailure extends Error {}
+
+const SAFE_PHRASES = /connection terminated|connection timeout|timeout|ECONNREFUSED|ECONNRESET|deadlock detected|too many clients|statement timeout/i
+
+/**
+ * Driver errors echo query parameters, which carry the buyer's email. Only the
+ * error name, a pg/Node code and a fixed phrase are ever logged or stored.
+ */
+function describeError(err: unknown): string {
+  if (err instanceof RetryableFailure) return err.message
+  if (!(err instanceof Error)) return 'Non-error thrown'
+  const withCode = err as Error & { code?: unknown; cause?: { code?: unknown } }
+  const code = [withCode.code, withCode.cause?.code].find((c): c is string => typeof c === 'string')
+  const phrase = SAFE_PHRASES.exec(err.message)?.[0] ?? SAFE_PHRASES.exec(String(withCode.cause ?? ''))?.[0]
+  return `${err.name}${code ? ` [${code}]` : ''}: ${phrase ?? 'database or processing error (details withheld)'}`
+}
 
 @Injectable()
 export class BillingWebhookService {
@@ -76,7 +95,7 @@ export class BillingWebhookService {
       await this.process(eventId, event)
       return { received: true }
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
+      const message = describeError(err)
       this.logger.error(`Webhook ${event.eventName} failed: ${message}`)
       await db
         .update(billingEvents)
@@ -135,16 +154,22 @@ export class BillingWebhookService {
 
   private async upsert(eventId: string, event: ParsedEvent): Promise<void> {
     const { attributes } = event
-    const expectedStore = this.config.get<string>('LEMONSQUEEZY_STORE_ID')
-    if (!expectedStore || String(attributes.store_id) !== expectedStore) {
-      throw new TerminalRejection('store_id mismatch')
-    }
+    // Our own misconfiguration or an unmapped variant is retryable: a terminal
+    // ack here would lose a paid subscription for good.
+    const expectedStore = this.config.get<string>('LEMONSQUEEZY_STORE_ID')?.trim()
+    if (!expectedStore) throw new RetryableFailure('LEMONSQUEEZY_STORE_ID is not configured')
+    if (String(attributes.store_id) !== expectedStore) throw new TerminalRejection('store_id mismatch')
     const plan = planForVariant(attributes.variant_id as string | number | null | undefined, this.config)
-    if (!plan) throw new TerminalRejection('unknown variant')
+    if (!plan) throw new RetryableFailure('unknown variant (not mapped to a plan; check LEMONSQUEEZY_VARIANT_* env)')
 
     const workspaceId = event.customData.workspace_id
     if (typeof workspaceId !== 'string' || !UUID_RE.test(workspaceId)) {
       throw new TerminalRejection('missing workspace_id in custom_data')
+    }
+    const secret = this.config.get<string>('LEMONSQUEEZY_WEBHOOK_SECRET') as string
+    const workspaceSig = event.customData.workspace_sig
+    if (typeof workspaceSig !== 'string' || !verifySignature(Buffer.from(workspaceId, 'utf8'), workspaceSig, secret)) {
+      throw new TerminalRejection('workspace binding signature missing or invalid')
     }
     const [workspace] = await db.select({ id: workspaces.id }).from(workspaces).where(eq(workspaces.id, workspaceId)).limit(1)
     if (!workspace) throw new TerminalRejection('unknown workspace')
@@ -159,14 +184,17 @@ export class BillingWebhookService {
     const lsUpdatedAt = toDate(attributes.updated_at)
     if (!lsUpdatedAt) throw new Error('webhook attributes.updated_at is missing or invalid')
     const item = isObject(attributes.first_subscription_item) ? attributes.first_subscription_item : {}
-    const quantity = typeof item.quantity === 'number' ? item.quantity : 1
+    const quantity = item.quantity
+    if (plan === 'team' && (typeof quantity !== 'number' || !Number.isInteger(quantity) || quantity < SEATS_MIN || quantity > SEATS_MAX)) {
+      throw new TerminalRejection('invalid quantity for the team plan')
+    }
     const values = {
       lsSubscriptionId: event.subscriptionId,
       lsCustomerId: String(attributes.customer_id ?? ''),
       lsVariantId: String(attributes.variant_id),
       plan,
       status: String(attributes.status ?? ''),
-      seats: plan === 'team' ? quantity : 1,
+      seats: plan === 'team' ? (quantity as number) : 1,
       renewsAt: toDate(attributes.renews_at),
       endsAt: toDate(attributes.ends_at),
       lsUpdatedAt,
@@ -174,6 +202,9 @@ export class BillingWebhookService {
     }
 
     await db.transaction(async (tx) => {
+      // Serialises every delivery for this workspace: FOR UPDATE locks nothing
+      // when the row does not exist yet, so two first deliveries could race.
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${workspaceId}))`)
       const [current] = await tx
         .select({
           lsSubscriptionId: workspaceSubscriptions.lsSubscriptionId,
@@ -188,9 +219,11 @@ export class BillingWebhookService {
 
       let rejection: string | null = null
       const sameSubscription = current?.lsSubscriptionId === event.subscriptionId
-      if (current && !sameSubscription && isEntitledStatus(current.status, current.endsAt, new Date())) {
+      if (current && lsUpdatedAt.getTime() < current.lsUpdatedAt.getTime()) {
+        rejection = 'stale event: the workspace row is newer'
+      } else if (current && !sameSubscription && isEntitledStatus(current.status, current.endsAt, new Date())) {
         rejection = 'workspace already has an active subscription'
-      } else if (!(current && sameSubscription && lsUpdatedAt.getTime() < current.lsUpdatedAt.getTime())) {
+      } else {
         await tx
           .insert(workspaceSubscriptions)
           .values({ workspaceId, ...values })
