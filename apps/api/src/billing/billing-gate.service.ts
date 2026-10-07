@@ -6,6 +6,19 @@ import { billingStop } from './billing-stop'
 import { EntitlementService } from './entitlement.service'
 import { currentMonthPeriod } from './plans'
 import { UsageLedgerService } from './usage-ledger.service'
+import type { BillingSummary } from '@repo/types'
+
+/** The quota window of a summary; exempt and none read the UTC calendar month. */
+function windowOf(summary: BillingSummary, now: Date): { start: Date; end: Date } {
+  return summary.period
+    ? { start: new Date(summary.period.start), end: new Date(summary.period.end) }
+    : currentMonthPeriod(now)
+}
+
+/** cmp:{po}:{invoice}:{period start date}: one pair is counted once per period. */
+function pairKeyPrefix(purchaseOrderId: string, invoiceId: string, periodStart: Date): string {
+  return `cmp:${purchaseOrderId}:${invoiceId}:${periodStart.toISOString().slice(0, 10)}`
+}
 
 /**
  * Every metered path asks this gate. With BILLING_ENFORCEMENT off it refuses
@@ -40,31 +53,30 @@ export class BillingGateService {
     lineCount: number,
     now: Date = new Date(),
   ): Promise<void> {
-    const key = `cmp:${purchaseOrderId}:${invoiceId}`
     if (!this.enforced()) {
-      await this.ledger.reserve({
-        workspaceId,
-        kind: 'matched_line',
-        idempotencyKey: key,
-        quantity: lineCount,
-        limit: null,
-        window: currentMonthPeriod(now),
-        now,
-      })
+      const window = currentMonthPeriod(now)
+      await this.bestEffort(workspaceId, 'matched-line', () =>
+        this.ledger.reservePairLines({
+          workspaceId,
+          keyPrefix: pairKeyPrefix(purchaseOrderId, invoiceId, window.start),
+          lineCount,
+          limit: null,
+          window,
+          now,
+        }),
+      )
       return
     }
 
     const summary = await this.entitlement.resolve(workspaceId, now)
     if (summary.state === 'none') throw billingStop('SUBSCRIPTION_REQUIRED')
-    const result = await this.ledger.reserve({
+    const window = windowOf(summary, now)
+    const result = await this.ledger.reservePairLines({
       workspaceId,
-      kind: 'matched_line',
-      idempotencyKey: key,
-      quantity: lineCount,
+      keyPrefix: pairKeyPrefix(purchaseOrderId, invoiceId, window.start),
+      lineCount,
       limit: summary.quotas?.matchedLines ?? null,
-      window: summary.period
-        ? { start: new Date(summary.period.start), end: new Date(summary.period.end) }
-        : currentMonthPeriod(now),
+      window,
       now,
     })
     if (result === 'over') throw billingStop('QUOTA_EXCEEDED', 'matchedLines')
@@ -73,15 +85,17 @@ export class BillingGateService {
   async assertPhotoCheck(workspaceId: string, now: Date = new Date()): Promise<void> {
     const key = `photo:${randomUUID()}`
     if (!this.enforced()) {
-      await this.ledger.reserve({
-        workspaceId,
-        kind: 'photo_check',
-        idempotencyKey: key,
-        quantity: 1,
-        limit: null,
-        window: currentMonthPeriod(now),
-        now,
-      })
+      await this.bestEffort(workspaceId, 'photo-check', () =>
+        this.ledger.reserve({
+          workspaceId,
+          kind: 'photo_check',
+          idempotencyKey: key,
+          quantity: 1,
+          limit: null,
+          window: currentMonthPeriod(now),
+          now,
+        }),
+      )
       return
     }
 
@@ -94,12 +108,22 @@ export class BillingGateService {
       idempotencyKey: key,
       quantity: 1,
       limit: summary.quotas?.photoChecks ?? null,
-      window: summary.period
-        ? { start: new Date(summary.period.start), end: new Date(summary.period.end) }
-        : currentMonthPeriod(now),
+      window: windowOf(summary, now),
       now,
     })
     if (result === 'over') throw billingStop('QUOTA_EXCEEDED', 'photoChecks')
+  }
+
+  // Off mode refuses nothing for billing, so a ledger outage must not break the
+  // feature either: warn once and carry on (the row is lost, an under-count).
+  private async bestEffort(workspaceId: string, what: string, run: () => Promise<unknown>): Promise<void> {
+    try {
+      await run()
+    } catch (error) {
+      this.logger.warn(
+        `${what} ledger write failed workspace=${workspaceId}: ${error instanceof Error ? error.message : String(error)}`,
+      )
+    }
   }
 
   // Named band-aid: a lost write under-counts one call. Durable alternative

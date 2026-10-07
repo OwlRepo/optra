@@ -68,6 +68,69 @@ export class UsageLedgerService {
     })
   }
 
+  /**
+   * Charges a PO/invoice pair for one period. `keyPrefix` is
+   * cmp:{po}:{invoice}:{period start date}; the pair has already been counted
+   * for the rows whose key starts with it, so only the lines beyond that count
+   * are new (a re-parse that adds lines pays for the extra ones, a repeat or a
+   * shrink pays nothing and is never refused). The quota is checked against the
+   * delta only, and check + insert share the per-workspace advisory lock.
+   */
+  async reservePairLines(input: {
+    workspaceId: string
+    keyPrefix: string
+    lineCount: number
+    limit: number | null
+    window: Window
+    now?: Date
+  }): Promise<ReserveResult> {
+    return db.transaction(async (tx) => {
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${input.workspaceId}))`)
+
+      const [counted] = await tx
+        .select({ total: sql<string>`coalesce(sum(${usageEvents.quantity}), 0)::text`, rows: sql<string>`count(*)::text` })
+        .from(usageEvents)
+        .where(
+          and(
+            eq(usageEvents.workspaceId, input.workspaceId),
+            eq(usageEvents.kind, 'matched_line'),
+            sql`starts_with(${usageEvents.idempotencyKey}, ${input.keyPrefix})`,
+          ),
+        )
+      const delta = input.lineCount - Number(counted?.total ?? 0)
+      if (delta <= 0) return 'duplicate'
+
+      if (input.limit !== null) {
+        const [row] = await tx
+          .select({ total: sql<string>`coalesce(sum(${usageEvents.quantity}), 0)::text` })
+          .from(usageEvents)
+          .where(
+            and(
+              eq(usageEvents.workspaceId, input.workspaceId),
+              eq(usageEvents.kind, 'matched_line'),
+              gte(usageEvents.occurredAt, input.window.start),
+              lt(usageEvents.occurredAt, input.window.end),
+            ),
+          )
+        if (Number(row?.total ?? 0) + delta > input.limit) return 'over'
+      }
+
+      const key = Number(counted?.rows ?? 0) === 0 ? input.keyPrefix : `${input.keyPrefix}:${randomUUID()}`
+      const inserted = await tx
+        .insert(usageEvents)
+        .values({
+          workspaceId: input.workspaceId,
+          kind: 'matched_line',
+          quantity: delta,
+          idempotencyKey: key,
+          occurredAt: input.now ?? new Date(),
+        })
+        .onConflictDoNothing({ target: usageEvents.idempotencyKey })
+        .returning({ id: usageEvents.id })
+      return inserted.length === 0 ? 'duplicate' : 'charged'
+    })
+  }
+
   /** Throws on a database error; BillingGateService.recordLlmCost catches it. */
   async recordLlmCost(input: {
     workspaceId: string
