@@ -1,4 +1,4 @@
-import { ArgumentsHost, BadRequestException, Logger } from '@nestjs/common'
+import { ArgumentsHost, BadRequestException, HttpException, Logger } from '@nestjs/common'
 import { AllExceptionsFilter } from './all-exceptions.filter'
 
 function makeHost(): { host: ArgumentsHost; status: jest.Mock; json: jest.Mock } {
@@ -78,5 +78,21 @@ describe('AllExceptionsFilter', () => {
     filter.catch(new Error('boom'), second.host)
 
     expect(first.json.mock.calls[0][0].requestId).not.toBe(second.json.mock.calls[0][0].requestId)
+  })
+
+  it('regression: an HttpException with an object body keeps every field, including code and quota', () => {
+    const { host, status, json } = makeHost()
+    const body = {
+      statusCode: 402,
+      message: "Your plan's matched-line allowance for this period is used up. Upgrade on the Billing page or wait for the next period.",
+      code: 'QUOTA_EXCEEDED',
+      quota: 'matchedLines',
+    }
+
+    filter.catch(new HttpException(body, 402), host)
+
+    expect(status).toHaveBeenCalledWith(402)
+    expect(json.mock.calls[0][0]).toEqual(body)
+    expect(errorSpy).not.toHaveBeenCalled()
   })
 })

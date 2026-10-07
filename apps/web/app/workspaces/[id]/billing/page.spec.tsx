@@ -518,4 +518,68 @@ describe('BillingPage', () => {
     await waitFor(() => expect(openPortalMock).toHaveBeenCalledWith('ws-1'))
     await waitFor(() => expect(assignMock).toHaveBeenCalledWith('https://ls.test/billing/xyz'))
   })
+
+  describe('usage meters (S4)', () => {
+    it('edge: a trialing summary renders the meters inside the trial card', async () => {
+      getBillingMock.mockResolvedValue(
+        trialingSummary({ used: { matchedLines: 20, photoChecks: 5, aiBudgetPercent: 38 } }),
+      )
+
+      renderPage()
+
+      const days = await screen.findByText(/9 days left/i)
+      const lines = await screen.findByRole('meter', { name: 'Matched lines' })
+      expect(screen.getByRole('meter', { name: 'Photo checks' })).toBeTruthy()
+      expect(screen.getByRole('meter', { name: 'AI allowance' })).toBeTruthy()
+      // The meters sit in the same card as the trial status, not in a separate section.
+      let card: HTMLElement | null = days
+      while (card && !card.contains(lines)) card = card.parentElement
+      expect(card).not.toBeNull()
+      expect(card).not.toBe(document.body)
+    })
+
+    it('edge: a subscribed summary renders the meters inside the plan card', async () => {
+      getBillingMock.mockResolvedValue(
+        subscribedSummary({ used: { matchedLines: 1500, photoChecks: 100, aiBudgetPercent: 61 } }),
+      )
+
+      renderPage()
+
+      const lines = await screen.findByRole('meter', { name: 'Matched lines' })
+      expect(screen.getByRole('meter', { name: 'Photo checks' })).toBeTruthy()
+      expect(screen.getByRole('meter', { name: 'AI allowance' })).toBeTruthy()
+      const manage = screen.getByRole('button', { name: /manage billing/i })
+      let card: HTMLElement | null = manage
+      while (card && !card.contains(lines)) card = card.parentElement
+      expect(card).not.toBeNull()
+      expect(card).not.toBe(document.body)
+    })
+
+    it('regression: exempt and none still render no meters', async () => {
+      getBillingMock.mockResolvedValueOnce(
+        summary({ state: 'exempt', quotas: { matchedLines: null, photoChecks: null }, used: { matchedLines: 9, photoChecks: 9, aiBudgetPercent: 9 } }),
+      )
+      const first = renderPage()
+      await screen.findByText('This workspace is exempt from billing.')
+      expect(screen.queryByRole('meter')).toBeNull()
+      first.unmount()
+
+      getBillingMock.mockResolvedValueOnce(summary({ state: 'none', used: { matchedLines: 0, photoChecks: 0, aiBudgetPercent: 0 } }))
+      renderPage()
+      await screen.findByText('No active plan')
+      expect(screen.queryByRole('meter')).toBeNull()
+    })
+
+    it('happy: used numbers from the API appear as N of M', async () => {
+      getBillingMock.mockResolvedValue(
+        trialingSummary({ used: { matchedLines: 20, photoChecks: 5, aiBudgetPercent: 38 } }),
+      )
+
+      renderPage()
+
+      expect(await screen.findByText('20 of 123')).toBeTruthy()
+      expect(screen.getByText('5 of 45')).toBeTruthy()
+      expect(screen.getByText('38% used')).toBeTruthy()
+    })
+  })
 })

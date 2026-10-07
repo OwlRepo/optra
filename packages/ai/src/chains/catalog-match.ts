@@ -98,7 +98,7 @@ export async function extractCatalogItemsFromImage(
         new SystemMessage(CATALOG_EXTRACTION_SYSTEM_PROMPT),
         new HumanMessage({ content }),
       ])
-      options.meter?.record(response)
+      options.meter?.record(response, llm.modelName)
 
       if (isRefusal(response)) {
         throw new CatalogExtractionRefusalError()
@@ -243,7 +243,7 @@ export async function compareLineItemToCatalogImage(
         new SystemMessage(CATALOG_COMPARE_SYSTEM_PROMPT),
         new HumanMessage({ content }),
       ])
-      input.meter?.record(response)
+      input.meter?.record(response, llm.modelName)
 
       if (isRefusal(response)) {
         throw new CatalogExtractionRefusalError('Model refused catalog match comparison request')

@@ -25,7 +25,7 @@ export async function generateTopicLabel(
     new SystemMessage(SYSTEM_PROMPT),
     new HumanMessage(questions.map((q, i) => `${i + 1}. ${q}`).join('\n')),
   ])
-  options.meter?.record(response)
+  options.meter?.record(response, llm.modelName)
 
   const raw = typeof response.content === 'string' ? response.content : String(response.content)
   return raw.trim().replace(/^["']|["']$/g, '')

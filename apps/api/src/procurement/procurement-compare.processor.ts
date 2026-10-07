@@ -4,6 +4,7 @@ import type { Job } from 'bull'
 import { and, desc, eq, isNull } from 'drizzle-orm'
 import { comparisonRuns, db, goodsReceipts, invoices, purchaseOrders } from '@repo/db'
 import { EventsService } from '../events/events.service'
+import { isBudgetExceeded } from '../limits/usage.service'
 import { COMPARISON_STRATEGY_VERSION, ComparisonService } from './comparison.service'
 import { COMPARE_RECONCILE_JOB_NAME, ComparePairJob, ProcurementCompareService } from './procurement-compare.service'
 
@@ -23,7 +24,9 @@ import { COMPARE_RECONCILE_JOB_NAME, ComparePairJob, ProcurementCompareService }
  * parse of either document, or by the manual Compare button.
  */
 function isPermanentCompareError(error: unknown): boolean {
-  return error instanceof NotFoundException || error instanceof BadRequestException
+  // A billing 402 (no plan, line quota) cannot clear before a Bull retry fires,
+  // and compare() refuses it before creating a run row, like the other two.
+  return error instanceof NotFoundException || error instanceof BadRequestException || isBudgetExceeded(error)
 }
 
 @Processor('procurement-compare-queue')

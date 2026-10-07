@@ -266,14 +266,14 @@ async function invokeAndParse(
   meter?: TokenMeter,
   systemPrompt: string = EXTRACTION_SYSTEM_PROMPT,
   normalize: (parsed: RawExtractionResult) => ProcurementExtractionResult = normalizeResult,
-  model: Pick<ChatOpenAI, 'invoke'> = llm,
+  model: Pick<ChatOpenAI, 'invoke' | 'modelName'> = llm,
 ): Promise<ProcurementExtractionResult> {
   let lastTimeoutError: unknown
 
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
       const response = await model.invoke([new SystemMessage(systemPrompt), humanMessage])
-      meter?.record(response)
+      meter?.record(response, model.modelName)
 
       if (isRefusal(response)) {
         throw new ProcurementExtractionRefusalError()

@@ -12,6 +12,7 @@ import { ProcurementCompareProcessor } from './procurement-compare.processor'
 import { EventsModule } from '../events/events.module'
 import { StorageModule } from '../storage/storage.module'
 import { LimitsModule } from '../limits/limits.module'
+import { BillingModule } from '../billing/billing.module'
 import { StructuredQueryModule } from '../structured-query/structured-query.module'
 
 @Module({
@@ -20,6 +21,7 @@ import { StructuredQueryModule } from '../structured-query/structured-query.modu
     StructuredQueryModule,
     EventsModule,
     LimitsModule,
+    BillingModule,
     BullModule.registerQueue({ name: 'procurement-parse-queue' }),
     // Its own queue, not an inline call at the end of the parse job: a
     // comparison spins up a 256MB in-memory DuckDB, and charging that to the

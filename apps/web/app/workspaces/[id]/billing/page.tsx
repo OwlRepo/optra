@@ -9,6 +9,7 @@ import { getBilling, openPortal, startCheckout } from '@/lib/api/billing'
 import { isForbidden, isUnauthorized } from '@/lib/api/handle-unauthorized'
 import { useWorkspaceContext } from '@/components/workspace-context'
 import { WorkspaceAccessDenied } from '@/components/workspace-access-denied'
+import { BillingUsageMeters } from '@/components/billing-usage-meters'
 import { WorkspaceNav, workspacePrimaryTabItems } from '@/components/workspace-nav'
 import { TourReplayButton } from '@/components/tour/tour-replay-button'
 import { MobileTabBar } from '@/components/mobile-tab-bar'
@@ -336,6 +337,7 @@ export default function BillingPage({ params }: { params: { id: string } }) {
                   {`Includes the Solo allowance: ${s.quotas.matchedLines ?? 0} matched lines and ${s.quotas.photoChecks ?? 0} photo checks a month`}
                 </p>
               ) : null}
+              <BillingUsageMeters summary={s} className="mt-5" />
             </Card>
           </Section>
           {renderPlans()}
@@ -358,6 +360,7 @@ export default function BillingPage({ params }: { params: { id: string } }) {
                 <DefinitionRow density="roomy" label="Photo checks" value={quotaText(s.quotas.photoChecks)} />
               </>
             ) : null}
+            <BillingUsageMeters summary={s} className="border-t border-border-inner px-6 py-4" />
             {isOwner ? (
               <div className="flex justify-end border-t border-border-inner bg-surface-subtle px-6 py-3.5">
                 <Button ref={manageRef} size="sm" isLoading={pendingAction === 'portal'} loadingText="Opening" onClick={() => void manage()}>

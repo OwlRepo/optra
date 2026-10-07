@@ -1,9 +1,10 @@
 import { NotFoundException } from '@nestjs/common'
 import type { ConfigService } from '@nestjs/config'
 import { eq, like } from 'drizzle-orm'
-import { db, pool, users, workspaceMembers, workspaceSubscriptions, workspaces } from '@repo/db'
+import { db, pool, usageEvents, users, workspaceMembers, workspaceSubscriptions, workspaces } from '@repo/db'
 import { EntitlementService } from './entitlement.service'
 import { TRIAL_DAYS } from './plans'
+import { UsageLedgerService } from './usage-ledger.service'
 
 const PREFIX = `entitlement-spec-${Date.now()}-`
 const NOW = new Date('2026-10-08T12:00:00.000Z')
@@ -11,7 +12,7 @@ const DAY = 24 * 60 * 60 * 1000
 
 let env: Record<string, string | undefined> = {}
 const config = { get: (key: string) => env[key] } as unknown as ConfigService
-const service = new EntitlementService(config)
+const service = new EntitlementService(config, new UsageLedgerService())
 
 let counter = 0
 async function seedWorkspace(opts: { trialEndsAt?: Date | null; exempt?: boolean } = {}) {
@@ -50,11 +51,27 @@ async function seedSubscription(
   })
 }
 
+async function seedUsage(
+  workspaceId: string,
+  kind: 'matched_line' | 'photo_check' | 'llm_cost',
+  quantity: number,
+  occurredAt: Date = NOW,
+) {
+  await db.insert(usageEvents).values({
+    workspaceId,
+    kind,
+    quantity,
+    idempotencyKey: `seed:${Math.random().toString(36).slice(2)}`,
+    occurredAt,
+  })
+}
+
 async function cleanup() {
   const owners = await db.select({ id: users.id }).from(users).where(like(users.email, `${PREFIX}%`))
   for (const owner of owners) {
     const owned = await db.select({ id: workspaces.id }).from(workspaces).where(eq(workspaces.ownerId, owner.id))
     for (const workspace of owned) {
+      await db.delete(usageEvents).where(eq(usageEvents.workspaceId, workspace.id))
       await db.delete(workspaceSubscriptions).where(eq(workspaceSubscriptions.workspaceId, workspace.id))
       await db.delete(workspaceMembers).where(eq(workspaceMembers.workspaceId, workspace.id))
       await db.delete(workspaces).where(eq(workspaces.id, workspace.id))
@@ -237,13 +254,120 @@ describe('EntitlementService', () => {
     expect(on.state).toBe(off.state)
   })
 
-  it('regression: used is null for both counters until the ledger exists', async () => {
-    const id = await seedWorkspace({ trialEndsAt: new Date(NOW.getTime() + DAY) })
-    const paid = await seedWorkspace()
-    await seedSubscription(paid, { status: 'active' })
+  it('edge: used counts only rows inside the period and only this workspace', async () => {
+    const trialEndsAt = new Date(NOW.getTime() + 6 * DAY)
+    const id = await seedWorkspace({ trialEndsAt })
+    const other = await seedWorkspace({ trialEndsAt })
+    const start = new Date(trialEndsAt.getTime() - TRIAL_DAYS * DAY)
+    await seedUsage(id, 'matched_line', 30, NOW)
+    await seedUsage(id, 'matched_line', 5, start)
+    await seedUsage(id, 'matched_line', 100, new Date(start.getTime() - 1))
+    await seedUsage(id, 'matched_line', 100, trialEndsAt)
+    await seedUsage(id, 'photo_check', 2, NOW)
+    await seedUsage(other, 'matched_line', 999, NOW)
 
-    expect((await service.resolve(id, NOW)).used).toEqual({ matchedLines: null, photoChecks: null })
-    expect((await service.resolve(paid, NOW)).used).toEqual({ matchedLines: null, photoChecks: null })
+    const summary = await service.resolve(id, NOW)
+
+    expect(summary.used?.matchedLines).toBe(35)
+    expect(summary.used?.photoChecks).toBe(2)
+  })
+
+  it("edge: an exempt workspace's used is measured over the UTC calendar month while period stays null", async () => {
+    const id = await seedWorkspace({ exempt: true })
+    await seedUsage(id, 'matched_line', 7, new Date('2026-10-01T00:00:00.000Z'))
+    await seedUsage(id, 'matched_line', 100, new Date('2026-09-30T23:59:59.999Z'))
+    await seedUsage(id, 'matched_line', 100, new Date('2026-11-01T00:00:00.000Z'))
+
+    const summary = await service.resolve(id, NOW)
+
+    expect(summary.state).toBe('exempt')
+    expect(summary.period).toBeNull()
+    expect(summary.used?.matchedLines).toBe(7)
+  })
+
+  it('edge: aiBudgetPercent is floor(100 x cost / cap), clamped to 100, and 0 with no spend', async () => {
+    const spent = await seedWorkspace({ trialEndsAt: new Date(NOW.getTime() + DAY) })
+    await seedUsage(spent, 'llm_cost', 1_590_000)
+    const over = await seedWorkspace({ trialEndsAt: new Date(NOW.getTime() + DAY) })
+    await seedUsage(over, 'llm_cost', 9_000_000)
+    const fresh = await seedWorkspace({ trialEndsAt: new Date(NOW.getTime() + DAY) })
+
+    // Trial cap defaults to 4 USD = 4,000,000 micro-USD: 1,590,000 / 4,000,000 = 39.75 -> 39.
+    expect((await service.resolve(spent, NOW)).used?.aiBudgetPercent).toBe(39)
+    expect((await service.resolve(over, NOW)).used?.aiBudgetPercent).toBe(100)
+    expect((await service.resolve(fresh, NOW)).used?.aiBudgetPercent).toBe(0)
+  })
+
+  it('edge: none reports used from the calendar month and aiBudgetPercent 0', async () => {
+    const id = await seedWorkspace()
+    await seedUsage(id, 'matched_line', 11, NOW)
+    await seedUsage(id, 'llm_cost', 8_000_000, NOW)
+
+    const summary = await service.resolve(id, NOW)
+
+    expect(summary.state).toBe('none')
+    expect(summary.period).toBeNull()
+    expect(summary.used).toEqual({ matchedLines: 11, photoChecks: 0, aiBudgetPercent: 0 })
+  })
+
+  it('regression: state, quotas and period are identical to S3 for every state', async () => {
+    const trialEndsAt = new Date(NOW.getTime() + 6 * DAY)
+    const trial = await seedWorkspace({ trialEndsAt })
+    const paid = await seedWorkspace()
+    await seedSubscription(paid, { status: 'active', plan: 'team', seats: 2 })
+    const exempt = await seedWorkspace({ exempt: true })
+    const none = await seedWorkspace()
+    for (const id of [trial, paid, exempt, none]) await seedUsage(id, 'matched_line', 3, NOW)
+
+    const [t, p, e, n] = await Promise.all([trial, paid, exempt, none].map((id) => service.resolve(id, NOW)))
+
+    expect(t).toMatchObject({
+      state: 'trialing',
+      quotas: { matchedLines: 400, photoChecks: 100 },
+      period: { start: new Date(trialEndsAt.getTime() - TRIAL_DAYS * DAY).toISOString(), end: trialEndsAt.toISOString() },
+    })
+    expect(p).toMatchObject({
+      state: 'subscribed',
+      quotas: { matchedLines: 4000, photoChecks: 600 },
+      period: { start: '2026-10-01T00:00:00.000Z', end: '2026-11-01T00:00:00.000Z' },
+    })
+    expect(e).toMatchObject({ state: 'exempt', quotas: { matchedLines: null, photoChecks: null }, period: null })
+    expect(n).toMatchObject({ state: 'none', quotas: null, period: null })
+  })
+
+  it('happy: used reflects matched_line, photo_check and llm_cost rows', async () => {
+    const id = await seedWorkspace({ trialEndsAt: new Date(NOW.getTime() + DAY) })
+    await seedUsage(id, 'matched_line', 20)
+    await seedUsage(id, 'matched_line', 5)
+    await seedUsage(id, 'photo_check', 4)
+    await seedUsage(id, 'llm_cost', 2_000_000)
+
+    const summary = await service.resolve(id, NOW)
+
+    expect(summary.used).toEqual({ matchedLines: 25, photoChecks: 4, aiBudgetPercent: 50 })
+  })
+
+  it('happy: resolveWithAiBudget returns the cap and the spend for trialing, subscribed and exempt', async () => {
+    const trial = await seedWorkspace({ trialEndsAt: new Date(NOW.getTime() + DAY) })
+    await seedUsage(trial, 'llm_cost', 1_000_000)
+    const solo = await seedWorkspace()
+    await seedSubscription(solo, { status: 'active', plan: 'solo' })
+    await seedUsage(solo, 'llm_cost', 2_000_000)
+    const team = await seedWorkspace()
+    await seedSubscription(team, { status: 'active', plan: 'team', seats: 3 })
+    const exempt = await seedWorkspace({ exempt: true })
+    await seedUsage(exempt, 'llm_cost', 3_000_000)
+
+    const t = await service.resolveWithAiBudget(trial, NOW)
+    const s = await service.resolveWithAiBudget(solo, NOW)
+    const m = await service.resolveWithAiBudget(team, NOW)
+    const e = await service.resolveWithAiBudget(exempt, NOW)
+
+    expect(t.ai).toEqual({ usedMicroUsd: 1_000_000, capMicroUsd: 4_000_000 })
+    expect(s.ai).toEqual({ usedMicroUsd: 2_000_000, capMicroUsd: 6_000_000 })
+    expect(m.ai).toEqual({ usedMicroUsd: 0, capMicroUsd: 45_000_000 })
+    expect(e.ai).toEqual({ usedMicroUsd: 3_000_000, capMicroUsd: 25_000_000 })
+    expect(t.summary.state).toBe('trialing')
   })
 
   it('happy: an active solo subscription is subscribed with plan solo and seats 1', async () => {

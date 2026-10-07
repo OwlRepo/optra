@@ -1,4 +1,5 @@
-import { BadRequestException } from '@nestjs/common'
+import { BadRequestException, HttpException } from '@nestjs/common'
+import type { ConfigService } from '@nestjs/config'
 import { eq, like } from 'drizzle-orm'
 import {
   comparisonRunGoodsReceipts,
@@ -13,6 +14,7 @@ import {
   pool,
   poLineItems,
   purchaseOrders,
+  usageEvents,
   users,
   vendorPriceTerms,
   vendors,
@@ -21,6 +23,14 @@ import {
 } from '@repo/db'
 import { COMPARISON_STRATEGY_VERSION, ComparisonService } from './comparison.service'
 import { DuckDbQueryService, SqlExecutionError } from '../structured-query/duckdb-query.service'
+import { BillingGateService } from '../billing/billing-gate.service'
+import { EntitlementService } from '../billing/entitlement.service'
+import { UsageLedgerService } from '../billing/usage-ledger.service'
+
+// Metering has its own describe at the bottom; everywhere else the gate lets
+// every pair through, so the S1-S9 comparison behaviour is exercised unchanged.
+const passThroughGate = () =>
+  ({ assertMatchedLines: jest.fn().mockResolvedValue(undefined) }) as unknown as BillingGateService
 
 async function seedWorkspace(email: string, name: string) {
   const [user] = await db.insert(users).values({ email, passwordHash: 'x', isVerified: true }).returning()
@@ -45,7 +55,7 @@ describe('ComparisonService', () => {
   const prefix = `comparison-spec-${Date.now()}-`
 
   beforeEach(() => {
-    service = new ComparisonService(new DuckDbQueryService())
+    service = new ComparisonService(new DuckDbQueryService(), passThroughGate())
   })
 
   // No per-suite cleanup: unit tests run on a database recreated every run
@@ -337,7 +347,7 @@ describe('ComparisonService', () => {
     jest
       .spyOn(failing, 'runReadOnlyMultiTableQuery')
       .mockRejectedValue(new SqlExecutionError('Conversion Error: Could not convert string "SECRET-CELL" to DOUBLE'))
-    const failingService = new ComparisonService(failing)
+    const failingService = new ComparisonService(failing, passThroughGate())
 
     const error = await failingService.compare(workspace.id, po.id, invoice.id).then(
       () => null,
@@ -508,7 +518,7 @@ describe('ComparisonService', () => {
       const failing = new DuckDbQueryService()
       jest.spyOn(failing, 'runReadOnlyMultiTableQuery').mockRejectedValue(new SqlExecutionError('boom'))
 
-      await expect(new ComparisonService(failing).compare(workspace.id, po.id, invoice.id, user.id)).rejects.toThrow()
+      await expect(new ComparisonService(failing, passThroughGate()).compare(workspace.id, po.id, invoice.id, user.id)).rejects.toThrow()
 
       const [run] = await db.select().from(comparisonRuns).where(eq(comparisonRuns.purchaseOrderId, po.id))
       expect(run.status).toBe('failed')
@@ -3011,7 +3021,7 @@ describe('ComparisonService', () => {
       const { workspace } = await seedWorkspace(`${prefix}gate-noengine@example.com`, 'Gate No Engine')
       const { po, invoice } = await seedPair(workspace.id, { po: { reviewRequired: true, reviewedAt: null } })
       const engine = { runReadOnlyMultiTableQuery: jest.fn() }
-      const gated = new ComparisonService(engine as unknown as DuckDbQueryService)
+      const gated = new ComparisonService(engine as unknown as DuckDbQueryService, passThroughGate())
 
       await expect(gated.compare(workspace.id, po.id, invoice.id)).rejects.toBeInstanceOf(BadRequestException)
 
@@ -3136,6 +3146,170 @@ describe('ComparisonService', () => {
 
       expect(item.poLine).toMatchObject({ sourceKind: 'csv', editedAt: null })
       expect(item.receiptLine).toMatchObject({ sourceKind: 'csv', editedAt: null, extractionConfidence: null })
+    })
+  })
+
+  describe('matched-line metering (S4)', () => {
+    const DAY = 24 * 60 * 60 * 1000
+    let flags: Record<string, string | undefined> = {}
+    const config = { get: (key: string) => flags[key] } as unknown as ConfigService
+    const ledger = new UsageLedgerService()
+    const metered = () =>
+      new ComparisonService(
+        new DuckDbQueryService(),
+        new BillingGateService(config, new EntitlementService(config, ledger), ledger),
+      )
+
+    beforeEach(() => {
+      flags = { BILLING_ENFORCEMENT: 'on' }
+    })
+
+    async function trialWorkspace(label: string) {
+      const { workspace } = await seedWorkspace(`${prefix}meter-${label}@example.com`, `Meter ${label}`)
+      await db
+        .update(workspaces)
+        .set({ trialEndsAt: new Date(Date.now() + 5 * DAY) })
+        .where(eq(workspaces.id, workspace.id))
+      return workspace
+    }
+
+    const lines = (count: number) =>
+      Array.from({ length: count }, (_, i) => ({ sku: `SKU-${i + 1}`, quantity: '10', unitPrice: '5.00' }))
+
+    const usageRows = (workspaceId: string) =>
+      db.select().from(usageEvents).where(eq(usageEvents.workspaceId, workspaceId))
+    const runRows = (workspaceId: string) =>
+      db.select().from(comparisonRuns).where(eq(comparisonRuns.workspaceId, workspaceId))
+
+    async function seedUsage(workspaceId: string, quantity: number) {
+      await db.insert(usageEvents).values({
+        workspaceId,
+        kind: 'matched_line',
+        quantity,
+        idempotencyKey: `seed:${Math.random().toString(36).slice(2)}`,
+        occurredAt: new Date(),
+      })
+    }
+
+    it('error: enforcement on and a new pair over quota is 402 QUOTA_EXCEEDED with no run row and no usage row', async () => {
+      const workspace = await trialWorkspace('over')
+      await seedUsage(workspace.id, 399)
+      const { po, invoice } = await seedReadyPoAndInvoice(workspace.id, lines(2), lines(2), true)
+
+      const err = await metered().compare(workspace.id, po.id, invoice.id).catch((e: unknown) => e)
+
+      expect(err).toBeInstanceOf(HttpException)
+      expect((err as HttpException).getStatus()).toBe(402)
+      expect((err as HttpException).getResponse()).toMatchObject({ code: 'QUOTA_EXCEEDED', quota: 'matchedLines' })
+      expect(await runRows(workspace.id)).toHaveLength(0)
+      expect(await usageRows(workspace.id)).toHaveLength(1)
+    })
+
+    it('error: enforcement on and state none is 402 SUBSCRIPTION_REQUIRED with no run row', async () => {
+      const { workspace } = await seedWorkspace(`${prefix}meter-none@example.com`, 'Meter None')
+      const { po, invoice } = await seedReadyPoAndInvoice(workspace.id, lines(1), lines(1), true)
+
+      const err = await metered().compare(workspace.id, po.id, invoice.id).catch((e: unknown) => e)
+
+      expect((err as HttpException).getStatus()).toBe(402)
+      expect((err as HttpException).getResponse()).toMatchObject({ code: 'SUBSCRIPTION_REQUIRED' })
+      expect(await runRows(workspace.id)).toHaveLength(0)
+      expect(await usageRows(workspace.id)).toHaveLength(0)
+    })
+
+    it('error: a 400 for unparsed lines happens before the gate and counts nothing', async () => {
+      const { workspace } = await seedWorkspace(`${prefix}meter-unparsed@example.com`, 'Meter Unparsed')
+      const { po, invoice } = await seedReadyPoAndInvoice(workspace.id, lines(2), [], true)
+
+      // A workspace with no plan would be refused with a 402 if the gate ran first.
+      const err = await metered().compare(workspace.id, po.id, invoice.id).catch((e: unknown) => e)
+
+      expect(err).toBeInstanceOf(BadRequestException)
+      expect(await usageRows(workspace.id)).toHaveLength(0)
+    })
+
+    it('error: a 400 for a receipt awaiting review happens before the gate and counts nothing', async () => {
+      const { workspace } = await seedWorkspace(`${prefix}meter-review@example.com`, 'Meter Review')
+      const { po, invoice } = await seedReadyPoAndInvoice(workspace.id, lines(1), lines(1), true)
+      const grn = await seedGoodsReceipt(workspace.id, po.id, [{ sku: 'SKU-1', quantityAccepted: '10' }])
+      await db.update(goodsReceipts).set({ sourceKind: 'image', reviewRequired: true, reviewedAt: null }).where(eq(goodsReceipts.id, grn.id))
+
+      const err = await metered().compare(workspace.id, po.id, invoice.id).catch((e: unknown) => e)
+
+      expect(err).toBeInstanceOf(BadRequestException)
+      expect(await usageRows(workspace.id)).toHaveLength(0)
+    })
+
+    it('edge: comparing the same pair again counts once and is allowed at quota', async () => {
+      const workspace = await trialWorkspace('again')
+      const { po, invoice } = await seedReadyPoAndInvoice(workspace.id, lines(3), lines(3), true)
+      await metered().compare(workspace.id, po.id, invoice.id)
+      await seedUsage(workspace.id, 397)
+
+      await expect(metered().compare(workspace.id, po.id, invoice.id)).resolves.toBeDefined()
+
+      const rows = await usageRows(workspace.id)
+      expect(rows.filter((row) => row.idempotencyKey.startsWith(`cmp:${po.id}:${invoice.id}:`))).toHaveLength(1)
+      expect(await runRows(workspace.id)).toHaveLength(2)
+    })
+
+    it('edge: two different pairs count separately', async () => {
+      const workspace = await trialWorkspace('pairs')
+      const first = await seedReadyPoAndInvoice(workspace.id, lines(2), lines(2), true)
+      const second = await seedReadyPoAndInvoice(workspace.id, lines(4), lines(4), true)
+
+      await metered().compare(workspace.id, first.po.id, first.invoice.id)
+      await metered().compare(workspace.id, second.po.id, second.invoice.id)
+
+      const rows = await usageRows(workspace.id)
+      expect(rows.map((row) => row.quantity).sort()).toEqual([2, 4])
+      expect(new Set(rows.map((row) => row.idempotencyKey)).size).toBe(2)
+    })
+
+    it("edge: quantity is the PO's line count, not the invoice's", async () => {
+      const workspace = await trialWorkspace('qty')
+      const { po, invoice } = await seedReadyPoAndInvoice(workspace.id, lines(5), lines(2), true)
+
+      await metered().compare(workspace.id, po.id, invoice.id)
+
+      const rows = await usageRows(workspace.id)
+      expect(rows).toHaveLength(1)
+      expect(rows[0].quantity).toBe(5)
+    })
+
+    it('edge: enforcement off records the row and refuses nothing over quota', async () => {
+      flags = { BILLING_ENFORCEMENT: 'off' }
+      const workspace = await trialWorkspace('off')
+      await seedUsage(workspace.id, 5000)
+      const { po, invoice } = await seedReadyPoAndInvoice(workspace.id, lines(2), lines(2), true)
+
+      await expect(metered().compare(workspace.id, po.id, invoice.id)).resolves.toBeDefined()
+
+      const rows = await usageRows(workspace.id)
+      expect(rows.some((row) => row.idempotencyKey.startsWith(`cmp:${po.id}:${invoice.id}:`) && row.quantity === 2)).toBe(true)
+    })
+
+    it('edge: concurrent compares of one new pair charge once', async () => {
+      const workspace = await trialWorkspace('race')
+      const { po, invoice } = await seedReadyPoAndInvoice(workspace.id, lines(3), lines(3), true)
+
+      await Promise.all(Array.from({ length: 3 }, () => metered().compare(workspace.id, po.id, invoice.id)))
+
+      const rows = await usageRows(workspace.id)
+      expect(rows).toHaveLength(1)
+      expect(rows[0].quantity).toBe(3)
+    })
+
+    it('happy: a first compare writes one matched_line row with key cmp:{po}:{invoice}:{period start}', async () => {
+      const workspace = await trialWorkspace('first')
+      const { po, invoice } = await seedReadyPoAndInvoice(workspace.id, lines(2), lines(2), true)
+
+      await metered().compare(workspace.id, po.id, invoice.id)
+
+      const rows = await usageRows(workspace.id)
+      expect(rows).toHaveLength(1)
+      expect(rows[0]).toMatchObject({ kind: 'matched_line', quantity: 2 })
+      expect(rows[0].idempotencyKey).toMatch(new RegExp(`^cmp:${po.id}:${invoice.id}:\\d{4}-\\d{2}-\\d{2}$`))
     })
   })
 })

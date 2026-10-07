@@ -14,11 +14,13 @@ import { CatalogExtractionService } from './catalog-extraction.service'
 import { CatalogMatchService } from './catalog-match.service'
 import { StorageModule } from '../storage/storage.module'
 import { LimitsModule } from '../limits/limits.module'
+import { BillingModule } from '../billing/billing.module'
 
 @Module({
   imports: [
     StorageModule,
     LimitsModule,
+    BillingModule,
     BullModule.registerQueue({ name: 'catalog-parse-queue' }),
     BullModule.registerQueue({ name: 'catalog-scrape-queue' }),
   ],

@@ -3,6 +3,7 @@ import { and, desc, eq, ilike, inArray, notInArray, or } from 'drizzle-orm'
 import { createLimit } from '@repo/ai'
 import { catalogItems, catalogMatches, catalogs, db, invoiceLineItems, poLineItems, vendors } from '@repo/db'
 import { isBudgetExceeded } from '../limits/usage.service'
+import { BillingGateService } from '../billing/billing-gate.service'
 import { StorageService } from '../storage/storage.service'
 import { CatalogExtractionService } from './catalog-extraction.service'
 
@@ -51,6 +52,7 @@ export class CatalogMatchService {
   constructor(
     private readonly storage: StorageService,
     private readonly extraction: CatalogExtractionService,
+    private readonly gate: BillingGateService,
   ) {}
 
   async search(workspaceId: string, input: SearchInput) {
@@ -60,6 +62,14 @@ export class CatalogMatchService {
     }
     const queryText = this.lineItemText(query)
     const candidates = await this.findCandidates(workspaceId, query, input.vendorId)
+
+    // S4 metering: one photo check per search that will call the vision model,
+    // checked before any fan-out. No candidates means no model call and no
+    // charge. The check also refuses first when the AI cap is already spent, so
+    // a refused search never consumes a photo check.
+    if (candidates.length > 0) {
+      await this.gate.assertPhotoCheck(workspaceId)
+    }
 
     // One candidate the model cannot judge (malformed answer, refusal, timeout,
     // the budget running out part-way) is skipped, not fatal: the verdicts

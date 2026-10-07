@@ -9,6 +9,7 @@ import {
   type RetrievalFilters,
 } from "../vectorstore";
 import { resolveModel } from "./models";
+import type { TokenMeter } from "../tokens";
 import { buildEvidencePack } from "./context";
 import { toMessages, type HistoryTurn } from "./history";
 import type { AnswerResult, ChatSource } from "./index";
@@ -79,6 +80,8 @@ const GraphState = Annotation.Root({
   precomputedEmbedding: Annotation<number[] | undefined>,
   // Optional metadata filters applied to retrieval.
   filters: Annotation<RetrievalFilters | undefined>,
+  // Billing meter for every model call made while answering this question.
+  meter: Annotation<TokenMeter | undefined>,
 });
 
 function buildContext(
@@ -186,6 +189,7 @@ async function collectAnswer(
   chunks: Awaited<ReturnType<typeof similaritySearch>>,
   systemPrompt: string,
   history: HistoryTurn[] = [],
+  meter?: TokenMeter,
 ): Promise<string> {
   const stream = await answerLlm.stream([
     new SystemMessage(systemPrompt),
@@ -197,6 +201,7 @@ async function collectAnswer(
   const parts: string[] = [];
 
   for await (const chunk of stream) {
+    meter?.record(chunk, answerLlm.modelName);
     if (typeof chunk.content === "string" && chunk.content.length > 0) {
       parts.push(chunk.content);
     }
@@ -212,6 +217,7 @@ async function* streamAnswer(
   chunks: Awaited<ReturnType<typeof similaritySearch>>,
   systemPrompt: string,
   history: HistoryTurn[] = [],
+  meter?: TokenMeter,
 ): AsyncGenerator<string> {
   const stream = await answerLlm.stream([
     new SystemMessage(systemPrompt),
@@ -222,6 +228,7 @@ async function* streamAnswer(
   ]);
 
   for await (const chunk of stream) {
+    meter?.record(chunk, answerLlm.modelName);
     if (typeof chunk.content === "string" && chunk.content.length > 0) {
       yield chunk.content;
     }
@@ -290,6 +297,7 @@ async function rewriteNode(state: typeof GraphState.State) {
     new SystemMessage(REWRITE_SYSTEM_PROMPT),
     new HumanMessage(state.retrievalQuery),
   ]);
+  state.meter?.record(response, rewriteLlm.modelName);
 
   // Rewrite only the retrieval query. The original question is left untouched so
   // generation still answers what the user actually asked.
@@ -309,6 +317,7 @@ async function generateNode(state: typeof GraphState.State) {
       state.chunks,
       ANSWER_SYSTEM_PROMPT,
       state.history,
+      state.meter,
     ),
   };
 }
@@ -332,6 +341,7 @@ async function gradeAnswerNode(state: typeof GraphState.State) {
       `Context:\n${buildContext(state.chunks)}\n\nAnswer:\n${state.answerText ?? ""}`,
     ),
   ]);
+  state.meter?.record(response, gradeLlm.modelName);
   const text =
     typeof response.content === "string"
       ? response.content
@@ -361,6 +371,7 @@ async function regenerateNode(state: typeof GraphState.State) {
       state.chunks,
       REGENERATE_SYSTEM_PROMPT,
       state.history,
+      state.meter,
     ),
     regenerated: true,
   };
@@ -399,6 +410,7 @@ export async function answerQuestionWithGraph(
   precomputedEmbedding?: number[],
   filters?: RetrievalFilters,
   history: HistoryTurn[] = [],
+  meter?: TokenMeter,
 ): Promise<AnswerResult> {
   const result = await graph.invoke({
     originalQuestion: question,
@@ -414,6 +426,7 @@ export async function answerQuestionWithGraph(
     shouldStream: false,
     precomputedEmbedding,
     filters,
+    meter,
   });
 
   if (result.isFallback) {
@@ -437,6 +450,7 @@ export async function answerQuestionWithGraph(
         result.chunks,
         ANSWER_SYSTEM_PROMPT,
         result.history,
+        result.meter,
       ),
     };
   }

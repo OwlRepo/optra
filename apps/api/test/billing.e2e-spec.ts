@@ -12,6 +12,7 @@ import {
   otps,
   pool,
   refreshTokens,
+  usageEvents,
   users,
   workspaceMembers,
   workspaceSubscriptions,
@@ -159,6 +160,21 @@ describe('Billing (e2e)', () => {
       { workspaceId: res.body.id, userId: member.id, role: 'member' },
     ])
     return res.body.id as string
+  }
+
+  async function seedLedger(
+    workspaceId: string,
+    rows: { kind: 'matched_line' | 'photo_check' | 'llm_cost'; quantity: number }[],
+  ) {
+    await db.insert(usageEvents).values(
+      rows.map((row) => ({
+        workspaceId,
+        kind: row.kind,
+        quantity: row.quantity,
+        idempotencyKey: `e2e-seed:${randomUUID()}`,
+        occurredAt: new Date(),
+      })),
+    )
   }
 
   const as = (actor: Actor, method: 'get' | 'post', path: string) =>
@@ -435,7 +451,7 @@ describe('Billing (e2e)', () => {
     expect(res.body.plan).toBeNull()
     const ends = new Date(res.body.trialEndsAt).getTime()
     expect(Math.abs(ends - (Date.now() + 14 * DAY))).toBeLessThan(5 * 60 * 1000)
-    expect(res.body.used).toEqual({ matchedLines: null, photoChecks: null })
+    expect(res.body.used).toEqual({ matchedLines: 0, photoChecks: 0, aiBudgetPercent: 0 })
   })
 
   it('edge: a plain member can read the summary', async () => {
@@ -460,6 +476,49 @@ describe('Billing (e2e)', () => {
     } finally {
       process.env.BILLING_ENFORCEMENT = 'off'
     }
+  })
+
+  it("edge: a fresh workspace's summary has used zeros and aiBudgetPercent 0", async () => {
+    const id = await freshWorkspace()
+
+    const res = await as(owner, 'get', `/workspaces/${id}/billing`).expect(200)
+
+    expect(res.body.state).toBe('none')
+    expect(res.body.used).toEqual({ matchedLines: 0, photoChecks: 0, aiBudgetPercent: 0 })
+  })
+
+  it('regression: after a compare, a photo search and an llm_cost row the summary shows matchedLines, photoChecks and aiBudgetPercent', async () => {
+    const id = await freshWorkspace()
+    await db.update(workspaces).set({ trialEndsAt: new Date(Date.now() + 5 * DAY) }).where(eq(workspaces.id, id))
+    await seedLedger(id, [
+      { kind: 'matched_line', quantity: 12 },
+      { kind: 'photo_check', quantity: 3 },
+      { kind: 'llm_cost', quantity: 2_000_000 },
+    ])
+
+    const res = await as(member, 'get', `/workspaces/${id}/billing`).expect(200)
+
+    expect(res.body.state).toBe('trialing')
+    expect(res.body.used).toEqual({ matchedLines: 12, photoChecks: 3, aiBudgetPercent: 50 })
+    // Dollars never leave the API: only the integer percentage.
+    expect(JSON.stringify(res.body)).not.toContain('2000000')
+  })
+
+  it("regression: workspace A's summary never counts workspace B's ledger rows", async () => {
+    const a = await freshWorkspace()
+    const b = await freshWorkspace()
+    for (const id of [a, b]) {
+      await db.update(workspaces).set({ trialEndsAt: new Date(Date.now() + 5 * DAY) }).where(eq(workspaces.id, id))
+    }
+    await seedLedger(b, [
+      { kind: 'matched_line', quantity: 300 },
+      { kind: 'photo_check', quantity: 50 },
+      { kind: 'llm_cost', quantity: 3_000_000 },
+    ])
+
+    const res = await as(owner, 'get', `/workspaces/${a}/billing`).expect(200)
+
+    expect(res.body.used).toEqual({ matchedLines: 0, photoChecks: 0, aiBudgetPercent: 0 })
   })
 
   it('regression: GET /workspaces/:id has no trialEndsAt or billingExempt key', async () => {

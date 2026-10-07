@@ -22,9 +22,11 @@ import {
   poLineItems,
   purchaseOrders,
   refreshTokens,
+  usageEvents,
   users,
   workspaceEvents,
   workspaceMembers,
+  workspaceSubscriptions,
   workspaces,
 } from '@repo/db'
 import { AppModule } from '../src/app.module'
@@ -2618,6 +2620,204 @@ describe('Procurement flow (e2e)', () => {
       expect(answers).toEqual(
         routes.map(([route]) => ({ route, status: 400, message: 'Validation failed (uuid is expected)' })),
       )
+    })
+  })
+
+  // S4: matched-line metering on the manual compare route. The pairs are seeded
+  // straight into the tables (status done, line rows present): the gate sits
+  // after every 400 and before the run row, so what matters here is the HTTP
+  // answer, the ledger and the run table.
+  describe('billing metering (S4)', () => {
+    const DAY = 24 * 60 * 60 * 1000
+
+    async function withEnforcement<T>(value: string, fn: () => Promise<T>): Promise<T> {
+      const previous = process.env.BILLING_ENFORCEMENT
+      process.env.BILLING_ENFORCEMENT = value
+      try {
+        return await fn()
+      } finally {
+        if (previous === undefined) delete process.env.BILLING_ENFORCEMENT
+        else process.env.BILLING_ENFORCEMENT = previous
+      }
+    }
+
+    async function seedBillingOwner(label: string, state: 'none' | 'trial' | 'solo' | 'exempt') {
+      const owner = await seedOwnerWithWorkspace(app, `${prefix}s4-${label}@example.com`, `S4 ${label}`)
+      if (state === 'trial' || state === 'exempt') {
+        await db
+          .update(workspaces)
+          .set({ trialEndsAt: state === 'trial' ? new Date(Date.now() + 5 * DAY) : null, billingExempt: state === 'exempt' })
+          .where(eq(workspaces.id, owner.workspaceId))
+      }
+      if (state === 'solo') {
+        await db.insert(workspaceSubscriptions).values({
+          workspaceId: owner.workspaceId,
+          lsSubscriptionId: `sub-${owner.workspaceId}`,
+          lsCustomerId: 'cus-1',
+          lsVariantId: '9001',
+          plan: 'solo',
+          status: 'active',
+          seats: 1,
+          lsUpdatedAt: new Date('2026-10-01T00:00:00.000Z'),
+        })
+      }
+      return owner
+    }
+
+    async function seedPair(workspaceId: string, lineCount: number) {
+      const [po] = await db
+        .insert(purchaseOrders)
+        .values({ workspaceId, name: 'po.csv', status: 'done', rowCount: lineCount })
+        .returning()
+      const [invoice] = await db
+        .insert(invoices)
+        .values({ workspaceId, name: 'invoice.csv', status: 'done', rowCount: lineCount, purchaseOrderId: po.id })
+        .returning()
+      const lines = Array.from({ length: lineCount }, (_, i) => ({ sku: `S4-${i + 1}`, quantity: '10', unitPrice: '5.00' }))
+      await db.insert(poLineItems).values(lines.map((line, i) => ({ workspaceId, purchaseOrderId: po.id, lineNumber: i + 1, ...line })))
+      await db
+        .insert(invoiceLineItems)
+        .values(lines.map((line, i) => ({ workspaceId, invoiceId: invoice.id, lineNumber: i + 1, ...line, quantity: '8' })))
+      return { po, invoice }
+    }
+
+    async function seedUsage(workspaceId: string, quantity: number) {
+      await db.insert(usageEvents).values({
+        workspaceId,
+        kind: 'matched_line',
+        quantity,
+        idempotencyKey: `e2e-seed:${Math.random().toString(36).slice(2)}`,
+        occurredAt: new Date(),
+      })
+    }
+
+    const ledgerOf = (workspaceId: string) =>
+      db.select().from(usageEvents).where(eq(usageEvents.workspaceId, workspaceId))
+    const runsOf = (workspaceId: string) =>
+      db.select().from(comparisonRuns).where(eq(comparisonRuns.workspaceId, workspaceId))
+
+    const compare = (workspaceId: string, token: string, poId: string, invoiceId: string) =>
+      request(app.getHttpServer())
+        .post(`/workspaces/${workspaceId}/procurement/discrepancies/compare`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ purchaseOrderId: poId, invoiceId })
+
+    it('error: a workspace with no trial and no subscription gets 402 SUBSCRIPTION_REQUIRED on compare and no run row is written', async () => {
+      const owner = await seedBillingOwner('none', 'none')
+      const { po, invoice } = await seedPair(owner.workspaceId, 2)
+
+      const res = await withEnforcement('on', () => compare(owner.workspaceId, owner.accessToken, po.id, invoice.id).expect(402))
+
+      expect(res.body).toMatchObject({ statusCode: 402, code: 'SUBSCRIPTION_REQUIRED' })
+      expect(typeof res.body.message).toBe('string')
+      expect(await runsOf(owner.workspaceId)).toHaveLength(0)
+      expect(await ledgerOf(owner.workspaceId)).toHaveLength(0)
+    })
+
+    it('error: a member gets 403 before the gate', async () => {
+      const owner = await seedBillingOwner('member', 'none')
+      const member = await seedMemberOfWorkspace(app, owner.workspaceId, `${prefix}s4-member-user@example.com`)
+      const { po, invoice } = await seedPair(owner.workspaceId, 1)
+
+      await withEnforcement('on', () => compare(owner.workspaceId, member.accessToken, po.id, invoice.id).expect(403))
+
+      expect(await ledgerOf(owner.workspaceId)).toHaveLength(0)
+    })
+
+    it("error: another workspace's purchase order id is 404 before the gate and counts nothing", async () => {
+      const mine = await seedBillingOwner('idor-mine', 'trial')
+      const theirs = await seedBillingOwner('idor-theirs', 'trial')
+      const foreign = await seedPair(theirs.workspaceId, 2)
+
+      await withEnforcement('on', () => compare(mine.workspaceId, mine.accessToken, foreign.po.id, foreign.invoice.id).expect(404))
+
+      expect(await ledgerOf(mine.workspaceId)).toHaveLength(0)
+      expect(await ledgerOf(theirs.workspaceId)).toHaveLength(0)
+    })
+
+    it('error: a new pair over the Solo quota (399 lines already used) gets 402 QUOTA_EXCEEDED with quota matchedLines', async () => {
+      const owner = await seedBillingOwner('quota', 'solo')
+      await seedUsage(owner.workspaceId, 399)
+      const { po, invoice } = await seedPair(owner.workspaceId, 2)
+
+      const res = await withEnforcement('on', () => compare(owner.workspaceId, owner.accessToken, po.id, invoice.id).expect(402))
+
+      expect(res.body).toMatchObject({ statusCode: 402, code: 'QUOTA_EXCEEDED', quota: 'matchedLines' })
+      expect(await runsOf(owner.workspaceId)).toHaveLength(0)
+      expect(await ledgerOf(owner.workspaceId)).toHaveLength(1)
+    })
+
+    it('edge: comparing an already counted pair at quota still succeeds', async () => {
+      const owner = await seedBillingOwner('again', 'solo')
+      const { po, invoice } = await seedPair(owner.workspaceId, 2)
+      await withEnforcement('on', () => compare(owner.workspaceId, owner.accessToken, po.id, invoice.id).expect(201))
+      await seedUsage(owner.workspaceId, 398)
+
+      await withEnforcement('on', () => compare(owner.workspaceId, owner.accessToken, po.id, invoice.id).expect(201))
+
+      const counted = (await ledgerOf(owner.workspaceId)).filter((row) => row.idempotencyKey.startsWith(`cmp:${po.id}:${invoice.id}:`))
+      expect(counted).toHaveLength(1)
+      expect(await runsOf(owner.workspaceId)).toHaveLength(2)
+    })
+
+    it('edge: a re-parsed PO with more lines charges only the extra lines, and a refused delta is 402 QUOTA_EXCEEDED', async () => {
+      const owner = await seedBillingOwner('reparse', 'solo')
+      const { po, invoice } = await seedPair(owner.workspaceId, 2)
+      await withEnforcement('on', () => compare(owner.workspaceId, owner.accessToken, po.id, invoice.id).expect(201))
+
+      // Re-parse: the PO now has 5 lines (3 more). Same pair, same month.
+      await db.insert(poLineItems).values(
+        [3, 4, 5].map((n) => ({ workspaceId: owner.workspaceId, purchaseOrderId: po.id, lineNumber: n, sku: `S4-${n}`, quantity: '10', unitPrice: '5.00' })),
+      )
+      await withEnforcement('on', () => compare(owner.workspaceId, owner.accessToken, po.id, invoice.id).expect(201))
+
+      const counted = (await ledgerOf(owner.workspaceId)).filter((row) => row.idempotencyKey.startsWith(`cmp:${po.id}:${invoice.id}:`))
+      expect(counted.map((row) => row.quantity).sort((a, b) => a - b)).toEqual([2, 3])
+
+      // Another re-parse to 8 lines would add 3 more; only 2 of 400 remain after seeding 393.
+      await seedUsage(owner.workspaceId, 393)
+      await db.insert(poLineItems).values(
+        [6, 7, 8].map((n) => ({ workspaceId: owner.workspaceId, purchaseOrderId: po.id, lineNumber: n, sku: `S4-${n}`, quantity: '10', unitPrice: '5.00' })),
+      )
+      const res = await withEnforcement('on', () => compare(owner.workspaceId, owner.accessToken, po.id, invoice.id).expect(402))
+      expect(res.body).toMatchObject({ statusCode: 402, code: 'QUOTA_EXCEEDED', quota: 'matchedLines' })
+      const total = (await ledgerOf(owner.workspaceId)).reduce((sum, row) => sum + row.quantity, 0)
+      expect(total).toBe(2 + 3 + 393)
+    })
+
+    it('edge: with enforcement off the same over-quota workspace compares and the ledger still gets the row', async () => {
+      const owner = await seedBillingOwner('off', 'solo')
+      await seedUsage(owner.workspaceId, 399)
+      const { po, invoice } = await seedPair(owner.workspaceId, 2)
+
+      await withEnforcement('off', () => compare(owner.workspaceId, owner.accessToken, po.id, invoice.id).expect(201))
+
+      const rows = await ledgerOf(owner.workspaceId)
+      expect(rows.some((row) => row.idempotencyKey.startsWith(`cmp:${po.id}:${invoice.id}:`) && row.quantity === 2)).toBe(true)
+      expect(await runsOf(owner.workspaceId)).toHaveLength(1)
+    })
+
+    it("happy: a trial workspace's first compare writes one matched_line row", async () => {
+      const owner = await seedBillingOwner('trial', 'trial')
+      const { po, invoice } = await seedPair(owner.workspaceId, 3)
+
+      await withEnforcement('on', () => compare(owner.workspaceId, owner.accessToken, po.id, invoice.id).expect(201))
+
+      const rows = await ledgerOf(owner.workspaceId)
+      expect(rows).toHaveLength(1)
+      expect(rows[0]).toMatchObject({ kind: 'matched_line', quantity: 3 })
+      expect(rows[0].idempotencyKey).toMatch(new RegExp(`^cmp:${po.id}:${invoice.id}:\\d{4}-\\d{2}-\\d{2}$`))
+    })
+
+    it('happy: an exempt workspace compares past 400 lines', async () => {
+      const owner = await seedBillingOwner('exempt', 'exempt')
+      const { po, invoice } = await seedPair(owner.workspaceId, 401)
+
+      await withEnforcement('on', () => compare(owner.workspaceId, owner.accessToken, po.id, invoice.id).expect(201))
+
+      const rows = await ledgerOf(owner.workspaceId)
+      expect(rows).toHaveLength(1)
+      expect(rows[0].quantity).toBe(401)
     })
   })
 })

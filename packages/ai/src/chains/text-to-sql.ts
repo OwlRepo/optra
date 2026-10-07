@@ -73,7 +73,7 @@ export async function generateMultiTableSql(
     new SystemMessage(MULTI_TABLE_SYSTEM_PROMPT),
     new HumanMessage(`${schema}\n\nQuestion: ${question}${repairNote}`),
   ])
-  options.meter?.record(response)
+  options.meter?.record(response, multiTableLlm.modelName)
 
   const raw = typeof response.content === 'string' ? response.content : String(response.content)
   const sql = extractSql(raw)
@@ -109,7 +109,7 @@ export async function generateSql(
     new SystemMessage(SYSTEM_PROMPT),
     new HumanMessage(`${schema}\n\nQuestion: ${question}${repairNote}`),
   ])
-  options.meter?.record(response)
+  options.meter?.record(response, llm.modelName)
 
   const raw = typeof response.content === 'string' ? response.content : String(response.content)
   const sql = raw

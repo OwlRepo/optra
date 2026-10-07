@@ -1,7 +1,7 @@
 /** @vitest-environment jsdom */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { apiFetch, uploadFile } from './client'
+import { apiFetch, uploadFile, uploadFiles } from './client'
 
 function jsonResponse(status: number, body: unknown): Response {
   return {
@@ -154,5 +154,76 @@ describe('uploadFile', () => {
       message: 'Unauthorized',
     })
     expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe('billing stop notice (S4)', () => {
+  const EVENT = 'optra:billing-stop'
+  const STOP = {
+    statusCode: 402,
+    message: "Your plan's AI allowance for this period is used up. Upgrade on the Billing page or wait for the next period.",
+    code: 'AI_BUDGET_EXCEEDED',
+  }
+  let fetchMock: ReturnType<typeof vi.fn>
+  let handler: ReturnType<typeof vi.fn<(event: Event) => void>>
+  const file = new File(['content'], 'doc.pdf', { type: 'application/pdf' })
+
+  beforeEach(() => {
+    fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    handler = vi.fn<(event: Event) => void>()
+    window.addEventListener(EVENT, handler)
+  })
+
+  afterEach(() => {
+    window.removeEventListener(EVENT, handler)
+    vi.unstubAllGlobals()
+  })
+
+  it('error: a 402 without a code throws the body and dispatches nothing', async () => {
+    const legacy = { statusCode: 402, message: 'Workspace monthly token budget reached' }
+    fetchMock.mockResolvedValueOnce(jsonResponse(402, legacy))
+
+    await expect(apiFetch('/api/workspaces/w1/refine', { method: 'POST' })).rejects.toEqual(legacy)
+
+    expect(handler).not.toHaveBeenCalled()
+  })
+
+  it('edge: apiFetch dispatches optra:billing-stop once for a coded 402 and still throws the body', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(402, STOP))
+
+    await expect(apiFetch('/api/workspaces/w1/refine', { method: 'POST' })).rejects.toEqual(STOP)
+
+    expect(handler).toHaveBeenCalledTimes(1)
+    expect((handler.mock.calls[0][0] as CustomEvent).detail).toEqual(STOP)
+  })
+
+  it('edge: uploadFile and uploadFiles dispatch the same event', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(402, STOP)).mockResolvedValueOnce(jsonResponse(402, STOP))
+
+    await expect(uploadFile('/api/workspaces/w1/procurement/purchase-orders', file)).rejects.toEqual(STOP)
+    await expect(uploadFiles('/api/workspaces/w1/procurement/purchase-orders/photos', [file])).rejects.toEqual(STOP)
+
+    expect(handler).toHaveBeenCalledTimes(2)
+    for (const [event] of handler.mock.calls) expect((event as CustomEvent).detail).toEqual(STOP)
+  })
+
+  it('regression: a 401 that refreshes and then answers a coded 402 dispatches the event', async () => {
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(401, { message: 'Unauthorized' }))
+      .mockResolvedValueOnce(jsonResponse(200, {})) // refresh
+      .mockResolvedValueOnce(jsonResponse(402, STOP)) // retried request
+
+    await expect(apiFetch('/api/workspaces/w1/refine', { method: 'POST' })).rejects.toEqual(STOP)
+
+    expect(handler).toHaveBeenCalledTimes(1)
+  })
+
+  it('happy: a 200 dispatches nothing', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, { ok: true }))
+
+    await expect(apiFetch('/api/workspaces/w1/billing')).resolves.toEqual({ ok: true })
+
+    expect(handler).not.toHaveBeenCalled()
   })
 })

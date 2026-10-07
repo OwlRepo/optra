@@ -36,6 +36,7 @@ import {
 } from '@repo/db'
 import { DuckDbQueryService, SqlExecutionError } from '../structured-query/duckdb-query.service'
 import { isReviewPending } from './procurement-review'
+import { BillingGateService } from '../billing/billing-gate.service'
 
 type DecisionOutcome = (typeof discrepancyDecisions.$inferInsert)['outcome']
 
@@ -413,7 +414,10 @@ function lineName(line?: { sku: string | null; description: string | null }): st
 export class ComparisonService {
   private readonly logger = new Logger(ComparisonService.name)
 
-  constructor(private readonly duckDb: DuckDbQueryService) {}
+  constructor(
+    private readonly duckDb: DuckDbQueryService,
+    private readonly gate: BillingGateService,
+  ) {}
 
   async compare(workspaceId: string, purchaseOrderId: string, invoiceId: string, initiatedBy?: string) {
     const po = await this.loadReadyPo(workspaceId, purchaseOrderId)
@@ -500,6 +504,13 @@ export class ComparisonService {
     // missing receiving document must be "clearly labeled; no false three-way
     // claim". A receipt that exists but parsed to zero lines is no evidence.
     const mode = grnItems.length > 0 ? 'three_way' : 'two_way'
+
+    // S4 metering. After every 400 above (a request that never reaches the
+    // engine counts nothing) and before the run row (a refused pair leaves no
+    // run). Counted once per PO/invoice pair for good: comparing the same pair
+    // again is free. The manual route and the procurement-compare processor both
+    // land here, so both are gated.
+    await this.gate.assertMatchedLines(workspaceId, po.id, invoice.id, poItems.length)
 
     // The run row is written before the engine call so a failed attempt still
     // leaves evidence that someone tried, and when. A request that never gets

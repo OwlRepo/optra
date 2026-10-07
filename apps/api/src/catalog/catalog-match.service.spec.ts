@@ -1,4 +1,5 @@
 import { HttpException } from '@nestjs/common'
+import type { ConfigService } from '@nestjs/config'
 import { eq, like } from 'drizzle-orm'
 import {
   catalogItems,
@@ -8,6 +9,7 @@ import {
   pool,
   poLineItems,
   purchaseOrders,
+  usageEvents,
   users,
   vendors,
   workspaceMembers,
@@ -18,6 +20,19 @@ import { StorageService } from '../storage/storage.service'
 import { CatalogExtractionService } from './catalog-extraction.service'
 import { CatalogExtractionParseError } from '@repo/ai'
 import { UsageService, isBudgetExceeded } from '../limits/usage.service'
+import { BillingGateService } from '../billing/billing-gate.service'
+import { billingStop } from '../billing/billing-stop'
+import { EntitlementService } from '../billing/entitlement.service'
+import { UsageLedgerService } from '../billing/usage-ledger.service'
+
+// Photo-check metering has its own describe at the bottom; elsewhere the gate
+// lets every search through so the existing matching behaviour is unchanged.
+const passThroughGate = () =>
+  ({
+    assertPhotoCheck: jest.fn().mockResolvedValue(undefined),
+    assertAiBudget: jest.fn().mockResolvedValue(undefined),
+    recordLlmCost: jest.fn().mockResolvedValue(undefined),
+  }) as unknown as BillingGateService
 
 async function cleanupFixtures(prefix: string) {
   const testUsers = await db.select({ id: users.id }).from(users).where(like(users.email, `${prefix}%`))
@@ -92,7 +107,11 @@ describe('CatalogMatchService', () => {
         .mockResolvedValue({ buffer: Buffer.from([0x89, 0x50, 0x4e, 0x47]), contentType: 'image/png' }),
     }
     extraction = { compare: jest.fn().mockResolvedValue({ isMatch: true, score: 0.9, reason: 'Same widget.' }) }
-    service = new CatalogMatchService(storage as unknown as StorageService, extraction as unknown as CatalogExtractionService)
+    service = new CatalogMatchService(
+      storage as unknown as StorageService,
+      extraction as unknown as CatalogExtractionService,
+      passThroughGate(),
+    )
   })
 
   afterEach(() => {
@@ -340,7 +359,8 @@ describe('CatalogMatchService', () => {
       const config = { get: jest.fn((_key: string, fallback: string) => fallback) }
       const budgeted = new CatalogMatchService(
         storage as unknown as StorageService,
-        new CatalogExtractionService(new UsageService(redis as never, config as never)),
+        new CatalogExtractionService(new UsageService(redis as never, config as never, passThroughGate())),
+        passThroughGate(),
       )
 
       const error = await budgeted
@@ -542,6 +562,188 @@ describe('CatalogMatchService', () => {
 
       expect(result.matches).toHaveLength(2)
       expect(result.unjudged).toBe(0)
+    })
+  })
+
+  describe('photo-check metering (S4)', () => {
+    const DAY = 24 * 60 * 60 * 1000
+    let flags: Record<string, string | undefined> = {}
+    const config = { get: (key: string) => flags[key] } as unknown as ConfigService
+    const ledger = new UsageLedgerService()
+    const realGate = () => new BillingGateService(config, new EntitlementService(config, ledger), ledger)
+    const metered = () =>
+      new CatalogMatchService(storage as unknown as StorageService, extraction as unknown as CatalogExtractionService, realGate())
+
+    beforeEach(() => {
+      flags = { BILLING_ENFORCEMENT: 'on' }
+    })
+
+    async function trialWorkspace(label: string) {
+      const workspace = await seedWorkspace(`${prefix}photo-${label}@example.com`, `Photo ${label}`)
+      await db
+        .update(workspaces)
+        .set({ trialEndsAt: new Date(Date.now() + 5 * DAY) })
+        .where(eq(workspaces.id, workspace.id))
+      return workspace
+    }
+
+    async function seedUsage(workspaceId: string, kind: 'photo_check' | 'llm_cost', quantity: number) {
+      await db.insert(usageEvents).values({
+        workspaceId,
+        kind,
+        quantity,
+        idempotencyKey: `seed:${Math.random().toString(36).slice(2)}`,
+        occurredAt: new Date(),
+      })
+    }
+
+    const photoRows = async (workspaceId: string) =>
+      (await db.select().from(usageEvents).where(eq(usageEvents.workspaceId, workspaceId))).filter(
+        (row) => row.kind === 'photo_check',
+      )
+
+    const stopOf = (error: unknown) => (error as HttpException).getResponse() as Record<string, unknown>
+
+    it('error: enforcement on and over the photo quota is 402 QUOTA_EXCEEDED before any extraction.compare call', async () => {
+      const workspace = await trialWorkspace('over')
+      await seedUsage(workspace.id, 'photo_check', 100)
+      const poItem = await seedPoLineItem(workspace.id, 'A1', 'Widget')
+      await seedVendorWithCatalogItem(workspace.id, 'Acme', { sku: 'A1', description: 'Widget' })
+
+      const error = await metered().search(workspace.id, { purchaseOrderLineItemId: poItem.id }).catch((e: unknown) => e)
+
+      expect((error as HttpException).getStatus()).toBe(402)
+      expect(stopOf(error)).toMatchObject({ code: 'QUOTA_EXCEEDED', quota: 'photoChecks' })
+      expect(extraction.compare).not.toHaveBeenCalled()
+      expect(await photoRows(workspace.id)).toHaveLength(1)
+    })
+
+    it('error: state none is 402 SUBSCRIPTION_REQUIRED before any model call', async () => {
+      const workspace = await seedWorkspace(`${prefix}photo-none@example.com`, 'Photo None')
+      const poItem = await seedPoLineItem(workspace.id, 'A1', 'Widget')
+      await seedVendorWithCatalogItem(workspace.id, 'Acme', { sku: 'A1', description: 'Widget' })
+
+      const error = await metered().search(workspace.id, { purchaseOrderLineItemId: poItem.id }).catch((e: unknown) => e)
+
+      expect(stopOf(error)).toMatchObject({ code: 'SUBSCRIPTION_REQUIRED' })
+      expect(extraction.compare).not.toHaveBeenCalled()
+      expect(await photoRows(workspace.id)).toHaveLength(0)
+    })
+
+    it('error: a spent AI cap is AI_BUDGET_EXCEEDED and records no photo check', async () => {
+      const workspace = await trialWorkspace('cap')
+      await seedUsage(workspace.id, 'llm_cost', 4_000_000)
+      const poItem = await seedPoLineItem(workspace.id, 'A1', 'Widget')
+      await seedVendorWithCatalogItem(workspace.id, 'Acme', { sku: 'A1', description: 'Widget' })
+
+      const error = await metered().search(workspace.id, { purchaseOrderLineItemId: poItem.id }).catch((e: unknown) => e)
+
+      expect(stopOf(error)).toMatchObject({ code: 'AI_BUDGET_EXCEEDED' })
+      expect(extraction.compare).not.toHaveBeenCalled()
+      expect(await photoRows(workspace.id)).toHaveLength(0)
+    })
+
+    it('edge: zero candidates charge no photo check and never call the gate', async () => {
+      const workspace = await trialWorkspace('empty')
+      const poItem = await seedPoLineItem(workspace.id, 'NOPE-1', 'Nothing like this')
+      const gate = passThroughGate()
+      const noCandidates = new CatalogMatchService(
+        storage as unknown as StorageService,
+        extraction as unknown as CatalogExtractionService,
+        gate,
+      )
+
+      const result = await noCandidates.search(workspace.id, { purchaseOrderLineItemId: poItem.id })
+
+      expect(result).toEqual({ matches: [], unjudged: 0 })
+      expect(gate.assertPhotoCheck).not.toHaveBeenCalled()
+    })
+
+    it('edge: one search with eight candidates is one photo check', async () => {
+      const workspace = await trialWorkspace('eight')
+      const poItem = await seedPoLineItem(workspace.id, 'A1', 'Widget')
+      for (let i = 0; i < 8; i += 1) {
+        await seedVendorWithCatalogItem(workspace.id, `Vendor ${i}`, { sku: 'A1', description: 'Widget' })
+      }
+
+      await metered().search(workspace.id, { purchaseOrderLineItemId: poItem.id })
+
+      expect(extraction.compare).toHaveBeenCalledTimes(8)
+      const rows = await photoRows(workspace.id)
+      expect(rows).toHaveLength(1)
+      expect(rows[0].quantity).toBe(1)
+    })
+
+    it('edge: two searches are two photo checks', async () => {
+      const workspace = await trialWorkspace('two')
+      const poItem = await seedPoLineItem(workspace.id, 'A1', 'Widget')
+      await seedVendorWithCatalogItem(workspace.id, 'Acme', { sku: 'A1', description: 'Widget' })
+      const svc = metered()
+
+      await svc.search(workspace.id, { purchaseOrderLineItemId: poItem.id })
+      await svc.search(workspace.id, { purchaseOrderLineItemId: poItem.id })
+
+      expect(await photoRows(workspace.id)).toHaveLength(2)
+    })
+
+    it('edge: enforcement off records photo_check rows and refuses nothing', async () => {
+      flags = { BILLING_ENFORCEMENT: 'off' }
+      const workspace = await seedWorkspace(`${prefix}photo-off@example.com`, 'Photo Off')
+      const poItem = await seedPoLineItem(workspace.id, 'A1', 'Widget')
+      await seedVendorWithCatalogItem(workspace.id, 'Acme', { sku: 'A1', description: 'Widget' })
+
+      const result = await metered().search(workspace.id, { purchaseOrderLineItemId: poItem.id })
+
+      expect(result.matches).toHaveLength(1)
+      expect(await photoRows(workspace.id)).toHaveLength(1)
+    })
+
+    it('edge: a candidate that fails still leaves the photo check charged', async () => {
+      const workspace = await trialWorkspace('fail')
+      const poItem = await seedPoLineItem(workspace.id, 'A1', 'Widget')
+      await seedVendorWithCatalogItem(workspace.id, 'Acme', { sku: 'A1', description: 'Widget' })
+      await seedVendorWithCatalogItem(workspace.id, 'Beta', { sku: 'A1-B', description: 'Widget, large' })
+      extraction.compare.mockImplementation(async (input: { candidateText: string }) => {
+        if (input.candidateText.includes('A1-B')) throw new Error('Request timed out.')
+        return { isMatch: true, score: 0.9, reason: 'Same widget.' }
+      })
+
+      const result = await metered().search(workspace.id, { purchaseOrderLineItemId: poItem.id })
+
+      expect(result.unjudged).toBe(1)
+      expect(await photoRows(workspace.id)).toHaveLength(1)
+    })
+
+    it('regression: a budget error from the per-candidate call is still rethrown when nothing was judged', async () => {
+      const workspace = await seedWorkspace(`${prefix}photo-rethrow@example.com`, 'Photo Rethrow')
+      const poItem = await seedPoLineItem(workspace.id, 'A1', 'Widget')
+      await seedVendorWithCatalogItem(workspace.id, 'Acme', { sku: 'A1', description: 'Widget' })
+      extraction.compare.mockRejectedValue(billingStop('AI_BUDGET_EXCEEDED'))
+      const svc = new CatalogMatchService(
+        storage as unknown as StorageService,
+        extraction as unknown as CatalogExtractionService,
+        passThroughGate(),
+      )
+
+      const error = await svc.search(workspace.id, { purchaseOrderLineItemId: poItem.id }).catch((e: unknown) => e)
+
+      expect(isBudgetExceeded(error)).toBe(true)
+      expect(stopOf(error)).toMatchObject({ code: 'AI_BUDGET_EXCEEDED' })
+    })
+
+    it('happy: a within-quota search charges one photo check and compares every candidate', async () => {
+      const workspace = await trialWorkspace('ok')
+      const poItem = await seedPoLineItem(workspace.id, 'A1', 'Widget')
+      await seedVendorWithCatalogItem(workspace.id, 'Acme', { sku: 'A1', description: 'Widget' })
+      await seedVendorWithCatalogItem(workspace.id, 'Beta', { sku: 'A1-B', description: 'Widget, large' })
+
+      const result = await metered().search(workspace.id, { purchaseOrderLineItemId: poItem.id })
+
+      expect(result.matches).toHaveLength(2)
+      expect(extraction.compare).toHaveBeenCalledTimes(2)
+      const rows = await photoRows(workspace.id)
+      expect(rows).toHaveLength(1)
+      expect(rows[0].idempotencyKey.startsWith('photo:')).toBe(true)
     })
   })
 })

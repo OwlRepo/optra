@@ -267,6 +267,13 @@
       "when": 1791390266570,
       "tag": "0037_optimal_gauntlet",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "5",
+      "when": 1791394853003,
+      "tag": "0038_aspiring_zarek",
+      "breakpoints": true
     }
   ]
 }

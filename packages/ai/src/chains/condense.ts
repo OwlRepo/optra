@@ -33,7 +33,7 @@ export async function condenseQuestion(
     ...toMessages(boundHistory(history)),
     new HumanMessage(`Follow-up question: ${question}\nStandalone question:`),
   ])
-  options.meter?.record(response)
+  options.meter?.record(response, llm.modelName)
 
   const text = extractText(response.content)
   return text.length > 0 ? text : question

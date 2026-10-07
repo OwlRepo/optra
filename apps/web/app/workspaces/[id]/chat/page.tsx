@@ -52,6 +52,7 @@ import {
 import { downloadTicketTranscript } from "@/lib/api/tickets";
 import { isUnauthorized } from "@/lib/api/handle-unauthorized";
 import { getWorkspace } from "@/lib/api/workspaces";
+import { announceBillingStopResponse } from "@/lib/billing-stop";
 import { WorkspaceNav } from "@/components/workspace-nav";
 import { WorkspaceBrandLink } from "@/components/workspace-brand-link";
 import { StreamingText } from "@/components/chat/streaming-text";
@@ -373,6 +374,11 @@ export default function WorkspaceChatPage({
     onResponse: (response) => {
       if (response.status === 401) {
         router.push("/login");
+        return;
+      }
+
+      if (response.status === 402) {
+        void announceBillingStopResponse(response);
         return;
       }
 

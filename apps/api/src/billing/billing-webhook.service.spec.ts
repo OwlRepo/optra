@@ -5,6 +5,7 @@ import { eq, inArray, like } from 'drizzle-orm'
 import { billingEvents, db, pool, users, workspaceSubscriptions, workspaces } from '@repo/db'
 import { BillingWebhookService } from './billing-webhook.service'
 import { EntitlementService } from './entitlement.service'
+import { UsageLedgerService } from './usage-ledger.service'
 
 const PREFIX = `billing-webhook-spec-${Date.now()}-`
 const SECRET = 'whsec-unit-test'
@@ -512,7 +513,7 @@ describe('BillingWebhookService', () => {
     await deliver(eventBody({ name: 'subscription_expired', workspaceId, subscriptionId, status: 'expired', endsAt, updatedAt: '2026-10-21T00:00:00.000000Z' }))
 
     expect((await subscriptionOf(workspaceId)).status).toBe('expired')
-    const entitlement = new EntitlementService(configWith())
+    const entitlement = new EntitlementService(configWith(), new UsageLedgerService())
     expect((await entitlement.resolve(workspaceId, new Date('2026-10-22T00:00:00.000Z'))).state).toBe('none')
   })
 

@@ -1,6 +1,7 @@
 import { HumanMessage, SystemMessage } from '@langchain/core/messages'
 import { ChatOpenAI } from '@langchain/openai'
 import { resolveModel } from './models'
+import type { TokenMeter } from '../tokens'
 
 // Caveman-style compression per docs.ai/../caveman skill "full" intensity:
 // drop filler/hedging/articles where safe, prefer short direct phrasing, keep
@@ -37,11 +38,15 @@ export class RefineRefusalError extends Error {
   }
 }
 
-export async function refineMessage(rawText: string): Promise<string> {
+export async function refineMessage(
+  rawText: string,
+  options: { meter?: TokenMeter } = {},
+): Promise<string> {
   const response = await llm.invoke([
     new SystemMessage(REFINE_SYSTEM_PROMPT),
     new HumanMessage(rawText),
   ])
+  options.meter?.record(response, llm.modelName)
 
   if (isRefusal(response)) {
     throw new RefineRefusalError()

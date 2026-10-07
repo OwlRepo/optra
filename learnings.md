@@ -672,3 +672,12 @@ And one rule the owner made standing: every change now ships with its tests for 
 
 **Why different:** the plan treated "signed by the provider" as "authorised by us". **For any provider webhook, sign the tenant binding yourself at the moment you create the checkout, and make every failure that a config fix could cure retryable.**
 
+## 2026-10-08 — Billing metering: a cap in dollars has to see every call, and "off" must stay exactly off
+*Learning Contract: the plan's design is the prediction; the diff is below. No live prediction solicited.*
+
+**Predicted (from the approved plan):** every LLM call already funnels through `UsageService.metered`, so a dollar cap is one gate in one place, priced from `response_metadata.model_name`; matched lines are idempotent per PO/invoice pair.
+
+**Actual:** three of those assumptions were wrong in the code. The chat answer stream, LangGraph rewrite/grade and refine were never metered; `@langchain/openai@0.2.11` sets no `model_name`, so every chain now passes `llm.modelName` to `meter.record`; and "once per pair" let a re-parsed PO or a new month compare for free, so the key became `cmp:{po}:{inv}:{periodStart}` with delta charging. Review also caught that "enforcement off" had quietly gained a new failure mode (a ledger write error could 500 a compare) and that switching to the dollar cap had dropped the Redis token ceiling instead of layering on it.
+
+**Why different:** the plan trusted the architecture map ("all calls go through `metered`") over the call sites. **Before putting a price on a resource, grep every place it is consumed, and treat a kill switch's "off" as a behaviour that needs its own tests, not as the absence of code.**
+
