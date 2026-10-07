@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config'
 import { TokenMeter } from '@repo/ai'
 import type Redis from 'ioredis'
 import { BillingGateService } from '../billing/billing-gate.service'
+import { billingStop } from '../billing/billing-stop'
 
 const BUDGET_EXCEEDED_STATUS = 402
 
@@ -37,14 +38,15 @@ export class UsageService {
   }
 
   // BILLING_ENFORCEMENT=on: the Postgres ledger and the plan's dollar cap decide
-  // (state none -> 402 SUBSCRIPTION_REQUIRED, over cap -> 402 AI_BUDGET_EXCEEDED;
-  // a database error propagates: fail-closed). Anything else: the Redis token
-  // limit exactly as before (fail-open on a Redis error, 402 without a code).
+  // first (state none -> 402 SUBSCRIPTION_REQUIRED, over cap -> 402
+  // AI_BUDGET_EXCEEDED; a database error propagates: fail-closed), then the Redis
+  // token limit. Redis read errors always fail open.
   async assertWithinBudget(workspaceId: string) {
-    if (this.enforced()) {
-      await this.gate.assertAiBudget(workspaceId)
-      return
-    }
+    // Enforcement on: the dollar cap first (its refusal wins), then the Redis
+    // token limit below stays a global backstop. Over the Redis limit while
+    // enforced is a coded AI_BUDGET_EXCEEDED; off keeps the legacy uncoded 402.
+    const enforced = this.enforced()
+    if (enforced) await this.gate.assertAiBudget(workspaceId)
 
     const key = this.monthKey(workspaceId)
     const budget = Number.parseInt(
@@ -57,6 +59,7 @@ export class UsageService {
       const used = raw ? Number.parseInt(raw, 10) : 0
 
       if (used >= budget) {
+        if (enforced) throw billingStop('AI_BUDGET_EXCEEDED')
         throw new HttpException('Workspace monthly token budget reached', BUDGET_EXCEEDED_STATUS)
       }
     } catch (error) {
