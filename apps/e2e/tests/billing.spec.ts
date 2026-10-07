@@ -7,11 +7,11 @@ import { loadState, storageStateFor, type SeedState } from '../support/state'
 // Billing core (S3): the Billing page, the trial banner and the signed
 // Lemon Squeezy webhook through the real BFF. Lemon Squeezy itself is the
 // stub on :4011 (stubs/lemonsqueezy-stub.ts). Each case seeds its own
-// workspace, owned by ownerA with memberA added, so no case depends on another.
+// workspace, owned by billingOwner with billingMember added (never the shared ownerA/memberA, whose workspace lists other specs depend on), so no case depends on another.
 
 const STUB_ORIGIN = `http://127.0.0.1:${LS_STUB_PORT}`
 
-test.use({ storageState: storageStateFor('ownerA') })
+test.use({ storageState: storageStateFor('billingOwner') })
 
 let state: SeedState
 test.beforeAll(() => {
@@ -20,14 +20,14 @@ test.beforeAll(() => {
 test.afterAll(closeDb)
 
 async function freshWorkspace(label: string, billing: { trialEndsInDays?: number | null; exempt?: boolean }) {
-  const workspaceId = await seedWorkspace(state.ownerA.userId, `E2E Billing ${label} ${state.run}`)
-  await addMember(workspaceId, state.memberA.userId, 'member')
+  const workspaceId = await seedWorkspace(state.billingOwner.userId, `E2E Billing ${label} ${state.run}`)
+  await addMember(workspaceId, state.billingMember.userId, 'member')
   await setWorkspaceBilling(workspaceId, billing)
   return workspaceId
 }
 
 async function memberPage(browser: Browser): Promise<Page> {
-  const context = await browser.newContext({ storageState: storageStateFor('memberA') })
+  const context = await browser.newContext({ storageState: storageStateFor('billingMember') })
   return context.newPage()
 }
 
