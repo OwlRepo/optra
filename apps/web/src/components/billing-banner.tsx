@@ -2,22 +2,23 @@
 
 import * as React from 'react'
 import Link from 'next/link'
-import { StatusBanner } from '@repo/ui'
+import { AlertTriangle } from 'lucide-react'
 import type { BillingSummary } from '@repo/types'
 import { getBilling } from '@/lib/api/billing'
 
 const DAY_MS = 86_400_000
 const WARN_DAYS = 3
 
-function bannerTitle(summary: BillingSummary): string | null {
+function bannerCopy(summary: BillingSummary): { title: string; action: string } | null {
   if (summary.state === 'trialing' && summary.trialEndsAt) {
     const days = Math.ceil((new Date(summary.trialEndsAt).getTime() - Date.now()) / DAY_MS)
     if (days > WARN_DAYS) return null
-    if (days <= 0) return 'Your free trial ends today.'
-    return days === 1 ? 'Your free trial ends in 1 day.' : `Your free trial ends in ${days} days.`
+    const title =
+      days <= 0 ? 'Your free trial ends today.' : days === 1 ? 'Your free trial ends in 1 day.' : `Your free trial ends in ${days} days.`
+    return { title, action: 'View billing' }
   }
   if (summary.state === 'none' && summary.enforced) {
-    return 'No active plan. Choose a plan to keep matching orders.'
+    return { title: 'No active plan. Choose a plan to keep matching orders.', action: 'Choose a plan' }
   }
   return null
 }
@@ -41,17 +42,23 @@ export function BillingBanner({ workspaceId }: { workspaceId: string }) {
       })
   }, [workspaceId])
 
-  const title = summary ? bannerTitle(summary) : null
-  if (!title) return null
+  const copy = summary ? bannerCopy(summary) : null
+  if (!copy) return null
 
+  // One link whose name is its visible text. No live region inside it: a
+  // role=status child would leave the link without an accessible name.
   return (
-    <Link
-      href={`/workspaces/${workspaceId}/billing`}
-      // StatusBanner is role=status, which does not name its parent link.
-      aria-label={title}
-      className="block rounded-[12px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-    >
-      <StatusBanner variant="warning" title={title} />
-    </Link>
+    <aside aria-label="Billing notice">
+      <Link
+        href={`/workspaces/${workspaceId}/billing`}
+        className="flex items-start gap-3 rounded-[12px] border border-flag/30 bg-flag/6 px-4 py-[14px] text-foreground inset-shadow-[3px_0_0_var(--flag)] transition-colors duration-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-strong"
+      >
+        <AlertTriangle className="mt-px size-[17px] shrink-0 text-flag" aria-hidden="true" />
+        <span className="text-[14px] font-semibold">{copy.title}</span>
+        <span className="ml-auto shrink-0 text-[14px] font-medium text-primary-strong-hover underline underline-offset-2">
+          {copy.action}
+        </span>
+      </Link>
+    </aside>
   )
 }
