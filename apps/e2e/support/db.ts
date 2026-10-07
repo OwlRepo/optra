@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import bcrypt from 'bcrypt'
 import { Pool } from 'pg'
 import { DATABASE_URL } from './env'
@@ -157,4 +158,62 @@ export async function subscriptionFor(workspaceId: string): Promise<Subscription
     [workspaceId],
   )
   return rows[0] ?? null
+}
+
+export type UsageKind = 'matched_line' | 'photo_check' | 'llm_cost'
+
+/**
+ * Writes billing ledger rows straight into usage_events (slice S4), the way a
+ * metered API call would. `occurredAt` defaults to now in UTC and is always
+ * sent as an ISO string cast to timestamptz then to UTC, so the stored
+ * zone-less timestamp never depends on this process's time zone. `key`
+ * defaults to a random `seed:` key (the column is unique).
+ */
+export async function seedUsageEvents(
+  workspaceId: string,
+  rows: { kind: UsageKind; quantity: number; occurredAt?: Date; key?: string }[],
+): Promise<void> {
+  for (const row of rows) {
+    await db().query(
+      `insert into usage_events (workspace_id, kind, quantity, idempotency_key, occurred_at)
+       values ($1, $2, $3, $4, coalesce(($5::timestamptz) at time zone 'utc', now() at time zone 'utc'))`,
+      [
+        workspaceId,
+        row.kind,
+        row.quantity,
+        row.key ?? `seed:${randomUUID()}`,
+        row.occurredAt ? row.occurredAt.toISOString() : null,
+      ],
+    )
+  }
+}
+
+/** Per-kind sums of the workspace's ledger, ordered by kind. `quantity` is a string (bigint sums). */
+export async function usageSummaryFor(workspaceId: string): Promise<{ kind: string; quantity: string }[]> {
+  const { rows } = await db().query<{ kind: string; quantity: string }>(
+    `select kind::text as kind, sum(quantity)::text as quantity
+       from usage_events where workspace_id = $1 group by kind order by kind`,
+    [workspaceId],
+  )
+  return rows
+}
+
+/**
+ * A parsed purchase order and an invoice linked to it, inserted as `done` so
+ * the procurement page offers the pair in its Compare selects. No line rows:
+ * specs that use it stub the compare answer.
+ */
+export async function seedParsedPair(
+  workspaceId: string,
+  names: { purchaseOrder: string; invoice: string },
+): Promise<{ purchaseOrderId: string; invoiceId: string }> {
+  const po = await db().query<{ id: string }>(
+    `insert into purchase_orders (workspace_id, name, status, row_count) values ($1, $2, 'done', 1) returning id`,
+    [workspaceId, names.purchaseOrder],
+  )
+  const invoice = await db().query<{ id: string }>(
+    `insert into invoices (workspace_id, name, status, row_count, purchase_order_id) values ($1, $2, 'done', 1, $3) returning id`,
+    [workspaceId, names.invoice, po.rows[0].id],
+  )
+  return { purchaseOrderId: po.rows[0].id, invoiceId: invoice.rows[0].id }
 }

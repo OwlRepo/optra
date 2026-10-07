@@ -18,6 +18,7 @@ import {
   poLineItems,
   purchaseOrders,
   refreshTokens,
+  usageEvents,
   users,
   vendors,
   workspaceMembers,
@@ -28,6 +29,7 @@ import { StorageService } from '../src/storage/storage.service'
 import { StorageObjectNotFoundError } from '../src/storage/storage.errors'
 import { CatalogExtractionService } from '../src/catalog/catalog-extraction.service'
 import { CatalogImageService } from '../src/catalog/catalog-image.service'
+import { UsageService } from '../src/limits/usage.service'
 
 jest.setTimeout(30_000)
 
@@ -115,6 +117,7 @@ describe('Catalog flow (e2e)', () => {
     getToTempFile: jest.Mock
     delete: jest.Mock
   }
+  let extractionMock: { compare: jest.Mock }
   const prefix = `e2e-catalog-${Date.now()}-`
   const password = 'password123'
   const originalCatalogEnabled = process.env.CATALOG_ENABLED
@@ -168,6 +171,7 @@ describe('Catalog flow (e2e)', () => {
         return { isMatch: true, score: 0.9, reason: 'Same product.' }
       }),
     }
+    extractionMock = extraction
     const images = {
       fetchAndStore: jest.fn(async (workspaceId: string, catalogId: string) => `${workspaceId}/catalogs/${catalogId}/images/fake.png`),
     }
@@ -769,6 +773,154 @@ describe('Catalog flow (e2e)', () => {
       }
       expect(row).toMatchObject({ status: 'failed' })
       expect(row?.lastError).toMatch(/^No catalog items were found in this file\./)
+    })
+  })
+
+  describe('billing metering (S4)', () => {
+    const DAY = 24 * 60 * 60 * 1000
+    const USAGE = { usage_metadata: { input_tokens: 1000, output_tokens: 500, total_tokens: 1500 } }
+
+    async function withEnforcement<T>(value: string, fn: () => Promise<T>): Promise<T> {
+      const previous = process.env.BILLING_ENFORCEMENT
+      process.env.BILLING_ENFORCEMENT = value
+      try {
+        return await fn()
+      } finally {
+        if (previous === undefined) delete process.env.BILLING_ENFORCEMENT
+        else process.env.BILLING_ENFORCEMENT = previous
+      }
+    }
+
+    // One PO line and exactly one catalog candidate for it, so a search makes one vision call.
+    async function seedSearchable(email: string, trial: boolean) {
+      const owner = await seedOwnerWithWorkspace(app, email, 'S4 Search')
+      if (trial) {
+        await db
+          .update(workspaces)
+          .set({ trialEndsAt: new Date(Date.now() + 5 * DAY) })
+          .where(eq(workspaces.id, owner.workspaceId))
+      }
+      const [vendor] = await db.insert(vendors).values({ workspaceId: owner.workspaceId, name: 'S4 Vendor' }).returning()
+      const [catalog] = await db
+        .insert(catalogs)
+        .values({ workspaceId: owner.workspaceId, vendorId: vendor.id, name: 'catalog.csv', status: 'done' })
+        .returning()
+      await db.insert(catalogItems).values({ workspaceId: owner.workspaceId, catalogId: catalog.id, sku: 'S4A', description: 'Widget' })
+      const [po] = await db
+        .insert(purchaseOrders)
+        .values({ workspaceId: owner.workspaceId, name: 'po.csv', status: 'done' })
+        .returning()
+      const [line] = await db
+        .insert(poLineItems)
+        .values({ workspaceId: owner.workspaceId, purchaseOrderId: po.id, sku: 'S4A', description: 'Widget' })
+        .returning()
+      return { owner, vendorId: vendor.id, lineId: line.id }
+    }
+
+    async function seedUsage(workspaceId: string, kind: 'photo_check' | 'llm_cost', quantity: number) {
+      await db.insert(usageEvents).values({
+        workspaceId,
+        kind,
+        quantity,
+        idempotencyKey: `e2e-seed:${randomUUID()}`,
+        occurredAt: new Date(),
+      })
+    }
+
+    const ledgerOf = (workspaceId: string) =>
+      db.select().from(usageEvents).where(eq(usageEvents.workspaceId, workspaceId))
+
+    const search = (owner: { workspaceId: string; accessToken: string }, lineId: string) =>
+      request(app.getHttpServer())
+        .post(`/workspaces/${owner.workspaceId}/catalog-matches/search`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .send({ purchaseOrderLineItemId: lineId })
+
+    // The mocked vision seam still goes through the real UsageService, so the
+    // llm_cost row is written the way production writes it.
+    function meteredVerdict() {
+      extractionMock.compare.mockImplementationOnce(async (_input: unknown, workspaceId: string) =>
+        app.get(UsageService).metered(workspaceId, async (meter) => {
+          meter.record(USAGE, 'gpt-4o')
+          return { isMatch: true, score: 0.9, reason: 'Same product.' }
+        }),
+      )
+    }
+
+    beforeEach(() => {
+      extractionMock.compare.mockClear()
+    })
+
+    it('error: state none gets 402 SUBSCRIPTION_REQUIRED on search before any OpenAI stub call', async () => {
+      const { owner, lineId } = await seedSearchable(`${prefix}s4-none@example.com`, false)
+
+      const res = await withEnforcement('on', () => search(owner, lineId).expect(402))
+
+      expect(res.body).toMatchObject({ statusCode: 402, code: 'SUBSCRIPTION_REQUIRED' })
+      expect(extractionMock.compare).not.toHaveBeenCalled()
+      expect(await ledgerOf(owner.workspaceId)).toHaveLength(0)
+    })
+
+    it('error: 100 photo checks used gets 402 QUOTA_EXCEEDED with quota photoChecks', async () => {
+      const { owner, lineId } = await seedSearchable(`${prefix}s4-quota@example.com`, true)
+      await seedUsage(owner.workspaceId, 'photo_check', 100)
+
+      const res = await withEnforcement('on', () => search(owner, lineId).expect(402))
+
+      expect(res.body).toMatchObject({ statusCode: 402, code: 'QUOTA_EXCEEDED', quota: 'photoChecks' })
+      expect(extractionMock.compare).not.toHaveBeenCalled()
+    })
+
+    it('error: AI cost at the cap gets 402 AI_BUDGET_EXCEEDED and no photo_check row', async () => {
+      const { owner, lineId } = await seedSearchable(`${prefix}s4-cap@example.com`, true)
+      await seedUsage(owner.workspaceId, 'llm_cost', 4_000_000)
+
+      const res = await withEnforcement('on', () => search(owner, lineId).expect(402))
+
+      expect(res.body).toMatchObject({ statusCode: 402, code: 'AI_BUDGET_EXCEEDED' })
+      expect((await ledgerOf(owner.workspaceId)).filter((row) => row.kind === 'photo_check')).toHaveLength(0)
+    })
+
+    it('edge: the compliance verify route is gated the same way', async () => {
+      const { owner, vendorId, lineId } = await seedSearchable(`${prefix}s4-verify@example.com`, false)
+
+      const res = await withEnforcement('on', () =>
+        request(app.getHttpServer())
+          .post(`/workspaces/${owner.workspaceId}/vendors/${vendorId}/catalog-matches/verify`)
+          .set('Authorization', `Bearer ${owner.accessToken}`)
+          .send({ purchaseOrderLineItemId: lineId })
+          .expect(402),
+      )
+
+      expect(res.body).toMatchObject({ statusCode: 402, code: 'SUBSCRIPTION_REQUIRED' })
+      expect(extractionMock.compare).not.toHaveBeenCalled()
+    })
+
+    it('edge: with enforcement off a search records one photo_check and one llm_cost row per vision call', async () => {
+      const { owner, lineId } = await seedSearchable(`${prefix}s4-off@example.com`, false)
+      meteredVerdict()
+
+      await withEnforcement('off', () => search(owner, lineId).expect(201))
+
+      const rows = await ledgerOf(owner.workspaceId)
+      expect(rows.filter((row) => row.kind === 'photo_check')).toHaveLength(1)
+      const costs = rows.filter((row) => row.kind === 'llm_cost')
+      expect(costs).toHaveLength(1)
+      expect(costs[0].quantity).toBe(7500)
+    })
+
+    it("happy: a trial workspace's search writes one photo_check and llm_cost rows with the configured model name", async () => {
+      const { owner, lineId } = await seedSearchable(`${prefix}s4-trial@example.com`, true)
+      meteredVerdict()
+
+      const res = await withEnforcement('on', () => search(owner, lineId).expect(201))
+
+      expect(res.body.matches).toHaveLength(1)
+      const rows = await ledgerOf(owner.workspaceId)
+      expect(rows.filter((row) => row.kind === 'photo_check')).toHaveLength(1)
+      const costs = rows.filter((row) => row.kind === 'llm_cost')
+      expect(costs).toHaveLength(1)
+      expect(costs[0]).toMatchObject({ model: 'gpt-4o', inputTokens: 1000, outputTokens: 500, quantity: 7500 })
     })
   })
 })

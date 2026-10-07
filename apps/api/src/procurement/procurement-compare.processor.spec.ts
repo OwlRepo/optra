@@ -1,3 +1,4 @@
+import { BadRequestException, Logger, NotFoundException } from '@nestjs/common'
 import { randomUUID } from 'crypto'
 import { eq, like } from 'drizzle-orm'
 import {
@@ -21,6 +22,13 @@ import { ProcurementCompareProcessor } from './procurement-compare.processor'
 import { ProcurementCompareService } from './procurement-compare.service'
 import { DuckDbQueryService, SqlExecutionError } from '../structured-query/duckdb-query.service'
 import { EventsService } from '../events/events.service'
+import { BillingGateService } from '../billing/billing-gate.service'
+import { billingStop } from '../billing/billing-stop'
+
+// Metering has its own specs (billing-gate.service.spec.ts, comparison.service.spec.ts);
+// here the gate lets every pair through unless a test says otherwise.
+const passThroughGate = () =>
+  ({ assertMatchedLines: jest.fn().mockResolvedValue(undefined) }) as unknown as BillingGateService
 
 async function cleanupFixtures(prefix: string) {
   const testUsers = await db.select({ id: users.id }).from(users).where(like(users.email, `${prefix}%`))
@@ -55,7 +63,7 @@ describe('ProcurementCompareProcessor', () => {
     const compareService = new ProcurementCompareService({ add: jest.fn(), on: jest.fn() } as never)
     events = { record: jest.fn().mockResolvedValue(undefined) }
     processor = new ProcurementCompareProcessor(
-      new ComparisonService(new DuckDbQueryService()),
+      new ComparisonService(new DuckDbQueryService(), passThroughGate()),
       compareService,
       events as unknown as EventsService,
     )
@@ -188,7 +196,7 @@ describe('ProcurementCompareProcessor', () => {
         runReadOnlyMultiTableQuery: jest.fn().mockRejectedValue(new SqlExecutionError('boom')),
       } as unknown as DuckDbQueryService
       const failingProcessor = new ProcurementCompareProcessor(
-        new ComparisonService(failing),
+        new ComparisonService(failing, passThroughGate()),
         new ProcurementCompareService({ add: jest.fn(), on: jest.fn() } as never),
         events as unknown as EventsService,
       )
@@ -246,7 +254,7 @@ describe('ProcurementCompareProcessor', () => {
         runReadOnlyMultiTableQuery: jest.fn().mockRejectedValue(new SqlExecutionError('boom')),
       } as unknown as DuckDbQueryService
       const failingProcessor = new ProcurementCompareProcessor(
-        new ComparisonService(failing),
+        new ComparisonService(failing, passThroughGate()),
         new ProcurementCompareService({ add: jest.fn(), on: jest.fn() } as never),
         events as unknown as EventsService,
       )
@@ -318,6 +326,76 @@ describe('ProcurementCompareProcessor', () => {
 
       const [untouched] = await db.select().from(comparisonRuns).where(eq(comparisonRuns.id, fresh.id))
       expect(untouched.status).toBe('running')
+    })
+  })
+
+  describe('billing stop (S4)', () => {
+    function processorWith(comparison: Pick<ComparisonService, 'compare'>) {
+      return new ProcurementCompareProcessor(
+        comparison as ComparisonService,
+        new ProcurementCompareService({ add: jest.fn(), on: jest.fn() } as never),
+        events as unknown as EventsService,
+      )
+    }
+
+    it('error: a 402 from compare is abandoned with a log line, not retried and with no comparison_failed event', async () => {
+      const { workspace, po, invoice } = await seedPair(`${prefix}billing-stop@example.com`, 'Billing Stop')
+      const gate = { assertMatchedLines: jest.fn().mockRejectedValue(billingStop('QUOTA_EXCEEDED', 'matchedLines')) }
+      const stopped = new ProcurementCompareProcessor(
+        new ComparisonService(new DuckDbQueryService(), gate as unknown as BillingGateService),
+        new ProcurementCompareService({ add: jest.fn(), on: jest.fn() } as never),
+        events as unknown as EventsService,
+      )
+      const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined)
+
+      try {
+        await expect(stopped.handlePair(pairJob(workspace.id, po.id, invoice.id))).resolves.toBeUndefined()
+
+        expect(gate.assertMatchedLines).toHaveBeenCalledTimes(1)
+        expect(await runsFor(po.id)).toHaveLength(0)
+        expect(events.record).not.toHaveBeenCalled()
+        expect(warn).toHaveBeenCalledWith(expect.stringContaining('Auto-compare abandoned'))
+      } finally {
+        warn.mockRestore()
+      }
+    })
+
+    it('error: a 402 for a workspace with no plan is also final', async () => {
+      const compare = jest.fn().mockRejectedValue(billingStop('SUBSCRIPTION_REQUIRED'))
+      const { workspace, po, invoice } = await seedPair(`${prefix}billing-none@example.com`, 'Billing None')
+
+      await expect(processorWith({ compare }).handlePair(pairJob(workspace.id, po.id, invoice.id))).resolves.toBeUndefined()
+
+      expect(compare).toHaveBeenCalledTimes(1)
+      expect(events.record).not.toHaveBeenCalled()
+    })
+
+    it('regression: NotFound and BadRequest are still permanent', async () => {
+      const { workspace, po, invoice } = await seedPair(`${prefix}permanent@example.com`, 'Still Permanent')
+
+      for (const error of [new NotFoundException('gone'), new BadRequestException('not parsed')]) {
+        const compare = jest.fn().mockRejectedValue(error)
+        await expect(processorWith({ compare }).handlePair(pairJob(workspace.id, po.id, invoice.id))).resolves.toBeUndefined()
+      }
+      expect(events.record).not.toHaveBeenCalled()
+    })
+
+    it('regression: a transient engine error is still rethrown for Bull to retry', async () => {
+      const { workspace, po, invoice } = await seedPair(`${prefix}transient@example.com`, 'Transient')
+      const compare = jest.fn().mockRejectedValue(new Error('duckdb exploded'))
+
+      await expect(processorWith({ compare }).handlePair(pairJob(workspace.id, po.id, invoice.id))).rejects.toThrow('duckdb exploded')
+    })
+
+    it('happy: an allowed pair still compares and announces flagged results', async () => {
+      const { workspace, po, invoice } = await seedPair(`${prefix}allowed@example.com`, 'Allowed Pair')
+
+      await processor.handlePair(pairJob(workspace.id, po.id, invoice.id))
+
+      const [run] = await runsFor(po.id)
+      expect(run.status).toBe('succeeded')
+      expect(events.record).toHaveBeenCalledTimes(1)
+      expect(events.record.mock.calls[0][1]).toBe('comparison_flagged')
     })
   })
 })

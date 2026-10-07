@@ -5,6 +5,8 @@ import {
   SEATS_MIN,
   TRIAL_DAYS,
   TRIAL_QUOTAS,
+  aiCapMicroUsd,
+  currentMonthPeriod,
   isEntitledStatus,
   planForVariant,
   quotasFor,
@@ -83,5 +85,65 @@ describe('billing plans', () => {
   it('happy: quotas are 400/100 for solo and 2000/300 per seat for team', () => {
     expect(quotasFor('solo', 1)).toEqual({ matchedLines: 400, photoChecks: 100 })
     expect(quotasFor('team', 2)).toEqual({ matchedLines: 4000, photoChecks: 600 })
+  })
+
+  describe('AI cost caps and the month window (S4)', () => {
+    it.each([
+      ['blank', ''],
+      ['whitespace', '   '],
+      ['zero', '0'],
+      ['negative', '-3'],
+      ['not a number', 'abc'],
+      ['unset', undefined],
+    ])('error: aiCapMicroUsd falls back to the default when the env is %s', (_label, value) => {
+      const e = env({
+        BILLING_AI_CAP_TRIAL_USD: value,
+        BILLING_AI_CAP_SOLO_USD: value,
+        BILLING_AI_CAP_TEAM_SEAT_USD: value,
+        BILLING_AI_CAP_EXEMPT_USD: value,
+      })
+      expect(aiCapMicroUsd('trial', 1, e)).toBe(4_000_000)
+      expect(aiCapMicroUsd('solo', 1, e)).toBe(6_000_000)
+      expect(aiCapMicroUsd('team', 1, e)).toBe(15_000_000)
+      expect(aiCapMicroUsd('exempt', 1, e)).toBe(25_000_000)
+    })
+
+    it('edge: the team cap multiplies by seats and the others ignore seats', () => {
+      expect(aiCapMicroUsd('team', 3, env({}))).toBe(45_000_000)
+      expect(aiCapMicroUsd('team', 25, env({}))).toBe(375_000_000)
+      expect(aiCapMicroUsd('solo', 9, env({}))).toBe(6_000_000)
+      expect(aiCapMicroUsd('trial', 9, env({}))).toBe(4_000_000)
+      expect(aiCapMicroUsd('exempt', 9, env({}))).toBe(25_000_000)
+    })
+
+    it('edge: BILLING_AI_CAP_SOLO_USD=7 gives 7,000,000 micro-USD', () => {
+      expect(aiCapMicroUsd('solo', 1, env({ BILLING_AI_CAP_SOLO_USD: '7' }))).toBe(7_000_000)
+      expect(aiCapMicroUsd('solo', 1, env({ BILLING_AI_CAP_SOLO_USD: ' 7 ' }))).toBe(7_000_000)
+    })
+
+    it('edge: currentMonthPeriod is the UTC calendar month and rolls December into January', () => {
+      expect(currentMonthPeriod(new Date('2026-10-31T23:59:59.999Z'))).toEqual({
+        start: new Date('2026-10-01T00:00:00.000Z'),
+        end: new Date('2026-11-01T00:00:00.000Z'),
+      })
+      expect(currentMonthPeriod(new Date('2026-12-15T10:00:00.000Z'))).toEqual({
+        start: new Date('2026-12-01T00:00:00.000Z'),
+        end: new Date('2027-01-01T00:00:00.000Z'),
+      })
+      expect(currentMonthPeriod(new Date('2026-11-01T00:00:00.000Z')).start).toEqual(new Date('2026-11-01T00:00:00.000Z'))
+    })
+
+    it('regression: caps are integer micro-USD (4.5 becomes 4,500,000)', () => {
+      const cap = aiCapMicroUsd('trial', 1, env({ BILLING_AI_CAP_TRIAL_USD: '4.5' }))
+      expect(cap).toBe(4_500_000)
+      expect(Number.isInteger(aiCapMicroUsd('solo', 1, env({ BILLING_AI_CAP_SOLO_USD: '0.1234567' })))).toBe(true)
+    })
+
+    it('happy: the defaults are trial 4, solo 6, team 15 per seat and exempt 25 USD', () => {
+      expect(aiCapMicroUsd('trial', 1, env({}))).toBe(4_000_000)
+      expect(aiCapMicroUsd('solo', 1, env({}))).toBe(6_000_000)
+      expect(aiCapMicroUsd('team', 1, env({}))).toBe(15_000_000)
+      expect(aiCapMicroUsd('exempt', 1, env({}))).toBe(25_000_000)
+    })
   })
 })

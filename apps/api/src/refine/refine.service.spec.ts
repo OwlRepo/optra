@@ -3,11 +3,20 @@ import { eq, like } from 'drizzle-orm'
 import { RefineEmptyError, RefineRefusalError, refineMessage } from '@repo/ai'
 import { db, pool, savedRefinedMessages, users, workspaceMembers, workspaces } from '@repo/db'
 import { RefineService } from './refine.service'
+import { UsageService } from '../limits/usage.service'
+import { billingStop } from '../billing/billing-stop'
 
 jest.mock('@repo/ai', () => ({
   refineMessage: jest.fn(),
   RefineEmptyError: class RefineEmptyError extends Error {},
   RefineRefusalError: class RefineRefusalError extends Error {},
+  // Sums total_tokens like the real meter; pricing is covered in packages/ai.
+  TokenMeter: class {
+    total = 0
+    record(response: { usage_metadata?: { total_tokens?: number } } | null) {
+      this.total += response?.usage_metadata?.total_tokens ?? 0
+    }
+  },
 }))
 
 async function cleanupRefineFixtures(prefix: string) {
@@ -56,11 +65,15 @@ async function seedWorkspaceFixture(email: string, workspaceName: string) {
 
 describe('RefineService', () => {
   let service: RefineService
+  const meter = { record: jest.fn(), total: 0 }
+  const usage = {
+    metered: jest.fn((_workspaceId: string, run: (m: typeof meter) => Promise<unknown>) => run(meter)),
+  }
   const prefix = `refine-service-spec-${Date.now()}-`
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({
-      providers: [RefineService],
+      providers: [RefineService, { provide: UsageService, useValue: usage }],
     }).compile()
 
     service = moduleRef.get(RefineService)
@@ -78,22 +91,22 @@ describe('RefineService', () => {
   it('refine() returns the original and refined text on the happy path', async () => {
     (refineMessage as jest.Mock).mockResolvedValue('Refined question text')
 
-    const result = await service.refine('raw rough question')
+    const result = await service.refine('ws-1', 'raw rough question')
 
-    expect(refineMessage).toHaveBeenCalledWith('raw rough question')
+    expect(refineMessage).toHaveBeenCalledWith('raw rough question', { meter })
     expect(result).toEqual({ original: 'raw rough question', refined: 'Refined question text' })
   })
 
   it('propagates RefineEmptyError uncaught for the controller to map', async () => {
     (refineMessage as jest.Mock).mockRejectedValue(new RefineEmptyError())
 
-    await expect(service.refine('raw')).rejects.toBeInstanceOf(RefineEmptyError)
+    await expect(service.refine('ws-1', 'raw')).rejects.toBeInstanceOf(RefineEmptyError)
   })
 
   it('propagates RefineRefusalError uncaught for the controller to map', async () => {
     (refineMessage as jest.Mock).mockRejectedValue(new RefineRefusalError())
 
-    await expect(service.refine('raw')).rejects.toBeInstanceOf(RefineRefusalError)
+    await expect(service.refine('ws-1', 'raw')).rejects.toBeInstanceOf(RefineRefusalError)
   })
 
   it('saveRefinedMessage inserts a row scoped to workspaceId and userId', async () => {
@@ -224,5 +237,89 @@ describe('RefineService', () => {
 
     await db.delete(workspaceMembers).where(eq(workspaceMembers.workspaceId, workspaceTwo.id))
     await db.delete(workspaces).where(eq(workspaces.id, workspaceTwo.id))
+  })
+
+  describe('ledger metering (S4)', () => {
+    const USAGE = { usage_metadata: { input_tokens: 1000, output_tokens: 500, total_tokens: 1500 } }
+    let flags: Record<string, string | undefined>
+    let redis: { get: jest.Mock; incrby: jest.Mock; expire: jest.Mock }
+    let gate: { assertAiBudget: jest.Mock; recordLlmCost: jest.Mock }
+    let metered: RefineService
+
+    beforeEach(() => {
+      flags = {}
+      redis = { get: jest.fn().mockResolvedValue('0'), incrby: jest.fn(), expire: jest.fn() }
+      gate = {
+        assertAiBudget: jest.fn().mockResolvedValue(undefined),
+        recordLlmCost: jest.fn().mockResolvedValue(undefined),
+      }
+      const config = { get: jest.fn((key: string, fallback?: string) => (key in flags ? flags[key] : fallback)) }
+      metered = new RefineService(new UsageService(redis as never, config as never, gate as never))
+    })
+
+    it('error: enforcement on and state none is 402 SUBSCRIPTION_REQUIRED and the model is not called', async () => {
+      flags.BILLING_ENFORCEMENT = 'on'
+      gate.assertAiBudget.mockRejectedValue(billingStop('SUBSCRIPTION_REQUIRED'))
+
+      const error = await metered.refine('ws-1', 'raw').catch((e: unknown) => e)
+
+      expect((error as { getStatus: () => number }).getStatus()).toBe(402)
+      expect((error as { getResponse: () => unknown }).getResponse()).toMatchObject({ code: 'SUBSCRIPTION_REQUIRED' })
+      expect(gate.assertAiBudget).toHaveBeenCalledWith('ws-1')
+      expect(refineMessage).not.toHaveBeenCalled()
+    })
+
+    it('error: a model refusal still writes the ledger row for tokens spent', async () => {
+      ;(refineMessage as jest.Mock).mockImplementation(async (_text: string, options: { meter: { record: (r: unknown) => void } }) => {
+        options.meter.record(USAGE)
+        throw new RefineRefusalError()
+      })
+
+      await expect(metered.refine('ws-1', 'raw')).rejects.toBeInstanceOf(RefineRefusalError)
+
+      expect(gate.recordLlmCost).toHaveBeenCalledTimes(1)
+      expect(gate.recordLlmCost.mock.calls[0][0]).toBe('ws-1')
+      expect(gate.recordLlmCost.mock.calls[0][1].total).toBe(1500)
+    })
+
+    it('edge: enforcement off does not read the Redis token budget for refine', async () => {
+      ;(refineMessage as jest.Mock).mockImplementation(async (_text: string, options: { meter: { record: (r: unknown) => void } }) => {
+        options.meter.record(USAGE)
+        return 'Refined'
+      })
+
+      await metered.refine('ws-1', 'raw')
+
+      expect(redis.get).not.toHaveBeenCalled()
+      expect(redis.incrby).not.toHaveBeenCalled()
+      expect(gate.assertAiBudget).not.toHaveBeenCalled()
+    })
+
+    it('edge: refine writes one llm_cost row through ledgerOnly', async () => {
+      ;(refineMessage as jest.Mock).mockImplementation(async (_text: string, options: { meter: { record: (r: unknown) => void } }) => {
+        options.meter.record(USAGE)
+        return 'Refined'
+      })
+
+      await metered.refine('ws-1', 'raw')
+
+      expect(gate.recordLlmCost).toHaveBeenCalledTimes(1)
+      expect(gate.recordLlmCost.mock.calls[0][0]).toBe('ws-1')
+    })
+
+    it('regression: the result shape is still {original, refined}', async () => {
+      ;(refineMessage as jest.Mock).mockResolvedValue('Refined text')
+
+      await expect(metered.refine('ws-1', 'raw text')).resolves.toEqual({ original: 'raw text', refined: 'Refined text' })
+    })
+
+    it('happy: refine passes the workspace id and a meter to refineMessage', async () => {
+      ;(refineMessage as jest.Mock).mockResolvedValue('Refined text')
+
+      await service.refine('ws-9', 'raw text')
+
+      expect(usage.metered).toHaveBeenCalledWith('ws-9', expect.any(Function), { ledgerOnly: true })
+      expect(refineMessage).toHaveBeenCalledWith('raw text', { meter })
+    })
   })
 })

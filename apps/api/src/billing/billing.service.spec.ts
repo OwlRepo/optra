@@ -6,6 +6,7 @@ import { db, pool, users, workspaceMembers, workspaceSubscriptions, workspaces }
 import { BillingService } from './billing.service'
 import { CreateCheckoutDto } from './dto/create-checkout.dto'
 import { EntitlementService } from './entitlement.service'
+import { UsageLedgerService } from './usage-ledger.service'
 import { LemonSqueezyClient } from './lemonsqueezy.client'
 
 const PREFIX = `billing-svc-spec-${Date.now()}-`
@@ -24,7 +25,7 @@ const FULL_ENV: Record<string, string | undefined> = {
 function serviceWith(overrides: Record<string, string | undefined> = {}) {
   const env = { ...FULL_ENV, ...overrides }
   const config = { get: (key: string) => env[key] } as unknown as ConfigService
-  return new BillingService(config, new EntitlementService(config), new LemonSqueezyClient(config))
+  return new BillingService(config, new EntitlementService(config, new UsageLedgerService()), new LemonSqueezyClient(config))
 }
 
 let counter = 0
@@ -268,7 +269,7 @@ describe('BillingService', () => {
     const summary = await serviceWith().summary(id)
 
     expect(summary).toEqual(
-      expect.objectContaining({ state: 'trialing', enforced: false, plan: null, used: { matchedLines: null, photoChecks: null } }),
+      expect.objectContaining({ state: 'trialing', enforced: false, plan: null, used: { matchedLines: 0, photoChecks: 0, aiBudgetPercent: 0 } }),
     )
   })
 })

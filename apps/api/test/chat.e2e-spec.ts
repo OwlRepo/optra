@@ -1,4 +1,5 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common'
+import { JwtService } from '@nestjs/jwt'
 import { Test } from '@nestjs/testing'
 import cookieParser from 'cookie-parser'
 import { eq, like } from 'drizzle-orm'
@@ -14,6 +15,7 @@ import {
   otps,
   pool,
   refreshTokens,
+  usageEvents,
   users,
   workspaceMembers,
   workspaces,
@@ -36,11 +38,34 @@ jest.mock('@repo/ai', () => ({
   historyCondenseEnabled: jest.fn(() => true),
   historyInAnswerEnabled: jest.fn(() => true),
   historyMaxMessages: jest.fn(() => 12),
-  // UsageService.metered() constructs a real meter for condense/structured calls.
+  // UsageService.metered() constructs a real meter for condense/structured calls,
+  // and the billing ledger reads its token split and cost: a minimal stand-in
+  // priced like gpt-4o ($2.50 / $10 per 1M tokens) so the e2e can assert rows.
   TokenMeter: class {
-    record(): void {}
+    private input = 0
+    private output = 0
+    private model: string | null = null
+    record(response: { usage_metadata?: { input_tokens?: number; output_tokens?: number } } | null, model?: string): void {
+      const usage = response?.usage_metadata
+      if (!usage) return
+      this.input += usage.input_tokens ?? 0
+      this.output += usage.output_tokens ?? 0
+      if (model) this.model = model
+    }
     get total(): number {
-      return 0
+      return this.input + this.output
+    }
+    get inputTokens(): number {
+      return this.input
+    }
+    get outputTokens(): number {
+      return this.output
+    }
+    get costMicroUsd(): number {
+      return Math.ceil(this.input * 2.5 + this.output * 10)
+    }
+    get dominantModel(): string | null {
+      return this.model
     }
   },
 }))
@@ -338,5 +363,115 @@ describe('Chat flow (e2e)', () => {
       .expect(429)
 
     expect(blocked.body.message).toBe('Rate limit exceeded')
+  })
+
+  describe('billing metering (S4)', () => {
+    const DAY = 24 * 60 * 60 * 1000
+    const USAGE = { usage_metadata: { input_tokens: 1000, output_tokens: 500, total_tokens: 1500 } }
+
+    // Registration is capped at 5 per 10 minutes and this file already spends it.
+    async function seedOwnerWithWorkspace(email: string, trial: boolean) {
+      const [user] = await db.insert(users).values({ email, passwordHash: 'x', isVerified: true }).returning()
+      const [workspace] = await db
+        .insert(workspaces)
+        .values({ name: 'S4 Chat', ownerId: user.id, trialEndsAt: trial ? new Date(Date.now() + 5 * DAY) : null })
+        .returning()
+      await db.insert(workspaceMembers).values({ workspaceId: workspace.id, userId: user.id, role: 'owner' })
+      return { workspaceId: workspace.id, accessToken: app.get(JwtService).sign({ sub: user.id, email }) }
+    }
+
+    async function withEnv<T>(values: Record<string, string>, fn: () => Promise<T>): Promise<T> {
+      const previous: Record<string, string | undefined> = {}
+      for (const [key, value] of Object.entries(values)) {
+        previous[key] = process.env[key]
+        process.env[key] = value
+      }
+      try {
+        return await fn()
+      } finally {
+        for (const [key, value] of Object.entries(previous)) {
+          if (value === undefined) delete process.env[key]
+          else process.env[key] = value
+        }
+      }
+    }
+
+    const ledgerOf = (workspaceId: string) =>
+      db.select().from(usageEvents).where(eq(usageEvents.workspaceId, workspaceId))
+
+    const ask = (owner: { workspaceId: string; accessToken: string }, message: string) =>
+      request(app.getHttpServer())
+        .post(`/workspaces/${owner.workspaceId}/chat`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .send({ message })
+
+    function answerWithUsage() {
+      ;(embedQuery as jest.Mock).mockResolvedValue([0.4, 0.5, 0.6])
+      ;(answerQuestion as jest.Mock).mockImplementation(
+        async (_q: string, _ws: string, _limit: unknown, _embedding: unknown, _filters: unknown, _history: unknown, meter: { record: (r: unknown, m?: string) => void }) => ({
+          sources: [],
+          isFallback: false,
+          stream: (async function* () {
+            // The trailing stream chunk is what carries the provider's usage.
+            meter.record(USAGE, 'gpt-4o')
+            yield 'metered answer'
+          })(),
+        }),
+      )
+    }
+
+    it('error: state none gets 402 SUBSCRIPTION_REQUIRED with a code and no chat headers', async () => {
+      const owner = await seedOwnerWithWorkspace(`${prefix}s4-none@example.com`, false)
+      answerWithUsage()
+
+      const res = await withEnv({ BILLING_ENFORCEMENT: 'on' }, () => ask(owner, 'Is my plan active?').expect(402))
+
+      expect(res.body).toMatchObject({ statusCode: 402, code: 'SUBSCRIPTION_REQUIRED' })
+      expect(res.headers['x-chat-session-id']).toBeUndefined()
+      expect(res.headers['x-chat-cache']).toBeUndefined()
+      expect(answerQuestion).not.toHaveBeenCalled()
+    })
+
+    it('error: AI cost at the cap gets 402 AI_BUDGET_EXCEEDED', async () => {
+      const owner = await seedOwnerWithWorkspace(`${prefix}s4-cap@example.com`, true)
+      await db.insert(usageEvents).values({
+        workspaceId: owner.workspaceId,
+        kind: 'llm_cost',
+        quantity: 4_000_000,
+        idempotencyKey: `e2e-seed:${Math.random().toString(36).slice(2)}`,
+        occurredAt: new Date(),
+      })
+      answerWithUsage()
+
+      const res = await withEnv({ BILLING_ENFORCEMENT: 'on' }, () => ask(owner, 'Am I over my cap?').expect(402))
+
+      expect(res.body).toMatchObject({ statusCode: 402, code: 'AI_BUDGET_EXCEEDED' })
+      expect(answerQuestion).not.toHaveBeenCalled()
+    })
+
+    it('edge: with enforcement off the legacy token-limit 402 has no code', async () => {
+      const owner = await seedOwnerWithWorkspace(`${prefix}s4-legacy@example.com`, false)
+      answerWithUsage()
+
+      const res = await withEnv({ BILLING_ENFORCEMENT: 'off', MAX_TOKENS_PER_WORKSPACE_MONTH: '0' }, () =>
+        ask(owner, 'Legacy limit please').expect(402),
+      )
+
+      expect(res.body.message).toBe('Workspace monthly token budget reached')
+      expect(res.body.code).toBeUndefined()
+      expect(await ledgerOf(owner.workspaceId)).toHaveLength(0)
+    })
+
+    it('happy: an answered chat writes an llm_cost row after the stream ends', async () => {
+      const owner = await seedOwnerWithWorkspace(`${prefix}s4-ok@example.com`, true)
+      answerWithUsage()
+
+      const res = await withEnv({ BILLING_ENFORCEMENT: 'on' }, () => ask(owner, 'Meter this answer').expect(201))
+
+      expect(res.text).toBe('metered answer')
+      const rows = await ledgerOf(owner.workspaceId)
+      expect(rows).toHaveLength(1)
+      expect(rows[0]).toMatchObject({ kind: 'llm_cost', quantity: 7500, inputTokens: 1000, outputTokens: 500, model: 'gpt-4o' })
+    })
   })
 })
