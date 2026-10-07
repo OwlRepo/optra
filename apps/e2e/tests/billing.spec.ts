@@ -186,8 +186,12 @@ const AI_STOP = {
 }
 
 async function stubStop(page: Page, urlPattern: string, body: typeof QUOTA_STOP | typeof AI_STOP) {
+  // Only the write is refused: the same URL also serves the page's GET list,
+  // which must load normally for the user to reach the upload dialog.
   await page.route(urlPattern, (route) =>
-    route.fulfill({ status: 402, contentType: 'application/json', body: JSON.stringify(body) }),
+    route.request().method() === 'POST'
+      ? route.fulfill({ status: 402, contentType: 'application/json', body: JSON.stringify(body) })
+      : route.fallback(),
   )
 }
 
