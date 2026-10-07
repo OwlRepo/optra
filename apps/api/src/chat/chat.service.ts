@@ -60,6 +60,7 @@ export class ChatService {
       historyCondenseEnabled,
       historyInAnswerEnabled,
       historyMaxMessages,
+      TokenMeter: TokenMeterImpl,
     } = await import('@repo/ai')
 
     // History only needs fetching when at least one history-aware behavior is
@@ -157,14 +158,21 @@ export class ChatService {
     await this.usage.assertWithinBudget(workspaceId)
     // Reuse the embedding computed for the semantic-cache lookup so retrieval
     // does not embed the same message a second time on a cache miss.
-    const { sources, stream, isFallback } = await answerQuestion(
+    // The answer stream, and any LangGraph rewrite/grade/regenerate calls, are
+    // priced from the provider's own usage and written to the billing ledger once
+    // the stream ends (or breaks). The Redis estimate in onComplete is unchanged.
+    const answerMeter = new TokenMeterImpl()
+    const answered = await answerQuestion(
       standaloneQuestion,
       workspaceId,
       undefined,
       embedding,
       undefined,
       history,
+      answerMeter,
     )
+    const { sources, isFallback } = answered
+    const stream = this.chargeAfter(workspaceId, answerMeter, answered.stream)
 
     return {
       sessionId: session.id,
@@ -332,6 +340,20 @@ export class ChatService {
     }
 
     return session
+  }
+
+  // Pass-through generator: same chunks, same order. `finally` also runs when the
+  // consumer stops early or the stream throws, so spent tokens still reach the ledger.
+  private async *chargeAfter(
+    workspaceId: string,
+    meter: TokenMeter,
+    stream: AsyncGenerator<string>,
+  ): AsyncGenerator<string> {
+    try {
+      for await (const token of stream) yield token
+    } finally {
+      await this.usage.recordLedger(workspaceId, meter)
+    }
   }
 
   private async answerStructured(

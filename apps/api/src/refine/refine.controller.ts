@@ -28,9 +28,9 @@ export class RefineController {
 
   @Post()
   @UseGuards(JwtAuthGuard, WorkspaceMemberGuard, RefineRateLimitGuard)
-  async refine(@Body() dto: RefineDto) {
+  async refine(@Param('workspaceId') workspaceId: string, @Body() dto: RefineDto) {
     try {
-      return await this.refineService.refine(dto.text)
+      return await this.refineService.refine(workspaceId, dto.text)
     } catch (error) {
       if (error instanceof RefineEmptyError) {
         throw new UnprocessableEntityException('Refine produced no output. Try rephrasing.')
