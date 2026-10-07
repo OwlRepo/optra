@@ -3249,7 +3249,7 @@ describe('ComparisonService', () => {
       await expect(metered().compare(workspace.id, po.id, invoice.id)).resolves.toBeDefined()
 
       const rows = await usageRows(workspace.id)
-      expect(rows.filter((row) => row.idempotencyKey === `cmp:${po.id}:${invoice.id}`)).toHaveLength(1)
+      expect(rows.filter((row) => row.idempotencyKey.startsWith(`cmp:${po.id}:${invoice.id}:`))).toHaveLength(1)
       expect(await runRows(workspace.id)).toHaveLength(2)
     })
 
@@ -3286,7 +3286,7 @@ describe('ComparisonService', () => {
       await expect(metered().compare(workspace.id, po.id, invoice.id)).resolves.toBeDefined()
 
       const rows = await usageRows(workspace.id)
-      expect(rows.some((row) => row.idempotencyKey === `cmp:${po.id}:${invoice.id}` && row.quantity === 2)).toBe(true)
+      expect(rows.some((row) => row.idempotencyKey.startsWith(`cmp:${po.id}:${invoice.id}:`) && row.quantity === 2)).toBe(true)
     })
 
     it('edge: concurrent compares of one new pair charge once', async () => {
@@ -3300,7 +3300,7 @@ describe('ComparisonService', () => {
       expect(rows[0].quantity).toBe(3)
     })
 
-    it('happy: a first compare writes one matched_line row with key cmp:{po}:{invoice}', async () => {
+    it('happy: a first compare writes one matched_line row with key cmp:{po}:{invoice}:{period start}', async () => {
       const workspace = await trialWorkspace('first')
       const { po, invoice } = await seedReadyPoAndInvoice(workspace.id, lines(2), lines(2), true)
 
@@ -3308,7 +3308,8 @@ describe('ComparisonService', () => {
 
       const rows = await usageRows(workspace.id)
       expect(rows).toHaveLength(1)
-      expect(rows[0]).toMatchObject({ kind: 'matched_line', quantity: 2, idempotencyKey: `cmp:${po.id}:${invoice.id}` })
+      expect(rows[0]).toMatchObject({ kind: 'matched_line', quantity: 2 })
+      expect(rows[0].idempotencyKey).toMatch(new RegExp(`^cmp:${po.id}:${invoice.id}:\\d{4}-\\d{2}-\\d{2}$`))
     })
   })
 })

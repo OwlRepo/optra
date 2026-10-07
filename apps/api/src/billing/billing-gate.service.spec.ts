@@ -169,6 +169,26 @@ describe('BillingGateService', () => {
     expect(isBudgetExceeded(error)).toBe(false)
   })
 
+  it('error: enforcement on and a ledger reserve failure rejects for matched lines and photo checks (fail closed)', async () => {
+    const ws = await seedWorkspace('trial')
+    jest.spyOn(db, 'transaction').mockRejectedValue(new Error('tx down'))
+
+    await expect(gate.assertMatchedLines(ws, 'po-f', 'inv-f', 2, NOW)).rejects.toThrow('tx down')
+    await expect(gate.assertPhotoCheck(ws, NOW)).rejects.toThrow('tx down')
+  })
+
+  it('error: a re-parse whose extra lines exceed the remaining quota is 402 QUOTA_EXCEEDED and charges nothing more', async () => {
+    const ws = await seedWorkspace('trial')
+    await gate.assertMatchedLines(ws, 'po-x', 'inv-x', 2, NOW)
+    await seedRow(ws, 'matched_line', 396)
+
+    // 398 used of 400; 5 lines now means a delta of 3 -> 401 > 400.
+    await expectStop(gate.assertMatchedLines(ws, 'po-x', 'inv-x', 5, NOW), 'QUOTA_EXCEEDED', 'matchedLines')
+
+    const total = (await rowsOf(ws, 'matched_line')).reduce((sum, row) => sum + row.quantity, 0)
+    expect(total).toBe(398)
+  })
+
   it('edge: enforcement off records matched lines and photo checks and refuses nothing, even for none and over quota', async () => {
     env = {}
     const none = await seedWorkspace('none')
@@ -272,6 +292,73 @@ describe('BillingGateService', () => {
     expect(new Set(bodies.map((body) => body.message)).size).toBe(4)
   })
 
+  it('edge: enforcement off swallows a ledger reserve failure with one warning and the call resolves', async () => {
+    env = {}
+    const ws = await seedWorkspace('trial')
+    jest.spyOn(db, 'transaction').mockRejectedValue(new Error('tx down'))
+    const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined)
+
+    await expect(gate.assertMatchedLines(ws, 'po-w', 'inv-w', 2, NOW)).resolves.toBeUndefined()
+    expect(warn).toHaveBeenCalledTimes(1)
+    await expect(gate.assertPhotoCheck(ws, NOW)).resolves.toBeUndefined()
+    expect(warn).toHaveBeenCalledTimes(2)
+    expect(String(warn.mock.calls[0][0])).toContain('tx down')
+  })
+
+  it('edge: the matched-line key is cmp:{po}:{invoice}:{period start date}; a trial uses its window start, a subscription the UTC month', async () => {
+    const trial = await seedWorkspace('trial')
+    const solo = await seedWorkspace('solo')
+    const exempt = await seedWorkspace('exempt')
+
+    await gate.assertMatchedLines(trial, 'po-k', 'inv-k', 1, NOW)
+    await gate.assertMatchedLines(solo, 'po-k', 'inv-k', 1, NOW)
+    await gate.assertMatchedLines(exempt, 'po-k', 'inv-k', 1, NOW)
+
+    // Trial ends NOW + 5 days and lasts 14 days, so its window starts 2026-09-29.
+    expect((await rowsOf(trial, 'matched_line'))[0].idempotencyKey).toBe('cmp:po-k:inv-k:2026-09-29')
+    expect((await rowsOf(solo, 'matched_line'))[0].idempotencyKey).toBe('cmp:po-k:inv-k:2026-10-01')
+    expect((await rowsOf(exempt, 'matched_line'))[0].idempotencyKey).toBe('cmp:po-k:inv-k:2026-10-01')
+  })
+
+  it('edge: the same pair, same period, same line count adds no row; enforcement off uses the UTC month key', async () => {
+    const ws = await seedWorkspace('trial')
+    await gate.assertMatchedLines(ws, 'po-s', 'inv-s', 4, NOW)
+    await gate.assertMatchedLines(ws, 'po-s', 'inv-s', 4, NOW)
+    await gate.assertMatchedLines(ws, 'po-s', 'inv-s', 3, NOW)
+    expect((await rowsOf(ws, 'matched_line')).map((row) => row.quantity)).toEqual([4])
+
+    env = {}
+    const off = await seedWorkspace('none')
+    await gate.assertMatchedLines(off, 'po-s', 'inv-s', 2, NOW)
+    expect((await rowsOf(off, 'matched_line'))[0].idempotencyKey).toBe('cmp:po-s:inv-s:2026-10-01')
+  })
+
+  it('edge: a re-parsed pair with more lines in the same period charges only the extra lines', async () => {
+    const ws = await seedWorkspace('trial')
+
+    await gate.assertMatchedLines(ws, 'po-r', 'inv-r', 10, NOW)
+    await gate.assertMatchedLines(ws, 'po-r', 'inv-r', 14, NOW)
+    await gate.assertMatchedLines(ws, 'po-r', 'inv-r', 14, NOW)
+
+    const rows = await rowsOf(ws, 'matched_line')
+    expect(rows.map((row) => row.quantity).sort((a, b) => a - b)).toEqual([4, 10])
+    expect(rows.find((row) => row.quantity === 10)?.idempotencyKey).toBe('cmp:po-r:inv-r:2026-09-29')
+    expect(rows.every((row) => row.idempotencyKey.startsWith('cmp:po-r:inv-r:2026-09-29'))).toBe(true)
+    expect(new Set(rows.map((row) => row.idempotencyKey)).size).toBe(2)
+  })
+
+  it('edge: the same pair in a new period is charged again in full', async () => {
+    const ws = await seedWorkspace('solo')
+    const nextMonth = new Date('2026-11-08T12:00:00.000Z')
+
+    await gate.assertMatchedLines(ws, 'po-n', 'inv-n', 10, NOW)
+    await gate.assertMatchedLines(ws, 'po-n', 'inv-n', 10, nextMonth)
+
+    const rows = await rowsOf(ws, 'matched_line')
+    expect(rows.map((row) => row.quantity)).toEqual([10, 10])
+    expect(rows.map((row) => row.idempotencyKey).sort()).toEqual(['cmp:po-n:inv-n:2026-10-01', 'cmp:po-n:inv-n:2026-11-01'])
+  })
+
   it('regression: the refusal is an HttpException with status 402, so isBudgetExceeded is true', async () => {
     const ws = await seedWorkspace('none')
 
@@ -308,7 +395,7 @@ describe('BillingGateService', () => {
     expect(message).toContain('insert failed')
   })
 
-  it('happy: a new pair within quota is charged once with quantity poLineCount and key cmp:{po}:{invoice}', async () => {
+  it('happy: a new pair within quota is charged once with quantity poLineCount and key cmp:{po}:{invoice}:{period start}', async () => {
     const ws = await seedWorkspace('trial')
 
     await gate.assertMatchedLines(ws, 'po-9', 'inv-9', 12, NOW)
@@ -317,7 +404,7 @@ describe('BillingGateService', () => {
     const rows = await rowsOf(ws, 'matched_line')
     expect(rows).toHaveLength(1)
     expect(rows[0].quantity).toBe(12)
-    expect(rows[0].idempotencyKey).toBe('cmp:po-9:inv-9')
+    expect(rows[0].idempotencyKey).toBe('cmp:po-9:inv-9:2026-09-29')
   })
 
   it('happy: a photo check within quota is charged one with a photo: key', async () => {

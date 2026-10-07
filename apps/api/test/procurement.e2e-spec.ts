@@ -2755,9 +2755,34 @@ describe('Procurement flow (e2e)', () => {
 
       await withEnforcement('on', () => compare(owner.workspaceId, owner.accessToken, po.id, invoice.id).expect(201))
 
-      const counted = (await ledgerOf(owner.workspaceId)).filter((row) => row.idempotencyKey === `cmp:${po.id}:${invoice.id}`)
+      const counted = (await ledgerOf(owner.workspaceId)).filter((row) => row.idempotencyKey.startsWith(`cmp:${po.id}:${invoice.id}:`))
       expect(counted).toHaveLength(1)
       expect(await runsOf(owner.workspaceId)).toHaveLength(2)
+    })
+
+    it('edge: a re-parsed PO with more lines charges only the extra lines, and a refused delta is 402 QUOTA_EXCEEDED', async () => {
+      const owner = await seedBillingOwner('reparse', 'solo')
+      const { po, invoice } = await seedPair(owner.workspaceId, 2)
+      await withEnforcement('on', () => compare(owner.workspaceId, owner.accessToken, po.id, invoice.id).expect(201))
+
+      // Re-parse: the PO now has 5 lines (3 more). Same pair, same month.
+      await db.insert(poLineItems).values(
+        [3, 4, 5].map((n) => ({ workspaceId: owner.workspaceId, purchaseOrderId: po.id, lineNumber: n, sku: `S4-${n}`, quantity: '10', unitPrice: '5.00' })),
+      )
+      await withEnforcement('on', () => compare(owner.workspaceId, owner.accessToken, po.id, invoice.id).expect(201))
+
+      const counted = (await ledgerOf(owner.workspaceId)).filter((row) => row.idempotencyKey.startsWith(`cmp:${po.id}:${invoice.id}:`))
+      expect(counted.map((row) => row.quantity).sort((a, b) => a - b)).toEqual([2, 3])
+
+      // Another re-parse to 8 lines would add 3 more; only 2 of 400 remain after seeding 393.
+      await seedUsage(owner.workspaceId, 393)
+      await db.insert(poLineItems).values(
+        [6, 7, 8].map((n) => ({ workspaceId: owner.workspaceId, purchaseOrderId: po.id, lineNumber: n, sku: `S4-${n}`, quantity: '10', unitPrice: '5.00' })),
+      )
+      const res = await withEnforcement('on', () => compare(owner.workspaceId, owner.accessToken, po.id, invoice.id).expect(402))
+      expect(res.body).toMatchObject({ statusCode: 402, code: 'QUOTA_EXCEEDED', quota: 'matchedLines' })
+      const total = (await ledgerOf(owner.workspaceId)).reduce((sum, row) => sum + row.quantity, 0)
+      expect(total).toBe(2 + 3 + 393)
     })
 
     it('edge: with enforcement off the same over-quota workspace compares and the ledger still gets the row', async () => {
@@ -2768,7 +2793,7 @@ describe('Procurement flow (e2e)', () => {
       await withEnforcement('off', () => compare(owner.workspaceId, owner.accessToken, po.id, invoice.id).expect(201))
 
       const rows = await ledgerOf(owner.workspaceId)
-      expect(rows.some((row) => row.idempotencyKey === `cmp:${po.id}:${invoice.id}` && row.quantity === 2)).toBe(true)
+      expect(rows.some((row) => row.idempotencyKey.startsWith(`cmp:${po.id}:${invoice.id}:`) && row.quantity === 2)).toBe(true)
       expect(await runsOf(owner.workspaceId)).toHaveLength(1)
     })
 
@@ -2780,7 +2805,8 @@ describe('Procurement flow (e2e)', () => {
 
       const rows = await ledgerOf(owner.workspaceId)
       expect(rows).toHaveLength(1)
-      expect(rows[0]).toMatchObject({ kind: 'matched_line', quantity: 3, idempotencyKey: `cmp:${po.id}:${invoice.id}` })
+      expect(rows[0]).toMatchObject({ kind: 'matched_line', quantity: 3 })
+      expect(rows[0].idempotencyKey).toMatch(new RegExp(`^cmp:${po.id}:${invoice.id}:\\d{4}-\\d{2}-\\d{2}$`))
     })
 
     it('happy: an exempt workspace compares past 400 lines', async () => {

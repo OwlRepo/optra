@@ -202,6 +202,41 @@ describe('UsageService', () => {
       expect(redis.get).not.toHaveBeenCalled()
     })
 
+    it('error: enforcement on, under the dollar cap but over the Redis token limit is still 402 AI_BUDGET_EXCEEDED (Redis stays a global backstop)', async () => {
+      flags.BILLING_ENFORCEMENT = 'on'
+      redis.get.mockResolvedValue('100')
+
+      const error = await caught(service.assertWithinBudget('ws-1'))
+
+      expect(error).toBeInstanceOf(HttpException)
+      expect((error as HttpException).getStatus()).toBe(402)
+      expect((error as HttpException).getResponse()).toMatchObject({ statusCode: 402, code: 'AI_BUDGET_EXCEEDED' })
+      expect(gate.assertAiBudget).toHaveBeenCalledWith('ws-1')
+      expect(isBudgetExceeded(error)).toBe(true)
+    })
+
+    it('error: enforcement on, metered refuses over the Redis token limit and the model never runs', async () => {
+      flags.BILLING_ENFORCEMENT = 'on'
+      redis.get.mockResolvedValue('250')
+      const run = jest.fn()
+
+      const error = await caught(service.metered('ws-1', run))
+
+      expect((error as HttpException).getResponse()).toMatchObject({ code: 'AI_BUDGET_EXCEEDED' })
+      expect(run).not.toHaveBeenCalled()
+    })
+
+    it('error: enforcement on, the gate refusal wins before Redis is read even when Redis is also over', async () => {
+      flags.BILLING_ENFORCEMENT = 'on'
+      gate.assertAiBudget.mockRejectedValue(billingStop('SUBSCRIPTION_REQUIRED'))
+      redis.get.mockResolvedValue('999')
+
+      const error = await caught(service.assertWithinBudget('ws-1'))
+
+      expect((error as HttpException).getResponse()).toMatchObject({ code: 'SUBSCRIPTION_REQUIRED' })
+      expect(redis.get).not.toHaveBeenCalled()
+    })
+
     it('edge: enforcement off keeps the Redis token limit: 402 without a code and the same message', async () => {
       flags.BILLING_ENFORCEMENT = 'off'
       redis.get.mockResolvedValue('100')
@@ -221,6 +256,26 @@ describe('UsageService', () => {
       await service.assertWithinBudget('ws-1')
 
       expect(gate.assertAiBudget).not.toHaveBeenCalled()
+    })
+
+    it('edge: enforcement on runs the gate first and then the Redis check, and passes when both are under', async () => {
+      flags.BILLING_ENFORCEMENT = 'on'
+      redis.get.mockResolvedValue('99')
+
+      await expect(service.assertWithinBudget('ws-1')).resolves.toBeUndefined()
+
+      expect(gate.assertAiBudget.mock.invocationCallOrder[0]).toBeLessThan(redis.get.mock.invocationCallOrder[0])
+    })
+
+    it('edge: enforcement on, a Redis read error fails open after the gate passed', async () => {
+      flags.BILLING_ENFORCEMENT = 'on'
+      redis.get.mockRejectedValue(new Error('redis down'))
+      const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined)
+
+      await expect(service.assertWithinBudget('ws-1')).resolves.toBeUndefined()
+
+      expect(warn).toHaveBeenCalledTimes(1)
+      warn.mockRestore()
     })
 
     it('edge: metered writes an llm_cost row in finally when the run throws after spending', async () => {
