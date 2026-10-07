@@ -47,6 +47,8 @@ export function BillingBanner({ workspaceId }: { workspaceId: string }) {
   return (
     <Link
       href={`/workspaces/${workspaceId}/billing`}
+      // StatusBanner is role=status, which does not name its parent link.
+      aria-label={title}
       className="block rounded-[12px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
       <StatusBanner variant="warning" title={title} />
