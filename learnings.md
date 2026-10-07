@@ -662,3 +662,12 @@ And one rule the owner made standing: every change now ships with its tests for 
 **Actual:** confirmed as the main risk — an overlay that auto-starts on every user's first workspace visit sits over every existing Playwright suite. It was handled once, in `apps/e2e/tests/auth.setup.ts`, by writing the tour-done key (`optra.tour.v1:<userId>`) into each saved storage state, with only `onboarding-tour.spec.ts` clearing it. A second constraint surfaced from the design system: Joyride paints its overlay and spotlight as SVG attributes, which cannot take `var()`, so `resolveTourTheme()` reads the tokens from computed style at each start instead of hard-coding colours.
 
 **Why different:** not different. **Any UI that appears unasked on first visit changes the starting state of every browser test; seed its "already seen" state in the shared setup on day one, and make the one suite that tests it opt back in.**
+
+## 2026-10-08 — Turning off a Bull cron means gating the tick and the worker
+*Learning Contract: the plan's design is the prediction; the diff is below. No live prediction solicited.*
+
+**Predicted (from the approved plan):** Gating in `onTick` + worker (not registration) stops the spend with no Redis change; the existing insights specs need the flag set `true` to keep their meaning.
+
+**Actual:** confirmed. `bun run tdd:red` failed the 7 `edge:` cases on main; with the gate, 1025 unit, 143 API e2e and 92 browser tests pass. The four existing insights specs set `SUPPORT_SURFACES_ENABLED=true` in `beforeEach` and kept every case. A fresh worktree first failed type-check on stale turbo-cached `@repo/ai`/`@repo/db` dists and a missing DuckDB binary; `turbo run build --force` and the duckdb install script fixed both.
+
+**Why different:** not different. **A Bull repeatable lives in Redis, not in code: to switch a cron off, make the tick and its worker no-ops behind a call-time flag and leave the registration alone, so switching back on is an env change, not a Redis operation.**

@@ -238,7 +238,7 @@ tests (no root `test` script, no turbo `test` task).
   `prepare` sets `core.hooksPath` on install.
 - `apps/api`: `bun run test` (Jest; runs on its own `optra_unit` database
   recreated each run, in UTC — never the dev DB), `bun run test:watch`,
-  `bun run test:cov`, `bun run test:e2e` (16 Jest e2e suites in `apps/api/test/`,
+  `bun run test:cov`, `bun run test:e2e` (17 Jest e2e suites in `apps/api/test/`,
   part of the CI gate; locally on a fresh database:
   `bun apps/e2e/scripts/prepare-db.ts optra_e2e`, then
   `DATABASE_URL=…/optra_e2e bun run test:e2e`).

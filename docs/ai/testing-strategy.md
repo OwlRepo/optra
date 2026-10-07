@@ -457,6 +457,12 @@ Environment traps hit while verifying (they are execution preflight, not test lo
 - **Browser:** `apps/e2e/tests/procurement.spec.ts` `test.describe('photo and batch intake')`; fixtures `apps/e2e/fixtures/po-photo.jpg` (EXIF orientation 6 + GPS), `invoice-photo.png`, `receipt-photo.webp`, `fake.heic`, all under the e2e `MAX_UPLOAD_MB=1`; `support/ui.ts` MIME map and `support/flows.ts` photo/batch helpers.
 - **Not covered by any automated layer:** iOS Safari's HEIC → JPEG conversion on pick (manual QA on a device; `risk-register.md` "iOS HEIC Photos").
 
+**2026-10-08 — support-surface crons and digest behind `SUPPORT_SURFACES_ENABLED` (`docs/plans/fix-support-crons-flag.md`).**
+- New unit specs: `support-surfaces-flag.spec.ts` and the first specs for the three tick processors (`freshness-`, `faq-cluster-`, `topic-gap-tick.processor.spec.ts`; off → no fan-out, repeat still registered).
+- Extended: `faq-cluster`, `topic-gap`, `freshness-check` processor specs (off → no run row, no read, no model call) and `digest-content.service.spec.ts` (off → comparison counts only). The existing cases set the flag `true`.
+- API e2e: `apps/api/test/digest-settings.e2e-spec.ts`.
+- Browser: `workspace-alignment.spec.ts` digest-preview case. `apiEnv()` pins the flag `'false'`.
+
 ## Infrastructure / Docker / Deployment Verification
 
 Infra/config/script changes (Dockerfiles, compose files, CI workflows, deploy shell scripts) are not
