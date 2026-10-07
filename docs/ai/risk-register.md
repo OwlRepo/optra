@@ -488,6 +488,7 @@ withdrawn:
 
 - **Landing Vendor Names — RESOLVED, then removed.** The generic vendor slots and the "Catalogs from" row were deleted from `metrics-strip.tsx`; no third party is named or implied.
 - **Landing Pricing Copy — now a launch blocker** (row above). Nothing can be purchased until billing (Deep) ships with metering.
+- **Billing core shipped dark (2026-10-08, `feat/no-ticket-billing-core`):** trial on first workspace, Lemon Squeezy checkout/portal, signed webhook (HMAC over raw bytes + per-workspace `workspace_sig` binding in `custom_data`), `workspace_subscriptions` / `billing_events`. `BILLING_ENFORCEMENT=off`: nothing is refused yet. The Landing Pricing Copy blocker stays open until S4 metering (`docs/plans/lemon-squeezy-billing-program.md`). Known follow-ups: `billing_events.payload` keeps the LS body (customer email/name) with no retention yet; webhook path is unthrottled behind the BFF's 1 MB cap and 10 s timeout. Misconfigured LS env answers 500 with `processed_at` NULL, so an LS dashboard "Resend" replays the event after the env is fixed.
 - **Placeholder metrics — REMOVED.** `<10s`, `94%`, `−42%` were replaced with code-verified capability facts. Measured timings may be added only from real runs (demo recorder, S3).
 - **False capability claims — FIXED.** JPG/PNG and email-attachment uploads (not accepted, `procurement.controller.ts:48`), self-serve workspace deletion (no endpoint), "no card" trial (unverified) were removed or reworded.
 - **Landing Reveal Animations — still live, still required.**

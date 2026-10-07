@@ -475,6 +475,27 @@ All under `apps/web/src/components/tour/`; plan and locked contract: `docs/plans
 | `readTourRecord`, `writeTourRecord`, `tourStorageKey`, `TourRecord`, `TourStatus`, `TOUR_STORAGE_VERSION` | `tour-storage.ts` | `localStorage` persistence under `optra.tour.v1:<userId>`, value `{status:'completed'\|'skipped', at}`; never throws, malformed values read as `null`. Seeded by `apps/e2e/tests/auth.setup.ts` |
 | `TOUR_ANCHORS`, `TourAnchorId`, `tourAttr`, `tourSelector`, `navAnchorFor` | `tour-anchors.ts` | The single `data-tour` registry. `tourAttr(id)` is spread onto targets in `workspace-nav.tsx`, `mobile-tab-bar.tsx` and the workspace pages; `navAnchorFor(href, workspaceId, 'nav'\|'tab')` maps a nav href to its anchor |
 
+## Billing (added 2026-10-08)
+
+Lemon Squeezy billing core, slice S3 of `docs/plans/lemon-squeezy-billing-program.md`; slice plan + locked contract `docs/plans/lemon-squeezy-billing-1-core.md`, shapes in `packages/types/src/billing.ts`. Domain: Billing/Payments/Plan Upgrades, risk Deep. Ships dark behind `BILLING_ENFORCEMENT` (default `off`).
+
+| Symbol | Location | Purpose |
+|---|---|---|
+| `BillingModule` | `apps/api/src/billing/billing.module.ts` | Registers the billing controllers/services; imported by `AppModule` |
+| `TRIAL_DAYS`, plan quotas, `SEATS_MAX`, variant → plan map | `apps/api/src/billing/plans.ts` | Single API-side source for trial length (must equal `apps/web/src/lib/legal-facts.ts` `TRIAL_DAYS`, pinned by `plans.spec.ts`) and Solo/Team quotas |
+| `verifyWebhookSignature`, `signWorkspaceBinding` | `apps/api/src/billing/webhook-signature.ts` | HMAC-SHA256 hex over raw bytes with length check + `timingSafeEqual`; `workspace_sig` binding put in checkout `custom_data` and required on subscription webhooks |
+| `LemonSqueezyClient` | `apps/api/src/billing/lemonsqueezy.client.ts` | Native `fetch` to `LEMONSQUEEZY_API_URL` (JSON:API, 10 s timeout): `createCheckout` → `{url}`, `getSubscription` → `{customerPortalUrl}` |
+| `EntitlementService.resolve` | `apps/api/src/billing/entitlement.service.ts` | exempt > subscribed (`active`/`past_due`/`on_trial`, `cancelled` until `ends_at`) > trialing > none; quotas × seats; `enforced` from `BILLING_ENFORCEMENT`. Not called outside billing in S3 |
+| `BillingService` | `apps/api/src/billing/billing.service.ts` | Summary, owner-only checkout (409 when subscribed, 503 without webhook secret) and portal URL |
+| `BillingWebhookService.handle` | `apps/api/src/billing/billing-webhook.service.ts` | Stores every delivery in `billing_events` (`body_sha256` dedupe), upserts `workspace_subscriptions` under a per-workspace advisory lock with `ls_updated_at` staleness guard; terminal rejections 200 + `last_error`, misconfig/DB errors 500 with `processed_at` NULL |
+| `BillingController`, `BillingWebhookController` | `apps/api/src/billing/billing.controller.ts`, `billing-webhook.controller.ts` | `GET/POST /workspaces/:workspaceId/billing{,/checkout,/portal}`; public `POST /billing/webhooks/lemonsqueezy` (`@SkipThrottle`, needs `rawBody: true` in `main.ts`) |
+| `forwardRaw` | `apps/web/src/lib/http/webhook-proxy.ts` | Forwards the webhook body bytes untouched (1 MB cap, 10 s timeout → 504) with `X-Signature`/`X-Event-Name`, no auth; used by `apps/web/app/api/webhooks/lemonsqueezy/route.ts` |
+| `getBillingSummary`, `startCheckout`, `openBillingPortal` | `apps/web/src/lib/api/billing.ts` | Client calls to the billing BFF routes `apps/web/app/api/workspaces/[id]/billing/**` |
+| Billing page | `apps/web/app/workspaces/[id]/billing/page.tsx` | Status, trial days, Solo/Team cards with seat stepper, checkout redirect + post-checkout polling, owner-only actions |
+| `BillingBanner` | `apps/web/src/components/billing-banner.tsx` | Trial-ending / no-plan notice in the workspace layout, links to Billing |
+| `workspaceSubscriptions`, `billingEvents`, `billingPlan`; `workspaces.trialEndsAt` / `billingExempt` | `packages/db/src/schema/` (migration `0037_optimal_gauntlet.sql`) | Billing tables; `workspaces.service.ts` selects explicit `WORKSPACE_COLUMNS` so billing columns never leak |
+| LS stub | `apps/e2e/stubs/lemonsqueezy-stub.ts` | Playwright stub on :4011 |
+
 ## Demo seeder (added 2026-08-18)
 
 Standalone script at repo root — NOT in `packages/db`, because it needs `@repo/ai`
