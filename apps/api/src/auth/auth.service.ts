@@ -17,6 +17,7 @@ import type { LoginDto } from './dto/login.dto'
 import type { ResendOtpDto } from './dto/resend-otp.dto'
 import { NotificationsService } from '../notifications/notifications.service'
 import { AuthLimitsService } from './auth-limits.service'
+import { TRIAL_DAYS } from '../billing/plans'
 
 const BCRYPT_ROUNDS = 12
 const OTP_EXPIRY_MINUTES = 10
@@ -128,6 +129,9 @@ export class AuthService {
         .values({
           name: `${user.email}'s workspace`,
           ownerId: user.id,
+          // The only place a trial starts: a user's first workspace, in the
+          // same transaction as the verification claim, so it happens once.
+          trialEndsAt: new Date(now.getTime() + TRIAL_DAYS * 24 * 60 * 60 * 1000),
         })
         .returning({ id: workspaces.id })
 
