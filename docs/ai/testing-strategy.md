@@ -163,7 +163,7 @@ Confirmed from `apps/api/package.json` as of 2026-06-28:
 - `bun run test` — Jest unit tests (`apps/api/src/**/*.spec.ts`). Since 2026-09-26 they run on their own database, `optra_unit`, recreated from the migrations by Jest's `globalSetup` (`apps/api/test/unit-global-setup.ts`, via `apps/e2e/scripts/prepare-db.ts`) and in `TZ=UTC`; they never touch the dev database `optra`. Base connection from `DATABASE_URL`, overridable with `UNIT_DATABASE_URL`. No per-suite cleanup is needed.
 - `bun run test:watch` — Jest unit tests, watch mode
 - `bun run test:cov` — Jest unit tests with coverage report
-- `bun run test:e2e` — Jest e2e tests (`apps/api/test/**/*.e2e-spec.ts`, 16 suites), boots a real `AppModule` instance and hits it with Supertest. In CI and for a clean local run, on its own database: `bun apps/e2e/scripts/prepare-db.ts optra_e2e && DATABASE_URL=postgresql://postgres:postgres@localhost:54322/optra_e2e bun run test:e2e`. No suite reaches a real model (verified 2026-09-25 with OpenAI pointed at an unreachable address). Locally, build the workspace packages first: `bunx turbo run build --filter=@repo/db --filter=@repo/ai --filter=@repo/types` (e2e resolves `@repo/*` to `dist`). Since 2026-10-06 `apps/api/test/jest-e2e.setup.ts` sets `THROTTLE_DEFAULT_LIMIT ??= '100000'`: every supertest request comes from 127.0.0.1, so a long spec file shared one 60/min bucket and hit unrelated 429s; the per-route `@Throttle` auth limits are unaffected and keep `auth-rate-limit.e2e-spec.ts`.
+- `bun run test:e2e` — Jest e2e tests (`apps/api/test/**/*.e2e-spec.ts`, 17 suites), boots a real `AppModule` instance and hits it with Supertest. In CI and for a clean local run, on its own database: `bun apps/e2e/scripts/prepare-db.ts optra_e2e && DATABASE_URL=postgresql://postgres:postgres@localhost:54322/optra_e2e bun run test:e2e`. No suite reaches a real model (verified 2026-09-25 with OpenAI pointed at an unreachable address). Locally, build the workspace packages first: `bunx turbo run build --filter=@repo/db --filter=@repo/ai --filter=@repo/types` (e2e resolves `@repo/*` to `dist`). Since 2026-10-06 `apps/api/test/jest-e2e.setup.ts` sets `THROTTLE_DEFAULT_LIMIT ??= '100000'`: every supertest request comes from 127.0.0.1, so a long spec file shared one 60/min bucket and hit unrelated 429s; the per-route `@Throttle` auth limits are unaffected and keep `auth-rate-limit.e2e-spec.ts`.
 - `bun run type-check` — `tsc --noEmit`
 
 Storage integration note as of 2026-06-30 (CONTEXT DRIFT fix 2026-07-09 — port renamed with the Optra rebrand, see `risk-register.md`'s PO ↔ Invoice Comparison note):
@@ -206,7 +206,7 @@ track them.
 | Command | Runner | Spec files |
 |---|---|---|
 | `cd apps/api && bun run test` | Jest 30 | 72 (`apps/api/src/**/*.spec.ts`) |
-| `cd apps/api && bun run test:e2e` | Jest 30, e2e config | 16 (`apps/api/test/*.e2e-spec.ts`) |
+| `cd apps/api && bun run test:e2e` | Jest 30, e2e config | 17 (`apps/api/test/*.e2e-spec.ts`) |
 | `cd apps/web && bun run test` | Vitest 4.1.9 | 154 (`*.spec.ts(x)`; CONTEXT DRIFT fixed 2026-10-03 — this said 135 while `origin/main` had 148, before the onboarding tour added 6 in `apps/web/src/components/tour/`) |
 | `cd packages/ai && bun run test` | Vitest 3.2.6 | 25 (`src/**/*.spec.ts`) |
 | `cd packages/db && bun run test` | Vitest 3.2.6 | 1 (`src/**/*.spec.ts`) |
