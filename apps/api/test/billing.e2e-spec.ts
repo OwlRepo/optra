@@ -166,7 +166,10 @@ describe('Billing (e2e)', () => {
       .set('Content-Type', 'application/json')
       .set('X-Event-Name', 'subscription_created')
     if (signature !== undefined) req.set('X-Signature', signature)
-    return req.send(bytes)
+    // superagent JSON-encodes a Buffer body ({"type":"Buffer",...}) when the
+    // content type is JSON; a string goes out byte-for-byte, so the server
+    // verifies the exact bytes that were signed.
+    return req.send(bytes.toString('utf8'))
   }
 
   const signedWebhook = (body: Buffer) => postWebhook(body, sign(body))
