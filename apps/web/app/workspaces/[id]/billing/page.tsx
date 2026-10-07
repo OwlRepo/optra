@@ -56,7 +56,8 @@ function Section({ eyebrow, title, children }: { eyebrow: string; title: string;
 
 function BillingSkeleton() {
   return (
-    <div className="flex flex-col gap-6 py-6" aria-busy="true" aria-label="Loading billing">
+    <div className="flex flex-col gap-6 py-6" role="status" aria-busy="true">
+      <span className="sr-only">Loading billing</span>
       <Skeleton data-slot="skeleton" className="h-[120px] w-full rounded-[18px]" />
       <div className="grid gap-4 md:grid-cols-2">
         <Skeleton data-slot="skeleton" className="h-[220px] rounded-[18px]" />
@@ -82,6 +83,13 @@ export default function BillingPage({ params }: { params: { id: string } }) {
   const [seats, setSeats] = React.useState(MIN_SEATS)
   const [pendingAction, setPendingAction] = React.useState<'solo' | 'team' | 'portal' | null>(null)
   const [pollReads, setPollReads] = React.useState(0)
+  const [retrying, setRetrying] = React.useState(false)
+  const noteId = React.useId()
+  const soloRef = React.useRef<HTMLButtonElement>(null)
+  const teamRef = React.useRef<HTMLButtonElement>(null)
+  const manageRef = React.useRef<HTMLButtonElement>(null)
+  // Which control to refocus once a failed action re-enables it.
+  const refocusRef = React.useRef<'solo' | 'team' | 'portal' | null>(null)
   const requestRef = React.useRef(0)
   // useRouter() may hand back a new object per render; keep load() stable.
   const routerRef = React.useRef(router)
@@ -148,6 +156,13 @@ export default function BillingPage({ params }: { params: { id: string } }) {
     }
   }, [checkoutSuccess, hasSummary, alreadySubscribed, load])
 
+  React.useEffect(() => {
+    if (pendingAction !== null || refocusRef.current === null) return
+    const target = { solo: soloRef, team: teamRef, portal: manageRef }[refocusRef.current]
+    refocusRef.current = null
+    target.current?.focus()
+  }, [pendingAction])
+
   const handleLogout = React.useCallback(async () => {
     try {
       await logout()
@@ -174,6 +189,7 @@ export default function BillingPage({ params }: { params: { id: string } }) {
       } else {
         toast({ variant: 'error', title: "Couldn't reach billing. Try again in a moment." })
       }
+      refocusRef.current = plan
       setPendingAction(null)
     }
   }
@@ -189,22 +205,37 @@ export default function BillingPage({ params }: { params: { id: string } }) {
         return
       }
       toast({ variant: 'error', title: "Couldn't reach billing. Try again in a moment." })
+      refocusRef.current = 'portal'
       setPendingAction(null)
     }
   }
 
+  const retry = () => {
+    if (retrying) return
+    setRetrying(true)
+    void load().finally(() => setRetrying(false))
+  }
+
+  const gaveUp = pollReads >= POLL_MAX_READS
   const accessDenied = denied || workspaceStatus === 'denied'
 
   const renderPlans = () => (
     <Section eyebrow="Plans" title="Choose a plan">
       <div className="grid gap-4 md:grid-cols-2">
-        <Card variant="panel" className="flex flex-col gap-4 p-6">
+        <Card
+          variant="panel"
+          role="group"
+          aria-label="Solo plan"
+          aria-describedby={knownNonOwner ? noteId : undefined}
+          className="flex flex-col gap-4 p-6"
+        >
           <div>
             <h3 className="text-[18px]">Solo</h3>
             <p className="mt-1 text-[14px] text-ink-body">$29 per month, 1 buyer</p>
           </div>
           {isOwner ? (
             <Button
+              ref={soloRef}
               variant="outline"
               className="mt-auto"
               isLoading={pendingAction === 'solo'}
@@ -216,39 +247,52 @@ export default function BillingPage({ params }: { params: { id: string } }) {
             </Button>
           ) : null}
         </Card>
-        <Card variant="panel" className="flex flex-col gap-4 p-6">
+        <Card
+          variant="panel"
+          role="group"
+          aria-label="Team plan"
+          aria-describedby={knownNonOwner ? noteId : undefined}
+          className="flex flex-col gap-4 p-6"
+        >
           <div>
             <h3 className="text-[18px]">Team</h3>
             <p className="mt-1 text-[14px] text-ink-body">$69 per buyer per month</p>
           </div>
-          <div className="flex items-center justify-between gap-3">
-            <span className="text-[14px] font-medium">Buyers</span>
-            <div role="group" aria-label="Number of buyers" className="inline-flex items-center gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                size="icon"
-                aria-label="Decrease buyers"
-                disabled={seats <= MIN_SEATS}
-                onClick={() => setSeats((n) => Math.max(MIN_SEATS, n - 1))}
-              >
-                <Minus className="size-4" aria-hidden="true" />
-              </Button>
-              <span className="min-w-8 text-center font-mono text-[14px] tabular-nums">{seats}</span>
-              <Button
-                type="button"
-                variant="outline"
-                size="icon"
-                aria-label="Increase buyers"
-                disabled={seats >= MAX_SEATS}
-                onClick={() => setSeats((n) => Math.min(MAX_SEATS, n + 1))}
-              >
-                <Plus className="size-4" aria-hidden="true" />
-              </Button>
+          {isOwner ? (
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-[14px] font-medium">Buyers</span>
+              <div role="group" aria-label="Number of buyers" className="inline-flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  aria-label="Decrease buyers"
+                  aria-disabled={seats <= MIN_SEATS}
+                  className="aria-disabled:cursor-not-allowed aria-disabled:opacity-45"
+                  onClick={() => setSeats((n) => Math.max(MIN_SEATS, n - 1))}
+                >
+                  <Minus className="size-4" aria-hidden="true" />
+                </Button>
+                <span aria-live="polite" className="min-w-8 text-center font-mono text-[14px] tabular-nums">
+                  {seats}
+                </span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  aria-label="Increase buyers"
+                  aria-disabled={seats >= MAX_SEATS}
+                  className="aria-disabled:cursor-not-allowed aria-disabled:opacity-45"
+                  onClick={() => setSeats((n) => Math.min(MAX_SEATS, n + 1))}
+                >
+                  <Plus className="size-4" aria-hidden="true" />
+                </Button>
+              </div>
             </div>
-          </div>
+          ) : null}
           {isOwner ? (
             <Button
+              ref={teamRef}
               className="mt-auto"
               isLoading={pendingAction === 'team'}
               loadingText="Opening checkout"
@@ -260,7 +304,14 @@ export default function BillingPage({ params }: { params: { id: string } }) {
           ) : null}
         </Card>
       </div>
-      <p className="mt-3 text-[13px] text-ink-muted">Subscribing now starts your paid plan immediately.</p>
+      {isOwner ? (
+        <p className="mt-3 text-[13px] text-ink-muted">Subscribing now starts your paid plan immediately.</p>
+      ) : null}
+      {knownNonOwner ? (
+        <p id={noteId} className="mt-3 text-[13px] text-ink-muted">
+          Only the workspace owner can change billing.
+        </p>
+      ) : null}
     </Section>
   )
 
@@ -280,9 +331,11 @@ export default function BillingPage({ params }: { params: { id: string } }) {
               <p className="font-display text-[26px] font-semibold tracking-[-0.03em]">
                 {days === 1 ? '1 day left' : `${days} days left`}
               </p>
-              <p className="mt-2 text-[14px] text-ink-body">
-                {`Includes the Solo allowance: ${s.quotas?.matchedLines ?? 0} matched lines and ${s.quotas?.photoChecks ?? 0} photo checks a month`}
-              </p>
+              {s.quotas ? (
+                <p className="mt-2 text-[14px] text-ink-body">
+                  {`Includes the Solo allowance: ${s.quotas.matchedLines ?? 0} matched lines and ${s.quotas.photoChecks ?? 0} photo checks a month`}
+                </p>
+              ) : null}
             </Card>
           </Section>
           {renderPlans()}
@@ -307,7 +360,7 @@ export default function BillingPage({ params }: { params: { id: string } }) {
             ) : null}
             {isOwner ? (
               <div className="flex justify-end border-t border-border-inner bg-surface-subtle px-6 py-3.5">
-                <Button size="sm" isLoading={pendingAction === 'portal'} loadingText="Opening" onClick={() => void manage()}>
+                <Button ref={manageRef} size="sm" isLoading={pendingAction === 'portal'} loadingText="Opening" onClick={() => void manage()}>
                   Manage billing
                 </Button>
               </div>
@@ -353,14 +406,7 @@ export default function BillingPage({ params }: { params: { id: string } }) {
               variant="error"
               title="Couldn't load billing."
               action={
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => {
-                    setLoadError(false)
-                    void load()
-                  }}
-                >
+                <Button size="sm" variant="outline" aria-disabled={retrying} onClick={retry}>
                   Retry
                 </Button>
               }
@@ -370,15 +416,22 @@ export default function BillingPage({ params }: { params: { id: string } }) {
           <BillingSkeleton />
         ) : (
           <>
-            {checkoutSuccess && summary.state !== 'subscribed' ? (
-              pollReads >= POLL_MAX_READS ? (
-                <StatusBanner variant="warning" title="This is taking longer than usual. Refresh in a minute." className="mt-6" />
-              ) : (
-                <StatusBanner variant="loading" title="Payment received. Activating your plan..." className="mt-6" />
-              )
+            {checkoutSuccess ? (
+              // One node for the whole flow so screen readers announce each text change.
+              <StatusBanner
+                className="mt-6"
+                variant={summary.state === 'subscribed' ? 'success' : gaveUp ? 'warning' : 'loading'}
+                title={
+                  summary.state === 'subscribed'
+                    ? 'Your plan is active.'
+                    : gaveUp
+                      ? 'This is taking longer than usual. Refresh in a minute.'
+                      : 'Payment received. Activating your plan…'
+                }
+              />
             ) : null}
             {renderSummary(summary)}
-            {knownNonOwner && summary.state !== 'exempt' ? (
+            {knownNonOwner && summary.state === 'subscribed' ? (
               <p className="pb-6 text-[13px] text-ink-muted">Only the workspace owner can change billing.</p>
             ) : null}
           </>
