@@ -21,6 +21,7 @@ export class LemonSqueezyClient {
     quantity?: number
     email: string
     workspaceId: string
+    workspaceSig?: string
     redirectUrl: string
   }): Promise<{ url: string }> {
     const creds = this.credentials()
@@ -31,7 +32,10 @@ export class LemonSqueezyClient {
           product_options: { redirect_url: input.redirectUrl },
           checkout_data: {
             email: input.email,
-            custom: { workspace_id: input.workspaceId },
+            custom: {
+              workspace_id: input.workspaceId,
+              ...(input.workspaceSig ? { workspace_sig: input.workspaceSig } : {}),
+            },
             ...(input.quantity
               ? { variant_quantities: [{ variant_id: Number(input.variantId), quantity: input.quantity }] }
               : {}),

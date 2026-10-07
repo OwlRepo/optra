@@ -6,6 +6,7 @@ import type { BillingPlan, BillingSummary, CreateCheckoutResponse, PortalRespons
 import { EntitlementService } from './entitlement.service'
 import { LemonSqueezyClient } from './lemonsqueezy.client'
 import { isEntitledStatus, variantIdFor } from './plans'
+import { signWorkspaceBinding } from './webhook-signature'
 
 @Injectable()
 export class BillingService {
@@ -40,12 +41,18 @@ export class BillingService {
     const variantId = variantIdFor(dto.plan, this.config)
     if (!variantId) throw new ServiceUnavailableException('Billing is not configured')
 
+    // The binding is signed with the webhook secret; without it the webhook
+    // would reject the resulting subscription, so refuse before any charge.
+    const secret = this.config.get<string>('LEMONSQUEEZY_WEBHOOK_SECRET')
+    if (!secret) throw new ServiceUnavailableException('Billing is not configured')
+
     const webUrl = this.config.get<string>('WEB_URL') || 'http://localhost:3000'
     return this.ls.createCheckout({
       variantId,
       quantity: dto.plan === 'team' ? (dto.seats ?? 1) : undefined,
       email,
       workspaceId,
+      workspaceSig: signWorkspaceBinding(workspaceId, secret),
       redirectUrl: `${webUrl}/workspaces/${workspaceId}/billing?checkout=success`,
     })
   }
