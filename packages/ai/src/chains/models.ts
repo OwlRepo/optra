@@ -25,7 +25,7 @@ const ROLE_ENV: Record<ModelRole, string> = {
   procurement: 'OPENAI_PROCUREMENT_EXTRACTION_MODEL',
 }
 
-const DEFAULT_MODEL = 'gpt-4o'
+export const DEFAULT_MODEL = 'gpt-4o'
 
 function nonEmpty(value: string | undefined): string | undefined {
   if (value === undefined) return undefined
