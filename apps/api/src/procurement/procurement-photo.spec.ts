@@ -61,12 +61,6 @@ describe('procurement-photo', () => {
     it('edge: an ftyp box with an unrelated brand (mp4) is not heic', () => {
       expect(detectImageType(heicBuffer('isom'))).toBeNull()
     })
-
-    it('happy: recognises JPEG, PNG and WebP by magic bytes, ignoring the file name', async () => {
-      expect(detectImageType(await jpeg(10, 10))).toBe('jpeg')
-      expect(detectImageType(await sharp({ create: { width: 10, height: 10, channels: 3, background: '#fff' } }).png().toBuffer())).toBe('png')
-      expect(detectImageType(await sharp({ create: { width: 10, height: 10, channels: 3, background: '#fff' } }).webp().toBuffer())).toBe('webp')
-    })
   })
 
   describe('normalizePhoto', () => {
@@ -188,13 +182,6 @@ describe('procurement-photo', () => {
 
       expect(ok.info.format).toBe('jpeg')
     })
-
-    it('happy: a normal JPEG comes back as a JPEG buffer', async () => {
-      const { data, info } = await normalizePhoto(await jpeg(640, 480), 1)
-
-      expect(Buffer.isBuffer(data)).toBe(true)
-      expect(info.format).toBe('jpeg')
-    })
   })
 
   describe('stitchPagesToPdf', () => {
@@ -213,15 +200,6 @@ describe('procurement-photo', () => {
       expect(doc.getPage(0).getSize()).toEqual({ width: 300, height: 200 })
       expect(doc.getPage(1).getSize()).toEqual({ width: 200, height: 500 })
     })
-
-    it('happy: 3 pages make a 3-page PDF starting with %PDF', async () => {
-      const pages = await Promise.all([1, 2, 3].map(async (n) => (await normalizePhoto(await jpeg(300, 200), n)).data))
-
-      const pdf = await stitchPagesToPdf(pages)
-
-      expect(Buffer.from(pdf).subarray(0, 4).toString('latin1')).toBe('%PDF')
-      expect((await PDFDocument.load(pdf)).getPageCount()).toBe(3)
-    })
   })
 
   describe('storage keys', () => {
@@ -237,9 +215,39 @@ describe('procurement-photo', () => {
       expect(photoPageKey(key, 1)).toBe('ws-1/procurement/purchase_order/uuid-1-pages/1.jpg')
       expect(photoPageKey(key, 5)).toBe('ws-1/procurement/purchase_order/uuid-1-pages/5.jpg')
     })
+  })
 
+  describe('detectImageType (happy paths)', () => {
+    it('happy: recognises JPEG, PNG and WebP by magic bytes, ignoring the file name', async () => {
+      expect(detectImageType(await jpeg(10, 10))).toBe('jpeg')
+      expect(detectImageType(await sharp({ create: { width: 10, height: 10, channels: 3, background: '#fff' } }).png().toBuffer())).toBe('png')
+      expect(detectImageType(await sharp({ create: { width: 10, height: 10, channels: 3, background: '#fff' } }).webp().toBuffer())).toBe('webp')
+    })
+  });
+
+  describe('normalizePhoto (happy paths)', () => {
+    it('happy: a normal JPEG comes back as a JPEG buffer', async () => {
+      const { data, info } = await normalizePhoto(await jpeg(640, 480), 1)
+
+      expect(Buffer.isBuffer(data)).toBe(true)
+      expect(info.format).toBe('jpeg')
+    })
+  });
+
+  describe('stitchPagesToPdf (happy paths)', () => {
+    it('happy: 3 pages make a 3-page PDF starting with %PDF', async () => {
+      const pages = await Promise.all([1, 2, 3].map(async (n) => (await normalizePhoto(await jpeg(300, 200), n)).data))
+
+      const pdf = await stitchPagesToPdf(pages)
+
+      expect(Buffer.from(pdf).subarray(0, 4).toString('latin1')).toBe('%PDF')
+      expect((await PDFDocument.load(pdf)).getPageCount()).toBe(3)
+    })
+  });
+
+  describe('storage keys (happy paths)', () => {
     it('happy: MAX_PHOTO_PAGES is 5', () => {
       expect(MAX_PHOTO_PAGES).toBe(5)
     })
-  })
+  });
 })

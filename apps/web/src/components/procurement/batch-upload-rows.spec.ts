@@ -21,12 +21,6 @@ function totalFiles(rows: BatchRow[]) {
   return rows.reduce((sum, r) => sum + r.files.length, 0)
 }
 
-describe('MAX_BATCH_FILES', () => {
-  it('happy: a batch holds at most 5 files', () => {
-    expect(MAX_BATCH_FILES).toBe(5)
-  })
-})
-
 describe('classifyFile', () => {
   it.each([
     ['error: a PDF on the goods-receipt tab is refused', 'grn.pdf', 'goods-receipts', null],
@@ -159,14 +153,6 @@ describe('addFiles', () => {
   it('regression: a goods-receipt row has no currency (a receipt records what arrived, not what it cost)', () => {
     expect(addFiles([], [file('a.csv')], 'goods-receipts').rows[0].header.currency).toBeUndefined()
   })
-
-  it('happy: a PDF is a file row on the PO tab', () => {
-    const result = addFiles([], [file('po.pdf')], 'purchase-orders')
-
-    expect(result.error).toBeUndefined()
-    expect(result.rows[0]).toMatchObject({ kind: 'file', status: 'ready' })
-    expect(result.rows[0].files.map((f) => f.name)).toEqual(['po.pdf'])
-  })
 })
 
 describe('splitPhotoRow', () => {
@@ -274,14 +260,6 @@ describe('copyFromFirstRow', () => {
 
     expect(copyFromFirstRow(rows)[1].header.currency).toBe('GBP')
   })
-
-  it('happy: does not mutate the input rows', () => {
-    const rows = [row({ id: 'r1', header: { vendorId: 'v1' } }), row({ id: 'r2', header: {} })]
-
-    copyFromFirstRow(rows)
-
-    expect(rows[1].header).toEqual({})
-  })
 })
 
 describe('rowErrors', () => {
@@ -329,7 +307,35 @@ describe('rowErrors', () => {
 
     expect(errors).toEqual({})
   })
+})
 
+describe('MAX_BATCH_FILES (happy paths)', () => {
+  it('happy: a batch holds at most 5 files', () => {
+    expect(MAX_BATCH_FILES).toBe(5)
+  })
+})
+
+describe('addFiles (happy paths)', () => {
+  it('happy: a PDF is a file row on the PO tab', () => {
+    const result = addFiles([], [file('po.pdf')], 'purchase-orders')
+
+    expect(result.error).toBeUndefined()
+    expect(result.rows[0]).toMatchObject({ kind: 'file', status: 'ready' })
+    expect(result.rows[0].files.map((f) => f.name)).toEqual(['po.pdf'])
+  })
+})
+
+describe('copyFromFirstRow (happy paths)', () => {
+  it('happy: does not mutate the input rows', () => {
+    const rows = [row({ id: 'r1', header: { vendorId: 'v1' } }), row({ id: 'r2', header: {} })]
+
+    copyFromFirstRow(rows)
+
+    expect(rows[1].header).toEqual({})
+  })
+})
+
+describe('rowErrors (happy paths)', () => {
   it('happy: a complete row has no errors on any tab', () => {
     expect(rowErrors(row({ id: 'r', header: { vendorId: 'v1', poNumber: 'PO-1', currency: 'USD' } }), 'purchase-orders')).toEqual({})
     expect(rowErrors(row({ id: 'r', header: { purchaseOrderId: 'po-1', invoiceNumber: 'I-1', currency: 'USD' } }), 'invoices')).toEqual({})

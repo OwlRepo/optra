@@ -189,75 +189,6 @@ describe('ProcurementReviewService', () => {
       expect(result.items.map((l) => l.sku)).toEqual(['A1', 'B2', 'C3'])
     })
 
-    it('happy: returns the review document header and ordered lines with numeric confidence', async () => {
-      const a = await seedWorkspace('list-happy')
-      const { po, lines } = await seedPo(a.workspace.id)
-
-      const result = await service.listLines(a.workspace.id, 'purchase_order', po.id, {})
-
-      expect(result.document).toMatchObject({
-        id: po.id,
-        name: 'po-photo.pdf',
-        status: 'done',
-        sourceKind: 'image',
-        pageCount: 2,
-        detectedKind: 'purchase_order',
-        reviewRequired: true,
-        reviewedAt: null,
-        reviewedBy: null,
-      })
-      expect(result.items.map((l) => l.id)).toEqual(lines.map((l) => l.id))
-      expect(result.items[0]).toMatchObject({
-        lineNumber: 1,
-        sku: 'A1',
-        quantity: '10',
-        unitPrice: '5',
-        lineTotal: '50',
-        extractionConfidence: 0.92,
-        sourceKind: 'image-extraction',
-        editedAt: null,
-        editedBy: null,
-      })
-      expect(result.total).toBe(3)
-    })
-
-    it('happy: goods-receipt lines expose the three quantities', async () => {
-      const a = await seedWorkspace('list-grn')
-      const { po } = await seedPo(a.workspace.id)
-      const [grn] = await db
-        .insert(goodsReceipts)
-        .values({
-          workspaceId: a.workspace.id,
-          purchaseOrderId: po.id,
-          name: 'grn.pdf',
-          status: 'done',
-          sourceKind: 'image',
-          reviewRequired: true,
-          pageCount: 1,
-        })
-        .returning()
-      await db.insert(goodsReceiptLineItems).values({
-        workspaceId: a.workspace.id,
-        goodsReceiptId: grn.id,
-        lineNumber: 1,
-        sku: 'A1',
-        quantityReceived: '10',
-        quantityAccepted: '8',
-        quantityRejected: '2',
-        sourceKind: 'image-extraction',
-        extractionConfidence: '0.7',
-      })
-
-      const result = await service.listLines(a.workspace.id, 'goods_receipt', grn.id, {})
-
-      expect(result.items[0]).toMatchObject({
-        sku: 'A1',
-        quantityReceived: '10',
-        quantityAccepted: '8',
-        quantityRejected: '2',
-        extractionConfidence: 0.7,
-      })
-    })
   })
 
   describe('getPage', () => {
@@ -296,16 +227,6 @@ describe('ProcurementReviewService', () => {
       const { po } = await seedPo(a.workspace.id)
 
       await expect(service.getPage(a.workspace.id, 'purchase_order', po.id, 1)).rejects.toBeInstanceOf(NotFoundException)
-    })
-
-    it('happy: page 2 reads <storageKey dir>/2.jpg and returns the bytes', async () => {
-      const a = await seedWorkspace('page-happy')
-      const { po } = await seedPo(a.workspace.id, { pageCount: 2 })
-
-      const buffer = await service.getPage(a.workspace.id, 'purchase_order', po.id, 2)
-
-      expect(storage.getBuffer).toHaveBeenCalledWith(`${a.workspace.id}/procurement/purchase_order/x-pages/2.jpg`)
-      expect(Buffer.from(buffer).toString()).toBe('jpeg bytes')
     })
   })
 
@@ -570,6 +491,94 @@ describe('ProcurementReviewService', () => {
       expect(after.reviewedAt).not.toBeNull()
     })
 
+
+  })
+
+  describe('listLines (happy paths)', () => {
+    it('happy: returns the review document header and ordered lines with numeric confidence', async () => {
+      const a = await seedWorkspace('list-happy')
+      const { po, lines } = await seedPo(a.workspace.id)
+
+      const result = await service.listLines(a.workspace.id, 'purchase_order', po.id, {})
+
+      expect(result.document).toMatchObject({
+        id: po.id,
+        name: 'po-photo.pdf',
+        status: 'done',
+        sourceKind: 'image',
+        pageCount: 2,
+        detectedKind: 'purchase_order',
+        reviewRequired: true,
+        reviewedAt: null,
+        reviewedBy: null,
+      })
+      expect(result.items.map((l) => l.id)).toEqual(lines.map((l) => l.id))
+      expect(result.items[0]).toMatchObject({
+        lineNumber: 1,
+        sku: 'A1',
+        quantity: '10',
+        unitPrice: '5',
+        lineTotal: '50',
+        extractionConfidence: 0.92,
+        sourceKind: 'image-extraction',
+        editedAt: null,
+        editedBy: null,
+      })
+      expect(result.total).toBe(3)
+    })
+
+    it('happy: goods-receipt lines expose the three quantities', async () => {
+      const a = await seedWorkspace('list-grn')
+      const { po } = await seedPo(a.workspace.id)
+      const [grn] = await db
+        .insert(goodsReceipts)
+        .values({
+          workspaceId: a.workspace.id,
+          purchaseOrderId: po.id,
+          name: 'grn.pdf',
+          status: 'done',
+          sourceKind: 'image',
+          reviewRequired: true,
+          pageCount: 1,
+        })
+        .returning()
+      await db.insert(goodsReceiptLineItems).values({
+        workspaceId: a.workspace.id,
+        goodsReceiptId: grn.id,
+        lineNumber: 1,
+        sku: 'A1',
+        quantityReceived: '10',
+        quantityAccepted: '8',
+        quantityRejected: '2',
+        sourceKind: 'image-extraction',
+        extractionConfidence: '0.7',
+      })
+
+      const result = await service.listLines(a.workspace.id, 'goods_receipt', grn.id, {})
+
+      expect(result.items[0]).toMatchObject({
+        sku: 'A1',
+        quantityReceived: '10',
+        quantityAccepted: '8',
+        quantityRejected: '2',
+        extractionConfidence: 0.7,
+      })
+    })
+  });
+
+  describe('getPage (happy paths)', () => {
+    it('happy: page 2 reads <storageKey dir>/2.jpg and returns the bytes', async () => {
+      const a = await seedWorkspace('page-happy')
+      const { po } = await seedPo(a.workspace.id, { pageCount: 2 })
+
+      const buffer = await service.getPage(a.workspace.id, 'purchase_order', po.id, 2)
+
+      expect(storage.getBuffer).toHaveBeenCalledWith(`${a.workspace.id}/procurement/purchase_order/x-pages/2.jpg`)
+      expect(Buffer.from(buffer).toString()).toBe('jpeg bytes')
+    })
+  });
+
+  describe('review (happy paths)', () => {
     it('happy: editing a quantity sets edited_at/edited_by, reviewed_at/by, and rowCount', async () => {
       const a = await seedWorkspace('rev-happy')
       const { po, lines } = await seedPo(a.workspace.id)
@@ -642,5 +651,5 @@ describe('ProcurementReviewService', () => {
       expect(stored[1]).toMatchObject({ sku: 'ADDED', sourceKind: 'manual', lineNumber: 2 })
       expect(compare.enqueueForDocument).toHaveBeenCalledWith('goods_receipt', grn.id)
     })
-  })
+  });
 })
