@@ -1,6 +1,8 @@
-// Billing contract (slice S3 "billing core", docs/plans/lemon-squeezy-billing-1-core.md).
-// Request/response shapes of GET|POST /workspaces/:workspaceId/billing*. Dates
-// are ISO-8601 strings on the wire. Mirrors docs/ai/contracts/api-contracts.md.
+// Billing contract (slice S3 "billing core", docs/plans/lemon-squeezy-billing-1-core.md;
+// slice S4 "metering", docs/plans/lemon-squeezy-billing-2-metering.md).
+// Request/response shapes of GET|POST /workspaces/:workspaceId/billing*, plus the
+// 402 body the metered routes answer. Dates are ISO-8601 strings on the wire.
+// Mirrors docs/ai/contracts/api-contracts.md.
 
 /** The two paid plans. The trial and the exempt flag are states, not plans. */
 export type BillingPlan = 'solo' | 'team'
@@ -21,21 +23,34 @@ export interface BillingQuotas {
 }
 
 /**
- * Consumption in the current period. `null` = not metered yet: the usage
- * ledger ships in slice S4, so S3 always returns `null` for both.
+ * Consumption in the current period (`BillingSummary.period`; the UTC calendar
+ * month for an exempt workspace). S3 returned `null` for everything because no
+ * ledger existed; from S4 the API always returns numbers. `null` stays in the
+ * type so S3-shaped fixtures and a rolled-back API still type-check.
  */
 export interface BillingUsed {
+  /** Distinct PO/invoice pairs' PO line counts compared this period (`usage_events.kind = 'matched_line'`). */
   matchedLines: number | null
+  /** Catalog searches that fanned out to the vision model this period (`kind = 'photo_check'`). */
   photoChecks: number | null
+  /**
+   * S4, additive. Share of the period's AI allowance already spent, an integer
+   * 0..100 (floor; 100 only at or over the cap). The dollar cap and the dollar
+   * spend never leave the API: public copy makes no dollar promise
+   * (docs/ai/risk-register.md "Landing Pricing Copy"). `undefined` from an S3 API.
+   */
+  aiBudgetPercent?: number | null
 }
 
 /** GET /workspaces/:workspaceId/billing */
 export interface BillingSummary {
   state: BillingState
   /**
-   * `true` when BILLING_ENFORCEMENT=on: a `none` workspace is refused. In S3
-   * nothing is refused yet (gates ship in S4), so the UI uses this only to
-   * decide how loudly to say "subscription required".
+   * `true` when BILLING_ENFORCEMENT=on: a `none` workspace is refused with
+   * 402 `SUBSCRIPTION_REQUIRED`, and quota/AI-cap overruns with 402
+   * `QUOTA_EXCEEDED` / `AI_BUDGET_EXCEEDED` (S4 gates). Meters still record
+   * when `false`; nothing is refused. The UI uses this to decide how loudly to
+   * say "subscription required".
    */
   enforced: boolean
   /** The paid plan; `null` while `trialing`, `exempt` or `none`. */
@@ -73,4 +88,27 @@ export interface CreateCheckoutResponse {
 export interface PortalResponse {
   /** Signed, expiring Lemon Squeezy customer-portal URL. */
   url: string
+}
+
+/**
+ * Why a metered route answered 402. Set on the response body next to the
+ * existing `statusCode` / `message`; clients branch on `code`, never on the
+ * message text. A 402 without `code` is the legacy token-budget refusal
+ * (`BILLING_ENFORCEMENT` off), same status, same `isBudgetExceeded` handling.
+ */
+export type BillingStopCode =
+  /** State `none` while enforcement is on: no trial, no subscription, not exempt. */
+  | 'SUBSCRIPTION_REQUIRED'
+  /** A new PO/invoice pair (matched lines) or a catalog search (photo checks) would pass the plan quota. */
+  | 'QUOTA_EXCEEDED'
+  /** The period's AI cost has reached the plan's dollar cap. */
+  | 'AI_BUDGET_EXCEEDED'
+
+/** The JSON body of every billing 402. `quota` is set only with `QUOTA_EXCEEDED`. */
+export interface BillingStopBody {
+  statusCode: 402
+  /** A readable sentence that already points at the Billing page. */
+  message: string
+  code: BillingStopCode
+  quota?: 'matchedLines' | 'photoChecks'
 }
