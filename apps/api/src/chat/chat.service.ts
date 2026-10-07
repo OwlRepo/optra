@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common'
+import { Injectable, Logger, NotFoundException } from '@nestjs/common'
 import { and, asc, count, desc, eq, gt, ilike, ne, or, sql } from 'drizzle-orm'
 import {
   buildOffsetResult,
@@ -22,6 +22,8 @@ type CacheStatus = 'exact' | 'semantic' | 'miss' | 'structured'
 
 @Injectable()
 export class ChatService {
+  private readonly logger = new Logger(ChatService.name)
+
   constructor(
     private readonly cache: CacheService,
     private readonly usage: UsageService,
@@ -61,6 +63,7 @@ export class ChatService {
       historyInAnswerEnabled,
       historyMaxMessages,
       TokenMeter: TokenMeterImpl,
+      resolveModel,
     } = await import('@repo/ai')
 
     // History only needs fetching when at least one history-aware behavior is
@@ -162,17 +165,28 @@ export class ChatService {
     // priced from the provider's own usage and written to the billing ledger once
     // the stream ends (or breaks). The Redis estimate in onComplete is unchanged.
     const answerMeter = new TokenMeterImpl()
-    const answered = await answerQuestion(
-      standaloneQuestion,
-      workspaceId,
-      undefined,
-      embedding,
-      undefined,
-      history,
-      answerMeter,
-    )
+    let answered: Awaited<ReturnType<typeof answerQuestion>>
+    try {
+      answered = await answerQuestion(
+        standaloneQuestion,
+        workspaceId,
+        undefined,
+        embedding,
+        undefined,
+        history,
+        answerMeter,
+      )
+    } catch (error) {
+      // A graph rewrite/grade call may have spent tokens before the failure.
+      if (answerMeter.total > 0) await this.usage.recordLedger(workspaceId, answerMeter)
+      throw error
+    }
     const { sources, isFallback } = answered
-    const stream = this.chargeAfter(workspaceId, answerMeter, answered.stream)
+    const stream = this.chargeAfter(workspaceId, answerMeter, answered.stream, {
+      question: standaloneQuestion,
+      countTokens,
+      model: () => resolveModel('answer'),
+    })
 
     return {
       sessionId: session.id,
@@ -342,18 +356,75 @@ export class ChatService {
     return session
   }
 
-  // Pass-through generator: same chunks, same order. `finally` also runs when the
-  // consumer stops early or the stream throws, so spent tokens still reach the ledger.
-  private async *chargeAfter(
+  // Pass-through iterator: same chunks, same order. A hand-written iterator (not
+  // an async generator) so return() settles the ledger even when the consumer
+  // closes it before the first chunk (an unstarted generator skips `finally`).
+  // Settles exactly once on end, error or early close. When the provider
+  // reported no usage (meter empty), a countTokens estimate is recorded so the
+  // call is never free; the Redis estimate in onComplete is separate.
+  private chargeAfter(
     workspaceId: string,
     meter: TokenMeter,
-    stream: AsyncGenerator<string>,
+    source: AsyncGenerator<string>,
+    estimate: { question: string; countTokens: (text: string) => number; model: () => string },
   ): AsyncGenerator<string> {
-    try {
-      for await (const token of stream) yield token
-    } finally {
+    let settled = false
+    let streamed = ''
+    const settle = async () => {
+      if (settled) return
+      settled = true
+      if (meter.total === 0) {
+        // Band-aid by design: a failing estimate must never break the answer
+        // stream; it under-counts one call and is logged.
+        try {
+          const input = estimate.countTokens(estimate.question)
+          const output = estimate.countTokens(streamed)
+          meter.record(
+            { usage_metadata: { input_tokens: input, output_tokens: output, total_tokens: input + output } },
+            estimate.model(),
+          )
+        } catch (error) {
+          this.logger.warn(
+            `answer cost estimate failed workspace=${workspaceId}: ${error instanceof Error ? error.message : String(error)}`,
+          )
+        }
+      }
       await this.usage.recordLedger(workspaceId, meter)
     }
+
+    const iterator = {
+      next: async () => {
+        try {
+          const result = await source.next()
+          if (result.done) await settle()
+          else streamed += result.value
+          return result
+        } catch (error) {
+          await settle()
+          throw error
+        }
+      },
+      return: async (value?: unknown) => {
+        try {
+          await source.return(value as undefined)
+        } finally {
+          await settle()
+        }
+        return { done: true as const, value: undefined }
+      },
+      throw: async (error?: unknown) => {
+        try {
+          return await source.throw(error)
+        } finally {
+          await settle()
+        }
+      },
+      [Symbol.asyncIterator]() {
+        return iterator
+      },
+    }
+    // Structural AsyncGenerator: asyncDispose (a TS 5.2 lib member) is not needed at runtime here.
+    return iterator as unknown as AsyncGenerator<string>
   }
 
   private async answerStructured(
