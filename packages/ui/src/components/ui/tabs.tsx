@@ -20,6 +20,8 @@ export interface TabsProps {
   'aria-label': string
   /** Stretch the track and split it evenly below lg (frame 4.2). */
   fullWidth?: boolean
+  /** Wires `${idPrefix}-tab-${id}` / `aria-controls=${idPrefix}-panel-${id}` for consumer tabpanels. */
+  idPrefix?: string
   className?: string
 }
 
@@ -59,7 +61,31 @@ function OptionCount({ count, active }: { count: number; active: boolean }) {
   )
 }
 
-export function Tabs({ items, value, onValueChange, fullWidth = false, className, ...ariaProps }: TabsProps) {
+// Roving-tabindex key map shared by Tabs and SegmentedControl. Returns the
+// index to move to, or null when the key is not a navigation key.
+function nextRovingIndex(key: string, index: number, last: number, vertical: boolean): number | null {
+  if (key === 'ArrowRight' || (vertical && key === 'ArrowDown')) return index === last ? 0 : index + 1
+  if (key === 'ArrowLeft' || (vertical && key === 'ArrowUp')) return index === 0 ? last : index - 1
+  if (key === 'Home') return 0
+  if (key === 'End') return last
+  return null
+}
+
+export function Tabs({ items, value, onValueChange, fullWidth = false, idPrefix, className, ...ariaProps }: TabsProps) {
+  const tabRefs = React.useRef<Array<HTMLButtonElement | null>>([])
+  const selectedIndex = items.findIndex((item) => item.id === value)
+  const tabbableIndex = selectedIndex === -1 ? 0 : selectedIndex
+
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>, index: number) => {
+    const next = nextRovingIndex(event.key, index, items.length - 1, false)
+    if (next === null) return
+    const item = items[next]
+    if (!item) return
+    event.preventDefault()
+    tabRefs.current[next]?.focus()
+    if (item.id !== value) onValueChange(item.id)
+  }
+
   return (
     <div
       role="tablist"
@@ -70,14 +96,21 @@ export function Tabs({ items, value, onValueChange, fullWidth = false, className
         className,
       )}
     >
-      {items.map((item) => {
+      {items.map((item, index) => {
         const selected = item.id === value
         return (
           <button
             key={item.id}
+            ref={(node) => {
+              tabRefs.current[index] = node
+            }}
             type="button"
             role="tab"
+            id={idPrefix ? `${idPrefix}-tab-${item.id}` : undefined}
+            aria-controls={idPrefix ? `${idPrefix}-panel-${item.id}` : undefined}
             aria-selected={selected}
+            tabIndex={index === tabbableIndex ? 0 : -1}
+            onKeyDown={(event) => handleKeyDown(event, index)}
             aria-label={item.shortLabel ? item.label : undefined}
             onClick={() => {
               if (item.id !== value) onValueChange(item.id)
@@ -129,12 +162,7 @@ export function SegmentedControl({
   }
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>, index: number) => {
-    const last = options.length - 1
-    let next: number | null = null
-    if (event.key === 'ArrowRight' || event.key === 'ArrowDown') next = index === last ? 0 : index + 1
-    else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') next = index === 0 ? last : index - 1
-    else if (event.key === 'Home') next = 0
-    else if (event.key === 'End') next = last
+    const next = nextRovingIndex(event.key, index, options.length - 1, true)
     if (next === null) return
     event.preventDefault()
     moveTo(next)

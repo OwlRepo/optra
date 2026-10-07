@@ -39,6 +39,13 @@ vi.mock('@/lib/api/procurement', () => ({
   uploadGoodsReceipt: (...args: unknown[]) => uploadGoodsReceiptMock(...args),
   uploadPurchaseOrder: (...args: unknown[]) => uploadPurchaseOrderMock(...args),
   uploadInvoice: (...args: unknown[]) => uploadInvoiceMock(...args),
+  uploadPurchaseOrderPhotos: vi.fn(),
+  uploadInvoicePhotos: vi.fn(),
+  uploadGoodsReceiptPhotos: vi.fn(),
+  listDocumentLines: vi.fn(),
+  reviewDocument: vi.fn(),
+  documentPageUrl: (ws: string, kind: string, id: string, n: number) =>
+    `/api/workspaces/${ws}/procurement/${kind}/${id}/pages/${n}`,
   compareDocuments: (...args: unknown[]) => compareDocumentsMock(...args),
   downloadProcurementDocument: (...args: unknown[]) => downloadProcurementDocumentMock(...args),
 }))
@@ -69,6 +76,110 @@ const doneInvoice = {
   lastError: null,
   createdAt: '2026-07-02T00:00:00.000Z',
   hasSourceFile: true,
+}
+
+// The dialog and the review modal have their own specs. Here they are stubs
+// that expose the props the page hands them, so this file proves the wiring
+// (which tab, which lists, who may edit) and nothing else.
+vi.mock('@/components/procurement/batch-upload-dialog', async () => {
+  const React = await import('react')
+  return {
+    BatchUploadDialog: (props: {
+      open: boolean
+      onClose: () => void
+      workspaceId: string
+      tab: string
+      vendors: unknown[]
+      purchaseOrders: Array<{ id: string }>
+      onUploaded: () => void
+    }) =>
+      React.createElement(
+        'div',
+        {
+          'data-testid': 'batch-upload-dialog',
+          'data-open': String(props.open),
+          'data-tab': props.tab,
+          'data-workspace-id': props.workspaceId,
+          'data-vendor-count': String(props.vendors.length),
+          'data-po-ids': props.purchaseOrders.map((po) => po.id).join(','),
+        },
+        props.open
+          ? [
+              React.createElement('button', { key: 'u', onClick: props.onUploaded }, 'stub uploaded'),
+              React.createElement('button', { key: 'c', onClick: props.onClose }, 'stub close'),
+            ]
+          : null,
+      ),
+  }
+})
+
+vi.mock('@/components/procurement/document-review-modal', async () => {
+  const React = await import('react')
+  return {
+    DocumentReviewModal: (props: {
+      open: boolean
+      onClose: () => void
+      workspaceId: string
+      kind: string
+      docId: string
+      canEdit: boolean
+      onReviewed: () => void
+      returnFocusRef?: { current: HTMLElement | null }
+    }) => {
+      // Mimics the real Modal: on unmount, focus goes to `returnFocusRef`.
+      const returnFocusRef = props.returnFocusRef
+      React.useEffect(
+        () => () => {
+          const target = returnFocusRef?.current
+          if (target?.isConnected) target.focus()
+        },
+        [returnFocusRef],
+      )
+      return props.open
+        ? React.createElement(
+            'div',
+            {
+              'data-testid': 'document-review-modal',
+              'data-kind': props.kind,
+              'data-doc-id': props.docId,
+              'data-can-edit': String(props.canEdit),
+            },
+            React.createElement('button', { onClick: props.onReviewed }, 'stub reviewed'),
+            React.createElement('button', { onClick: props.onClose }, 'stub review close'),
+          )
+        : null
+    },
+  }
+})
+
+const dialog = () => screen.queryByTestId('batch-upload-dialog')
+const dialogOpen = () => dialog()?.getAttribute('data-open') === 'true'
+
+const photoPendingPo = {
+  ...donePurchaseOrder,
+  id: 'po-photo',
+  name: 'po-photo.pdf',
+  sourceKind: 'image',
+  pageCount: 2,
+  reviewRequired: true,
+  reviewedAt: null,
+}
+
+const reviewedPhotoPo = {
+  ...photoPendingPo,
+  id: 'po-reviewed',
+  name: 'po-reviewed.pdf',
+  reviewedAt: '2026-10-05T00:00:00.000Z',
+}
+
+const photoPendingInvoice = {
+  ...doneInvoice,
+  id: 'inv-photo',
+  name: 'inv-photo.pdf',
+  sourceKind: 'image',
+  pageCount: 1,
+  reviewRequired: true,
+  reviewedAt: null,
 }
 
 function stubDesktop(matches: boolean) {
@@ -136,68 +247,60 @@ describe('ProcurementPage', () => {
     renderPage()
 
     await screen.findByText('No purchase orders yet')
-    expect(document.querySelector('input[type="file"]')).not.toBeNull()
+    expect((await screen.findAllByRole('button', { name: 'Upload purchase order' })).length).toBeGreaterThan(0)
   })
 
-  it('uploads a purchase order and shows a success toast after refreshing the list', async () => {
+  // The header modals and their single-file handlers are gone: the upload
+  // buttons open BatchUploadDialog (batch-upload-dialog.spec.tsx owns the
+  // upload requests, the held-file rows, the error toast and the dead-end
+  // states that used to be asserted here).
+  it('happy: the upload button opens the batch dialog on the purchase-orders tab, and its onUploaded refreshes the list', async () => {
     getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme', role: 'owner' })
     listPurchaseOrdersMock
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([donePurchaseOrder])
     listInvoicesMock.mockResolvedValue([])
-    uploadPurchaseOrderMock.mockResolvedValue({ id: 'po-1', name: 'po-march.csv', status: 'pending' })
 
     renderPage()
 
     await screen.findByText('No purchase orders yet')
+    expect(dialogOpen()).toBe(false)
+    expect(document.querySelector('input[type="file"]')).toBeNull()
 
-    const file = new File(['content'], 'po-march.csv', { type: 'text/csv' })
-    const input = document.querySelector('input[type="file"]') as HTMLInputElement
-    fireEvent.change(input, { target: { files: [file] } })
+    fireEvent.click(screen.getAllByRole('button', { name: 'Upload purchase order' })[0])
 
-    // S3b: picking a file opens the header form instead of uploading, because
-    // POLICY v1 #3's vendor cannot be read out of the document.
-    const vendorSelect = await screen.findByLabelText('Vendor')
-    fireEvent.change(vendorSelect, { target: { value: 'vendor-1' } })
-    fireEvent.change(screen.getByLabelText('PO number'), { target: { value: 'PO-2026-1180' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Upload' }))
+    expect(dialogOpen()).toBe(true)
+    expect(dialog()?.getAttribute('data-tab')).toBe('purchase-orders')
+    expect(dialog()?.getAttribute('data-workspace-id')).toBe('ws-1')
+    expect(dialog()?.getAttribute('data-vendor-count')).toBe('1')
+
+    fireEvent.click(screen.getByRole('button', { name: 'stub uploaded' }))
 
     await waitFor(() => {
-      expect(uploadPurchaseOrderMock).toHaveBeenCalledWith('ws-1', file, {
-        vendorId: 'vendor-1',
-        poNumber: 'PO-2026-1180',
-        currency: 'USD',
-      })
+      expect(listPurchaseOrdersMock).toHaveBeenCalledTimes(2)
       expect(screen.getAllByText('po-march.csv').length).toBeGreaterThan(0)
     })
-    expect(await screen.findByText('Purchase order uploaded')).toBeDefined()
   })
 
-  it('shows an error toast when upload fails', async () => {
+  it('edge: closing the dialog closes it without refreshing', async () => {
     getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme', role: 'owner' })
     listPurchaseOrdersMock.mockResolvedValue([])
     listInvoicesMock.mockResolvedValue([])
-    uploadPurchaseOrderMock.mockRejectedValue({ message: 'File type not supported' })
 
     renderPage()
 
     await screen.findByText('No purchase orders yet')
+    fireEvent.click(screen.getAllByRole('button', { name: 'Upload purchase order' })[0])
+    expect(dialogOpen()).toBe(true)
+    fireEvent.click(screen.getByRole('button', { name: 'stub close' }))
 
-    const file = new File(['content'], 'po-march.pdf', { type: 'application/pdf' })
-    const input = document.querySelector('input[type="file"]') as HTMLInputElement
-    fireEvent.change(input, { target: { files: [file] } })
-
-    fireEvent.change(await screen.findByLabelText('Vendor'), { target: { value: 'vendor-1' } })
-    fireEvent.change(screen.getByLabelText('PO number'), { target: { value: 'PO-2026-1180' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Upload' }))
-
-    expect(await screen.findByText('Upload failed')).toBeDefined()
-    expect(await screen.findByText('File type not supported')).toBeDefined()
+    expect(dialogOpen()).toBe(false)
+    expect(listPurchaseOrdersMock).toHaveBeenCalledTimes(1)
   })
 
-  // POLICY v1 #3 makes the vendor mandatory, so a workspace with none cannot
-  // complete this form. Saying so beats letting the user submit into a 404.
-  it('explains the dead end instead of uploading when the workspace has no vendors', async () => {
+  // POLICY v1 #3 dead end: the page's job is to hand the dialog the vendor
+  // list; the dialog renders "No vendors yet" (dialog spec).
+  it('edge: a workspace with no vendors hands the dialog an empty vendor list', async () => {
     getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme', role: 'owner' })
     listPurchaseOrdersMock.mockResolvedValue([])
     listInvoicesMock.mockResolvedValue([])
@@ -206,13 +309,9 @@ describe('ProcurementPage', () => {
     renderPage()
 
     await screen.findByText('No purchase orders yet')
+    fireEvent.click(screen.getAllByRole('button', { name: 'Upload purchase order' })[0])
 
-    const file = new File(['content'], 'po-march.csv', { type: 'text/csv' })
-    const input = document.querySelector('input[type="file"]') as HTMLInputElement
-    fireEvent.change(input, { target: { files: [file] } })
-
-    expect(await screen.findByText('No vendors yet')).toBeDefined()
-    expect(uploadPurchaseOrderMock).not.toHaveBeenCalled()
+    await waitFor(() => expect(dialog()?.getAttribute('data-vendor-count')).toBe('0'))
   })
 
   it('runs a comparison and navigates to the discrepancies page with query params', async () => {
@@ -381,24 +480,6 @@ describe('ProcurementPage', () => {
       expect(screen.getByText('csv / xlsx')).toBeDefined()
     })
 
-    it('edge: with no vendors the PO form is blocked by an amber prerequisite that links out to vendors', async () => {
-      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme', role: 'owner' })
-      listPurchaseOrdersMock.mockResolvedValue([])
-      listInvoicesMock.mockResolvedValue([])
-      listVendorsMock.mockResolvedValue([])
-
-      renderPage()
-
-      await screen.findByText('No purchase orders yet')
-      const file = new File(['content'], 'po-march.csv', { type: 'text/csv' })
-      fireEvent.change(document.querySelector('input[type="file"]') as HTMLInputElement, { target: { files: [file] } })
-
-      expect(await screen.findByText('Needs a vendor first')).toBeDefined()
-      expect((screen.getByRole('button', { name: 'Upload' }) as HTMLButtonElement).disabled).toBe(true)
-      fireEvent.click(screen.getByRole('button', { name: 'Go to vendors' }))
-      expect(pushMock).toHaveBeenCalledWith('/workspaces/ws-1/vendors')
-    })
-
     it('edge: only a processing row pulses; a queued row waits without it', async () => {
       getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme', role: 'owner' })
       listPurchaseOrdersMock.mockResolvedValue([
@@ -461,60 +542,35 @@ describe('ProcurementPage', () => {
       renderPage()
 
       expect(await screen.findByText('No purchase orders yet')).toBeDefined()
-      expect(
-        screen.getByText('Upload a CSV, XLSX, or PDF purchase order to compare it against an invoice.'),
-      ).toBeDefined()
+      // Phone photos are accepted now, and the empty state says so.
+      expect(screen.getByText(/photo/i).textContent).toMatch(/purchase order/i)
 
       fireEvent.click(screen.getByRole('tab', { name: /^Invoices/ }))
 
       expect(await screen.findByText('No invoices yet')).toBeDefined()
-      expect(
-        screen.getByText('Upload a CSV, XLSX, or PDF invoice to compare it against a purchase order.'),
-      ).toBeDefined()
+      expect(screen.getByText(/photo/i).textContent).toMatch(/invoice/i)
     })
 
-    // S5. A receipt answers exactly one purchase order (POLICY v1 #2), so picking
-    // a file opens the same kind of header form the invoice upload uses.
-    it('regression: uploads a goods receipt against a chosen purchase order', async () => {
+    // S5. A receipt answers exactly one purchase order (POLICY v1 #2); the
+    // header form lives in the dialog now, so the page's part is the tab and
+    // the purchase-order list it hands over.
+    it('regression: the goods-receipts upload opens the dialog on that tab with the purchase orders to link', async () => {
       getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme', role: 'owner' })
       listPurchaseOrdersMock.mockResolvedValue([donePurchaseOrder])
       listInvoicesMock.mockResolvedValue([])
       listGoodsReceiptsMock.mockResolvedValue([])
-      uploadGoodsReceiptMock.mockResolvedValue({ id: 'grn-1', name: 'grn.csv', status: 'pending' })
 
       renderPage()
 
       fireEvent.click(await screen.findByRole('tab', { name: /^Goods Receipts/ }))
+      fireEvent.click(screen.getAllByRole('button', { name: 'Upload goods receipt' })[0])
 
-      const file = new File(['sku,qty received\nA1,8'], 'grn.csv', { type: 'text/csv' })
-      const inputs = Array.from(document.querySelectorAll('input[type="file"]')) as HTMLInputElement[]
-      const grnInput = inputs.find((input) => input.accept === '.csv,.xlsx')
-      expect(grnInput).toBeDefined()
-      fireEvent.change(grnInput as HTMLInputElement, { target: { files: [file] } })
-
-      // Scoped by id: the compare section further down the page also labels a
-      // select "Purchase order", so a label query matches two controls.
-      const poSelect = await waitFor(() => {
-        const el = document.querySelector('#grn-po')
-        expect(el).not.toBeNull()
-        return el as HTMLSelectElement
-      })
-      fireEvent.change(poSelect, { target: { value: 'po-1' } })
-      fireEvent.change(screen.getByLabelText('Goods receipt number'), { target: { value: 'GRN-9001' } })
-      fireEvent.click(screen.getByRole('button', { name: 'Upload' }))
-
-      await waitFor(() => {
-        expect(uploadGoodsReceiptMock).toHaveBeenCalledWith('ws-1', file, {
-          purchaseOrderId: 'po-1',
-          grnNumber: 'GRN-9001',
-        })
-      })
-      expect(await screen.findByText('Goods receipt uploaded')).toBeDefined()
+      expect(dialogOpen()).toBe(true)
+      expect(dialog()?.getAttribute('data-tab')).toBe('goods-receipts')
+      expect(dialog()?.getAttribute('data-po-ids')).toBe('po-1')
     })
 
-    // Same dead-end handling as the PO modal's no-vendors case: explain it rather
-    // than letting the user submit into a guaranteed 404.
-    it('regression: explains that a purchase order is needed before a receipt can be uploaded', async () => {
+    it('regression: a workspace with no purchase orders hands the receipt dialog an empty list', async () => {
       getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme', role: 'owner' })
       listPurchaseOrdersMock.mockResolvedValue([])
       listInvoicesMock.mockResolvedValue([])
@@ -523,15 +579,24 @@ describe('ProcurementPage', () => {
       renderPage()
 
       fireEvent.click(await screen.findByRole('tab', { name: /^Goods Receipts/ }))
+      fireEvent.click(screen.getAllByRole('button', { name: 'Upload goods receipt' })[0])
 
-      const file = new File(['sku,qty received\nA1,8'], 'grn.csv', { type: 'text/csv' })
-      const inputs = Array.from(document.querySelectorAll('input[type="file"]')) as HTMLInputElement[]
-      const grnInput = inputs.find((input) => input.accept === '.csv,.xlsx')
-      fireEvent.change(grnInput as HTMLInputElement, { target: { files: [file] } })
+      expect(dialogOpen()).toBe(true)
+      expect(dialog()?.getAttribute('data-po-ids')).toBe('')
+    })
 
-      expect(await screen.findByText('Needs a purchase order first')).toBeDefined()
-      expect(screen.getAllByText('No purchase orders yet').length).toBeGreaterThan(0)
-      expect(uploadGoodsReceiptMock).not.toHaveBeenCalled()
+    it('regression: the invoices upload opens the dialog on the invoices tab', async () => {
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme', role: 'owner' })
+      listPurchaseOrdersMock.mockResolvedValue([donePurchaseOrder])
+      listInvoicesMock.mockResolvedValue([doneInvoice])
+
+      renderPage()
+
+      fireEvent.click(await screen.findByRole('tab', { name: /^Invoices/ }))
+      fireEvent.click(screen.getAllByRole('button', { name: 'Upload invoice' })[0])
+
+      expect(dialog()?.getAttribute('data-tab')).toBe('invoices')
+      expect(dialogOpen()).toBe(true)
     })
 
     it('happy: each tab carries the count of the list it holds', async () => {
@@ -546,23 +611,6 @@ describe('ProcurementPage', () => {
       expect(within(poTab).getByText('2')).toBeDefined()
       expect(within(screen.getByRole('tab', { name: /^Invoices/ })).getByText('1')).toBeDefined()
       expect(within(screen.getByRole('tab', { name: /^Goods Receipts/ })).getByText('0')).toBeDefined()
-    })
-
-    it('happy: the picked file is held, not uploaded, under the step-2 eyebrow', async () => {
-      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme', role: 'owner' })
-      listPurchaseOrdersMock.mockResolvedValue([])
-      listInvoicesMock.mockResolvedValue([])
-
-      renderPage()
-
-      await screen.findByText('No purchase orders yet')
-      const file = new File(['content'], 'po-march.csv', { type: 'text/csv' })
-      fireEvent.change(document.querySelector('input[type="file"]') as HTMLInputElement, { target: { files: [file] } })
-
-      expect(await screen.findByText('held · not uploaded yet')).toBeDefined()
-      expect(screen.getByText('Upload · step 2 of 2')).toBeDefined()
-      expect(screen.getByText('po-march.csv')).toBeDefined()
-      expect(uploadPurchaseOrderMock).not.toHaveBeenCalled()
     })
 
     it('edge: below lg the header shortens to the workspace name and "Purchase orders" (frame 4.2)', async () => {
@@ -593,7 +641,7 @@ describe('ProcurementPage', () => {
 
     // C-3 #13 / frame 4.2: below lg the active tab's upload is a full-width
     // button under the tabs (CSS hides one of the two per breakpoint; jsdom
-    // renders both), and it opens the same file input.
+    // renders both), and it opens the same batch dialog.
     it('happy: the active tab offers its upload again as the mobile button under the tabs', async () => {
       getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme', role: 'owner' })
       listPurchaseOrdersMock.mockResolvedValue([donePurchaseOrder])
@@ -605,10 +653,197 @@ describe('ProcurementPage', () => {
 
       const buttons = await screen.findAllByRole('button', { name: 'Upload invoice' })
       expect(buttons).toHaveLength(2)
-      const input = Array.from(document.querySelectorAll('input[type="file"]'))[0] as HTMLInputElement
-      const click = vi.spyOn(input, 'click')
-      fireEvent.click(buttons[0])
-      expect(click).toHaveBeenCalled()
+      expect(dialogOpen()).toBe(false)
+      fireEvent.click(buttons[1])
+      expect(dialogOpen()).toBe(true)
+      expect(dialog()?.getAttribute('data-tab')).toBe('invoices')
+    })
+
+    it('edge: the tabs are wired to a tabpanel that is labelled by the active tab and follows it', async () => {
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme', role: 'owner' })
+      listPurchaseOrdersMock.mockResolvedValue([donePurchaseOrder])
+      listInvoicesMock.mockResolvedValue([doneInvoice])
+
+      renderPage()
+
+      const poTab = await screen.findByRole('tab', { name: /^Purchase Orders/ })
+      expect(poTab.id).toBe('procurement-tab-purchase-orders')
+      const panel = screen.getByRole('tabpanel')
+      expect(panel.id).toBe('procurement-panel-purchase-orders')
+      expect(panel.getAttribute('aria-labelledby')).toBe('procurement-tab-purchase-orders')
+      expect(poTab.getAttribute('aria-controls')).toBe(panel.id)
+
+      fireEvent.click(screen.getByRole('tab', { name: /^Invoices/ }))
+
+      const next = screen.getByRole('tabpanel')
+      expect(next.id).toBe('procurement-panel-invoices')
+      expect(next.getAttribute('aria-labelledby')).toBe('procurement-tab-invoices')
+    })
+
+    it('regression: both upload buttons keep the data-tour anchors the onboarding tour targets', async () => {
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme', role: 'owner' })
+      listPurchaseOrdersMock.mockResolvedValue([donePurchaseOrder])
+      listInvoicesMock.mockResolvedValue([])
+
+      renderPage()
+
+      await screen.findByText('po-march.csv')
+      expect(document.querySelector('button[data-tour="procurement-upload"]')).not.toBeNull()
+      expect(document.querySelector('button[data-tour="procurement-upload-mobile"]')).not.toBeNull()
+      expect(document.querySelector('[data-tour="procurement-tabs"]')).not.toBeNull()
+      expect(document.querySelector('[data-tour="procurement-compare"]')).not.toBeNull()
+    })
+  })
+
+  // Photo intake: AI-read documents wait for a human confirm before compare.
+  describe('review gate (photo intake)', () => {
+    it('error: a purchase order still parsing is not offered for review', async () => {
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme', role: 'owner' })
+      listPurchaseOrdersMock.mockResolvedValue([{ ...photoPendingPo, status: 'processing', rowCount: null }])
+      listInvoicesMock.mockResolvedValue([])
+
+      renderPage()
+
+      await screen.findByText('po-photo.pdf')
+      expect(screen.queryByText('Needs review')).toBeNull()
+      expect(screen.queryByRole('button', { name: /^Review/ })).toBeNull()
+    })
+
+    it('error: a failed photo purchase order is not offered for review', async () => {
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme', role: 'owner' })
+      listPurchaseOrdersMock.mockResolvedValue([{ ...photoPendingPo, status: 'failed', lastError: 'could not read' }])
+      listInvoicesMock.mockResolvedValue([])
+
+      renderPage()
+
+      await screen.findByText('po-photo.pdf')
+      expect(screen.queryByText('Needs review')).toBeNull()
+      expect(screen.queryByRole('button', { name: /^Review/ })).toBeNull()
+    })
+
+    it('edge: a reviewed photo document and an ordinary CSV show neither the badge nor Review', async () => {
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme', role: 'owner' })
+      listPurchaseOrdersMock.mockResolvedValue([
+        donePurchaseOrder,
+        { ...donePurchaseOrder, id: 'po-flagless', name: 'old.csv', reviewRequired: false, reviewedAt: null },
+        reviewedPhotoPo,
+      ])
+      listInvoicesMock.mockResolvedValue([])
+
+      renderPage()
+
+      await screen.findByText('po-reviewed.pdf')
+      expect(screen.queryByText('Needs review')).toBeNull()
+      expect(screen.queryByRole('button', { name: /^Review/ })).toBeNull()
+    })
+
+    it('edge: compare pickers leave out documents pending review but keep reviewed ones', async () => {
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme', role: 'owner' })
+      listPurchaseOrdersMock.mockResolvedValue([donePurchaseOrder, photoPendingPo, reviewedPhotoPo])
+      listInvoicesMock.mockResolvedValue([doneInvoice, photoPendingInvoice])
+
+      renderPage()
+
+      const poSelect = (await screen.findByLabelText('Purchase order')) as HTMLSelectElement
+      const invoiceSelect = screen.getByLabelText('Invoice') as HTMLSelectElement
+      const names = (select: HTMLSelectElement) => Array.from(select.options).map((option) => option.textContent)
+      expect(names(poSelect)).toEqual(['Select purchase order', 'po-march.csv', 'po-reviewed.pdf'])
+      expect(names(invoiceSelect)).toEqual(['Select invoice', 'invoice-march.csv'])
+    })
+
+    it('edge: when the only done documents are pending review the compare panel stays faded', async () => {
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme', role: 'owner' })
+      listPurchaseOrdersMock.mockResolvedValue([photoPendingPo])
+      listInvoicesMock.mockResolvedValue([photoPendingInvoice])
+
+      renderPage()
+
+      await screen.findAllByText('po-photo.pdf')
+      expect(screen.queryByRole('button', { name: 'Run comparison' })).toBeNull()
+      expect(screen.queryByLabelText('Purchase order')).toBeNull()
+    })
+
+    it('edge: a member sees the Needs review badge and can open the review read-only', async () => {
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme', role: 'member' })
+      listPurchaseOrdersMock.mockResolvedValue([photoPendingPo])
+      listInvoicesMock.mockResolvedValue([])
+
+      renderPage()
+
+      expect(await screen.findByText('Needs review')).toBeDefined()
+      fireEvent.click(screen.getByRole('button', { name: 'Review po-photo.pdf' }))
+
+      expect(screen.getByTestId('document-review-modal').getAttribute('data-can-edit')).toBe('false')
+    })
+
+    it('regression: the badge and Review sit on the receipts tab too, opening the review for that kind', async () => {
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme', role: 'admin' })
+      listPurchaseOrdersMock.mockResolvedValue([])
+      listInvoicesMock.mockResolvedValue([])
+      listGoodsReceiptsMock.mockResolvedValue([{ ...photoPendingPo, id: 'grn-photo', name: 'grn-photo.pdf' }])
+
+      renderPage()
+
+      fireEvent.click(await screen.findByRole('tab', { name: /^Goods Receipts/ }))
+      fireEvent.click(await screen.findByRole('button', { name: 'Review grn-photo.pdf' }))
+
+      const modal = screen.getByTestId('document-review-modal')
+      expect(modal.getAttribute('data-kind')).toBe('goods-receipts')
+      expect(modal.getAttribute('data-doc-id')).toBe('grn-photo')
+    })
+
+    it('happy: a done photo document shows Needs review and Review opens the modal; reviewing refreshes the list', async () => {
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme', role: 'owner' })
+      listPurchaseOrdersMock
+        .mockResolvedValueOnce([photoPendingPo])
+        .mockResolvedValueOnce([{ ...photoPendingPo, reviewedAt: '2026-10-06T00:00:00.000Z' }])
+      listInvoicesMock.mockResolvedValue([])
+
+      renderPage()
+
+      expect(await screen.findByText('Needs review')).toBeDefined()
+      expect(screen.queryByTestId('document-review-modal')).toBeNull()
+      fireEvent.click(screen.getByRole('button', { name: 'Review po-photo.pdf' }))
+
+      const modal = screen.getByTestId('document-review-modal')
+      expect(modal.getAttribute('data-kind')).toBe('purchase-orders')
+      expect(modal.getAttribute('data-doc-id')).toBe('po-photo')
+      expect(modal.getAttribute('data-can-edit')).toBe('true')
+
+      fireEvent.click(screen.getByRole('button', { name: 'stub reviewed' }))
+
+      await waitFor(() => expect(screen.queryByText('Needs review')).toBeNull())
+      expect(listPurchaseOrdersMock).toHaveBeenCalledTimes(2)
+    })
+
+    it('edge: after the review is confirmed and its Review button is gone, focus lands on the tab’s upload button', async () => {
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme', role: 'owner' })
+      listPurchaseOrdersMock
+        .mockResolvedValueOnce([photoPendingPo])
+        .mockResolvedValueOnce([{ ...photoPendingPo, reviewedAt: '2026-10-06T00:00:00.000Z' }])
+      listInvoicesMock.mockResolvedValue([])
+      renderPage()
+      fireEvent.click(await screen.findByRole('button', { name: 'Review po-photo.pdf' }))
+
+      fireEvent.click(screen.getByRole('button', { name: 'stub reviewed' }))
+
+      await waitFor(() => expect(screen.queryByText('Needs review')).toBeNull())
+      expect(document.activeElement?.textContent).toContain('Upload purchase order')
+      expect(document.activeElement).not.toBe(document.body)
+    })
+
+    it('edge: cancelling the review puts focus back on that document’s Review button', async () => {
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Acme', role: 'owner' })
+      listPurchaseOrdersMock.mockResolvedValue([photoPendingPo])
+      listInvoicesMock.mockResolvedValue([])
+      renderPage()
+      const trigger = await screen.findByRole('button', { name: 'Review po-photo.pdf' })
+      trigger.focus()
+      fireEvent.click(trigger)
+
+      fireEvent.click(screen.getByRole('button', { name: 'stub review close' }))
+
+      expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Review po-photo.pdf' }))
     })
   })
 

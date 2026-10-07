@@ -95,6 +95,7 @@ export async function proxyRaw(
     'Content-Length',
     'Cache-Control',
     'X-Content-Type-Options',
+    'Content-Security-Policy',
   ]) {
     const value = response.headers.get(name)
     if (value) {

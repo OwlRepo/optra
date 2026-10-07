@@ -1,4 +1,16 @@
-import { index, integer, pgEnum, pgTable, text, timestamp, uuid, varchar } from 'drizzle-orm/pg-core'
+import {
+  boolean,
+  index,
+  integer,
+  pgEnum,
+  pgTable,
+  smallint,
+  text,
+  timestamp,
+  uuid,
+  varchar,
+} from 'drizzle-orm/pg-core'
+import { users } from './users'
 import { vendors } from './vendors'
 import { workspaces } from './workspaces'
 
@@ -50,6 +62,12 @@ export const purchaseOrders = pgTable(
     processingStartedAt: timestamp('processing_started_at'),
     rowCount: integer('row_count'),
     lastError: text('last_error'),
+    // Photo intake: AI-read documents wait for a human confirm before compare.
+    reviewRequired: boolean('review_required').notNull().default(false),
+    reviewedAt: timestamp('reviewed_at'),
+    reviewedBy: uuid('reviewed_by').references(() => users.id, { onDelete: 'set null' }),
+    detectedKind: varchar('detected_kind', { length: 20 }),
+    pageCount: smallint('page_count'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },

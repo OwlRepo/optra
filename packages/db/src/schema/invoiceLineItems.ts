@@ -1,5 +1,6 @@
 import { index, integer, jsonb, numeric, pgTable, text, timestamp, uuid, varchar } from 'drizzle-orm/pg-core'
 import { invoices } from './invoices'
+import { users } from './users'
 import { workspaces } from './workspaces'
 
 export const invoiceLineItems = pgTable(
@@ -30,6 +31,10 @@ export const invoiceLineItems = pgTable(
     extractionConfidence: numeric('extraction_confidence'),
     extractorVersion: varchar('extractor_version', { length: 40 }),
     sourceKind: varchar('source_kind', { length: 20 }).notNull().default('csv'),
+    editedAt: timestamp('edited_at'),
+    editedBy: uuid('edited_by').references(() => users.id, { onDelete: 'set null' }),
+    // The AI's values, captured on the first reviewer edit (citation evidence).
+    extractedValues: jsonb('extracted_values'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
   },
   (table) => ({

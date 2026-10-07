@@ -1,5 +1,6 @@
 import { index, integer, jsonb, numeric, pgTable, text, timestamp, uuid, varchar } from 'drizzle-orm/pg-core'
 import { purchaseOrders } from './purchaseOrders'
+import { users } from './users'
 import { workspaces } from './workspaces'
 
 // workspaceId is denormalized here (not derived via a purchaseOrders join)
@@ -33,6 +34,10 @@ export const poLineItems = pgTable(
     extractionConfidence: numeric('extraction_confidence'),
     extractorVersion: varchar('extractor_version', { length: 40 }),
     sourceKind: varchar('source_kind', { length: 20 }).notNull().default('csv'),
+    editedAt: timestamp('edited_at'),
+    editedBy: uuid('edited_by').references(() => users.id, { onDelete: 'set null' }),
+    // The AI's values, captured on the first reviewer edit (citation evidence).
+    extractedValues: jsonb('extracted_values'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
   },
   (table) => ({

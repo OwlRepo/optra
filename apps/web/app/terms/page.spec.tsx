@@ -4,6 +4,8 @@ import React from 'react'
 import { cleanup, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 
+import { LEGAL_LAST_UPDATED } from '@/lib/legal-facts'
+
 import TermsPage, { metadata } from './page'
 
 afterEach(cleanup)
@@ -59,7 +61,7 @@ describe('Terms page', () => {
     const { container } = render(React.createElement(TermsPage))
 
     expect(screen.getByRole('heading', { level: 1, name: /Terms/ })).not.toBeNull()
-    expect(container.textContent).toContain('2026-10-02')
+    expect(container.textContent).toContain(LEGAL_LAST_UPDATED)
     expect(container.textContent).toContain('Romeo Angeles Jr.')
     expect(container.textContent).toContain('Philippines')
     expect(container.querySelector('a[href="mailto:romeo@tyvera.app"]')).not.toBeNull()

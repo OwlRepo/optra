@@ -35,6 +35,7 @@ import {
   type PoLineItem,
 } from '@repo/db'
 import { DuckDbQueryService, SqlExecutionError } from '../structured-query/duckdb-query.service'
+import { isReviewPending } from './procurement-review'
 
 type DecisionOutcome = (typeof discrepancyDecisions.$inferInsert)['outcome']
 
@@ -459,7 +460,7 @@ export class ComparisonService {
     // becomes `short_receipt` or `invoice_exceeds_received` against a supplier
     // who delivered correctly.
     const receipts = await db
-      .select({ id: goodsReceipts.id })
+      .select({ id: goodsReceipts.id, reviewRequired: goodsReceipts.reviewRequired, reviewedAt: goodsReceipts.reviewedAt })
       .from(goodsReceipts)
       .where(
         and(
@@ -468,6 +469,12 @@ export class ComparisonService {
           eq(goodsReceipts.status, 'done'),
         ),
       )
+    // Review gate: a photo receipt still awaiting confirmation is unverified
+    // evidence for a short_receipt accusation, so it blocks the comparison.
+    // Only `done` receipts are read above, so a failed one never blocks.
+    if (receipts.some(isReviewPending)) {
+      throw new BadRequestException('A linked goods receipt needs review before comparing')
+    }
     const receiptIds = receipts.map((receipt) => receipt.id)
     const grnItems = receiptIds.length
       ? await db
@@ -705,6 +712,8 @@ export class ComparisonService {
           sourceRow: po.sourceRow,
           sourceSheet: po.sourceSheet,
           extractionConfidence: po.extractionConfidence,
+          sourceKind: po.sourceKind,
+          editedAt: po.editedAt,
           documentId: po.purchaseOrderId,
         },
         inv: {
@@ -713,6 +722,8 @@ export class ComparisonService {
           sourceRow: inv.sourceRow,
           sourceSheet: inv.sourceSheet,
           extractionConfidence: inv.extractionConfidence,
+          sourceKind: inv.sourceKind,
+          editedAt: inv.editedAt,
           documentId: inv.invoiceId,
         },
         rcpt: {
@@ -720,6 +731,9 @@ export class ComparisonService {
           lineNumber: rcpt.lineNumber,
           sourceRow: rcpt.sourceRow,
           sourceSheet: rcpt.sourceSheet,
+          extractionConfidence: rcpt.extractionConfidence,
+          sourceKind: rcpt.sourceKind,
+          editedAt: rcpt.editedAt,
           documentId: rcpt.goodsReceiptId,
         },
       })
@@ -742,6 +756,7 @@ export class ComparisonService {
       .offset(offset)
 
     const toConfidence = (value: string | null): number | null => (value === null ? null : Number(value))
+    const toIso = (value: Date | null): string | null => (value === null ? null : value.toISOString())
     const items = rows.map(({ flag, po: p, inv: i, rcpt: r }) => ({
       ...flag,
       poLine: p && p.id !== null
@@ -750,6 +765,8 @@ export class ComparisonService {
             sourceRow: p.sourceRow,
             sourceSheet: p.sourceSheet,
             extractionConfidence: toConfidence(p.extractionConfidence),
+            sourceKind: p.sourceKind,
+            editedAt: toIso(p.editedAt),
             documentId: p.documentId as string,
           }
         : null,
@@ -759,6 +776,8 @@ export class ComparisonService {
             sourceRow: i.sourceRow,
             sourceSheet: i.sourceSheet,
             extractionConfidence: toConfidence(i.extractionConfidence),
+            sourceKind: i.sourceKind,
+            editedAt: toIso(i.editedAt),
             documentId: i.documentId as string,
           }
         : null,
@@ -767,7 +786,9 @@ export class ComparisonService {
             lineNumber: r.lineNumber,
             sourceRow: r.sourceRow,
             sourceSheet: r.sourceSheet,
-            extractionConfidence: null,
+            extractionConfidence: toConfidence(r.extractionConfidence),
+            sourceKind: r.sourceKind,
+            editedAt: toIso(r.editedAt),
             documentId: r.documentId as string,
           }
         : null,
@@ -1080,6 +1101,9 @@ export class ComparisonService {
     if (po.status !== 'done') {
       throw new BadRequestException('Purchase order has not finished parsing yet')
     }
+    if (isReviewPending(po)) {
+      throw new BadRequestException('Purchase order needs review before it can be compared')
+    }
     return po
   }
 
@@ -1094,6 +1118,9 @@ export class ComparisonService {
     }
     if (invoice.status !== 'done') {
       throw new BadRequestException('Invoice has not finished parsing yet')
+    }
+    if (isReviewPending(invoice)) {
+      throw new BadRequestException('Invoice needs review before it can be compared')
     }
     return invoice
   }

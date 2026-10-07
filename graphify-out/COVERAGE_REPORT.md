@@ -2,21 +2,21 @@
 
 ## Coverage
 
-- Detected source files: 1150
-- Source files represented by graph nodes: 1150
-- Semantic files represented: 151
-- Raw extracted relationships retained: 16105
-- Interactive unique endpoint-pair edges: 15743
-- Collapsed edge groups preserved in ledger: 246
-- Zero-symbol files materialized as artifacts: 45
-- Unresolved endpoint IDs materialized as placeholders: 296
+- Detected source files: 1193
+- Source files represented by graph nodes: 1193
+- Semantic files represented: 155
+- Raw extracted relationships retained: 16553
+- Interactive unique endpoint-pair edges: 16154
+- Collapsed edge groups preserved in ledger: 257
+- Zero-symbol files materialized as artifacts: 46
+- Unresolved endpoint IDs materialized as placeholders: 311
 
 ## Integrity
 
 - Missing endpoint edges: 0
 - Dangling endpoint edges: 0
 - Self-loop edges: 0
-- Undirected collapsed variants: 294
+- Undirected collapsed variants: 328
 
 Parallel variants are retained in `collapsed-edge-variants.json`; the interactive graph remains an undirected simple graph.
 
@@ -63,6 +63,7 @@ Parallel variants are retained in `collapsed-edge-variants.json`; the interactiv
 - `packages/db/drizzle/meta/0033_snapshot.json`
 - `packages/db/drizzle/meta/0034_snapshot.json`
 - `packages/db/drizzle/meta/0035_snapshot.json`
+- `packages/db/drizzle/meta/0036_snapshot.json`
 - `packages/db/drizzle/meta/_journal.json`
 - `scripts/eval/eval-dataset.json`
 - `scripts/eval/extraction-eval-dataset.json`

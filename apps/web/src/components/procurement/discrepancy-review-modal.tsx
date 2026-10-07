@@ -95,6 +95,13 @@ function citationText(label: string, c: DiscrepancyLineCitation) {
       : `${label} row ${c.sourceRow}`
   }
   const line = `${label} line ${c.lineNumber ?? '—'}`
+  // A person's hand outranks the model's reading: say who last touched the
+  // line before saying how it was read.
+  if (c.editedAt) return `${line} · edited by reviewer`
+  if (c.sourceKind === 'manual') return `${line} · added by reviewer`
+  if (c.sourceKind === 'image-extraction' && c.extractionConfidence !== null) {
+    return `${line} · read from photo, ${Math.round(c.extractionConfidence * 100)}% confidence`
+  }
   return c.extractionConfidence !== null
     ? `${line} · read from PDF, ${Math.round(c.extractionConfidence * 100)}% confidence`
     : line

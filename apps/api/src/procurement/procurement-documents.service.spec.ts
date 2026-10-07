@@ -1,4 +1,5 @@
-import { NotFoundException } from '@nestjs/common'
+import { BadRequestException, NotFoundException } from '@nestjs/common'
+import sharp from 'sharp'
 import { eq, like } from 'drizzle-orm'
 import { StorageObjectNotFoundError } from '../storage/storage.errors'
 import {
@@ -731,6 +732,325 @@ describe('ProcurementDocumentsService', () => {
       expect(row.name).toBe('façture-日本.csv')
       expect(row.storageKey).toMatch(/-façture-日本\.csv$/)
       expect(row.sourceKind).toBe('csv')
+    })
+  })
+
+  // Photo intake. Real sharp normalises the inputs; storage and the queue are fakes.
+  describe('photo intake', () => {
+    async function photo(name: string, width = 120, height = 80): Promise<Express.Multer.File> {
+      const buffer = await sharp({ create: { width, height, channels: 3, background: '#ffffff' } }).jpeg().toBuffer()
+      return { originalname: name, mimetype: 'image/jpeg', buffer } as Express.Multer.File
+    }
+
+    function notAnImage(name = 'junk.jpg'): Express.Multer.File {
+      return { originalname: name, mimetype: 'image/jpeg', buffer: Buffer.from('this is not an image at all') } as Express.Multer.File
+    }
+
+    function heic(): Express.Multer.File {
+      const buffer = Buffer.alloc(32)
+      buffer.writeUInt32BE(24, 0)
+      buffer.write('ftyp', 4, 'latin1')
+      buffer.write('mif1', 8, 'latin1')
+      return { originalname: 'IMG_0001.heic', mimetype: 'image/heic', buffer } as Express.Multer.File
+    }
+
+    async function countRows(workspaceId: string) {
+      return (await db.select({ id: purchaseOrders.id }).from(purchaseOrders).where(eq(purchaseOrders.workspaceId, workspaceId))).length
+    }
+
+    it('error: a vendor from another workspace is a 404 and nothing is processed or stored', async () => {
+      const a = await seedWorkspace(`${prefix}photo-idor-a@example.com`, 'Photo IDOR A')
+      const b = await seedWorkspace(`${prefix}photo-idor-b@example.com`, 'Photo IDOR B')
+      const foreignHeader = await poHeader(b.id)
+
+      await expect(
+        service.uploadPhotos(a.id, 'purchase_order', [await photo('po.jpg')], foreignHeader),
+      ).rejects.toBeInstanceOf(NotFoundException)
+
+      expect(storage.save).not.toHaveBeenCalled()
+      expect(parse.queueDoc).not.toHaveBeenCalled()
+    })
+
+    it('error: a HEIC file is a 400 with the HEIC message and nothing is stored', async () => {
+      const ws = await seedWorkspace(`${prefix}photo-heic@example.com`, 'Photo HEIC')
+
+      const err = await service
+        .uploadPhotos(ws.id, 'purchase_order', [heic()], await poHeader(ws.id))
+        .catch((e: unknown) => e)
+
+      expect(err).toBeInstanceOf(BadRequestException)
+      expect((err as Error).message).toBe('HEIC/HEIF photos are not supported — export as JPEG and upload again')
+      expect(storage.save).not.toHaveBeenCalled()
+      expect(await countRows(ws.id)).toBe(0)
+      expect(parse.queueDoc).not.toHaveBeenCalled()
+    })
+
+    it('error: a bad second file names its position and no page of the batch is stored', async () => {
+      const ws = await seedWorkspace(`${prefix}photo-bad2@example.com`, 'Photo Bad 2')
+
+      const err = await service
+        .uploadPhotos(ws.id, 'purchase_order', [await photo('1.jpg'), notAnImage('2.jpg')], await poHeader(ws.id))
+        .catch((e: unknown) => e)
+
+      expect(err).toBeInstanceOf(BadRequestException)
+      expect((err as Error).message).toBe('Photo 2 is not a JPEG, PNG or WebP image')
+      expect(storage.save).not.toHaveBeenCalled()
+      expect(await countRows(ws.id)).toBe(0)
+    })
+
+    it('error: a failed page save deletes the pages already saved, writes no row and does not queue', async () => {
+      const ws = await seedWorkspace(`${prefix}photo-save-fail@example.com`, 'Photo Save Fail')
+      storage.save.mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error('s3 down'))
+
+      await expect(
+        service.uploadPhotos(ws.id, 'purchase_order', [await photo('a.jpg'), await photo('b.jpg')], await poHeader(ws.id)),
+      ).rejects.toThrow('s3 down')
+
+      const firstKey = storage.save.mock.calls[0][0] as string
+      expect(firstKey).toMatch(/\/1\.jpg$/)
+      expect(storage.delete).toHaveBeenCalledWith(firstKey)
+      expect(await countRows(ws.id)).toBe(0)
+      expect(parse.queueDoc).not.toHaveBeenCalled()
+    })
+
+    it('error: a failed PDF save deletes every page object', async () => {
+      const ws = await seedWorkspace(`${prefix}photo-pdf-fail@example.com`, 'Photo PDF Fail')
+      // pages 1 and 2 save, the stitched PDF (third save) fails.
+      storage.save.mockResolvedValueOnce(undefined).mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error('pdf save failed'))
+
+      await expect(
+        service.uploadPhotos(ws.id, 'purchase_order', [await photo('a.jpg'), await photo('b.jpg')], await poHeader(ws.id)),
+      ).rejects.toThrow('pdf save failed')
+
+      const pageKeys = [storage.save.mock.calls[0][0], storage.save.mock.calls[1][0]] as string[]
+      const deleted = storage.delete.mock.calls.map((c) => c[0])
+      for (const key of pageKeys) {
+        expect(deleted).toContain(key)
+      }
+      expect(await countRows(ws.id)).toBe(0)
+    })
+
+    it('error: a failed header insert deletes all pages and the PDF', async () => {
+      const ws = await seedWorkspace(`${prefix}photo-insert-fail@example.com`, 'Photo Insert Fail')
+      // po_number is varchar(200): a longer value fails the insert after every object was saved.
+      // (A long file name no longer does: it is cut to 100 characters first.)
+      const header = await poHeader(ws.id, { poNumber: 'P'.repeat(300) })
+
+      await expect(
+        service.uploadPhotos(ws.id, 'purchase_order', [await photo('a.jpg'), await photo('b.jpg')], header),
+      ).rejects.toThrow()
+
+      const saved = storage.save.mock.calls.map((c) => c[0] as string)
+      expect(saved).toHaveLength(3)
+      const deleted = storage.delete.mock.calls.map((c) => c[0])
+      for (const key of saved) {
+        expect(deleted).toContain(key)
+      }
+      expect(parse.queueDoc).not.toHaveBeenCalled()
+    })
+
+    it('error: a cleanup delete that itself fails does not mask the original error', async () => {
+      const ws = await seedWorkspace(`${prefix}photo-cleanup-fail@example.com`, 'Photo Cleanup Fail')
+      storage.save.mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error('s3 down'))
+      storage.delete.mockRejectedValue(new Error('delete also down'))
+
+      await expect(
+        service.uploadPhotos(ws.id, 'purchase_order', [await photo('a.jpg'), await photo('b.jpg')], await poHeader(ws.id)),
+      ).rejects.toThrow('s3 down')
+    })
+
+    it('error: when enqueueing parse throws the document is marked failed and the error surfaces', async () => {
+      const ws = await seedWorkspace(`${prefix}photo-queue-fail@example.com`, 'Photo Queue Fail')
+      parse.queueDoc.mockRejectedValueOnce(new Error('redis down'))
+
+      await expect(
+        service.uploadPhotos(ws.id, 'purchase_order', [await photo('a.jpg')], await poHeader(ws.id)),
+      ).rejects.toThrow('redis down')
+
+      const [row] = await db.select().from(purchaseOrders).where(eq(purchaseOrders.workspaceId, ws.id))
+      expect(row.status).toBe('failed')
+      expect(row.lastError).toContain('Queue enqueue failed')
+    })
+
+    it('edge: the document is named after the first photo with a .pdf extension', async () => {
+      const ws = await seedWorkspace(`${prefix}photo-name@example.com`, 'Photo Name')
+
+      const result = await service.uploadPhotos(
+        ws.id,
+        'purchase_order',
+        [await photo('Scan 2026-10-06.JPG'), await photo('page2.jpg')],
+        await poHeader(ws.id),
+      )
+
+      expect(result.name).toBe('Scan 2026-10-06.pdf')
+    })
+
+    it('edge: a 300-character photo name is cut to 100 characters before the .pdf name and the storage key', async () => {
+      const ws = await seedWorkspace(`${prefix}photo-longname@example.com`, 'Photo Long Name')
+
+      const result = await service.uploadPhotos(
+        ws.id,
+        'purchase_order',
+        [await photo(`${'n'.repeat(300)}.jpg`)],
+        await poHeader(ws.id),
+      )
+
+      expect(result.name).toBe(`${'n'.repeat(100)}.pdf`)
+      const savedKeys = storage.save.mock.calls.map((c) => c[0] as string)
+      expect(savedKeys.some((key) => key.endsWith(`/${'n'.repeat(100)}.pdf`))).toBe(true)
+      expect(savedKeys.every((key) => !key.includes('n'.repeat(101)))).toBe(true)
+    })
+
+    it('edge: the maximum of 5 photos stores 5 pages plus the PDF and records pageCount 5', async () => {
+      const ws = await seedWorkspace(`${prefix}photo-five@example.com`, 'Photo Five')
+      const files = await Promise.all([1, 2, 3, 4, 5].map((n) => photo(`p${n}.jpg`)))
+
+      const result = await service.uploadPhotos(ws.id, 'purchase_order', files, await poHeader(ws.id))
+
+      expect(storage.save).toHaveBeenCalledTimes(6)
+      const [row] = await db.select().from(purchaseOrders).where(eq(purchaseOrders.id, result.id))
+      expect(row.pageCount).toBe(5)
+    })
+
+    it('edge: a goods receipt photo upload writes goods_receipts, never the other tables', async () => {
+      const ws = await seedWorkspace(`${prefix}photo-grn@example.com`, 'Photo GRN')
+
+      const result = await service.uploadPhotos(ws.id, 'goods_receipt', [await photo('grn.jpg')], await grnHeader(ws.id))
+
+      const [row] = await db.select().from(goodsReceipts).where(eq(goodsReceipts.id, result.id))
+      expect(row).toMatchObject({ sourceKind: 'image', reviewRequired: true, pageCount: 1, status: 'pending' })
+      expect(row.grnNumber).toBe('GRN-9001')
+      expect(await db.select().from(invoices).where(eq(invoices.workspaceId, ws.id))).toHaveLength(0)
+      expect(parse.queueDoc).toHaveBeenCalledWith('goods_receipt', result.id)
+    })
+
+    it('regression: the single-file upload of a CSV still creates a non-review document', async () => {
+      const ws = await seedWorkspace(`${prefix}photo-regress-csv@example.com`, 'Photo Regress CSV')
+      const file = { originalname: 'po.csv', mimetype: 'text/csv', buffer: Buffer.from('sku,qty\nA,1') } as Express.Multer.File
+
+      const result = await service.upload(ws.id, 'purchase_order', file, await poHeader(ws.id))
+
+      const [row] = await db.select().from(purchaseOrders).where(eq(purchaseOrders.id, result.id))
+      expect(row).toMatchObject({ sourceKind: 'csv', reviewRequired: false, reviewedAt: null, pageCount: null, detectedKind: null })
+    })
+
+    it('happy: 2 photos create one image document: pages then the stitched PDF are stored, review is required, parse is queued', async () => {
+      const ws = await seedWorkspace(`${prefix}photo-happy@example.com`, 'Photo Happy')
+
+      const result = await service.uploadPhotos(
+        ws.id,
+        'purchase_order',
+        [await photo('po.jpg'), await photo('po-2.jpg')],
+        await poHeader(ws.id),
+      )
+
+      expect(result).toEqual({ id: expect.any(String), name: 'po.pdf', status: 'pending' })
+      const saves = storage.save.mock.calls
+      expect(saves).toHaveLength(3)
+      const [page1, page2, pdf] = saves
+      expect(page1[0]).toMatch(new RegExp(`^${ws.id}/procurement/purchase_order/[0-9a-f-]{36}-pages/1\\.jpg$`))
+      expect(page2[0]).toMatch(/-pages\/2\.jpg$/)
+      expect(page1[2]).toBe('image/jpeg')
+      expect(pdf[0]).toMatch(/-pages\/po\.pdf$/)
+      expect(pdf[2]).toBe('application/pdf')
+      expect(Buffer.from(pdf[1] as Buffer).subarray(0, 4).toString('latin1')).toBe('%PDF')
+
+      const [row] = await db.select().from(purchaseOrders).where(eq(purchaseOrders.id, result.id))
+      expect(row).toMatchObject({
+        workspaceId: ws.id,
+        sourceKind: 'image',
+        reviewRequired: true,
+        reviewedAt: null,
+        pageCount: 2,
+        status: 'pending',
+        storageKey: pdf[0],
+      })
+      expect(parse.queueDoc).toHaveBeenCalledWith('purchase_order', result.id)
+    })
+
+    describe('list projections', () => {
+      it('edge: a photo purchase order lists sourceKind, pageCount, reviewRequired, reviewedAt and detectedKind', async () => {
+        const ws = await seedWorkspace(`${prefix}photo-list-po@example.com`, 'Photo List PO')
+        await service.uploadPhotos(ws.id, 'purchase_order', [await photo('po.jpg'), await photo('b.jpg')], await poHeader(ws.id))
+
+        const [item] = await service.listPurchaseOrders(ws.id)
+
+        expect(item).toMatchObject({
+          sourceKind: 'image',
+          pageCount: 2,
+          reviewRequired: true,
+          reviewedAt: null,
+          detectedKind: null,
+          hasSourceFile: true,
+        })
+        expect(item).not.toHaveProperty('storageKey')
+      })
+
+      it('edge: photo invoices and goods receipts list the same five fields', async () => {
+        const ws = await seedWorkspace(`${prefix}photo-list-others@example.com`, 'Photo List Others')
+        await service.uploadPhotos(ws.id, 'invoice', [await photo('inv.jpg')], await invoiceHeader(ws.id))
+        await service.uploadPhotos(ws.id, 'goods_receipt', [await photo('grn.jpg')], await grnHeader(ws.id))
+
+        const [invoice] = await service.listInvoices(ws.id)
+        const [receipt] = await service.listGoodsReceipts(ws.id)
+
+        for (const item of [invoice, receipt]) {
+          expect(item).toMatchObject({ sourceKind: 'image', pageCount: 1, reviewRequired: true, reviewedAt: null, detectedKind: null })
+        }
+      })
+
+      it('regression: a CSV purchase order lists reviewRequired false and a null pageCount', async () => {
+        const ws = await seedWorkspace(`${prefix}photo-list-csv@example.com`, 'Photo List CSV')
+        const file = { originalname: 'po.csv', mimetype: 'text/csv', buffer: Buffer.from('sku,qty\nA,1') } as Express.Multer.File
+        await service.upload(ws.id, 'purchase_order', file, await poHeader(ws.id))
+
+        const [item] = await service.listPurchaseOrders(ws.id)
+
+        expect(item).toMatchObject({ sourceKind: 'csv', reviewRequired: false, reviewedAt: null, pageCount: null, detectedKind: null })
+      })
+    })
+
+    describe('remove', () => {
+      it('edge: removing a photo document deletes the PDF and every page object', async () => {
+        const ws = await seedWorkspace(`${prefix}photo-remove@example.com`, 'Photo Remove')
+        const result = await service.uploadPhotos(
+          ws.id,
+          'purchase_order',
+          [await photo('po.jpg'), await photo('b.jpg'), await photo('c.jpg')],
+          await poHeader(ws.id),
+        )
+        const [row] = await db.select().from(purchaseOrders).where(eq(purchaseOrders.id, result.id))
+        const dir = (row.storageKey as string).replace(/\/[^/]+$/, '')
+        storage.delete.mockClear()
+
+        await service.remove(ws.id, 'purchase_order', result.id)
+
+        const deleted = storage.delete.mock.calls.map((c) => c[0])
+        expect(deleted).toEqual(expect.arrayContaining([row.storageKey, `${dir}/1.jpg`, `${dir}/2.jpg`, `${dir}/3.jpg`]))
+        expect(deleted).toHaveLength(4)
+        expect(await countRows(ws.id)).toBe(0)
+      })
+
+      it('edge: a failing page delete is logged, not thrown, and the row is still removed', async () => {
+        const ws = await seedWorkspace(`${prefix}photo-remove-fail@example.com`, 'Photo Remove Fail')
+        const result = await service.uploadPhotos(ws.id, 'purchase_order', [await photo('po.jpg'), await photo('b.jpg')], await poHeader(ws.id))
+        storage.delete.mockRejectedValue(new Error('s3 down'))
+
+        await expect(service.remove(ws.id, 'purchase_order', result.id)).resolves.toEqual({ message: 'Purchase order deleted' })
+
+        expect(await countRows(ws.id)).toBe(0)
+      })
+
+      it('regression: removing a CSV document still deletes exactly one object', async () => {
+        const ws = await seedWorkspace(`${prefix}photo-remove-csv@example.com`, 'Photo Remove CSV')
+        const file = { originalname: 'po.csv', mimetype: 'text/csv', buffer: Buffer.from('sku,qty\nA,1') } as Express.Multer.File
+        const result = await service.upload(ws.id, 'purchase_order', file, await poHeader(ws.id))
+        storage.delete.mockClear()
+
+        await service.remove(ws.id, 'purchase_order', result.id)
+
+        expect(storage.delete).toHaveBeenCalledTimes(1)
+      })
     })
   })
 })

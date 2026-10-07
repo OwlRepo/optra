@@ -42,7 +42,7 @@ export function Hero() {
           </div>
 
           <p className="mt-4 text-sm text-muted-foreground">
-            14-day free trial · reads the PDFs, CSVs and spreadsheets you already have
+            14-day free trial · reads the PDFs, spreadsheets and phone photos you already have
           </p>
         </Reveal>
 

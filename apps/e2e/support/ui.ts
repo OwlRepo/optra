@@ -17,6 +17,11 @@ const MIME: Record<string, string> = {
   '.html': 'text/html',
   '.pdf': 'application/pdf',
   '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.png': 'image/png',
+  '.webp': 'image/webp',
+  '.heic': 'image/heic',
 }
 
 /** A committed fixture, optionally renamed so parallel uploads stay distinguishable. */
@@ -48,6 +53,66 @@ export async function chooseFile(page: Page, buttonName: string, file: FilePaylo
   const chooser = page.waitForEvent('filechooser')
   await page.getByRole('button', { name: buttonName }).first().click()
   await (await chooser).setFiles(file)
+}
+
+/**
+ * The same, for the batch dialog's two pickers ("Add files", "Add photos"):
+ * the dialog opens a chooser per picker, and a chooser takes many files.
+ */
+export async function chooseFiles(page: Page, buttonName: string, files: FilePayload[]): Promise<void> {
+  const chooser = page.waitForEvent('filechooser')
+  await page.getByRole('dialog').getByRole('button', { name: buttonName }).click()
+  await (await chooser).setFiles(files)
+}
+
+/**
+ * A multipart POST made from inside the page (same cookies as the product's
+ * own fetches), for guards the UI refuses before they are ever reached.
+ */
+export async function bffUpload(
+  page: Page,
+  url: string,
+  files: FilePayload[],
+  fields: Record<string, string> = {},
+  fieldName = 'file',
+): Promise<{ status: number; body: string }> {
+  return page.evaluate(
+    async ({ url, files, fields, fieldName }) => {
+      const form = new FormData()
+      for (const file of files) {
+        const bytes = Uint8Array.from(atob(file.base64), (char) => char.charCodeAt(0))
+        form.append(fieldName, new File([bytes], file.name, { type: file.mimeType }))
+      }
+      for (const [key, value] of Object.entries(fields)) form.append(key, value)
+      const response = await fetch(url, { method: 'POST', body: form, credentials: 'same-origin' })
+      return { status: response.status, body: await response.text() }
+    },
+    {
+      url,
+      fields,
+      fieldName,
+      files: files.map((file) => ({ name: file.name, mimeType: file.mimeType, base64: file.buffer.toString('base64') })),
+    },
+  )
+}
+
+/** A BFF GET returning raw bytes (bff() decodes as text, which corrupts a JPEG). */
+export async function bffBytes(
+  page: Page,
+  url: string,
+): Promise<{ status: number; headers: Record<string, string>; bytes: Buffer }> {
+  const result = await page.evaluate(async (url) => {
+    const response = await fetch(url, { credentials: 'same-origin' })
+    const headers: Record<string, string> = {}
+    response.headers.forEach((value, key) => {
+      headers[key] = value
+    })
+    const buffer = new Uint8Array(await response.arrayBuffer())
+    let binary = ''
+    for (let i = 0; i < buffer.length; i++) binary += String.fromCharCode(buffer[i])
+    return { status: response.status, headers, base64: btoa(binary) }
+  }, url)
+  return { status: result.status, headers: result.headers, bytes: Buffer.from(result.base64, 'base64') }
 }
 
 /** Clicks a control that triggers a browser download and returns what arrived. */

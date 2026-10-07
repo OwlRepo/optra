@@ -7,6 +7,7 @@ import { tmpdir } from 'os'
 import { join } from 'path'
 import { and, eq, like } from 'drizzle-orm'
 import request from 'supertest'
+import sharp from 'sharp'
 import * as XLSX from 'xlsx'
 import {
   comparisonRuns,
@@ -255,11 +256,41 @@ describe('Procurement flow (e2e)', () => {
       }),
     }
 
+    // Photo intake: the vision seam, keyed by document kind (the pages are
+    // generated JPEGs, so their bytes carry no marker). Zero OpenAI calls.
+    const extractFromImages = jest.fn(async (_pages: unknown[], kind: string) => {
+      if (kind === 'purchase_order') {
+        return {
+          detectedKind: 'purchase_order',
+          items: [
+            { sku: 'A1', description: 'Widget', quantity: '10', unitPrice: '5.00', lineTotal: '50.00', uom: null, confidence: 0.9 },
+            { sku: 'B2', description: 'Gadget', quantity: '3', unitPrice: '9.99', lineTotal: '29.97', uom: null, confidence: 0.9 },
+          ],
+        }
+      }
+      if (kind === 'goods_receipt') {
+        return {
+          detectedKind: 'goods_receipt',
+          items: [
+            { sku: 'A1', description: 'Widget', quantityReceived: '10', quantityAccepted: '10', quantityRejected: '0', uom: null, confidence: 0.8 },
+          ],
+        }
+      }
+      return {
+        detectedKind: 'invoice',
+        items: [
+          { sku: 'A1', description: 'Widget', quantity: '8', unitPrice: '5.00', lineTotal: '40.00', uom: null, confidence: 0.92 },
+          { sku: 'B2', description: 'Gadget', quantity: '3', unitPrice: '12.00', lineTotal: '36.00', uom: null, confidence: 0.55 },
+          { sku: 'D4', description: 'Only On Invoice', quantity: '1', unitPrice: '1.00', lineTotal: '1.00', uom: null, confidence: 0.8 },
+        ],
+      }
+    })
+
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
       .overrideProvider(StorageService)
       .useValue(storage)
       .overrideProvider(ProcurementExtractionService)
-      .useValue(extraction)
+      .useValue({ ...extraction, extractFromImages })
       .compile()
 
     app = moduleRef.createNestApplication()
@@ -1475,6 +1506,9 @@ describe('Procurement flow (e2e)', () => {
         ['post', 'purchase-orders'],
         ['post', 'invoices'],
         ['post', 'goods-receipts'],
+        ['post', 'purchase-orders/photos'],
+        ['post', 'invoices/photos'],
+        ['post', 'goods-receipts/photos'],
       ]
 
       expect(await answersWithoutToken(routes)).toEqual(unauthorized(routes))
@@ -1487,6 +1521,9 @@ describe('Procurement flow (e2e)', () => {
         ['get', 'goods-receipts'],
         ['get', 'discrepancies'],
         ['get', 'comparison-runs'],
+        ['get', `purchase-orders/${anyId}/lines`],
+        ['get', `invoices/${anyId}/lines`],
+        ['get', `goods-receipts/${anyId}/lines`],
       ]
 
       expect(await answersWithoutToken(routes)).toEqual(unauthorized(routes))
@@ -1497,6 +1534,9 @@ describe('Procurement flow (e2e)', () => {
         ['get', `purchase-orders/${anyId}/download`],
         ['get', `invoices/${anyId}/download`],
         ['get', `goods-receipts/${anyId}/download`],
+        ['get', `purchase-orders/${anyId}/pages/1`],
+        ['get', `invoices/${anyId}/pages/1`],
+        ['get', `goods-receipts/${anyId}/pages/1`],
       ]
 
       expect(await answersWithoutToken(routes)).toEqual(unauthorized(routes))
@@ -1508,6 +1548,9 @@ describe('Procurement flow (e2e)', () => {
         ['patch', `discrepancies/${anyId}/dismiss`],
         ['post', `discrepancies/${anyId}/decisions`],
         ['get', `discrepancies/${anyId}/decisions`],
+        ['post', `purchase-orders/${anyId}/review`],
+        ['post', `invoices/${anyId}/review`],
+        ['post', `goods-receipts/${anyId}/review`],
       ]
 
       expect(await answersWithoutToken(routes)).toEqual(unauthorized(routes))
@@ -1929,6 +1972,611 @@ describe('Procurement flow (e2e)', () => {
     })
   })
 
+  // Photo intake: 1-5 phone photos become one document that a human must
+  // confirm before it can be compared.
+  describe('photo intake and review', () => {
+    const HEIC_MESSAGE = 'HEIC/HEIF photos are not supported — export as JPEG and upload again'
+    let jpegA: Buffer
+    let jpegB: Buffer
+
+    // Photos share the vision-spend flag with PDFs; the suite must not depend on the host env.
+    const originalVisionFlag = process.env.PROCUREMENT_PDF_EXTRACTION_ENABLED
+
+    afterAll(() => {
+      if (originalVisionFlag === undefined) delete process.env.PROCUREMENT_PDF_EXTRACTION_ENABLED
+      else process.env.PROCUREMENT_PDF_EXTRACTION_ENABLED = originalVisionFlag
+    })
+
+    beforeEach(() => {
+      process.env.PROCUREMENT_PDF_EXTRACTION_ENABLED = 'true'
+    })
+
+    beforeAll(async () => {
+      jpegA = await sharp({ create: { width: 320, height: 240, channels: 3, background: '#ffffff' } }).jpeg().toBuffer()
+      jpegB = await sharp({ create: { width: 200, height: 300, channels: 3, background: '#eeeeee' } }).jpeg().toBuffer()
+    })
+
+    const anyId = '00000000-0000-4000-8000-000000000000'
+    const csvPo = ['sku,description,qty,unit price', 'A1,Widget,10,5.00', 'B2,Gadget,3,9.99'].join('\n')
+
+    async function seedWorkspaceWithPo(label: string) {
+      const owner = await seedOwnerWithWorkspace(app, `${prefix}photo-${label}@example.com`, `Photo ${label}`)
+      const vendorId = await createVendor(app, owner.workspaceId, owner.accessToken)
+      const poRes = await request(app.getHttpServer())
+        .post(`/workspaces/${owner.workspaceId}/procurement/purchase-orders`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .field('vendorId', vendorId)
+        .field('poNumber', 'PO-PHOTO-1')
+        .field('currency', 'USD')
+        .attach('file', Buffer.from(csvPo), 'po.csv')
+        .expect(201)
+      await waitForPoDone(poRes.body.id)
+      return { owner, vendorId, poId: poRes.body.id as string }
+    }
+
+    function photoInvoiceRequest(owner: { workspaceId: string; accessToken: string }, poId: string, files: [Buffer, string][]) {
+      let req = request(app.getHttpServer())
+        .post(`/workspaces/${owner.workspaceId}/procurement/invoices/photos`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .field('purchaseOrderId', poId)
+        .field('invoiceNumber', 'INV-PHOTO-1')
+        .field('currency', 'USD')
+      for (const [buffer, name] of files) {
+        req = req.attach('files', buffer, name)
+      }
+      return req
+    }
+
+    async function seedPhotoInvoice(label: string) {
+      const seeded = await seedWorkspaceWithPo(label)
+      const res = await photoInvoiceRequest(seeded.owner, seeded.poId, [
+        [jpegA, 'invoice-photo.jpg'],
+        [jpegB, 'invoice-photo-2.jpg'],
+      ]).expect(201)
+      await waitForInvoiceDone(res.body.id)
+      return { ...seeded, invoiceId: res.body.id as string, base: `/workspaces/${seeded.owner.workspaceId}/procurement` }
+    }
+
+    async function linesOf(base: string, token: string, invoiceId: string) {
+      const res = await request(app.getHttpServer())
+        .get(`${base}/invoices/${invoiceId}/lines`)
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200)
+      return res.body as {
+        document: Record<string, unknown>
+        items: { id: string; sku: string; quantity: string; unitPrice: string; lineNumber: number; sourceKind: string; editedAt: string | null; extractionConfidence: number | null }[]
+        page: number
+        pageSize: number
+        total: number
+        totalPages: number
+      }
+    }
+
+    it('error: six photos answer 400 "Too many files" and create nothing', async () => {
+      const { owner, poId } = await seedWorkspaceWithPo('six')
+
+      const res = await photoInvoiceRequest(owner, poId, Array.from({ length: 6 }, (_, i) => [jpegA, `p${i}.jpg`] as [Buffer, string]))
+
+      expect(res.status).toBe(400)
+      expect(res.body.message).toBe('Too many files')
+      expect(await db.select().from(invoices).where(eq(invoices.workspaceId, owner.workspaceId))).toHaveLength(0)
+    })
+
+    it('error: with the vision flag off a photo upload answers 400 "Photo uploads are not enabled for this workspace" and creates nothing', async () => {
+      const { owner, poId } = await seedWorkspaceWithPo('flagoff')
+      process.env.PROCUREMENT_PDF_EXTRACTION_ENABLED = 'false'
+
+      const res = await photoInvoiceRequest(owner, poId, [[jpegA, 'p.jpg']])
+
+      expect(res.status).toBe(400)
+      expect(res.body.message).toBe('Photo uploads are not enabled for this workspace')
+      expect(await db.select().from(invoices).where(eq(invoices.workspaceId, owner.workspaceId))).toHaveLength(0)
+    })
+
+    it('regression: a single-file route keeps its plain "Unexpected field" answer for a wrong field name', async () => {
+      const { owner, vendorId } = await seedWorkspaceWithPo('wrongfield')
+
+      const res = await request(app.getHttpServer())
+        .post(`/workspaces/${owner.workspaceId}/procurement/purchase-orders`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .field('vendorId', vendorId)
+        .field('poNumber', 'PO-WRONG-FIELD')
+        .field('currency', 'USD')
+        .attach('files', Buffer.from(csvPo), 'po.csv')
+
+      expect(res.status).toBe(400)
+      expect(res.body.message).toBe('Unexpected field')
+    })
+
+    it('error: no files answers 400 "files are required"', async () => {
+      const { owner, poId } = await seedWorkspaceWithPo('nofiles')
+
+      const res = await photoInvoiceRequest(owner, poId, [])
+
+      expect(res.status).toBe(400)
+      expect(res.body.message).toBe('files are required')
+    })
+
+    it('error: a .heic file answers 400 with the HEIC message', async () => {
+      const { owner, poId } = await seedWorkspaceWithPo('heic')
+      const heic = Buffer.alloc(64)
+      heic.writeUInt32BE(24, 0)
+      heic.write('ftypmif1', 4, 'latin1')
+
+      const res = await photoInvoiceRequest(owner, poId, [[heic, 'IMG_0001.heic']])
+
+      expect(res.status).toBe(400)
+      expect(res.body.message).toBe(HEIC_MESSAGE)
+      expect(await db.select().from(invoices).where(eq(invoices.workspaceId, owner.workspaceId))).toHaveLength(0)
+    })
+
+    it('error: HEIC bytes renamed to .jpg are caught by the magic-byte check, not the extension', async () => {
+      const { owner, poId } = await seedWorkspaceWithPo('heic-renamed')
+      const heic = Buffer.alloc(64)
+      heic.writeUInt32BE(24, 0)
+      heic.write('ftypheic', 4, 'latin1')
+
+      const res = await photoInvoiceRequest(owner, poId, [[heic, 'IMG_0001.jpg']])
+
+      expect(res.status).toBe(400)
+      expect(res.body.message).toBe(HEIC_MESSAGE)
+    })
+
+    it('error: text named .jpg answers 400 "Photo 1 is not a JPEG, PNG or WebP image"', async () => {
+      const { owner, poId } = await seedWorkspaceWithPo('fake-jpg')
+
+      const res = await photoInvoiceRequest(owner, poId, [[Buffer.from('not an image at all'), 'fake.jpg']])
+
+      expect(res.status).toBe(400)
+      expect(res.body.message).toBe('Photo 1 is not a JPEG, PNG or WebP image')
+    })
+
+    it('error: a truncated JPEG answers 400 "Photo 2 could not be read" and stores no page', async () => {
+      const { owner, poId } = await seedWorkspaceWithPo('truncated')
+      storage.save.mockClear()
+
+      const res = await photoInvoiceRequest(owner, poId, [
+        [jpegA, 'ok.jpg'],
+        [jpegB.subarray(0, 300), 'cut.jpg'],
+      ])
+
+      expect(res.status).toBe(400)
+      expect(res.body.message).toBe('Photo 2 could not be read')
+      expect(storage.save).not.toHaveBeenCalled()
+      expect(await db.select().from(invoices).where(eq(invoices.workspaceId, owner.workspaceId))).toHaveLength(0)
+    })
+
+    it('error: a non-image extension on the photos route answers 400', async () => {
+      const { owner, poId } = await seedWorkspaceWithPo('pdf-on-photos')
+
+      const res = await photoInvoiceRequest(owner, poId, [[Buffer.from('%PDF-1.4 x'), 'scan.pdf']])
+
+      expect(res.status).toBe(400)
+    })
+
+    it('error: a missing header field answers 400 with the per-field messages', async () => {
+      const { owner } = await seedWorkspaceWithPo('no-header')
+
+      const res = await request(app.getHttpServer())
+        .post(`/workspaces/${owner.workspaceId}/procurement/invoices/photos`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .attach('files', jpegA, 'p.jpg')
+
+      expect(res.status).toBe(400)
+      expect(Array.isArray(res.body.message)).toBe(true)
+    })
+
+    it('error: a purchase order from another workspace answers 404 and stores nothing', async () => {
+      const mine = await seedWorkspaceWithPo('idor-po-mine')
+      const theirs = await seedWorkspaceWithPo('idor-po-theirs')
+      storage.save.mockClear()
+
+      const res = await photoInvoiceRequest(mine.owner, theirs.poId, [[jpegA, 'p.jpg']])
+
+      expect(res.status).toBe(404)
+      expect(storage.save).not.toHaveBeenCalled()
+    })
+
+    it('error: a member cannot post photos or a review (403 on role)', async () => {
+      const { owner, poId, invoiceId, base } = await seedPhotoInvoice('member')
+      const member = await seedMemberOfWorkspace(app, owner.workspaceId, `${prefix}photo-member-user@example.com`)
+
+      const photos = await photoInvoiceRequest({ workspaceId: owner.workspaceId, accessToken: member.accessToken }, poId, [[jpegA, 'p.jpg']])
+      const review = await request(app.getHttpServer())
+        .post(`${base}/invoices/${invoiceId}/review`)
+        .set('Authorization', `Bearer ${member.accessToken}`)
+        .send({ lines: [{ sku: 'A1', quantity: '1' }] })
+
+      expect(photos.status).toBe(403)
+      expect(photos.body.message).toBe('Insufficient workspace role')
+      expect(review.status).toBe(403)
+      expect(review.body.message).toBe('Insufficient workspace role')
+      const [header] = await db.select().from(invoices).where(eq(invoices.id, invoiceId))
+      expect(header.reviewedAt).toBeNull()
+    })
+
+    it('error: a non-member of the workspace is refused 403 on lines, pages and review', async () => {
+      const { invoiceId, base } = await seedPhotoInvoice('outsider')
+      const outsider = await seedOwnerWithWorkspace(app, `${prefix}photo-nonmember@example.com`, 'Photo Outsider')
+      const auth = `Bearer ${outsider.accessToken}`
+
+      const answers = [
+        await request(app.getHttpServer()).get(`${base}/invoices/${invoiceId}/lines`).set('Authorization', auth),
+        await request(app.getHttpServer()).get(`${base}/invoices/${invoiceId}/pages/1`).set('Authorization', auth),
+        await request(app.getHttpServer()).post(`${base}/invoices/${invoiceId}/review`).set('Authorization', auth).send({ lines: [{ sku: 'A1' }] }),
+      ].map((r) => r.status)
+
+      expect(answers).toEqual([403, 403, 403])
+    })
+
+    it('error: workspace B reading workspace A\'s lines or pages answers 404', async () => {
+      const a = await seedPhotoInvoice('idor-read-a')
+      const b = await seedOwnerWithWorkspace(app, `${prefix}photo-idor-read-b@example.com`, 'Photo IDOR Read B')
+      const baseB = `/workspaces/${b.workspaceId}/procurement`
+      const auth = `Bearer ${b.accessToken}`
+
+      const lines = await request(app.getHttpServer()).get(`${baseB}/invoices/${a.invoiceId}/lines`).set('Authorization', auth)
+      const page = await request(app.getHttpServer()).get(`${baseB}/invoices/${a.invoiceId}/pages/1`).set('Authorization', auth)
+
+      expect(lines.status).toBe(404)
+      expect(page.status).toBe(404)
+      expect(JSON.stringify([lines.body, page.body])).not.toContain('Widget')
+    })
+
+    it('error: workspace B reviewing A\'s document, or its own with A\'s line id, answers 404 and changes nothing', async () => {
+      const a = await seedPhotoInvoice('idor-review-a')
+      const b = await seedPhotoInvoice('idor-review-b')
+      const aLines = await linesOf(a.base, a.owner.accessToken, a.invoiceId)
+      const auth = `Bearer ${b.owner.accessToken}`
+
+      const foreignDoc = await request(app.getHttpServer())
+        .post(`${b.base}/invoices/${a.invoiceId}/review`)
+        .set('Authorization', auth)
+        .send({ lines: [{ id: aLines.items[0].id, sku: 'HACK', quantity: '1' }] })
+      const foreignLine = await request(app.getHttpServer())
+        .post(`${b.base}/invoices/${b.invoiceId}/review`)
+        .set('Authorization', auth)
+        .send({ lines: [{ id: aLines.items[0].id, sku: 'HACK', quantity: '1' }] })
+
+      expect(foreignDoc.status).toBe(404)
+      expect(foreignLine.status).toBe(404)
+      const [aHeader] = await db.select().from(invoices).where(eq(invoices.id, a.invoiceId))
+      const [bHeader] = await db.select().from(invoices).where(eq(invoices.id, b.invoiceId))
+      expect(aHeader.reviewedAt).toBeNull()
+      expect(bHeader.reviewedAt).toBeNull()
+      const after = await linesOf(a.base, a.owner.accessToken, a.invoiceId)
+      expect(after.items.map((l) => l.sku)).toEqual(['A1', 'B2', 'D4'])
+      expect(after.items.every((l) => l.editedAt === null)).toBe(true)
+    })
+
+    it('error: a review body that fails validation answers 400', async () => {
+      const { owner, invoiceId, base } = await seedPhotoInvoice('validation')
+      const post = (body: unknown) =>
+        request(app.getHttpServer())
+          .post(`${base}/invoices/${invoiceId}/review`)
+          .set('Authorization', `Bearer ${owner.accessToken}`)
+          .send(body as object)
+
+      const answers = [
+        (await post({ lines: [] })).status,
+        (await post({})).status,
+        (await post({ lines: Array.from({ length: 201 }, () => ({ sku: 'X' })) })).status,
+        (await post({ lines: [{ id: 'not-a-uuid', sku: 'X' }] })).status,
+        (await post({ lines: [{ sku: 'X', quantity: 'ten' }] })).status,
+        (await post({ lines: [{ sku: 'X'.repeat(201) }] })).status,
+      ]
+
+      expect(answers).toEqual([400, 400, 400, 400, 400, 400])
+      const [header] = await db.select().from(invoices).where(eq(invoices.id, invoiceId))
+      expect(header.reviewedAt).toBeNull()
+    })
+
+    it('error: an unknown line id answers 404 and duplicate ids answer 400', async () => {
+      const { owner, invoiceId, base } = await seedPhotoInvoice('line-ids')
+      const lines = await linesOf(base, owner.accessToken, invoiceId)
+      const post = (body: unknown) =>
+        request(app.getHttpServer())
+          .post(`${base}/invoices/${invoiceId}/review`)
+          .set('Authorization', `Bearer ${owner.accessToken}`)
+          .send(body as object)
+
+      const unknown = await post({ lines: [{ id: anyId, sku: 'X' }] })
+      const duplicate = await post({ lines: [{ id: lines.items[0].id, sku: 'A1' }, { id: lines.items[0].id, sku: 'A1' }] })
+
+      expect(unknown.status).toBe(404)
+      expect(duplicate.status).toBe(400)
+      const [header] = await db.select().from(invoices).where(eq(invoices.id, invoiceId))
+      expect(header.reviewedAt).toBeNull()
+    })
+
+    it('error: comparing before the review answers 400 "Invoice needs review before it can be compared"', async () => {
+      const { owner, poId, invoiceId, base } = await seedPhotoInvoice('compare-before')
+
+      const res = await request(app.getHttpServer())
+        .post(`${base}/discrepancies/compare`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .send({ purchaseOrderId: poId, invoiceId })
+
+      expect(res.status).toBe(400)
+      expect(res.body.message).toBe('Invoice needs review before it can be compared')
+      expect(await db.select().from(comparisonRuns).where(eq(comparisonRuns.workspaceId, owner.workspaceId))).toHaveLength(0)
+    })
+
+    it('error: a document that needs no review (CSV) answers 400 on review', async () => {
+      const { owner, poId } = await seedWorkspaceWithPo('csv-review')
+
+      const res = await request(app.getHttpServer())
+        .post(`/workspaces/${owner.workspaceId}/procurement/purchase-orders/${poId}/review`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .send({ lines: [{ sku: 'A1', quantity: '1' }] })
+
+      expect(res.status).toBe(400)
+    })
+
+    it('error: reviewing twice answers 409 and the second body changes nothing', async () => {
+      const { owner, invoiceId, base } = await seedPhotoInvoice('twice')
+      const lines = await linesOf(base, owner.accessToken, invoiceId)
+      const body = { lines: lines.items.map((l) => ({ id: l.id, sku: l.sku, quantity: l.quantity, unitPrice: l.unitPrice })) }
+      const post = (b: unknown) =>
+        request(app.getHttpServer()).post(`${base}/invoices/${invoiceId}/review`).set('Authorization', `Bearer ${owner.accessToken}`).send(b as object)
+
+      await post(body).expect(200)
+      const second = await post({ lines: [{ id: lines.items[0].id, sku: 'LATE', quantity: '99' }] })
+
+      expect(second.status).toBe(409)
+      const after = await linesOf(base, owner.accessToken, invoiceId)
+      expect(after.items.map((l) => l.sku)).toEqual(['A1', 'B2', 'D4'])
+    })
+
+    it('edge: a 26MB photo answers 413 naming the 25MB limit and stores nothing', async () => {
+      const { owner, poId } = await seedWorkspaceWithPo('toobig')
+      storage.save.mockClear()
+
+      const res = await photoInvoiceRequest(owner, poId, [[Buffer.alloc(26 * 1024 * 1024, 'a'), 'huge.jpg']])
+
+      expect(res.status).toBe(413)
+      expect(res.body).toEqual({ statusCode: 413, message: 'File exceeds 25MB upload limit' })
+      expect(storage.save).not.toHaveBeenCalled()
+    })
+
+    it('edge: page 0, a page past the end and a missing document are 404; a non-numeric page is 400', async () => {
+      const { owner, invoiceId, base } = await seedPhotoInvoice('page-range')
+      const get = (path: string) => request(app.getHttpServer()).get(`${base}/${path}`).set('Authorization', `Bearer ${owner.accessToken}`)
+
+      const answers = [
+        (await get(`invoices/${invoiceId}/pages/0`)).status,
+        (await get(`invoices/${invoiceId}/pages/3`)).status,
+        (await get(`invoices/${anyId}/pages/1`)).status,
+        (await get(`invoices/${invoiceId}/pages/abc`)).status,
+      ]
+
+      expect(answers).toEqual([404, 404, 404, 400])
+    })
+
+    it('edge: a CSV document has no pages (404)', async () => {
+      const { owner, poId } = await seedWorkspaceWithPo('csv-pages')
+
+      const res = await request(app.getHttpServer())
+        .get(`/workspaces/${owner.workspaceId}/procurement/purchase-orders/${poId}/pages/1`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+
+      expect(res.status).toBe(404)
+    })
+
+    it('edge: lines are paged', async () => {
+      const { owner, invoiceId, base } = await seedPhotoInvoice('paging')
+
+      const res = await request(app.getHttpServer())
+        .get(`${base}/invoices/${invoiceId}/lines`)
+        .query({ page: 2, pageSize: 2 })
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .expect(200)
+
+      expect(res.body.items.map((l: { sku: string }) => l.sku)).toEqual(['D4'])
+      expect(res.body).toMatchObject({ page: 2, pageSize: 2, total: 3, totalPages: 2 })
+      await request(app.getHttpServer())
+        .get(`${base}/invoices/${invoiceId}/lines`)
+        .query({ pageSize: 101 })
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .expect(400)
+    })
+
+    it('edge: a member can read lines and pages (read access) but not change them', async () => {
+      const { owner, invoiceId, base } = await seedPhotoInvoice('member-read')
+      const member = await seedMemberOfWorkspace(app, owner.workspaceId, `${prefix}photo-member-read-user@example.com`)
+      const auth = `Bearer ${member.accessToken}`
+
+      await request(app.getHttpServer()).get(`${base}/invoices/${invoiceId}/lines`).set('Authorization', auth).expect(200)
+      await request(app.getHttpServer()).get(`${base}/invoices/${invoiceId}/pages/1`).set('Authorization', auth).expect(200)
+    })
+
+    it('edge: the page route serves a JPEG inline with nosniff, a sandboxing CSP and a private cache', async () => {
+      const { owner, invoiceId, base } = await seedPhotoInvoice('headers')
+
+      const res = await request(app.getHttpServer())
+        .get(`${base}/invoices/${invoiceId}/pages/2`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .buffer(true)
+        .parse((response, callback) => {
+          const chunks: Buffer[] = []
+          response.on('data', (c: Buffer) => chunks.push(c))
+          response.on('end', () => callback(null, Buffer.concat(chunks)))
+        })
+        .expect(200)
+
+      expect(res.headers['content-type']).toMatch(/^image\/jpeg/)
+      expect(res.headers['content-disposition']).toBe('inline')
+      expect(res.headers['x-content-type-options']).toBe('nosniff')
+      expect(res.headers['content-security-policy']).toBe("sandbox; default-src 'none'")
+      expect(res.headers['cache-control']).toBe('private, no-store')
+      const meta = await sharp(res.body as Buffer).metadata()
+      expect(meta.format).toBe('jpeg')
+      expect([meta.width, meta.height]).toEqual([200, 300])
+    })
+
+    it('edge: an upload with EXIF orientation 6 is stored upright and without EXIF', async () => {
+      const { owner, poId } = await seedWorkspaceWithPo('exif')
+      const tilted = await sharp({ create: { width: 600, height: 400, channels: 3, background: '#ffffff' } })
+        .jpeg()
+        .withMetadata({ orientation: 6 })
+        .toBuffer()
+      const upload = await photoInvoiceRequest(owner, poId, [[tilted, 'tilted.jpg']]).expect(201)
+
+      const page = await request(app.getHttpServer())
+        .get(`/workspaces/${owner.workspaceId}/procurement/invoices/${upload.body.id}/pages/1`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .buffer(true)
+        .parse((response, callback) => {
+          const chunks: Buffer[] = []
+          response.on('data', (c: Buffer) => chunks.push(c))
+          response.on('end', () => callback(null, Buffer.concat(chunks)))
+        })
+        .expect(200)
+
+      const meta = await sharp(page.body as Buffer).metadata()
+      expect([meta.width, meta.height]).toEqual([400, 600])
+      expect(meta.exif).toBeUndefined()
+    })
+
+    it('edge: five photos are accepted as one document with pageCount 5', async () => {
+      const { owner, poId } = await seedWorkspaceWithPo('five')
+
+      const res = await photoInvoiceRequest(owner, poId, Array.from({ length: 5 }, (_, i) => [jpegA, `p${i}.jpg`] as [Buffer, string])).expect(201)
+
+      await waitForInvoiceDone(res.body.id)
+      const [header] = await db.select().from(invoices).where(eq(invoices.id, res.body.id))
+      expect(header.pageCount).toBe(5)
+    })
+
+    it('regression: the document lists with sourceKind, pageCount, reviewRequired and detectedKind; a CSV order lists reviewRequired false', async () => {
+      const { owner, poId, invoiceId, base } = await seedPhotoInvoice('list')
+
+      const invoicesList = await request(app.getHttpServer()).get(`${base}/invoices`).set('Authorization', `Bearer ${owner.accessToken}`).expect(200)
+      const poList = await request(app.getHttpServer()).get(`${base}/purchase-orders`).set('Authorization', `Bearer ${owner.accessToken}`).expect(200)
+
+      const photo = (invoicesList.body as { id: string }[]).find((i) => i.id === invoiceId)
+      expect(photo).toMatchObject({ sourceKind: 'image', pageCount: 2, reviewRequired: true, reviewedAt: null, detectedKind: 'invoice', status: 'done' })
+      expect(photo).not.toHaveProperty('storageKey')
+      const csv = (poList.body as { id: string }[]).find((p) => p.id === poId)
+      expect(csv).toMatchObject({ sourceKind: 'csv', reviewRequired: false, pageCount: null, reviewedAt: null })
+    })
+
+    it('regression: a CSV purchase order and CSV invoice still compare with no review step', async () => {
+      const { owner, poId } = await seedWorkspaceWithPo('csv-compare')
+      const inv = await request(app.getHttpServer())
+        .post(`/workspaces/${owner.workspaceId}/procurement/invoices`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .field('purchaseOrderId', poId)
+        .field('invoiceNumber', 'INV-CSV-1')
+        .field('currency', 'USD')
+        .attach('file', Buffer.from('sku,description,qty,unit price\nA1,Widget,8,5.00\nB2,Gadget,3,9.99'), 'inv.csv')
+        .expect(201)
+      await waitForInvoiceDone(inv.body.id)
+
+      const res = await request(app.getHttpServer())
+        .post(`/workspaces/${owner.workspaceId}/procurement/discrepancies/compare`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .send({ purchaseOrderId: poId, invoiceId: inv.body.id })
+        .expect(201)
+
+      expect(res.body.counts.quantity_mismatch).toBe(1)
+    })
+
+    it('happy: a photo goods receipt is parsed and waits for review like an invoice', async () => {
+      const { owner, poId } = await seedWorkspaceWithPo('grn')
+      const base = `/workspaces/${owner.workspaceId}/procurement`
+
+      const upload = await request(app.getHttpServer())
+        .post(`${base}/goods-receipts/photos`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .field('purchaseOrderId', poId)
+        .field('grnNumber', 'GRN-PHOTO-1')
+        .attach('files', jpegA, 'grn.jpg')
+        .expect(201)
+      await waitForGoodsReceiptDone(upload.body.id)
+
+      const lines = await request(app.getHttpServer())
+        .get(`${base}/goods-receipts/${upload.body.id}/lines`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .expect(200)
+      expect(lines.body.document).toMatchObject({ sourceKind: 'image', reviewRequired: true, reviewedAt: null, detectedKind: 'goods_receipt' })
+      expect(lines.body.items[0]).toMatchObject({ sku: 'A1', quantityReceived: '10', quantityAccepted: '10', quantityRejected: '0', extractionConfidence: 0.8 })
+    })
+
+    it('happy: photos -> done -> lines -> review (edit + add + delete) -> compare 201 with photo citations', async () => {
+      const { owner, poId, invoiceId, base } = await seedPhotoInvoice('flow')
+      const auth = `Bearer ${owner.accessToken}`
+
+      const before = await linesOf(base, owner.accessToken, invoiceId)
+      expect(before.document).toMatchObject({
+        id: invoiceId,
+        name: 'invoice-photo.pdf',
+        status: 'done',
+        sourceKind: 'image',
+        pageCount: 2,
+        detectedKind: 'invoice',
+        reviewRequired: true,
+        reviewedAt: null,
+      })
+      expect(before.items.map((l) => [l.sku, l.sourceKind, l.extractionConfidence])).toEqual([
+        ['A1', 'image-extraction', 0.92],
+        ['B2', 'image-extraction', 0.55],
+        ['D4', 'image-extraction', 0.8],
+      ])
+
+      const [a1, b2] = before.items
+      const review = await request(app.getHttpServer())
+        .post(`${base}/invoices/${invoiceId}/review`)
+        .set('Authorization', auth)
+        .send({
+          lines: [
+            { id: a1.id, sku: 'A1', description: 'Widget', quantity: '9', unitPrice: '5.00', lineTotal: '45.00' },
+            { id: b2.id, sku: 'B2', description: 'Gadget', quantity: '3', unitPrice: '12.00', lineTotal: '36.00' },
+            { sku: 'E5', description: 'Added by reviewer', quantity: '1', unitPrice: '2.00', lineTotal: '2.00' },
+          ],
+        })
+        .expect(200)
+      expect(review.body).toMatchObject({ id: invoiceId, rowCount: 3 })
+      expect(typeof review.body.reviewedAt).toBe('string')
+
+      const after = await linesOf(base, owner.accessToken, invoiceId)
+      expect(after.document.reviewedAt).not.toBeNull()
+      expect(after.document.reviewedBy).toBe(owner.user.id)
+      expect(after.items.map((l) => [l.lineNumber, l.sku, l.sourceKind])).toEqual([
+        [1, 'A1', 'image-extraction'],
+        [2, 'B2', 'image-extraction'],
+        [3, 'E5', 'manual'],
+      ])
+      expect(after.items[0].editedAt).not.toBeNull()
+      expect(after.items[1].editedAt).toBeNull()
+
+      const compare = await request(app.getHttpServer())
+        .post(`${base}/discrepancies/compare`)
+        .set('Authorization', auth)
+        .send({ purchaseOrderId: poId, invoiceId })
+        .expect(201)
+      expect(compare.body.counts).toMatchObject({ quantity_mismatch: 1, price_mismatch: 1, missing_on_po: 1, missing_on_invoice: 0 })
+
+      const flags = await request(app.getHttpServer())
+        .get(`${base}/discrepancies`)
+        .query({ invoiceId })
+        .set('Authorization', auth)
+        .expect(200)
+      const byType = (type: string) => flags.body.items.find((f: { flagType: string }) => f.flagType === type)
+      expect(byType('quantity_mismatch').invoiceLine).toMatchObject({ sourceKind: 'image-extraction', documentId: invoiceId })
+      expect(typeof byType('quantity_mismatch').invoiceLine.editedAt).toBe('string')
+      expect(byType('price_mismatch').invoiceLine).toMatchObject({ sourceKind: 'image-extraction', editedAt: null, extractionConfidence: 0.55 })
+      expect(byType('missing_on_po').invoiceLine).toMatchObject({ sourceKind: 'manual' })
+
+      // The document is read-only once confirmed.
+      await request(app.getHttpServer())
+        .post(`${base}/invoices/${invoiceId}/review`)
+        .set('Authorization', auth)
+        .send({ lines: [{ id: a1.id, sku: 'A1', quantity: '1' }] })
+        .expect(409)
+    })
+  })
+
   // B16. Lives in this suite for its seeded owner (no /auth/register spend);
   // the routes belong to other modules. Each used to answer 500 (Postgres
   // 22P02) on a malformed id.
@@ -1950,6 +2598,15 @@ describe('Procurement flow (e2e)', () => {
         ['GET tickets/:ticketId/transcript.pdf', () => http().get(`${ws}/tickets/not-a-uuid/transcript.pdf`)],
         ['GET tickets/:ticketId', () => http().get(`${ws}/tickets/not-a-uuid`)],
         ['PATCH tickets/:ticketId', () => http().patch(`${ws}/tickets/not-a-uuid`).send({})],
+        ['GET procurement/purchase-orders/:docId/lines', () => http().get(`${ws}/procurement/purchase-orders/not-a-uuid/lines`)],
+        ['GET procurement/invoices/:docId/lines', () => http().get(`${ws}/procurement/invoices/not-a-uuid/lines`)],
+        ['GET procurement/goods-receipts/:docId/lines', () => http().get(`${ws}/procurement/goods-receipts/not-a-uuid/lines`)],
+        ['GET procurement/purchase-orders/:docId/pages/:n', () => http().get(`${ws}/procurement/purchase-orders/not-a-uuid/pages/1`)],
+        ['GET procurement/invoices/:docId/pages/:n', () => http().get(`${ws}/procurement/invoices/not-a-uuid/pages/1`)],
+        ['GET procurement/goods-receipts/:docId/pages/:n', () => http().get(`${ws}/procurement/goods-receipts/not-a-uuid/pages/1`)],
+        ['POST procurement/purchase-orders/:docId/review', () => http().post(`${ws}/procurement/purchase-orders/not-a-uuid/review`).send({ lines: [{}] })],
+        ['POST procurement/invoices/:docId/review', () => http().post(`${ws}/procurement/invoices/not-a-uuid/review`).send({ lines: [{}] })],
+        ['POST procurement/goods-receipts/:docId/review', () => http().post(`${ws}/procurement/goods-receipts/not-a-uuid/review`).send({ lines: [{}] })],
       ]
 
       const answers: { route: string; status: number; message: unknown }[] = []

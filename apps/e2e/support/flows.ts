@@ -1,27 +1,101 @@
-import { expect, type Page } from '@playwright/test'
+import { expect, type Locator, type Page } from '@playwright/test'
 import { photoKeysOfCatalog } from './db'
 import type { Owner } from './state'
-import { chooseFile, fixture, toast, waitForRow, type FilePayload } from './ui'
+import { chooseFile, chooseFiles, fixture, waitForRow, type FilePayload } from './ui'
 
 // Multi-step flows more than one spec needs, done through the UI exactly as
 // the dedicated specs do them. Each returns the id of what it created.
 
-export async function uploadPurchaseOrder(page: Page, owner: Owner, fileName: string): Promise<string> {
-  const file = fixture('po.csv', fileName)
+type Doc = { id: string; name: string; status: string }
+
+export type DocTab = 'purchase-orders' | 'invoices' | 'goods-receipts'
+
+const TAB_LABEL: Record<DocTab, 'Purchase Orders' | 'Invoices' | 'Goods Receipts'> = {
+  'purchase-orders': 'Purchase Orders',
+  invoices: 'Invoices',
+  'goods-receipts': 'Goods Receipts',
+}
+const UPLOAD_BUTTON: Record<DocTab, string> = {
+  'purchase-orders': 'Upload purchase order',
+  invoices: 'Upload invoice',
+  'goods-receipts': 'Upload goods receipt',
+}
+// Header fields of one batch-dialog row, by accessible label. A purchase order
+// names its vendor; an invoice and a receipt name the purchase order they answer.
+const LINK_LABEL: Record<DocTab, 'Vendor' | 'Purchase order'> = {
+  'purchase-orders': 'Vendor',
+  invoices: 'Purchase order',
+  'goods-receipts': 'Purchase order',
+}
+const NUMBER_LABEL: Record<DocTab, 'PO number' | 'Invoice number' | 'Goods receipt number'> = {
+  'purchase-orders': 'PO number',
+  invoices: 'Invoice number',
+  'goods-receipts': 'Goods receipt number',
+}
+
+/** Opens the procurement page on `tab` and the batch dialog from that tab's upload button. */
+export async function openBatchDialog(page: Page, owner: Owner, tab: DocTab): Promise<void> {
   await page.goto(`/workspaces/${owner.workspaceId}/procurement`)
-  await chooseFile(page, 'Upload purchase order', file)
-  const dialog = page.getByRole('dialog')
-  await dialog.locator('#po-vendor').selectOption(owner.vendorId)
-  await dialog.locator('#po-number').fill(fileName.replace(/\.csv$/, '').toUpperCase())
-  await dialog.getByRole('button', { name: 'Upload', exact: true }).click()
-  await expect(toast(page, 'Purchase order uploaded')).toBeVisible()
-  const row = await waitForRow<{ id: string; name: string; status: string }>(
+  if (tab !== 'purchase-orders') await page.getByRole('tab', { name: TAB_LABEL[tab] }).click()
+  await page.getByRole('button', { name: UPLOAD_BUTTON[tab] }).first().click()
+  await expect(page.getByRole('dialog')).toBeVisible()
+}
+
+/**
+ * One batch-dialog row, matched by its accessible name: the file name, or
+ * "N photos" for photos picked together. Each row exposes
+ * data-status="ready|uploading|done|error".
+ */
+export function batchRow(page: Page, name: string) {
+  return page.getByRole('dialog').getByRole('group', { name, exact: true })
+}
+
+/** Fills the required header of a row: `link` is the vendor id (purchase order) or the purchase order id. */
+export async function fillBatchRow(row: Locator, tab: DocTab, link: string, number: string): Promise<void> {
+  await row.getByLabel(LINK_LABEL[tab]).selectOption(link)
+  await row.getByLabel(NUMBER_LABEL[tab]).fill(number)
+}
+
+export async function submitBatch(page: Page): Promise<void> {
+  await page.getByRole('dialog').getByRole('button', { name: 'Upload', exact: true }).click()
+}
+
+/**
+ * The dialog stays open after a run so every row's status stays readable;
+ * close it as a person would before acting on the page behind it.
+ */
+export async function closeBatchDialog(page: Page): Promise<void> {
+  await page.getByRole('dialog').getByRole('button', { name: 'Close dialog' }).click()
+  await expect(page.getByRole('dialog')).toBeHidden()
+}
+
+async function uploadFileViaDialog(
+  page: Page,
+  owner: Owner,
+  tab: DocTab,
+  file: FilePayload,
+  link: string,
+  number: string,
+): Promise<string> {
+  await openBatchDialog(page, owner, tab)
+  await chooseFiles(page, 'Add files', [file])
+  const row = batchRow(page, file.name)
+  await fillBatchRow(row, tab, link, number)
+  await submitBatch(page)
+  await expect(row).toHaveAttribute('data-status', 'done')
+  await closeBatchDialog(page)
+  const parsed = await waitForRow<Doc>(
     page,
-    `/api/workspaces/${owner.workspaceId}/procurement/purchase-orders`,
+    `/api/workspaces/${owner.workspaceId}/procurement/${tab}`,
     (candidate) => candidate.name === file.name,
     'done',
   )
-  return row.id
+  return parsed.id
+}
+
+export async function uploadPurchaseOrder(page: Page, owner: Owner, fileName: string): Promise<string> {
+  const file = fixture('po.csv', fileName)
+  return uploadFileViaDialog(page, owner, 'purchase-orders', file, owner.vendorId, fileName.replace(/\.csv$/, '').toUpperCase())
 }
 
 export async function uploadKnowledgeBaseDocument(page: Page, owner: Owner, fileName: string): Promise<string> {
@@ -74,27 +148,12 @@ export async function uploadCatalogWithPhoto(
   return { itemId: photo.id, photoKey: photo.key }
 }
 
-type Doc = { id: string; name: string; status: string }
-
-/** Any purchase-order file (CSV, XLSX), through the dialog; resolves once it has parsed. */
+/** Any purchase-order file (CSV, XLSX), through the batch dialog; resolves once it has parsed. */
 export async function uploadPurchaseOrderFile(page: Page, owner: Owner, file: FilePayload, poNumber: string): Promise<string> {
-  await page.goto(`/workspaces/${owner.workspaceId}/procurement`)
-  await chooseFile(page, 'Upload purchase order', file)
-  const dialog = page.getByRole('dialog')
-  await dialog.locator('#po-vendor').selectOption(owner.vendorId)
-  await dialog.locator('#po-number').fill(poNumber)
-  await dialog.getByRole('button', { name: 'Upload', exact: true }).click()
-  await expect(toast(page, 'Purchase order uploaded')).toBeVisible()
-  const row = await waitForRow<Doc>(
-    page,
-    `/api/workspaces/${owner.workspaceId}/procurement/purchase-orders`,
-    (candidate) => candidate.name === file.name,
-    'done',
-  )
-  return row.id
+  return uploadFileViaDialog(page, owner, 'purchase-orders', file, owner.vendorId, poNumber)
 }
 
-/** An invoice linked to `purchaseOrderId`, through the dialog; resolves once it has parsed. */
+/** An invoice linked to `purchaseOrderId`, through the batch dialog; resolves once it has parsed. */
 export async function uploadInvoiceFile(
   page: Page,
   owner: Owner,
@@ -102,24 +161,10 @@ export async function uploadInvoiceFile(
   file: FilePayload,
   invoiceNumber: string,
 ): Promise<string> {
-  await page.goto(`/workspaces/${owner.workspaceId}/procurement`)
-  await page.getByRole('tab', { name: 'Invoices' }).click()
-  await chooseFile(page, 'Upload invoice', file)
-  const dialog = page.getByRole('dialog')
-  await dialog.locator('#invoice-po').selectOption(purchaseOrderId)
-  await dialog.locator('#invoice-number').fill(invoiceNumber)
-  await dialog.getByRole('button', { name: 'Upload', exact: true }).click()
-  await expect(toast(page, 'Invoice uploaded')).toBeVisible()
-  const row = await waitForRow<Doc>(
-    page,
-    `/api/workspaces/${owner.workspaceId}/procurement/invoices`,
-    (candidate) => candidate.name === file.name,
-    'done',
-  )
-  return row.id
+  return uploadFileViaDialog(page, owner, 'invoices', file, purchaseOrderId, invoiceNumber)
 }
 
-/** A goods receipt linked to `purchaseOrderId`, through the dialog; resolves once it has parsed. */
+/** A goods receipt linked to `purchaseOrderId`, through the batch dialog; resolves once it has parsed. */
 export async function uploadGoodsReceiptFile(
   page: Page,
   owner: Owner,
@@ -127,19 +172,5 @@ export async function uploadGoodsReceiptFile(
   file: FilePayload,
   grnNumber: string,
 ): Promise<string> {
-  await page.goto(`/workspaces/${owner.workspaceId}/procurement`)
-  await page.getByRole('tab', { name: 'Goods Receipts' }).click()
-  await chooseFile(page, 'Upload goods receipt', file)
-  const dialog = page.getByRole('dialog')
-  await dialog.locator('#grn-po').selectOption(purchaseOrderId)
-  await dialog.locator('#grn-number').fill(grnNumber)
-  await dialog.getByRole('button', { name: 'Upload', exact: true }).click()
-  await expect(toast(page, 'Goods receipt uploaded')).toBeVisible()
-  const row = await waitForRow<Doc>(
-    page,
-    `/api/workspaces/${owner.workspaceId}/procurement/goods-receipts`,
-    (candidate) => candidate.name === file.name,
-    'done',
-  )
-  return row.id
+  return uploadFileViaDialog(page, owner, 'goods-receipts', file, purchaseOrderId, grnNumber)
 }

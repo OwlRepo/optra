@@ -28,7 +28,7 @@ export function WorkflowSteps() {
             <Step
               n="1"
               title="Drop the files in"
-              body="Catalogs, POs, invoices — PDF, scan, or spreadsheet. Nothing needs reformatting first."
+              body="Catalogs, POs, invoices — PDF, scan, spreadsheet or phone photo. Nothing needs reformatting first."
             >
               <div className="flex h-[88px] items-center justify-center rounded-xl border border-dashed border-[oklch(0.88_0.012_255)]">
                 <span className="font-mono text-[11px] text-muted-foreground">

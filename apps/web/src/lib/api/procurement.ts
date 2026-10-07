@@ -1,6 +1,8 @@
-import { apiFetch, uploadFile } from './client'
+import { apiFetch, uploadFile, uploadFiles } from './client'
 import { fetchDownload } from '../http/download'
 
+/** What the vision model thought the photographed document was. */
+export type DetectedProcurementKind = 'purchase_order' | 'invoice' | 'goods_receipt' | 'unknown'
 export type ProcurementDocStatus = 'pending' | 'processing' | 'done' | 'failed'
 export type ProcurementDocSummary = { id: string; name: string; status: ProcurementDocStatus }
 export type ProcurementDoc = {
@@ -30,6 +32,14 @@ export type ProcurementDoc = {
   // Goods receipts only (S5). No currency — a receipt records what arrived,
   // not what it cost.
   grnNumber?: string | null
+  // Photo intake. Optional: an API older than migration 0036 omits them.
+  // `sourceKind` is 'image' for a photographed document. A photo document is
+  // never compared until a person confirms what was read (`reviewedAt`).
+  sourceKind?: string
+  pageCount?: number | null
+  reviewRequired?: boolean
+  reviewedAt?: string | null
+  detectedKind?: DetectedProcurementKind | null
 }
 
 // POLICY v1 #3: the vendor is chosen from the workspace's existing vendors.
@@ -80,6 +90,10 @@ export type DiscrepancyLineCitation = {
   sourceSheet: string | null
   extractionConfidence: number | null
   documentId: string
+  // Line provenance: 'csv' | 'xlsx' | 'pdf-extraction' | 'image-extraction' | 'manual'.
+  sourceKind?: string | null
+  // Set when a reviewer corrected the line before it was compared.
+  editedAt?: string | null
 }
 export type DiscrepancyFlag = {
   id: string
@@ -175,6 +189,123 @@ export function uploadGoodsReceipt(
 
 export function listGoodsReceipts(workspaceId: string): Promise<ProcurementDoc[]> {
   return apiFetch(`/api/workspaces/${workspaceId}/procurement/goods-receipts`)
+}
+
+// Photo intake: 1-5 photos of one paper document, stitched server-side into one
+// document that waits for a human review before it is compared.
+export function uploadPurchaseOrderPhotos(
+  workspaceId: string,
+  files: File[],
+  header: PurchaseOrderHeader,
+): Promise<ProcurementDocSummary> {
+  return uploadFiles(`/api/workspaces/${workspaceId}/procurement/purchase-orders/photos`, files, { ...header })
+}
+
+export function uploadInvoicePhotos(
+  workspaceId: string,
+  files: File[],
+  header: InvoiceHeader,
+): Promise<ProcurementDocSummary> {
+  return uploadFiles(`/api/workspaces/${workspaceId}/procurement/invoices/photos`, files, { ...header })
+}
+
+export function uploadGoodsReceiptPhotos(
+  workspaceId: string,
+  files: File[],
+  header: GoodsReceiptHeader,
+): Promise<ProcurementDocSummary> {
+  return uploadFiles(`/api/workspaces/${workspaceId}/procurement/goods-receipts/photos`, files, { ...header })
+}
+
+// Mirrors ProcurementReviewDocument / ProcurementReviewLine / ReviewLineInput
+// in @repo/types; this app does not import that package. Decimals are strings.
+export type ProcurementReviewDocument = {
+  id: string
+  name: string
+  status: ProcurementDocStatus
+  sourceKind: string
+  pageCount: number | null
+  detectedKind: DetectedProcurementKind | null
+  reviewRequired: boolean
+  reviewedAt: string | null
+  reviewedBy: string | null
+}
+
+export type ProcurementReviewLine = {
+  id: string
+  lineNumber: number | null
+  sku: string | null
+  description: string | null
+  quantity: string | null
+  unitPrice: string | null
+  lineTotal: string | null
+  uom: string | null
+  // Goods receipts only.
+  quantityReceived?: string | null
+  quantityAccepted?: string | null
+  quantityRejected?: string | null
+  extractionConfidence: number | null
+  sourceKind: string
+  editedAt: string | null
+  editedBy: string | null
+}
+
+export type ProcurementDocumentLines = {
+  document: ProcurementReviewDocument
+  items: ProcurementReviewLine[]
+  page: number
+  pageSize: number
+  total: number
+  totalPages: number
+}
+
+// With `id`: an existing line (kept or edited). Without: a new line. Existing
+// lines left out of the body are deleted.
+export type ReviewLineInput = {
+  id?: string
+  sku?: string | null
+  description?: string | null
+  quantity?: string | null
+  unitPrice?: string | null
+  lineTotal?: string | null
+  uom?: string | null
+  quantityReceived?: string | null
+  quantityAccepted?: string | null
+  quantityRejected?: string | null
+}
+
+export type ReviewDocumentResponse = { id: string; reviewedAt: string; rowCount: number }
+
+export function listDocumentLines(
+  workspaceId: string,
+  kind: ProcurementDocKind,
+  docId: string,
+  opts?: { page?: number; pageSize?: number },
+): Promise<ProcurementDocumentLines> {
+  const params = new URLSearchParams()
+  if (opts?.page) params.set('page', String(opts.page))
+  if (opts?.pageSize) params.set('pageSize', String(opts.pageSize))
+  const query = params.toString()
+
+  return apiFetch(`/api/workspaces/${workspaceId}/procurement/${kind}/${docId}/lines${query ? `?${query}` : ''}`)
+}
+
+/** Owner/admin only. Full replacement of the document's lines, 1-200. */
+export function reviewDocument(
+  workspaceId: string,
+  kind: ProcurementDocKind,
+  docId: string,
+  payload: { lines: ReviewLineInput[] },
+): Promise<ReviewDocumentResponse> {
+  return apiFetch(`/api/workspaces/${workspaceId}/procurement/${kind}/${docId}/review`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+/** URL of one normalized page image; the BFF attaches the bearer, so an <img> can load it. */
+export function documentPageUrl(workspaceId: string, kind: ProcurementDocKind, docId: string, n: number): string {
+  return `/api/workspaces/${workspaceId}/procurement/${kind}/${docId}/pages/${n}`
 }
 
 /**

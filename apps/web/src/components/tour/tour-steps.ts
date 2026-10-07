@@ -179,7 +179,7 @@ export function buildTourSteps(input: BuildTourStepsInput): TourStep[] {
       chapter: 'core',
       title: 'Upload a document',
       content: canManage
-        ? 'Drop in a purchase order or invoice as a PDF or spreadsheet, or a goods receipt as a spreadsheet. Optra reads the lines for you. Nothing is uploaded during this tour.'
+        ? 'Drop in a purchase order or invoice as a PDF, spreadsheet or phone photo, or a goods receipt as a spreadsheet or photo. Optra reads the lines for you. Nothing is uploaded during this tour.'
         : 'Owners and admins upload documents here. As a member you can open everything they add, review the discrepancies, and verify catalog matches.',
       anchor: gatedAnchor(uploadAnchor),
       route: routes.procurement,

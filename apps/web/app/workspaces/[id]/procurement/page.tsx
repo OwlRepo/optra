@@ -9,9 +9,7 @@ import {
   Card,
   EmptyState,
   Eyebrow,
-  Input,
   MicroLabel,
-  Modal,
   PanelHeader,
   Select,
   SkeletonRows,
@@ -25,7 +23,7 @@ import {
   cn,
   useToast,
 } from '@repo/ui'
-import { Download, FileIcon, Upload } from 'lucide-react'
+import { Download, Upload } from 'lucide-react'
 import { logout } from '@/lib/api/auth'
 import {
   compareDocuments,
@@ -33,9 +31,6 @@ import {
   listGoodsReceipts,
   listInvoices,
   listPurchaseOrders,
-  uploadGoodsReceipt,
-  uploadInvoice,
-  uploadPurchaseOrder,
   type ProcurementDoc,
   type ProcurementDocKind,
   type ProcurementDocStatus,
@@ -50,6 +45,8 @@ import { TourReplayButton } from '@/components/tour/tour-replay-button'
 import { TOUR_ANCHORS, tourAttr } from '@/components/tour/tour-anchors'
 import { MobileTabBar } from '@/components/mobile-tab-bar'
 import { WorkspaceBrandLink } from '@/components/workspace-brand-link'
+import { BatchUploadDialog } from '@/components/procurement/batch-upload-dialog'
+import { DocumentReviewModal } from '@/components/procurement/document-review-modal'
 
 type WorkspaceRole = 'owner' | 'admin' | 'member'
 type DocTab = 'purchase-orders' | 'invoices' | 'goods-receipts'
@@ -72,8 +69,9 @@ const statusLabel: Record<ProcurementDocStatus, string> = {
 
 const roleLabel: Record<WorkspaceRole, string> = { owner: 'Owner', admin: 'Admin', member: 'Member' }
 
-// The hidden file inputs' accept lists. The empty state's format label is
-// derived from these (frame 2.3), so it can never drift from what uploads take.
+// The batch dialog's file-picker accept lists (kept in step with its own). The
+// empty state's format label is derived from these (frame 2.3); photos are a
+// second picker and are named in the description, not here.
 const ACCEPT: Record<DocTab, string> = {
   'purchase-orders': '.csv,.xlsx,.pdf',
   invoices: '.csv,.xlsx,.pdf',
@@ -101,14 +99,16 @@ const PANEL_COPY: Record<
     title: 'Uploaded purchase orders',
     uploadLabel: 'Upload purchase order',
     emptyTitle: 'No purchase orders yet',
-    emptyDescription: 'Upload a CSV, XLSX, or PDF purchase order to compare it against an invoice.',
+    emptyDescription:
+      'Upload a CSV, XLSX, or PDF purchase order, or photos of a paper one, to compare it against an invoice.',
   },
   invoices: {
     eyebrow: 'Invoices',
     title: 'Uploaded invoices',
     uploadLabel: 'Upload invoice',
     emptyTitle: 'No invoices yet',
-    emptyDescription: 'Upload a CSV, XLSX, or PDF invoice to compare it against a purchase order.',
+    emptyDescription:
+      'Upload a CSV, XLSX, or PDF invoice, or photos of a paper one, to compare it against a purchase order.',
   },
   'goods-receipts': {
     eyebrow: 'Goods receipts',
@@ -116,7 +116,7 @@ const PANEL_COPY: Record<
     uploadLabel: 'Upload goods receipt',
     emptyTitle: 'No goods receipts yet',
     emptyDescription:
-      'Upload a CSV or XLSX goods receipt to record what was actually delivered against a purchase order.',
+      'Upload a CSV or XLSX goods receipt, or photos of a paper one, to record what was actually delivered against a purchase order.',
   },
 }
 
@@ -162,25 +162,11 @@ function CompareStep({ step, tone }: { step: number; tone: 'teal' | 'amber' }) {
   )
 }
 
-/** Frame 2.4: the picked file as a row, so it no longer reads like a caption. */
-function HeldFileRow({ name }: { name: string }) {
-  return (
-    <div className="flex items-center gap-3 rounded-[12px] border border-border-segmented bg-surface-subtle px-[14px] py-3">
-      <FileIcon className="size-[18px] shrink-0 text-primary-strong" aria-hidden="true" />
-      <span className="min-w-0 flex-1 truncate font-mono text-[13px]">{name}</span>
-      <span className="shrink-0 font-mono text-[11px] text-ink-muted">held · not uploaded yet</span>
-    </div>
-  )
-}
-
 export default function ProcurementPage({ params }: { params: { id: string } }) {
   const workspaceId = params.id
   const router = useRouter()
   const { toast } = useToast()
   const toastRef = React.useRef(toast)
-  const poFileInputRef = React.useRef<HTMLInputElement>(null)
-  const invoiceFileInputRef = React.useRef<HTMLInputElement>(null)
-  const grnFileInputRef = React.useRef<HTMLInputElement>(null)
 
   const { workspace, membership, status: workspaceStatus } = useWorkspaceContext()
   const [activeTab, setActiveTab] = React.useState<DocTab>('purchase-orders')
@@ -188,31 +174,26 @@ export default function ProcurementPage({ params }: { params: { id: string } }) 
   const [invoices, setInvoices] = React.useState<ProcurementDoc[]>([])
   const [goodsReceipts, setGoodsReceipts] = React.useState<ProcurementDoc[]>([])
   const [isLoading, setIsLoading] = React.useState(true)
-  const [isUploadingPO, setIsUploadingPO] = React.useState(false)
-  const [isUploadingInvoice, setIsUploadingInvoice] = React.useState(false)
-  const [isUploadingGrn, setIsUploadingGrn] = React.useState(false)
   const [selectedPurchaseOrderId, setSelectedPurchaseOrderId] = React.useState('')
   const [selectedInvoiceId, setSelectedInvoiceId] = React.useState('')
   const [isComparing, setIsComparing] = React.useState(false)
 
-  // S3b. Picking a file no longer uploads it: the header POLICY v1 #2/#3
-  // require cannot be read out of the document, so the file is held here while
-  // the user fills it in, and the upload fires on submit.
+  // POLICY v1 #3: the vendor is picked from the workspace's own vendors, so the
+  // batch dialog needs the list.
   const [vendors, setVendors] = React.useState<VendorDetail[]>([])
-  const [pendingPoFile, setPendingPoFile] = React.useState<File | null>(null)
-  const [pendingInvoiceFile, setPendingInvoiceFile] = React.useState<File | null>(null)
-  const [poVendorId, setPoVendorId] = React.useState('')
-  const [poNumber, setPoNumber] = React.useState('')
-  const [poOrderedAt, setPoOrderedAt] = React.useState('')
-  const [poCurrency, setPoCurrency] = React.useState('USD')
-  const [invoicePoId, setInvoicePoId] = React.useState('')
-  const [invoiceNumber, setInvoiceNumber] = React.useState('')
-  const [invoiceCurrency, setInvoiceCurrency] = React.useState('USD')
-  // Goods receipts carry no currency (S5) — a receipt records what arrived, not
-  // what it cost.
-  const [pendingGrnFile, setPendingGrnFile] = React.useState<File | null>(null)
-  const [grnPoId, setGrnPoId] = React.useState('')
-  const [grnNumber, setGrnNumber] = React.useState('')
+  // The batch dialog follows the active tab. It stays mounted and only `open`
+  // toggles, so an upload in flight is not torn down by closing the dialog.
+  const [batchOpen, setBatchOpen] = React.useState(false)
+  // Photo intake: the document whose AI-read lines are being reviewed.
+  const [reviewTarget, setReviewTarget] = React.useState<{ kind: DocTab; docId: string } | null>(null)
+  // The Review button that opened the modal, and the tab's upload buttons: the
+  // fallback home for focus once Review has gone (a reviewed document loses it).
+  const reviewTriggerRef = React.useRef<HTMLElement | null>(null)
+  // Where the review modal hands focus back on close (Modal `returnFocusRef`);
+  // set by the close handlers below, just before the modal unmounts.
+  const reviewReturnRef = React.useRef<HTMLElement | null>(null)
+  const desktopUploadRef = React.useRef<HTMLButtonElement>(null)
+  const mobileUploadRef = React.useRef<HTMLButtonElement>(null)
 
   // B14. Set when the first load answers 403; the page then shows only the
   // no-access state instead of empty lists.
@@ -313,139 +294,11 @@ export default function ProcurementPage({ params }: { params: { id: string } }) 
     }
   }, [router])
 
-  const handlePurchaseOrderFileSelected = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0]
-    event.target.value = ''
-    if (!file) return
-    setPoNumber('')
-    setPoVendorId('')
-    setPoCurrency('USD')
-    setPendingPoFile(file)
-  }
-
-  const submitPurchaseOrderUpload = async () => {
-    const file = pendingPoFile
-    if (!file || !poVendorId || !poNumber.trim()) return
-
-    setIsUploadingPO(true)
-    try {
-      await uploadPurchaseOrder(workspaceId, file, {
-        vendorId: poVendorId,
-        poNumber: poNumber.trim(),
-        // Uppercased here too, not only on the server: the field accepts free
-        // typing and the user should see the value that will actually be stored.
-        currency: poCurrency.trim().toUpperCase(),
-        // A date input gives YYYY-MM-DD; the API wants ISO 8601. Sent only when
-        // the user filled it, because absent must stay distinguishable from a
-        // guess.
-        ...(poOrderedAt ? { orderedAt: new Date(`${poOrderedAt}T00:00:00.000Z`).toISOString() } : {}),
-      })
-      setPendingPoFile(null)
-      setPoOrderedAt('')
-      toastRef.current({
-        variant: 'success',
-        title: 'Purchase order uploaded',
-        description: `${file.name} is being parsed.`,
-      })
-      await refreshDocs()
-    } catch (err) {
-      if (isUnauthorized(err)) {
-        router.push('/login')
-        return
-      }
-      toastRef.current({
-        variant: 'error',
-        title: 'Upload failed',
-        description: extractErrorMessage(err, 'Try again in a moment.'),
-      })
-    } finally {
-      setIsUploadingPO(false)
-    }
-  }
-
-  const handleInvoiceFileSelected = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0]
-    event.target.value = ''
-    if (!file) return
-    setInvoiceNumber('')
-    setInvoicePoId('')
-    setInvoiceCurrency('USD')
-    setPendingInvoiceFile(file)
-  }
-
-  const submitInvoiceUpload = async () => {
-    const file = pendingInvoiceFile
-    if (!file || !invoicePoId || !invoiceNumber.trim()) return
-
-    setIsUploadingInvoice(true)
-    try {
-      await uploadInvoice(workspaceId, file, {
-        purchaseOrderId: invoicePoId,
-        invoiceNumber: invoiceNumber.trim(),
-        currency: invoiceCurrency.trim().toUpperCase(),
-      })
-      setPendingInvoiceFile(null)
-      toastRef.current({
-        variant: 'success',
-        title: 'Invoice uploaded',
-        description: `${file.name} is being parsed.`,
-      })
-      await refreshDocs()
-    } catch (err) {
-      if (isUnauthorized(err)) {
-        router.push('/login')
-        return
-      }
-      toastRef.current({
-        variant: 'error',
-        title: 'Upload failed',
-        description: extractErrorMessage(err, 'Try again in a moment.'),
-      })
-    } finally {
-      setIsUploadingInvoice(false)
-    }
-  }
-
-  const handleGoodsReceiptFileSelected = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0]
-    event.target.value = ''
-    if (!file) return
-    setGrnNumber('')
-    setGrnPoId('')
-    setPendingGrnFile(file)
-  }
-
-  const submitGoodsReceiptUpload = async () => {
-    const file = pendingGrnFile
-    if (!file || !grnPoId || !grnNumber.trim()) return
-
-    setIsUploadingGrn(true)
-    try {
-      await uploadGoodsReceipt(workspaceId, file, { purchaseOrderId: grnPoId, grnNumber: grnNumber.trim() })
-      setPendingGrnFile(null)
-      toastRef.current({
-        variant: 'success',
-        title: 'Goods receipt uploaded',
-        description: `${file.name} is being parsed.`,
-      })
-      await refreshDocs()
-    } catch (err) {
-      if (isUnauthorized(err)) {
-        router.push('/login')
-        return
-      }
-      toastRef.current({
-        variant: 'error',
-        title: 'Upload failed',
-        description: extractErrorMessage(err, 'Try again in a moment.'),
-      })
-    } finally {
-      setIsUploadingGrn(false)
-    }
-  }
-
-  const donePurchaseOrders = purchaseOrders.filter((doc) => doc.status === 'done')
-  const doneInvoices = invoices.filter((doc) => doc.status === 'done')
+  // Photo documents wait for a human confirm: until then they are not offered
+  // for comparison (the API refuses them too).
+  const isPendingReview = (doc: ProcurementDoc) => doc.reviewRequired === true && !doc.reviewedAt
+  const donePurchaseOrders = purchaseOrders.filter((doc) => doc.status === 'done' && !isPendingReview(doc))
+  const doneInvoices = invoices.filter((doc) => doc.status === 'done' && !isPendingReview(doc))
 
   const handleCompare = React.useCallback(async () => {
     if (!selectedPurchaseOrderId || !selectedInvoiceId) return
@@ -503,33 +356,10 @@ export default function ProcurementPage({ params }: { params: { id: string } }) 
     { id: 'goods-receipts', label: 'Goods Receipts', shortLabel: 'Receipts', count: goodsReceipts.length },
   ]
 
-  const kindState: Record<
-    DocTab,
-    {
-      docs: ProcurementDoc[]
-      inputRef: React.RefObject<HTMLInputElement>
-      onFileSelected: (event: React.ChangeEvent<HTMLInputElement>) => void
-      isUploading: boolean
-    }
-  > = {
-    'purchase-orders': {
-      docs: purchaseOrders,
-      inputRef: poFileInputRef,
-      onFileSelected: handlePurchaseOrderFileSelected,
-      isUploading: isUploadingPO,
-    },
-    invoices: {
-      docs: invoices,
-      inputRef: invoiceFileInputRef,
-      onFileSelected: handleInvoiceFileSelected,
-      isUploading: isUploadingInvoice,
-    },
-    'goods-receipts': {
-      docs: goodsReceipts,
-      inputRef: grnFileInputRef,
-      onFileSelected: handleGoodsReceiptFileSelected,
-      isUploading: isUploadingGrn,
-    },
+  const kindDocs: Record<DocTab, ProcurementDoc[]> = {
+    'purchase-orders': purchaseOrders,
+    invoices,
+    'goods-receipts': goodsReceipts,
   }
 
   const renderDocsTableBody = (docs: ProcurementDoc[], kind: DocTab) => (
@@ -565,9 +395,27 @@ export default function ProcurementPage({ params }: { params: { id: string } }) 
               <TableCell className="font-mono text-[13px]">{doc.currency ?? '—'}</TableCell>
             ) : null}
             <TableCell>
-              <Badge variant={statusTone[doc.status]} pulse={doc.status === 'processing'}>
-                {statusLabel[doc.status]}
-              </Badge>
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant={statusTone[doc.status]} pulse={doc.status === 'processing'}>
+                  {statusLabel[doc.status]}
+                </Badge>
+                {doc.status === 'done' && isPendingReview(doc) ? (
+                  <>
+                    <Badge variant="amber">Needs review</Badge>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      aria-label={`Review ${doc.name}`}
+                      onClick={(event) => {
+                        reviewTriggerRef.current = event.currentTarget
+                        setReviewTarget({ kind, docId: doc.id })
+                      }}
+                    >
+                      Review
+                    </Button>
+                  </>
+                ) : null}
+              </div>
             </TableCell>
             <TableCell numeric>{doc.rowCount ?? '—'}</TableCell>
             <TableCell className="font-mono text-[13px] text-ink-body">{formatDate(doc.createdAt)}</TableCell>
@@ -594,8 +442,8 @@ export default function ProcurementPage({ params }: { params: { id: string } }) 
   // Card), and an empty list nests C11 inside the same panel.
   const renderDocsPanel = (kind: DocTab) => {
     const copy = PANEL_COPY[kind]
-    const { docs, inputRef, onFileSelected, isUploading } = kindState[kind]
-    const openPicker = () => inputRef.current?.click()
+    const docs = kindDocs[kind]
+    const openPicker = () => setBatchOpen(true)
     const header = (
       <PanelHeader
         className="max-lg:hidden"
@@ -604,25 +452,17 @@ export default function ProcurementPage({ params }: { params: { id: string } }) 
         action={
           canManage ? (
             <>
-              <input
-                ref={inputRef}
-                type="file"
-                accept={ACCEPT[kind]}
-                className="hidden"
-                onChange={(event) => onFileSelected(event)}
-              />
               {/* Below lg the full-width button under the tabs takes over
                   (frame 4.2), so this one only shows from lg up. */}
               <Button
                 size="sm"
+                ref={desktopUploadRef}
                 className="hidden lg:inline-flex"
                 {...tourAttr(TOUR_ANCHORS.procurementUpload)}
                 onClick={openPicker}
-                isLoading={isUploading}
-                loadingText="Uploading"
               >
-                {!isUploading ? <Upload className="size-4" /> : null}
-                {!isUploading ? copy.uploadLabel : null}
+                <Upload className="size-4" />
+                {copy.uploadLabel}
               </Button>
             </>
           ) : undefined
@@ -773,32 +613,38 @@ export default function ProcurementPage({ params }: { params: { id: string } }) 
     </Card>
   )
 
+  // The modal unmounts with focus inside it; Modal hands focus to
+  // `reviewReturnRef`. Cancelled: back to the Review button. Reviewed: that
+  // button is about to disappear, so go to the tab's upload button (the desktop
+  // one is display:none below lg and refuses focus, so the mobile one takes
+  // over there), else the active tab.
+  const setReviewReturn = (reviewed: boolean) => {
+    const trigger = reviewTriggerRef.current
+    reviewTriggerRef.current = null
+    if (!reviewed && trigger?.isConnected) {
+      reviewReturnRef.current = trigger
+      return
+    }
+    const shown = (el: HTMLElement | null) => el !== null && getComputedStyle(el).display !== 'none'
+    reviewReturnRef.current = shown(desktopUploadRef.current)
+      ? desktopUploadRef.current
+      : shown(mobileUploadRef.current)
+        ? mobileUploadRef.current
+        : document.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')
+  }
+
   // Frame 4.2 (C-3 #13): below lg the active tab's upload is one full-width
-  // h46 r12 primary button directly under the tabs; it opens the same input.
+  // h46 r12 primary button directly under the tabs; it opens the same dialog.
   const mobileUpload = canManage ? (
     <Button
+      ref={mobileUploadRef}
       className="h-[46px] w-full justify-between rounded-[12px] px-4 text-[15px] lg:hidden"
       {...tourAttr(TOUR_ANCHORS.procurementUploadMobile)}
-      onClick={() => kindState[activeTab].inputRef.current?.click()}
-      isLoading={kindState[activeTab].isUploading}
-      loadingText="Uploading"
+      onClick={() => setBatchOpen(true)}
     >
-      {!kindState[activeTab].isUploading ? (
-        <>
-          {PANEL_COPY[activeTab].uploadLabel} <span aria-hidden="true">↑</span>
-        </>
-      ) : null}
+      {PANEL_COPY[activeTab].uploadLabel} <span aria-hidden="true">↑</span>
     </Button>
   ) : null
-
-  const modalFooter = (onCancel: () => void, submit: React.ReactNode) => (
-    <div className="flex justify-end gap-[10px]">
-      <Button variant="ghost" className="px-[14px]" onClick={onCancel}>
-        Cancel
-      </Button>
-      {submit}
-    </div>
-  )
 
   return (
     <AppShell
@@ -841,257 +687,57 @@ export default function ProcurementPage({ params }: { params: { id: string } }) 
                 value={activeTab}
                 onValueChange={(id) => setActiveTab(id as DocTab)}
                 aria-label="Document type"
+                idPrefix="procurement"
                 fullWidth
               />
             </div>
             {mobileUpload}
-            {renderDocsPanel(activeTab)}
+            <div
+              role="tabpanel"
+              id={`procurement-panel-${activeTab}`}
+              aria-labelledby={`procurement-tab-${activeTab}`}
+            >
+              {renderDocsPanel(activeTab)}
+            </div>
             <div {...tourAttr(TOUR_ANCHORS.procurementCompare)}>{comparePanel}</div>
           </>
         )}
       </div>
 
-      {/* POLICY v1 #3: the vendor is picked from this workspace's own vendors.
-          With none created yet the form cannot be completed, so say so and link
-          out rather than letting the user submit into a guaranteed 404. */}
-      <Modal
-        open={pendingPoFile !== null}
-        onClose={() => setPendingPoFile(null)}
-        eyebrow="Upload · step 2 of 2"
-        title="Purchase order details"
-        footer={modalFooter(
-          () => setPendingPoFile(null),
-          <Button
-            onClick={() => void submitPurchaseOrderUpload()}
-            isLoading={isUploadingPO}
-            loadingText="Uploading"
-            disabled={vendors.length === 0 || !poVendorId || !poNumber.trim() || !poCurrency.trim()}
-          >
-            {!isUploadingPO ? 'Upload' : null}
-          </Button>,
-        )}
-      >
-        {vendors.length === 0 ? (
-          <EmptyState
-            nested
-            label="Needs a vendor first"
-            labelTone="amber"
-            title="No vendors yet"
-            description="A purchase order has to name the vendor it was raised with. Create one first, then upload again."
-            actions={
-              <Button variant="outline" size="sm" onClick={() => router.push(`/workspaces/${workspaceId}/vendors`)}>
-                Go to vendors <span aria-hidden="true">→</span>
-              </Button>
-            }
-          />
-        ) : (
-          <div className="flex flex-col gap-[18px]">
-            <HeldFileRow name={pendingPoFile?.name ?? ''} />
-            <div className="flex flex-col gap-2">
-              <label className="text-[14px] font-medium" htmlFor="po-vendor">
-                Vendor
-              </label>
-              <Select id="po-vendor" value={poVendorId} onChange={(event) => setPoVendorId(event.target.value)}>
-                <option value="">Select a vendor</option>
-                {vendors.map((vendor) => (
-                  <option key={vendor.id} value={vendor.id}>
-                    {vendor.name}
-                  </option>
-                ))}
-              </Select>
-            </div>
-            <div className="grid grid-cols-[minmax(0,1fr)_120px] gap-[14px]">
-              <div className="flex flex-col gap-2">
-                <label className="text-[14px] font-medium" htmlFor="po-number">
-                  PO number
-                </label>
-                <Input
-                  id="po-number"
-                  className="font-mono text-[14px]"
-                  value={poNumber}
-                  maxLength={200}
-                  placeholder="PO-2026-1180"
-                  onChange={(event) => setPoNumber(event.target.value)}
-                />
-              </div>
-              <div className="flex flex-col gap-2">
-                <label className="text-[14px] font-medium" htmlFor="po-currency">
-                  Currency
-                </label>
-                <Input
-                  id="po-currency"
-                  className="font-mono text-[14px] tracking-[0.08em]"
-                  value={poCurrency}
-                  maxLength={3}
-                  placeholder="USD"
-                  onChange={(event) => setPoCurrency(event.target.value.toUpperCase())}
-                />
-              </div>
-            </div>
-            {/* S9. Optional, and the only optional field on this form. A
-                contract price has an effective window, so checking the order
-                against it needs the date the order was PLACED — leaving this
-                blank falls back to today, which is right for an order being
-                raised now and wrong for one being backfilled. */}
-            <div className="flex flex-col gap-2">
-              <label className="text-[14px] font-medium" htmlFor="po-ordered-at">
-                Order date <span className="font-normal text-ink-muted">(optional)</span>
-              </label>
-              <Input
-                id="po-ordered-at"
-                type="date"
-                className="font-mono text-[14px]"
-                value={poOrderedAt}
-                onChange={(event) => setPoOrderedAt(event.target.value)}
-              />
-              <p className="text-[13px] leading-[1.5] text-ink-muted">
-                When the order was placed. Leave blank if you are uploading it the same day.
-              </p>
-            </div>
-          </div>
-        )}
-      </Modal>
+      {canManage ? (
+        <BatchUploadDialog
+          open={batchOpen}
+          onClose={() => setBatchOpen(false)}
+          workspaceId={workspaceId}
+          tab={activeTab}
+          vendors={vendors}
+          // Unpaginated on purpose: this list feeds a picker, and paginating it
+          // would silently truncate the choices (risk register "Paginating A
+          // List That Also Feeds A Picker").
+          purchaseOrders={purchaseOrders}
+          onUploaded={() => void refreshDocs()}
+        />
+      ) : null}
 
-      {/* POLICY v1 #2: the user selects the PO explicitly. The picker lists
-          every purchase order unpaginated — paginating this list would
-          silently truncate the picker (risk register "Paginating A List That
-          Also Feeds A Picker"). */}
-      <Modal
-        open={pendingInvoiceFile !== null}
-        onClose={() => setPendingInvoiceFile(null)}
-        eyebrow="Upload · step 2 of 2"
-        title="Invoice details"
-        footer={modalFooter(
-          () => setPendingInvoiceFile(null),
-          <Button
-            onClick={() => void submitInvoiceUpload()}
-            isLoading={isUploadingInvoice}
-            loadingText="Uploading"
-            disabled={
-              purchaseOrders.length === 0 || !invoicePoId || !invoiceNumber.trim() || !invoiceCurrency.trim()
-            }
-          >
-            {!isUploadingInvoice ? 'Upload' : null}
-          </Button>,
-        )}
-      >
-        {purchaseOrders.length === 0 ? (
-          <EmptyState
-            nested
-            label="Needs a purchase order first"
-            labelTone="amber"
-            title="No purchase orders yet"
-            description="An invoice is always matched against the purchase order it answers, so upload that first."
-          />
-        ) : (
-          <div className="flex flex-col gap-[18px]">
-            <HeldFileRow name={pendingInvoiceFile?.name ?? ''} />
-            <div className="flex flex-col gap-2">
-              <label className="text-[14px] font-medium" htmlFor="invoice-po">
-                Purchase order
-              </label>
-              <Select id="invoice-po" value={invoicePoId} onChange={(event) => setInvoicePoId(event.target.value)}>
-                <option value="">Select a purchase order</option>
-                {purchaseOrders.map((doc) => (
-                  <option key={doc.id} value={doc.id}>
-                    {doc.poNumber ? `${doc.poNumber} — ${doc.name}` : doc.name}
-                  </option>
-                ))}
-              </Select>
-            </div>
-            <div className="grid grid-cols-[minmax(0,1fr)_110px] gap-[14px]">
-              <div className="flex flex-col gap-2">
-                <label className="text-[14px] font-medium" htmlFor="invoice-number">
-                  Invoice number
-                </label>
-                <Input
-                  id="invoice-number"
-                  className="font-mono text-[14px]"
-                  value={invoiceNumber}
-                  maxLength={200}
-                  placeholder="INV-44120"
-                  onChange={(event) => setInvoiceNumber(event.target.value)}
-                />
-              </div>
-              <div className="flex flex-col gap-2">
-                <label className="text-[14px] font-medium" htmlFor="invoice-currency">
-                  Currency
-                </label>
-                <Input
-                  id="invoice-currency"
-                  className="font-mono text-[14px]"
-                  value={invoiceCurrency}
-                  maxLength={3}
-                  placeholder="USD"
-                  onChange={(event) => setInvoiceCurrency(event.target.value.toUpperCase())}
-                />
-              </div>
-            </div>
-          </div>
-        )}
-      </Modal>
-
-      {/* POLICY v1 #2 again: a receipt answers exactly one purchase order, and
-          the column behind this is NOT NULL — a receipt with no order is not
-          evidence of anything. No currency field: a receipt records what
-          arrived, not what it cost. */}
-      <Modal
-        open={pendingGrnFile !== null}
-        onClose={() => setPendingGrnFile(null)}
-        eyebrow="Upload · step 2 of 2"
-        title="Goods receipt details"
-        footer={modalFooter(
-          () => setPendingGrnFile(null),
-          <Button
-            onClick={() => void submitGoodsReceiptUpload()}
-            isLoading={isUploadingGrn}
-            loadingText="Uploading"
-            disabled={purchaseOrders.length === 0 || !grnPoId || !grnNumber.trim()}
-          >
-            {!isUploadingGrn ? 'Upload' : null}
-          </Button>,
-        )}
-      >
-        {purchaseOrders.length === 0 ? (
-          <EmptyState
-            nested
-            label="Needs a purchase order first"
-            labelTone="amber"
-            title="No purchase orders yet"
-            description="A goods receipt records what arrived against an order, so upload that purchase order first."
-          />
-        ) : (
-          <div className="flex flex-col gap-[18px]">
-            <HeldFileRow name={pendingGrnFile?.name ?? ''} />
-            <div className="flex flex-col gap-2">
-              <label className="text-[14px] font-medium" htmlFor="grn-po">
-                Purchase order
-              </label>
-              <Select id="grn-po" value={grnPoId} onChange={(event) => setGrnPoId(event.target.value)}>
-                <option value="">Select a purchase order</option>
-                {purchaseOrders.map((doc) => (
-                  <option key={doc.id} value={doc.id}>
-                    {doc.poNumber ? `${doc.poNumber} — ${doc.name}` : doc.name}
-                  </option>
-                ))}
-              </Select>
-            </div>
-            <div className="flex flex-col gap-2">
-              <label className="text-[14px] font-medium" htmlFor="grn-number">
-                Goods receipt number
-              </label>
-              <Input
-                id="grn-number"
-                className="font-mono text-[14px]"
-                value={grnNumber}
-                maxLength={200}
-                placeholder="GRN-9001"
-                onChange={(event) => setGrnNumber(event.target.value)}
-              />
-            </div>
-          </div>
-        )}
-      </Modal>
+      {reviewTarget ? (
+        <DocumentReviewModal
+          open
+          onClose={() => {
+            setReviewReturn(false)
+            setReviewTarget(null)
+          }}
+          workspaceId={workspaceId}
+          kind={reviewTarget.kind}
+          docId={reviewTarget.docId}
+          canEdit={canManage}
+          returnFocusRef={reviewReturnRef}
+          onReviewed={() => {
+            setReviewReturn(true)
+            setReviewTarget(null)
+            void refreshDocs()
+          }}
+        />
+      ) : null}
     </AppShell>
   )
 }

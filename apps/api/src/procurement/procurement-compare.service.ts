@@ -6,6 +6,7 @@ import { and, eq, lt } from 'drizzle-orm'
 import { comparisonRuns, db, goodsReceipts, invoices, purchaseOrders } from '@repo/db'
 import { autoCompareEnabled } from './procurement-feature-flags'
 import { assertUnreachable } from './procurement-kind'
+import { isReviewPending, reviewCleared } from './procurement-review'
 import type { ProcurementDocKind } from './procurement-parse.service'
 
 /**
@@ -122,13 +123,15 @@ export class ProcurementCompareService implements OnModuleInit {
             purchaseOrderId: invoices.purchaseOrderId,
             status: invoices.status,
             updatedAt: invoices.updatedAt,
+            reviewRequired: invoices.reviewRequired,
+            reviewedAt: invoices.reviewedAt,
           })
           .from(invoices)
           .where(eq(invoices.id, id))
           .limit(1)
         // A null link is the pre-0025 legacy shape. compare() still accepts it
         // when a human picks both sides, but nothing about it is discoverable.
-        if (!invoice?.purchaseOrderId || invoice.status !== 'done') return []
+        if (!invoice?.purchaseOrderId || invoice.status !== 'done' || isReviewPending(invoice)) return []
 
         const [po] = await db
           .select({ id: purchaseOrders.id, updatedAt: purchaseOrders.updatedAt })
@@ -138,6 +141,7 @@ export class ProcurementCompareService implements OnModuleInit {
               eq(purchaseOrders.id, invoice.purchaseOrderId),
               eq(purchaseOrders.workspaceId, invoice.workspaceId),
               eq(purchaseOrders.status, 'done'),
+              reviewCleared(purchaseOrders),
             ),
           )
           .limit(1)
@@ -176,11 +180,13 @@ export class ProcurementCompareService implements OnModuleInit {
         workspaceId: purchaseOrders.workspaceId,
         status: purchaseOrders.status,
         updatedAt: purchaseOrders.updatedAt,
+        reviewRequired: purchaseOrders.reviewRequired,
+        reviewedAt: purchaseOrders.reviewedAt,
       })
       .from(purchaseOrders)
       .where(eq(purchaseOrders.id, purchaseOrderId))
       .limit(1)
-    if (!po || po.status !== 'done') return []
+    if (!po || po.status !== 'done' || isReviewPending(po)) return []
 
     const receipts = await this.receiptState(po.workspaceId, po.id)
     if (receipts.defer) return []
@@ -193,6 +199,7 @@ export class ProcurementCompareService implements OnModuleInit {
           eq(invoices.workspaceId, po.workspaceId),
           eq(invoices.purchaseOrderId, po.id),
           eq(invoices.status, 'done'),
+          reviewCleared(invoices),
         ),
       )
 
@@ -224,11 +231,25 @@ export class ProcurementCompareService implements OnModuleInit {
     versionMs: number
   }> {
     const receipts = await db
-      .select({ status: goodsReceipts.status, updatedAt: goodsReceipts.updatedAt })
+      .select({
+        status: goodsReceipts.status,
+        updatedAt: goodsReceipts.updatedAt,
+        reviewRequired: goodsReceipts.reviewRequired,
+        reviewedAt: goodsReceipts.reviewedAt,
+      })
       .from(goodsReceipts)
       .where(and(eq(goodsReceipts.workspaceId, workspaceId), eq(goodsReceipts.purchaseOrderId, purchaseOrderId)))
 
-    const defer = receipts.some((receipt) => receipt.status === 'pending' || receipt.status === 'processing')
+    // A `done` photo receipt that nobody has confirmed yet defers too: its own
+    // review confirmation calls back into enqueueForDocument, so waiting costs
+    // nothing, while comparing now would accuse on unverified numbers. A
+    // `failed` one still does not defer (nothing will ever review it).
+    const defer = receipts.some(
+      (receipt) =>
+        receipt.status === 'pending' ||
+        receipt.status === 'processing' ||
+        (receipt.status === 'done' && isReviewPending(receipt)),
+    )
     const versionMs = receipts
       .filter((receipt) => receipt.status === 'done')
       .reduce((newest, receipt) => Math.max(newest, receipt.updatedAt.getTime()), 0)

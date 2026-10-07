@@ -1,5 +1,7 @@
-import { ValidationPipe } from '@nestjs/common'
+import { Body, Controller, Post, ValidationPipe } from '@nestjs/common'
+import { Test } from '@nestjs/testing'
 import type { NestExpressApplication } from '@nestjs/platform-express'
+import request from 'supertest'
 import { IsEmail } from 'class-validator'
 import type { Request, Response } from 'express'
 import { configureApp } from './bootstrap'
@@ -17,11 +19,20 @@ function fakeApp() {
     useGlobalFilters: jest.fn(),
     enableCors: jest.fn(),
     set: jest.fn(),
+    useBodyParser: jest.fn(),
   }
 }
 
 function configure(app: ReturnType<typeof fakeApp>) {
   configureApp(app as unknown as NestExpressApplication)
+}
+
+@Controller('echo')
+class EchoController {
+  @Post()
+  echo(@Body() body: { blob?: string }) {
+    return { length: body.blob?.length ?? 0 }
+  }
 }
 
 describe('configureApp', () => {
@@ -37,6 +48,31 @@ describe('configureApp', () => {
   it('error: refuses to boot when TRUST_PROXY would trust every hop', () => {
     process.env.TRUST_PROXY = 'true'
     expect(() => configure(fakeApp())).toThrow('TRUST_PROXY must be a positive hop count')
+  })
+
+  it('edge: raises the JSON body limit to 1mb so a 200-line review body fits', () => {
+    delete process.env.TRUST_PROXY
+    const app = fakeApp()
+    configure(app)
+    expect(app.useBodyParser).toHaveBeenCalledWith('json', { limit: '1mb' })
+  })
+
+  it('edge: a ~900kb JSON body is accepted (the Express default of 100kb would refuse it)', async () => {
+    delete process.env.TRUST_PROXY
+    const app = await Test.createTestingModule({ controllers: [EchoController] })
+      .compile()
+      .then((moduleRef) => moduleRef.createNestApplication<NestExpressApplication>())
+    configureApp(app)
+    await app.init()
+    try {
+      const res = await request(app.getHttpServer())
+        .post('/echo')
+        .send({ blob: 'x'.repeat(900_000) })
+        .expect(201)
+      expect(res.body).toEqual({ length: 900_000 })
+    } finally {
+      await app.close()
+    }
   })
 
   it('edge: trusts no proxy hop when TRUST_PROXY is unset', () => {
@@ -63,6 +99,23 @@ describe('configureApp', () => {
     await expect(
       pipe.transform({ email: 'buyer@example.com', role: 'owner' }, { type: 'body', metatype: InviteBody }),
     ).resolves.toEqual({ email: 'buyer@example.com' })
+  })
+
+  it('regression: a JSON body over the new 1mb limit is still refused (the limit was raised, not removed)', async () => {
+    delete process.env.TRUST_PROXY
+    const app = await Test.createTestingModule({ controllers: [EchoController] })
+      .compile()
+      .then((moduleRef) => moduleRef.createNestApplication<NestExpressApplication>())
+    configureApp(app)
+    await app.init()
+    try {
+      const res = await request(app.getHttpServer())
+        .post('/echo')
+        .send({ blob: 'x'.repeat(1_200_000) })
+      expect(res.status).toBeGreaterThanOrEqual(400)
+    } finally {
+      await app.close()
+    }
   })
 
   it('happy: wires cookies, the catch-all filter, CORS for WEB_URL and the trust-proxy hop count', () => {

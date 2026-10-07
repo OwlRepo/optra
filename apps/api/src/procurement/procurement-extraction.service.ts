@@ -1,5 +1,11 @@
 import { Injectable } from '@nestjs/common'
-import { extractLineItemsFromPdf, ProcurementExtractionResult } from '@repo/ai'
+import {
+  extractLineItemsFromImages,
+  extractLineItemsFromPdf,
+  ImagePage,
+  ProcurementExtractionKind,
+  ProcurementExtractionResult,
+} from '@repo/ai'
 import { UsageService } from '../limits/usage.service'
 
 // Thin wrapper over @repo/ai's extraction chain — the Nest DI seam the
@@ -12,5 +18,15 @@ export class ProcurementExtractionService {
 
   async extract(filePath: string, workspaceId: string): Promise<ProcurementExtractionResult> {
     return this.usage.metered(workspaceId, (meter) => extractLineItemsFromPdf(filePath, { meter }))
+  }
+
+  // Photo intake: same metering seam, so vision spend counts against the
+  // workspace's monthly budget exactly like a PDF extraction.
+  async extractFromImages(
+    pages: ImagePage[],
+    kind: ProcurementExtractionKind,
+    workspaceId: string,
+  ): Promise<ProcurementExtractionResult> {
+    return this.usage.metered(workspaceId, (meter) => extractLineItemsFromImages(pages, kind, { meter }))
   }
 }

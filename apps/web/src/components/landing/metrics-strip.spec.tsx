@@ -36,7 +36,7 @@ describe('MetricsStrip', () => {
     render(<MetricsStrip />)
 
     expect(screen.getByText('Formats read')).not.toBeNull()
-    expect(screen.getByText('PDF · CSV · XLSX')).not.toBeNull()
+    expect(screen.getByText('PDF · CSV · XLSX · Photo')).not.toBeNull()
     expect(screen.getByText('Lines checked')).not.toBeNull()
     expect(screen.getByText('Each PO line')).not.toBeNull()
     expect(screen.getByText('Final call')).not.toBeNull()
