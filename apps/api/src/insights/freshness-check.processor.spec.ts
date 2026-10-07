@@ -24,6 +24,7 @@ describe('FreshnessCheckProcessor', () => {
   let workspaceId: string
   let documentId: string
   let ticketId: string
+  const originalFlag = process.env.SUPPORT_SURFACES_ENABLED
 
   beforeAll(async () => {
     const [user] = await db
@@ -47,15 +48,31 @@ describe('FreshnessCheckProcessor', () => {
   })
 
   afterAll(async () => {
+    if (originalFlag === undefined) delete process.env.SUPPORT_SURFACES_ENABLED
+    else process.env.SUPPORT_SURFACES_ENABLED = originalFlag
     await pool.end()
   })
 
   beforeEach(async () => {
+    process.env.SUPPORT_SURFACES_ENABLED = 'true'
     coverage = { findGaps: jest.fn() }
     runs = new BackgroundRunsService()
     processor = new FreshnessCheckProcessor(coverage as unknown as TicketDocCoverageService, runs)
     await db.delete(documentReviewFlags).where(eq(documentReviewFlags.workspaceId, workspaceId))
     await db.delete(backgroundRuns).where(eq(backgroundRuns.workspaceId, workspaceId))
+  })
+
+  it('edge: with support surfaces off, a queued job ends without a run or a flag', async () => {
+    process.env.SUPPORT_SURFACES_ENABLED = 'false'
+    coverage.findGaps.mockResolvedValue([{ documentId, ticketId, score: 0.2 }])
+
+    await processor.onCheck({ data: { workspaceId } } as never)
+
+    expect(coverage.findGaps).not.toHaveBeenCalled()
+    const flags = await db.select().from(documentReviewFlags).where(eq(documentReviewFlags.workspaceId, workspaceId))
+    expect(flags).toHaveLength(0)
+    const runRows = await db.select().from(backgroundRuns).where(eq(backgroundRuns.workspaceId, workspaceId))
+    expect(runRows).toHaveLength(0)
   })
 
   it('inserts one flag per gap and records a succeeded run', async () => {

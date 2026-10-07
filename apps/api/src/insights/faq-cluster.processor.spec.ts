@@ -24,6 +24,7 @@ describe('FaqClusterProcessor', () => {
   const prefix = `faq-cluster-processor-spec-${Date.now()}-`
   let workspaceId: string
   let ticketIds: string[]
+  const originalFlag = process.env.SUPPORT_SURFACES_ENABLED
 
   beforeAll(async () => {
     const [user] = await db
@@ -46,11 +47,14 @@ describe('FaqClusterProcessor', () => {
   })
 
   afterAll(async () => {
+    if (originalFlag === undefined) delete process.env.SUPPORT_SURFACES_ENABLED
+    else process.env.SUPPORT_SURFACES_ENABLED = originalFlag
     await pool.end()
   })
 
   beforeEach(async () => {
     jest.clearAllMocks()
+    process.env.SUPPORT_SURFACES_ENABLED = 'true'
     coverage = { findUncoveredTickets: jest.fn() }
     clusterer = { cluster: jest.fn() }
     runs = new BackgroundRunsService()
@@ -62,6 +66,18 @@ describe('FaqClusterProcessor', () => {
       usage as unknown as UsageService,
     )
     await db.delete(faqDrafts).where(eq(faqDrafts.workspaceId, workspaceId))
+  })
+
+  it('edge: with support surfaces off, a queued job ends without a run, a ticket read or a model call', async () => {
+    process.env.SUPPORT_SURFACES_ENABLED = 'false'
+    const start = jest.spyOn(runs, 'start')
+
+    await processor.onCluster({ data: { workspaceId } } as never)
+
+    expect(start).not.toHaveBeenCalled()
+    expect(coverage.findUncoveredTickets).not.toHaveBeenCalled()
+    expect(usage.metered).not.toHaveBeenCalled()
+    expect(generateFaqDraft).not.toHaveBeenCalled()
   })
 
   it('creates one draft per surviving cluster', async () => {

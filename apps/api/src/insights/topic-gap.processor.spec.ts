@@ -27,6 +27,7 @@ describe('TopicGapProcessor', () => {
   const prefix = `topic-gap-processor-spec-${Date.now()}-`
   let workspaceId: string
   let sessionId: string
+  const originalFlag = process.env.SUPPORT_SURFACES_ENABLED
 
   beforeAll(async () => {
     const [user] = await db
@@ -45,11 +46,14 @@ describe('TopicGapProcessor', () => {
   })
 
   afterAll(async () => {
+    if (originalFlag === undefined) delete process.env.SUPPORT_SURFACES_ENABLED
+    else process.env.SUPPORT_SURFACES_ENABLED = originalFlag
     await pool.end()
   })
 
   beforeEach(async () => {
     jest.clearAllMocks()
+    process.env.SUPPORT_SURFACES_ENABLED = 'true'
     redis = { set: jest.fn().mockResolvedValue('OK'), get: jest.fn() }
     clusterer = { cluster: jest.fn() }
     runs = new BackgroundRunsService()
@@ -62,6 +66,19 @@ describe('TopicGapProcessor', () => {
     )
     await db.delete(backgroundRuns).where(eq(backgroundRuns.workspaceId, workspaceId))
     await db.delete(chatQueryMetrics).where(eq(chatQueryMetrics.workspaceId, workspaceId))
+  })
+
+  it('edge: with support surfaces off, a queued job ends without a run, a metrics read or a model call', async () => {
+    process.env.SUPPORT_SURFACES_ENABLED = 'false'
+    const start = jest.spyOn(runs, 'start')
+
+    await processor.onGap({ data: { workspaceId } } as never)
+
+    expect(start).not.toHaveBeenCalled()
+    expect(clusterer.cluster).not.toHaveBeenCalled()
+    expect(usage.metered).not.toHaveBeenCalled()
+    expect(generateTopicLabel).not.toHaveBeenCalled()
+    expect(redis.set).not.toHaveBeenCalled()
   })
 
   async function seedFallbackMetric(question: string, embeddingSeed: number) {

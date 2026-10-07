@@ -25,6 +25,7 @@ describe('DigestContentService', () => {
   let workspaceId: string
   let documentId: string
   let userId: string
+  const originalFlag = process.env.SUPPORT_SURFACES_ENABLED
 
   beforeAll(async () => {
     const [user] = await db
@@ -45,10 +46,13 @@ describe('DigestContentService', () => {
   })
 
   afterAll(async () => {
+    if (originalFlag === undefined) delete process.env.SUPPORT_SURFACES_ENABLED
+    else process.env.SUPPORT_SURFACES_ENABLED = originalFlag
     await pool.end()
   })
 
   beforeEach(async () => {
+    process.env.SUPPORT_SURFACES_ENABLED = 'true'
     const redis = { get: jest.fn().mockResolvedValue(null) }
     service = new DigestContentService(new CoverageDashboardService(redis as unknown as never))
     await db.delete(workspaceEvents).where(eq(workspaceEvents.workspaceId, workspaceId))
@@ -56,6 +60,50 @@ describe('DigestContentService', () => {
     await db.delete(faqDrafts).where(eq(faqDrafts.workspaceId, workspaceId))
     await db.delete(tickets).where(eq(tickets.workspaceId, workspaceId))
     await db.delete(chatQueryMetrics).where(eq(chatQueryMetrics.workspaceId, workspaceId))
+  })
+
+  it('edge: with support surfaces off, counts only comparison events and reports no chat, tickets, flags or FAQ drafts', async () => {
+    process.env.SUPPORT_SURFACES_ENABLED = 'false'
+    await db.insert(workspaceEvents).values([
+      { workspaceId, type: 'document_ingested', entityId: documentId, title: 'doc 1' },
+      { workspaceId, type: 'ticket_extracted', entityId: documentId, title: 'ticket 1' },
+      { workspaceId, type: 'comparison_flagged', entityId: documentId, title: 'PO-1 vs INV-1' },
+      { workspaceId, type: 'comparison_failed', entityId: documentId, title: 'PO-2 vs INV-2' },
+    ])
+    await db.insert(documentReviewFlags).values({ workspaceId, documentId, reason: 'ticket-mismatch' })
+    await db.insert(faqDrafts).values({
+      workspaceId,
+      question: 'q',
+      answer: 'a',
+      ticketIds: ['t1'],
+      clusterSize: 3,
+      status: 'pending',
+    })
+    await db.insert(tickets).values({ workspaceId, transcript: 't', transcriptHash: randomUUID(), status: 'done' })
+    const [session] = await db.insert(chatSessions).values({ workspaceId, userId, title: 's' }).returning()
+    const [message] = await db
+      .insert(chatMessages)
+      .values({ sessionId: session.id, role: 'assistant', content: 'a' })
+      .returning()
+    await db.insert(chatQueryMetrics).values({
+      workspaceId,
+      sessionId: session.id,
+      chatMessageId: message.id,
+      question: 'q',
+      isFallback: true,
+      cacheStatus: 'miss',
+      queryClass: 'complex',
+      topScore: 0.1,
+      latencyMs: 100,
+    })
+
+    const content = await service.build(workspaceId)
+
+    expect(content.eventCounts).toEqual({ comparison_flagged: 1, comparison_failed: 1 })
+    expect(content.newFreshnessFlags).toBe(0)
+    expect(content.newFaqDrafts).toBe(0)
+    expect(content.newTickets).toBe(0)
+    expect(content.chatSummary).toEqual({ totalQueries: 0, fallbackRate: 0, cacheHitRate: 0, avgTopScore: null })
   })
 
   it('returns all-zero content for a quiet workspace', async () => {

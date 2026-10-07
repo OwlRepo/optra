@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { closeDb, deleteWorkspaceEvents, seedWorkspaceEvent } from '../support/db'
 import { loadState, storageStateFor, type SeedState } from '../support/state'
 import { rowFor, toast } from '../support/ui'
 
@@ -7,7 +8,7 @@ import { rowFor, toast } from '../support/ui'
 // restyling is the Vitest specs' and the design review's job, not this file's.
 //
 // Runs as owner A. Nothing here leaves state behind: the digest switch is put
-// back, and no member is removed.
+// back, the digest-preview events are deleted, and no member is removed.
 
 test.describe.configure({ mode: 'serial' })
 test.use({ storageState: storageStateFor('ownerA') })
@@ -16,6 +17,7 @@ let state: SeedState
 test.beforeAll(() => {
   state = loadState()
 })
+test.afterAll(closeDb)
 
 // Other specs share workspace A and may already have produced events, so the
 // overview check accepts the feed or the empty state, whichever is true.
@@ -61,6 +63,25 @@ test('regression: the email digest is a switch that flips aria-checked and saves
   // Put it back so the run leaves workspace A's digest as it found it.
   await digest.click()
   await expect(digest).toHaveAttribute('aria-checked', before as string)
+})
+
+test('regression: the digest preview lists comparisons and nothing from the hidden support surfaces', async ({ page }) => {
+  const ws = state.ownerA.workspaceId
+  const titles = [`E2E digest doc ${state.run}`, `E2E digest compare ${state.run}`]
+  await seedWorkspaceEvent(ws, 'document_ingested', titles[0])
+  await seedWorkspaceEvent(ws, 'comparison_flagged', titles[1])
+
+  try {
+    await page.goto(`/workspaces/${ws}/settings`)
+    await page.getByRole('button', { name: 'Preview digest', exact: true }).click()
+
+    const preview = page.getByRole('main').locator('pre')
+    await expect(preview).toContainText('*Optra weekly digest*')
+    await expect(preview).toContainText(/\d+ comparisons with discrepancies/)
+    await expect(preview).not.toContainText('documents ingested')
+  } finally {
+    await deleteWorkspaceEvents(ws, titles)
+  }
 })
 
 test('happy: a vendor row opens the detail page, which names both sections and links back to Vendors', async ({ page }) => {
