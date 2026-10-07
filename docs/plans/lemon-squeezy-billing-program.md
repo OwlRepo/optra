@@ -16,7 +16,7 @@ Task Classification:
 
 ## Context
 
-LS account approved (store `Tyvera` #384926, test mode, zero products). Landing + Terms already sell Solo $29 / Team $69 per buyer / 14-day trial, but no billing code exists: `workspaces` has no plan cols, token usage is Redis-only + fail-open (`apps/api/src/limits/usage.service.ts:50-57`), comparisons aren't counted. Risk register forbids first charge until metering enforces the quotas. Goal: people can start a trial, subscribe via LS, and the app enforces what the pricing page says.
+LS account approved (store `Tyvera` #394926, test mode, zero products). Landing + Terms already sell Solo $29 / Team $69 per buyer / 14-day trial, but no billing code exists: `workspaces` has no plan cols, token usage is Redis-only + fail-open (`apps/api/src/limits/usage.service.ts:50-57`), comparisons aren't counted. Risk register forbids first charge until metering enforces the quotas. Goal: people can start a trial, subscribe via LS, and the app enforces what the pricing page says.
 
 ### Owner decisions (2026-10-08)
 1. **Over quota = hard cap + upgrade prompt.** No overage billing. Landing/Terms drop "Extra lines at $0.04/$0.03".
