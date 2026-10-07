@@ -19,6 +19,7 @@ import { DatasetsModule } from './datasets/datasets.module'
 import { InsightsModule } from './insights/insights.module'
 import { ProcurementModule } from './procurement/procurement.module'
 import { CatalogModule } from './catalog/catalog.module'
+import { BillingModule } from './billing/billing.module'
 import { HealthController } from './health/health.controller'
 import { defaultThrottleLimit } from './common/throttle'
 import { clientBucket } from './common/client-bucket'
@@ -65,6 +66,7 @@ import { clientBucket } from './common/client-bucket'
     InsightsModule,
     ProcurementModule,
     CatalogModule,
+    BillingModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
