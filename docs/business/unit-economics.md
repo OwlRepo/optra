@@ -50,11 +50,26 @@ on its own; re-measure once real photo uploads exist.
 Lemon Squeezy fee: 5% + $0.50, +0.5% subscriptions, +1.5% international cards
 (+1.5% PayPal).
 
-| Plan | Price | Includes | Worst-case variable cost | Margin |
-|---|---|---|---|---|
-| Solo | $29/mo, 1 buyer | 400 matched lines + 100 photo checks; extra lines $0.04 | $0.64 + $2.60 + LS $2.53 = $5.77 | ~80% |
-| Team | $69/buyer/mo | 2,000 lines + 300 photo checks per buyer, pooled; extra lines $0.03 | $3.20 + $7.80 + LS $5.33 = $16.33 | ~76% |
-| Scale | custom, annual | from 25,000 lines/mo | committed rate | — |
+| Plan | Price | Includes (hard cap, no overage) | Monthly AI cost cap | LS fee | Worst-case margin |
+|---|---|---|---|---|---|
+| Trial | $0, 14 days, no card | Solo allowance (400 lines + 100 photo checks) | $4 (`BILLING_AI_CAP_TRIAL_USD`) | — | −$4 per signup, first workspace only |
+| Solo | $29/mo, 1 buyer | 400 matched lines + 100 photo checks | $6 (`BILLING_AI_CAP_SOLO_USD`) | $2.53 | 70.6% |
+| Team | $69/buyer/mo | 2,000 lines + 300 photo checks per buyer, pooled | $15 × buyers (`BILLING_AI_CAP_TEAM_SEAT_USD`) | ~$5.33 | ~70.5% |
+| Exempt (owner-set) | — | unlimited lines/photos | $25 runaway guard (`BILLING_AI_CAP_EXEMPT_USD`) | — | — |
+| Scale | custom, annual | from 25,000 lines/mo | committed rate | — | — |
+
+Owner decisions 2026-10-08 (`docs/plans/lemon-squeezy-billing-program.md`):
+over quota is a hard cap with an upgrade prompt (no overage billing: Lemon
+Squeezy cannot combine per-buyer seats with metered usage), and AI spend is
+capped in dollars, not tokens, because token prices differ up to 66x per model.
+Every metered model call is priced from provider-reported input/output tokens by
+`packages/ai/src/pricing.ts` (unknown model = most expensive row) and written to
+the `usage_events` ledger. A full advertised allowance costs at most $3.24
+(Solo) / $11 per Team buyer, so the caps never block what the pricing page
+promises. Chat, SQL, refine and FAQ roles default to gpt-4o since 2026-10-08
+(was gpt-4-turbo at $10/$30; chat surface disabled, so no quality gate was run;
+revert = `OPENAI_CHAT_MODEL` / `OPENAI_ANSWER_MODEL`). Embeddings are not metered
+($0.02/1M). Prices re-verified 2026-10-08.
 
 Photo checks are capped because they are the one unit that can turn a plan's
 margin negative. Fixed cost: one shared Hetzner VPS in Singapore. Backblaze B2 is
@@ -65,7 +80,7 @@ $6.95/TB/month (first 10 GB free).
 - Meter matched lines per comparison run (idempotent per PO/invoice pair) and photo checks per catalog-match call.
 - Scale the per-workspace token budget per plan. A 2-buyer Team at full photo quota needs ~6.6M tokens.
 - Token usage is Redis-only (`usage.service.ts:80`) and fails open (`:50-57`), so billing needs a durable ledger.
-- `OPENAI_PROCUREMENT_EXTRACTION_MODEL` falls back to `gpt-4-turbo` ($10 / $30) when unset (`packages/ai/src/chains/models.ts:25-28`). `scripts/check-prod-env.sh` should require it.
+- `OPENAI_PROCUREMENT_EXTRACTION_MODEL` falls back to `gpt-4o` when unset (`DEFAULT_MODEL`, `packages/ai/src/chains/models.ts`, since 2026-10-08; was `gpt-4-turbo` at $10 / $30). `scripts/check-prod-env.sh` should still require it.
 
 ## Sources
 

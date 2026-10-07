@@ -477,7 +477,7 @@ All under `apps/web/src/components/tour/`; plan and locked contract: `docs/plans
 
 ## Billing (added 2026-10-08)
 
-Lemon Squeezy billing core, slice S3 of `docs/plans/lemon-squeezy-billing-program.md`; slice plan + locked contract `docs/plans/lemon-squeezy-billing-1-core.md`, shapes in `packages/types/src/billing.ts`. Domain: Billing/Payments/Plan Upgrades, risk Deep. Ships dark behind `BILLING_ENFORCEMENT` (default `off`).
+Lemon Squeezy billing core, slice S3 of `docs/plans/lemon-squeezy-billing-program.md`; slice plan + locked contract `docs/plans/lemon-squeezy-billing-1-core.md`, shapes in `packages/types/src/billing.ts`. Domain: Billing/Payments/Plan Upgrades, risk Deep. Ships dark behind `BILLING_ENFORCEMENT` (default `off`). Metering (S4): `docs/plans/lemon-squeezy-billing-2-metering.md`.
 
 | Symbol | Location | Purpose |
 |---|---|---|
@@ -495,6 +495,13 @@ Lemon Squeezy billing core, slice S3 of `docs/plans/lemon-squeezy-billing-progra
 | `BillingBanner` | `apps/web/src/components/billing-banner.tsx` | Trial-ending / no-plan notice in the workspace layout, links to Billing |
 | `workspaceSubscriptions`, `billingEvents`, `billingPlan`; `workspaces.trialEndsAt` / `billingExempt` | `packages/db/src/schema/` (migration `0037_optimal_gauntlet.sql`) | Billing tables; `workspaces.service.ts` selects explicit `WORKSPACE_COLUMNS` so billing columns never leak |
 | LS stub | `apps/e2e/stubs/lemonsqueezy-stub.ts` | Playwright stub on :4011 |
+| `UsageLedgerService` (`reserve`, `recordLlmCost`, `sumsByKind`) | `apps/api/src/billing/usage-ledger.service.ts` | S4 ledger over `usage_events`; quota reservation = advisory lock + prefix dedupe + sum + insert in one transaction |
+| `BillingGateService` (`assertMatchedLines`, `assertPhotoCheck`, `assertAiBudget`, `recordLlmCost`) | `apps/api/src/billing/billing-gate.service.ts` | Policy over the ledger: matched-line key `cmp:{po}:{inv}:{periodStart}` with delta charging, photo check per search, dollar AI cap; off mode records only and never fails a request |
+| `billingStop`, `BillingStopCode` | `apps/api/src/billing/billing-stop.ts` | 402 with `code` `SUBSCRIPTION_REQUIRED` / `QUOTA_EXCEEDED` / `AI_BUDGET_EXCEEDED` |
+| `usageEvents`, `usageKind` | `packages/db/src/schema/usageEvents.ts` (migration `0038_aspiring_zarek.sql`) | Append-only usage ledger |
+| `MODEL_PRICES`, `priceMicroUsd` | `packages/ai/src/pricing.ts` | Per-model USD price table (OpenAI, verified 2026-10-08); unknown model priced at the most expensive row; `TokenMeter` (`packages/ai/src/tokens.ts`) records input/output tokens and `costMicroUsd` per call |
+| `announceBillingStop`, `BILLING_STOP_EVENT` | `apps/web/src/lib/billing-stop.ts` | `apiFetch`/uploads dispatch `optra:billing-stop` on a coded 402 |
+| `BillingStopNotice`, `BillingUsageMeters` | `apps/web/src/components/billing-stop-notice.tsx`, `billing-usage-meters.tsx` | Workspace-wide alert linking Billing; "N of M" meters + AI allowance % on the Billing page |
 
 ## Demo seeder (added 2026-08-18)
 
