@@ -53,3 +53,4 @@ export interface RetrievalResult {
 }
 
 export * from './procurement'
+export * from './billing'

@@ -118,3 +118,43 @@ export async function photoKeysOfCatalog(catalogId: string): Promise<{ id: strin
   )
   return rows.map((row) => ({ id: row.id, key: row.photo_storage_key }))
 }
+
+/**
+ * Sets a workspace's billing state without going through signup or a webhook.
+ * `trialEndsInDays: null` clears the trial, a negative number puts it in the
+ * past. Only the keys given are touched.
+ */
+export async function setWorkspaceBilling(
+  workspaceId: string,
+  state: { trialEndsInDays?: number | null; exempt?: boolean },
+): Promise<void> {
+  if ('trialEndsInDays' in state) {
+    if (state.trialEndsInDays === null || state.trialEndsInDays === undefined) {
+      await db().query(`update workspaces set trial_ends_at = null where id = $1`, [workspaceId])
+    } else {
+      await db().query(
+        `update workspaces set trial_ends_at = now() + make_interval(days => $2::int) where id = $1`,
+        [workspaceId, state.trialEndsInDays],
+      )
+    }
+  }
+  if (state.exempt !== undefined) {
+    await db().query(`update workspaces set billing_exempt = $2 where id = $1`, [workspaceId, state.exempt])
+  }
+}
+
+export interface SubscriptionRow {
+  ls_subscription_id: string
+  plan: string
+  status: string
+  seats: number
+}
+
+/** The workspace's subscription row, or null when no signed webhook has written one. */
+export async function subscriptionFor(workspaceId: string): Promise<SubscriptionRow | null> {
+  const { rows } = await db().query<SubscriptionRow>(
+    `select ls_subscription_id, plan, status, seats from workspace_subscriptions where workspace_id = $1`,
+    [workspaceId],
+  )
+  return rows[0] ?? null
+}

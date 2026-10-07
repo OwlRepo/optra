@@ -25,11 +25,15 @@ export interface SeedState {
   ownerB: Owner
   /** A `member` of workspace A: can read, cannot upload. */
   memberA: Actor
+  /** Owns its own home workspace; billing.spec.ts's fresh workspaces hang off this user so the shared users keep one workspace each. */
+  billingOwner: Actor
+  /** A `member` of billingOwner's home workspace and of each billing workspace. */
+  billingMember: Actor
   /** Registered, never verified - login must refuse it. */
   unverified: { email: string; password: string }
 }
 
-export type Role = 'ownerA' | 'ownerB' | 'memberA'
+export type Role = 'ownerA' | 'ownerB' | 'memberA' | 'billingOwner' | 'billingMember'
 
 export const AUTH_DIR = join(__dirname, '..', '.auth')
 export const STATE_FILE = join(AUTH_DIR, 'state.json')

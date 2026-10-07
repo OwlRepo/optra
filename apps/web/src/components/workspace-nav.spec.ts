@@ -91,11 +91,11 @@ describe('WorkspaceNav', () => {
       'Catalog Matches',
       'Vendors',
     ])
-    expect(within(workspace).getAllByRole('link').map((link) => link.textContent)).toEqual(['Members', 'Settings'])
+    expect(within(workspace).getAllByRole('link').map((link) => link.textContent)).toEqual(['Members', 'Settings', 'Billing'])
   })
 
   // Intentional order change (frame 4.1 amber): Matching first, admin last.
-  it('regression: renders the seven kept items Matching-first with unchanged hrefs', () => {
+  it('regression: renders the eight kept items Matching-first with unchanged hrefs', () => {
     usePathnameMock.mockReturnValue('/workspaces/w1')
 
     render(React.createElement(WorkspaceNav, { workspaceId: 'w1', collapsed: false }))
@@ -108,6 +108,7 @@ describe('WorkspaceNav', () => {
       ['Vendors', '/workspaces/w1/vendors'],
       ['Members', '/workspaces/w1/members'],
       ['Settings', '/workspaces/w1/settings'],
+      ['Billing', '/workspaces/w1/billing'],
     ])
   })
 

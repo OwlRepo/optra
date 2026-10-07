@@ -10,9 +10,10 @@ const pushMock = vi.fn()
 const routerMock = { push: pushMock }
 const getWorkspaceMock = vi.fn()
 let pathname = '/workspaces/ws-1'
+let freshRouterPerRender = false
 
 vi.mock('next/navigation', () => ({
-  useRouter: () => routerMock,
+  useRouter: () => (freshRouterPerRender ? { push: pushMock } : routerMock),
   usePathname: () => pathname,
 }))
 
@@ -45,6 +46,7 @@ describe('WorkspaceProvider', () => {
     pushMock.mockReset()
     getWorkspaceMock.mockReset()
     pathname = '/workspaces/ws-1'
+    freshRouterPerRender = false
     latest = null
   })
 
@@ -179,6 +181,20 @@ describe('WorkspaceProvider', () => {
     // First render of the new page already has the name: no "Workspace" flash.
     expect(screen.getByTestId('vendors').textContent).toBe('ready|Tyvera|owner')
     expect(getWorkspaceMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('regression: the load effect runs once when useRouter() returns a new object every render', async () => {
+    freshRouterPerRender = true
+    getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Tyvera', role: 'owner' })
+
+    renderWith('ws-1', <Probe />)
+    await waitFor(() => expect(screen.getByTestId('probe').textContent).toBe('ready|Tyvera|owner'))
+    await act(async () => {
+      await latest!.refresh()
+    })
+
+    // One initial load + the one explicit refresh; the router identity never re-ran the effect.
+    expect(getWorkspaceMock).toHaveBeenCalledTimes(2)
   })
 
   it('happy: exposes the workspace name and the caller role from GET /workspaces/:id', async () => {

@@ -260,6 +260,13 @@
       "when": 1791285084584,
       "tag": "0036_groovy_randall",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "5",
+      "when": 1791390266570,
+      "tag": "0037_optimal_gauntlet",
+      "breakpoints": true
     }
   ]
 }

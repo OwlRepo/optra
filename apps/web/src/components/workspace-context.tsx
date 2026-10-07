@@ -32,6 +32,10 @@ export function WorkspaceProvider({ workspaceId, children }: { workspaceId: stri
   const pathname = usePathname()
   const { toast } = useToast()
   const toastRef = React.useRef(toast)
+  // useRouter() is not guaranteed referentially stable; refresh() must not be
+  // re-created (and the load effect re-run) every time it changes.
+  const routerRef = React.useRef(router)
+  routerRef.current = router
   const [workspace, setWorkspaceState] = React.useState<WorkspaceSummary | null>(null)
   const [status, setStatus] = React.useState<WorkspaceStatus>('loading')
   // Only the latest request may write state, so a slow answer for a previous
@@ -56,7 +60,7 @@ export function WorkspaceProvider({ workspaceId, children }: { workspaceId: stri
     } catch (err) {
       if (request !== requestRef.current) return
       if (isUnauthorized(err)) {
-        router.push('/login')
+        routerRef.current.push('/login')
         return
       }
       if (isForbidden(err)) {
@@ -76,7 +80,7 @@ export function WorkspaceProvider({ workspaceId, children }: { workspaceId: stri
         description: err instanceof Error ? err.message : 'Try again in a moment.',
       })
     }
-  }, [router, workspaceId])
+  }, [workspaceId])
 
   React.useEffect(() => {
     loadedRef.current = false

@@ -28,6 +28,10 @@ setup('seed actors and sign each one in', async ({ browser }) => {
   const workspaceB = await seedWorkspace(ownerBId, `E2E B ${run}`)
   const memberAId = await seedUser({ email: email('member-a'), password: PASSWORD })
   await addMember(workspaceA, memberAId, 'member')
+  const billingOwnerId = await seedUser({ email: email('billing-owner'), password: PASSWORD })
+  const workspaceBilling = await seedWorkspace(billingOwnerId, `E2E Billing Home ${run}`)
+  const billingMemberId = await seedUser({ email: email('billing-member'), password: PASSWORD })
+  await addMember(workspaceBilling, billingMemberId, 'member')
   await seedUser({ email: email('unverified'), password: PASSWORD, verified: false })
 
   const state: SeedState = {
@@ -49,6 +53,8 @@ setup('seed actors and sign each one in', async ({ browser }) => {
       knowledgeBaseId: await seedKnowledgeBase(workspaceB, 'E2E KB B'),
     },
     memberA: { email: email('member-a'), password: PASSWORD, userId: memberAId, workspaceId: workspaceA },
+    billingOwner: { email: email('billing-owner'), password: PASSWORD, userId: billingOwnerId, workspaceId: workspaceBilling },
+    billingMember: { email: email('billing-member'), password: PASSWORD, userId: billingMemberId, workspaceId: workspaceBilling },
     unverified: { email: email('unverified'), password: PASSWORD },
   }
   await closeDb()
@@ -56,7 +62,7 @@ setup('seed actors and sign each one in', async ({ browser }) => {
   mkdirSync(AUTH_DIR, { recursive: true })
   writeFileSync(STATE_FILE, JSON.stringify(state, null, 2))
 
-  const roles: Role[] = ['ownerA', 'ownerB', 'memberA']
+  const roles: Role[] = ['ownerA', 'ownerB', 'memberA', 'billingOwner', 'billingMember']
   for (const role of roles) {
     const context = await browser.newContext()
     const page = await context.newPage()

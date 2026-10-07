@@ -662,3 +662,13 @@ And one rule the owner made standing: every change now ships with its tests for 
 **Actual:** confirmed as the main risk — an overlay that auto-starts on every user's first workspace visit sits over every existing Playwright suite. It was handled once, in `apps/e2e/tests/auth.setup.ts`, by writing the tour-done key (`optra.tour.v1:<userId>`) into each saved storage state, with only `onboarding-tour.spec.ts` clearing it. A second constraint surfaced from the design system: Joyride paints its overlay and spotlight as SVG attributes, which cannot take `var()`, so `resolveTourTheme()` reads the tokens from computed style at each start instead of hard-coding colours.
 
 **Why different:** not different. **Any UI that appears unasked on first visit changes the starting state of every browser test; seed its "already seen" state in the shared setup on day one, and make the one suite that tests it opt back in.**
+
+## 2026-10-08 — Billing core: a webhook is only as trustworthy as what binds it to a tenant
+*Learning Contract: the plan's design is the prediction; the diff is below. No live prediction solicited.*
+
+**Predicted (from the approved plan):** HMAC over the raw body plus a store/variant allowlist and `custom_data.workspace_id` set server-side at checkout is enough to bind a paid subscription to the right workspace; the hard part is getting raw bytes through the BFF intact.
+
+**Actual:** raw bytes were the easy part once `rawBody: true` was set and the BFF forwarded `arrayBuffer` bytes — but the API e2e helper itself broke them (superagent JSON-encodes a Buffer under a JSON content type). The security review found the real gap: the signature proves Lemon Squeezy sent the event, not that Optra started that checkout, because anyone can put `checkout[custom][workspace_id]` on a public buy link. Fixed with a per-workspace `workspace_sig` (HMAC of the workspace id) that only our checkout endpoint can mint. Two more review findings changed semantics: misconfiguration must answer 500 with `processed_at` NULL (a terminal 200 would turn a typo in `.env` into a permanently lost payment), and staleness must be compared across subscriptions, not just within one.
+
+**Why different:** the plan treated "signed by the provider" as "authorised by us". **For any provider webhook, sign the tenant binding yourself at the moment you create the checkout, and make every failure that a config fix could cure retryable.**
+
