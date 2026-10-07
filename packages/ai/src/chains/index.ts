@@ -4,6 +4,7 @@ import { db, documents, tickets } from '@repo/db'
 import { inArray } from 'drizzle-orm'
 import { similaritySearch, similaritySearchWithTicketSlot, type RetrievalFilters } from '../vectorstore'
 import { resolveModel } from './models'
+import type { TokenMeter } from '../tokens'
 import { buildEvidencePack } from './context'
 import { classifyQuery } from './classify'
 import { historyInAnswerEnabled, toMessages, type HistoryTurn } from './history'
@@ -57,7 +58,8 @@ export async function answerQuestion(
   limit = 5,
   precomputedEmbedding?: number[],
   filters?: RetrievalFilters,
-  history: HistoryTurn[] = []
+  history: HistoryTurn[] = [],
+  meter?: TokenMeter,
 ): Promise<AnswerResult> {
   // Gated once here so every downstream use (graph call, light-path prompt)
   // shares one decision instead of re-checking the flag in multiple places.
@@ -77,6 +79,7 @@ export async function answerQuestion(
       precomputedEmbedding,
       filters,
       effectiveHistory,
+      meter,
     )
   }
 
@@ -196,6 +199,8 @@ export async function answerQuestion(
       ])
 
       for await (const chunk of stream) {
+        // Only the trailing chunk carries usage_metadata; the rest add nothing.
+        meter?.record(chunk, llm.modelName)
         const token = chunk.content
         if (typeof token === 'string' && token.length > 0) {
           yield token
