@@ -1,3 +1,5 @@
+import { announceBillingStop } from '../billing-stop'
+
 const REFRESH_PATH = '/api/auth/refresh'
 const UNAUTHENTICATED_PATHS = ['/api/auth/login', '/api/auth/register', '/api/auth/verify-otp', REFRESH_PATH]
 
@@ -39,10 +41,12 @@ export async function apiFetch(path: string, init?: RequestInit) {
       const retryRes = await fetch(path, requestInit)
       const retryData = await parseJsonResponse(retryRes)
       if (retryRes.ok) return retryData
+      announceBillingStop(retryData)
       throw retryData
     }
   }
 
+  announceBillingStop(data)
   throw data
 }
 
@@ -74,10 +78,12 @@ export async function uploadFile(path: string, file: File, fields?: Record<strin
       const retryRes = await fetch(path, { method: 'POST', body: formData })
       const retryData = await retryRes.json()
       if (retryRes.ok) return retryData
+      announceBillingStop(retryData)
       throw retryData
     }
   }
 
+  announceBillingStop(data)
   throw data
 }
 
@@ -105,9 +111,11 @@ export async function uploadFiles(path: string, files: File[], fields?: Record<s
       const retryRes = await fetch(path, { method: 'POST', body: formData })
       const retryData = await retryRes.json()
       if (retryRes.ok) return retryData
+      announceBillingStop(retryData)
       throw retryData
     }
   }
 
+  announceBillingStop(data)
   throw data
 }
