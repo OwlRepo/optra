@@ -2,6 +2,7 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common'
 import { InjectQueue, Process, Processor } from '@nestjs/bull'
 import { Queue } from 'bull'
 import { db, workspaces } from '@repo/db'
+import { supportSurfacesEnabled } from './support-surfaces-flag'
 
 const TOPIC_GAP_CRON = process.env.TOPIC_GAP_CRON ?? '0 5 * * 1' // weekly, Monday 05:00
 
@@ -25,6 +26,11 @@ export class TopicGapTickProcessor implements OnModuleInit {
 
   @Process()
   async onTick() {
+    if (!supportSurfacesEnabled()) {
+      this.logger.log('Topic gap tick skipped: SUPPORT_SURFACES_ENABLED is not true')
+      return
+    }
+
     const rows = await db.select({ id: workspaces.id }).from(workspaces)
     const weekStamp = new Date().toISOString().slice(0, 10)
 

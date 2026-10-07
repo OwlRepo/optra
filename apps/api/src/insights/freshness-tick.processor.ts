@@ -2,6 +2,7 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common'
 import { InjectQueue, Process, Processor } from '@nestjs/bull'
 import { Queue } from 'bull'
 import { db, workspaces } from '@repo/db'
+import { supportSurfacesEnabled } from './support-surfaces-flag'
 
 const FRESHNESS_CRON = process.env.FRESHNESS_CHECK_CRON ?? '0 3 * * 1' // weekly, Monday 03:00
 
@@ -28,6 +29,11 @@ export class FreshnessTickProcessor implements OnModuleInit {
 
   @Process()
   async onTick() {
+    if (!supportSurfacesEnabled()) {
+      this.logger.log('Freshness tick skipped: SUPPORT_SURFACES_ENABLED is not true')
+      return
+    }
+
     const rows = await db.select({ id: workspaces.id }).from(workspaces)
     const weekStamp = new Date().toISOString().slice(0, 10)
 
