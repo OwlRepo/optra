@@ -10,6 +10,13 @@ export const REPO_ROOT = join(__dirname, '..', '..', '..')
 export const WEB_PORT = 3100
 export const API_PORT = 3101
 export const OPENAI_STUB_PORT = 4010
+export const LS_STUB_PORT = 4011
+// Shared with stubs/lemonsqueezy-stub.ts (STUB_API_KEY) and tests/billing.spec.ts.
+export const LS_STUB_API_KEY = 'lsk-e2e-stub'
+export const LS_WEBHOOK_SECRET = 'whsec-e2e-stub'
+export const LS_STORE_ID = '4242'
+export const LS_VARIANT_SOLO = '9001'
+export const LS_VARIANT_TEAM = '9002'
 
 // 127.0.0.1, not localhost: the servers bind loopback IPv4 only, and
 // `localhost` can resolve to ::1 first. Chrome treats 127.0.0.1 as a secure
@@ -75,6 +82,16 @@ export function apiEnv(): Record<string, string> {
     // the placeholder key is refused by real OpenAI and the tests fail loudly.
     OPENAI_BASE_URL: `http://127.0.0.1:${OPENAI_STUB_PORT}/v1`,
     OPENAI_API_KEY: 'sk-e2e-stub',
+    // Lemon Squeezy is stubbed the same way. Enforcement stays off: S3 refuses
+    // nothing, and a workspace seeded without a trial must not start failing
+    // other specs when S4 adds the gates.
+    LEMONSQUEEZY_API_URL: `http://127.0.0.1:${LS_STUB_PORT}`,
+    LEMONSQUEEZY_API_KEY: LS_STUB_API_KEY,
+    LEMONSQUEEZY_STORE_ID: LS_STORE_ID,
+    LEMONSQUEEZY_WEBHOOK_SECRET: LS_WEBHOOK_SECRET,
+    LEMONSQUEEZY_VARIANT_SOLO: LS_VARIANT_SOLO,
+    LEMONSQUEEZY_VARIANT_TEAM: LS_VARIANT_TEAM,
+    BILLING_ENFORCEMENT: 'off',
     LANGSMITH_API_KEY: '',
     LANGCHAIN_TRACING_V2: 'false',
     EMAIL_OTP_ENABLED: 'false',

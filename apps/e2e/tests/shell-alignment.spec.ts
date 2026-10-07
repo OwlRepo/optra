@@ -69,7 +69,7 @@ test('regression: the sidebar groups items under Matching and Workspace and mark
     'Catalog Matches',
     'Vendors',
   ])
-  await expect(workspace.getByRole('link')).toHaveText(['Members', 'Settings'])
+  await expect(workspace.getByRole('link')).toHaveText(['Members', 'Settings', 'Billing'])
 
   await expect(sidebar.getByRole('link', { name: 'Discrepancies', exact: true })).toHaveAttribute('aria-current', 'page')
   await expect(sidebar.getByRole('link', { name: 'Overview', exact: true })).not.toHaveAttribute('aria-current', 'page')

@@ -558,4 +558,43 @@ describe('AuthService', () => {
       }
     })
   })
+
+  describe('verifyOtp trial', () => {
+    // Same fact as TRIAL_DAYS in billing/plans.ts; written out here so this
+    // spec states the contract instead of importing the constant under test.
+    const TRIAL_MS = 14 * 24 * 60 * 60 * 1000
+
+    async function verifiedOwnerWorkspace(label: string) {
+      const email = `svc-trial-${label}-${Date.now()}@example.com`
+      await service.register({ email, password: 'password123' })
+      const [user] = await db.select().from(users).where(eq(users.email, email)).limit(1)
+      const [otp] = await db.select().from(otps).where(eq(otps.userId, user.id)).limit(1)
+      const before = Date.now()
+      await service.verifyOtp({ email, code: otp.code })
+      const after = Date.now()
+      const [workspace] = await db.select().from(workspaces).where(eq(workspaces.ownerId, user.id))
+      return { email, workspace, before, after }
+    }
+
+    it('edge: the auto-created workspace is not billing_exempt', async () => {
+      const { email, workspace } = await verifiedOwnerWorkspace('exempt')
+      try {
+        expect(workspace.billingExempt).toBe(false)
+      } finally {
+        await cleanupUser(email)
+      }
+    })
+
+    it('regression: verifyOtp sets trial_ends_at to now plus TRIAL_DAYS on the auto-created workspace (within one minute)', async () => {
+      const { email, workspace, before, after } = await verifiedOwnerWorkspace('days')
+      try {
+        expect(workspace.trialEndsAt).toBeInstanceOf(Date)
+        const ends = workspace.trialEndsAt!.getTime()
+        expect(ends).toBeGreaterThanOrEqual(before + TRIAL_MS - 60_000)
+        expect(ends).toBeLessThanOrEqual(after + TRIAL_MS + 60_000)
+      } finally {
+        await cleanupUser(email)
+      }
+    })
+  })
 })
