@@ -3,6 +3,8 @@ import { NextRequest, NextResponse } from 'next/server'
 const API_URL = process.env.API_URL || 'http://localhost:3001'
 
 // Lemon Squeezy bodies are a few KB; the API parser caps JSON at 1 MB too.
+const API_TIMEOUT_MS = 10_000
+
 export const WEBHOOK_MAX_BYTES = 1024 * 1024
 
 function tooLarge() {
@@ -62,8 +64,14 @@ export async function forwardRaw(request: NextRequest, backendPath: string) {
         ...(eventName ? { 'x-event-name': eventName } : {}),
       },
       body: bytes as BodyInit,
+      // Lemon Squeezy retries a hung delivery; never hold the socket open.
+      signal: AbortSignal.timeout(API_TIMEOUT_MS),
     })
-  } catch {
+  } catch (err) {
+    const name = (err as { name?: string } | null)?.name
+    if (name === 'TimeoutError' || name === 'AbortError') {
+      return NextResponse.json({ message: 'Gateway timeout' }, { status: 504 })
+    }
     return NextResponse.json({ message: 'Bad gateway' }, { status: 502 })
   }
 
