@@ -690,3 +690,12 @@ And one rule the owner made standing: every change now ships with its tests for 
 
 **Why different:** the plan reasoned from the repository, but a payment store, a webhook list and a production `.env` are shared, long-lived state the repository does not show. **Before shipping a billing or model change, read the live configuration it depends on (read-only), and design the webhook so another tenant's events are ignored by default instead of retried.**
 
+## 2026-10-08 — Evidence-trail export: an export is a second UI, so it must say exactly what the first one says
+*Learning Contract: the plan's design is the prediction; the diff is below. No live prediction solicited.*
+
+**Predicted (from the approved plan):** reuse the `listFlags` scope and citation joins, batch through 50,000 flags, write two sheets with SheetJS, neutralise formula cells; the citation wording is "the same as `citationText()`".
+
+**Actual:** the shared query builder worked as planned, but the first export described photo-read lines as "read from PDF", left reviewer-added lines blank and worded edits differently from the review modal — a wrong provenance claim in a file sold as evidence. Review also found that loose `Number()` coercion turned text like `0x10` into 16, that a 50,000-row in-memory workbook could stall the single API process (now count-first refusal at 20,000 and a 5/min route throttle), and that a keyset on `date_trunc('milliseconds', created_at)` could not use the index (now a raw `(created_at, id)` cursor carried as text to keep microseconds).
+
+**Why different:** "same wording" was a sentence in the plan, not a test. **When a second surface restates what the UI shows, pin it with tests that use the UI's exact strings and branch order, and treat an export as a public claim.**
+

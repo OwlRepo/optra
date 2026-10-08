@@ -447,7 +447,7 @@ Rows are verified against the code they cite as of their last dated note; code w
 | `WorkflowSteps` | `apps/web/src/components/landing/workflow-steps.tsx` | Three numbered steps; step 3 is amber |
 | `UseCaseGrid` | `apps/web/src/components/landing/use-case-grid.tsx` | Six audience cards |
 | `FilesTrust` | `apps/web/src/components/landing/files-trust.tsx` | File-type chips + 4-row trust table (claims must stay true to the deployment) |
-| `PricingPlans` | `apps/web/src/components/landing/pricing-plans.tsx` | Solo / Team / Scale with line-item and photo-check quotas (`docs/business/unit-economics.md`). Hard monthly caps, no overage (enforced by the API; `pricing-plans.spec.tsx` pins the quotas to `apps/api/src/billing/plans.ts`); trial line uses `TRIAL_DAYS`; Scale CTA is a mailto |
+| `PricingPlans` | `apps/web/src/components/landing/pricing-plans.tsx` | Solo / Team / Scale with line-item and photo-check quotas (`docs/business/unit-economics.md`). Hard monthly caps, no overage (enforced by the API; `pricing-plans.spec.tsx` pins the quotas to `apps/api/src/billing/plans.ts` and asserts every listed feature); trial line uses `TRIAL_DAYS`; Scale CTA is a mailto |
 | `FinalCta` | `apps/web/src/components/landing/final-cta.tsx` | Inverted `--cta-surface` block |
 | `SiteFooter` | `apps/web/src/components/landing/site-footer.tsx` | Brand + link columns incl. Legal (Terms/Privacy/Refunds/Contact) + seller line + sample-data disclaimer |
 | `SELLER_NAME`, `CONTACT_EMAIL`, `HOSTING_COUNTRY`, `OFFSITE_BACKUP_RETENTION_DAYS`, `LANGSMITH_TRACING_IN_PROD`, … | `apps/web/src/lib/legal-facts.ts` | Single source of business/legal facts used by footer, legal pages, FAQ and trust rows. `null` renders an "on request" fallback, never a guess |
@@ -474,6 +474,16 @@ All under `apps/web/src/components/tour/`; plan and locked contract: `docs/plans
 | `resolveTourTheme`, `TourTheme` | `tour-theme.ts` | Reads `--foreground` / `--primary-strong` via `getComputedStyle` on every call and returns overlay (40% alpha in light; `oklch(0 0 0 / 0.6)` in `.dark`) and spotlight-ring (35% alpha) colours, with oklch fallbacks — Joyride's SVG attributes cannot take `var()` |
 | `readTourRecord`, `writeTourRecord`, `tourStorageKey`, `TourRecord`, `TourStatus`, `TOUR_STORAGE_VERSION` | `tour-storage.ts` | `localStorage` persistence under `optra.tour.v1:<userId>`, value `{status:'completed'\|'skipped', at}`; never throws, malformed values read as `null`. Seeded by `apps/e2e/tests/auth.setup.ts` |
 | `TOUR_ANCHORS`, `TourAnchorId`, `tourAttr`, `tourSelector`, `navAnchorFor` | `tour-anchors.ts` | The single `data-tour` registry. `tourAttr(id)` is spread onto targets in `workspace-nav.tsx`, `mobile-tab-bar.tsx` and the workspace pages; `navAnchorFor(href, workspaceId, 'nav'\|'tab')` maps a nav href to its anchor |
+
+## Evidence-trail export (added 2026-10-08)
+
+| Symbol | Location | Purpose |
+|---|---|---|
+| `exportFlags`, `flagCitationQuery`, `EXPORT_MAX_FLAGS` | `apps/api/src/procurement/comparison.service.ts` | Evidence-trail export query: same workspace-pinned scope and citation joins as `listFlags` (shared `flagCitationQuery`), count-first 20,000 cap (422), keyset batches on raw `(created_at, id)`, decisions + document names + dismisser emails batched |
+| `buildWorkbook`, `citationSource`, `FLAG_TYPE_LABELS`, `evidenceFilename` | `apps/api/src/procurement/evidence-export.ts` | Builds the xlsx (sheets Flags, Decisions); citation wording mirrors `discrepancy-review-modal.tsx#citationText`; strict numeric cells |
+| `safeCell` | `apps/api/src/common/spreadsheet/safe-cell.ts` | Spreadsheet formula-injection guard (prefix `'` on `= + - @`, tab, CR, LF) for any user/document text written to a workbook |
+| `exportDiscrepancies` | `apps/api/src/procurement/procurement.controller.ts` | `GET .../procurement/discrepancies/export`, member-readable, `@Throttle` 5/min |
+| `exportEvidenceTrail` + export BFF route | `apps/web/src/lib/api/procurement.ts`, `apps/web/app/api/workspaces/[id]/procurement/discrepancies/export/route.ts` | "Export evidence" on the discrepancies page; `fetchDownload` surfaces the API's JSON error message |
 
 ## Billing (added 2026-10-08)
 
