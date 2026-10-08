@@ -52,12 +52,12 @@ describe('Hero', () => {
     expect(screen.getByText('Catalog evidence')).not.toBeNull()
   })
 
-  it('happy: states the 14-day trial reassurance under the buttons', () => {
+  it('happy: states the trial reassurance under the buttons', () => {
     render(<Hero />)
 
     expect(
       screen.getByText(
-        '14-day free trial · reads the PDFs, spreadsheets and phone photos you already have',
+        '21-day free trial · reads the PDFs, spreadsheets and phone photos you already have',
       ),
     ).not.toBeNull()
   })

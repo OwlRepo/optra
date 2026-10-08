@@ -242,7 +242,9 @@ describe('Privacy page', () => {
 
     expect(container.textContent).toContain('Singapore')
     expect(container.textContent).toMatch(/off-?site[^.]*30 days/i)
-    expect(container.textContent).not.toMatch(/on request/i)
+    // Backups are kept a fixed 30 days, never "on request". Billing records
+    // are removed on request (retention section), so scope this to backups.
+    expect(container.textContent).not.toMatch(/backups?[^.]*on request/i)
   })
 
   it('happy: shows h1, seller identity, contact and a Data Privacy Act basis', () => {

@@ -38,7 +38,7 @@ describe('FinalCta', () => {
     render(<FinalCta />)
 
     expect(
-      screen.getByText('14-day free trial · ask and we delete your workspace and every file'),
+      screen.getByText('21-day free trial · ask and we delete your workspace and every file'),
     ).not.toBeNull()
   })
 
