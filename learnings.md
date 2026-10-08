@@ -699,3 +699,11 @@ And one rule the owner made standing: every change now ships with its tests for 
 
 **Why different:** "same wording" was a sentence in the plan, not a test. **When a second surface restates what the UI shows, pin it with tests that use the UI's exact strings and branch order, and treat an export as a public claim.**
 
+## 2026-10-08 — Turning off a Bull cron means gating the tick and the worker
+*Learning Contract: the plan's design is the prediction; the diff is below. No live prediction solicited.*
+
+**Predicted (from the approved plan):** Gating in `onTick` + worker (not registration) stops the spend with no Redis change; the existing insights specs need the flag set `true` to keep their meaning.
+
+**Actual:** confirmed. `bun run tdd:red` failed the 7 `edge:` cases on main; with the gate, 1025 unit, 143 API e2e and 92 browser tests pass. The four existing insights specs set `SUPPORT_SURFACES_ENABLED=true` in `beforeEach` and kept every case. A fresh worktree first failed type-check on stale turbo-cached `@repo/ai`/`@repo/db` dists and a missing DuckDB binary; `turbo run build --force` and the duckdb install script fixed both.
+
+**Why different:** not different. **A Bull repeatable lives in Redis, not in code: to switch a cron off, make the tick and its worker no-ops behind a call-time flag and leave the registration alone, so switching back on is an env change, not a Redis operation.**

@@ -1611,7 +1611,7 @@
           "relation": "references",
           "confidence": "EXTRACTED",
           "source_file": "apps/api/src/insights/faq-cluster-tick.processor.ts",
-          "source_location": "L16",
+          "source_location": "L17",
           "weight": 1.0,
           "context": "decorator",
           "_origin": "ast"
@@ -1622,7 +1622,7 @@
           "relation": "references",
           "confidence": "EXTRACTED",
           "source_file": "apps/api/src/insights/faq-cluster-tick.processor.ts",
-          "source_location": "L17",
+          "source_location": "L18",
           "weight": 1.0,
           "context": "decorator",
           "_origin": "ast"
@@ -1701,7 +1701,7 @@
           "relation": "references",
           "confidence": "EXTRACTED",
           "source_file": "apps/api/src/insights/freshness-tick.processor.ts",
-          "source_location": "L18",
+          "source_location": "L19",
           "weight": 1.0,
           "context": "decorator",
           "_origin": "ast"
@@ -1712,7 +1712,7 @@
           "relation": "references",
           "confidence": "EXTRACTED",
           "source_file": "apps/api/src/insights/freshness-tick.processor.ts",
-          "source_location": "L19",
+          "source_location": "L20",
           "weight": 1.0,
           "context": "decorator",
           "_origin": "ast"
@@ -1761,7 +1761,7 @@
           "relation": "references",
           "confidence": "EXTRACTED",
           "source_file": "apps/api/src/insights/topic-gap-tick.processor.ts",
-          "source_location": "L15",
+          "source_location": "L16",
           "weight": 1.0,
           "context": "decorator",
           "_origin": "ast"
@@ -1772,7 +1772,7 @@
           "relation": "references",
           "confidence": "EXTRACTED",
           "source_file": "apps/api/src/insights/topic-gap-tick.processor.ts",
-          "source_location": "L16",
+          "source_location": "L17",
           "weight": 1.0,
           "context": "decorator",
           "_origin": "ast"
@@ -4202,6 +4202,37 @@
           "confidence_score": 0.8,
           "source_file": "apps/e2e/tests/storage-errors.spec.ts",
           "source_location": "L25",
+          "weight": 1.0,
+          "_origin": "ast"
+        }
+      ]
+    },
+    {
+      "endpoints": [
+        "apps_e2e_support_db_closedb",
+        "apps_e2e_tests_workspace_alignment_spec"
+      ],
+      "variants": [
+        {
+          "source": "apps_e2e_tests_workspace_alignment_spec",
+          "target": "apps_e2e_support_db_closedb",
+          "relation": "imports",
+          "context": "import",
+          "confidence": "EXTRACTED",
+          "source_file": "apps/e2e/tests/workspace-alignment.spec.ts",
+          "source_location": "L2",
+          "weight": 1.0,
+          "_origin": "ast"
+        },
+        {
+          "source": "apps_e2e_tests_workspace_alignment_spec",
+          "target": "apps_e2e_support_db_closedb",
+          "relation": "indirect_call",
+          "context": "argument",
+          "confidence": "INFERRED",
+          "confidence_score": 0.8,
+          "source_file": "apps/e2e/tests/workspace-alignment.spec.ts",
+          "source_location": "L20",
           "weight": 1.0,
           "_origin": "ast"
         }

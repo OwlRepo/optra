@@ -4,6 +4,7 @@ import { Job } from 'bull'
 import { db, documentReviewFlags } from '@repo/db'
 import { BackgroundRunsService } from './background-runs.service'
 import { TicketDocCoverageService } from './ticket-doc-coverage.service'
+import { supportSurfacesEnabled } from './support-surfaces-flag'
 
 @Injectable()
 @Processor('freshness-check-queue')
@@ -18,6 +19,12 @@ export class FreshnessCheckProcessor {
   @Process()
   async onCheck(job: Job<{ workspaceId: string }>) {
     const { workspaceId } = job.data
+    // A job queued before the flag went off (or a retry) ends here, with no run
+    // row and no flag written.
+    if (!supportSurfacesEnabled()) {
+      this.logger.log(`Freshness check skipped workspaceId=${workspaceId}: support surfaces are off`)
+      return
+    }
     const runId = await this.runs.start('freshness-check', workspaceId)
 
     try {

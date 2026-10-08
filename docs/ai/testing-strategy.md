@@ -210,7 +210,7 @@ track them.
 | Command | Runner | Spec files |
 |---|---|---|
 | `cd apps/api && bun run test` | Jest 30 | 72 (`apps/api/src/**/*.spec.ts`) |
-| `cd apps/api && bun run test:e2e` | Jest 30, e2e config | 16 (`apps/api/test/*.e2e-spec.ts`) |
+| `cd apps/api && bun run test:e2e` | Jest 30, e2e config | 17 (`apps/api/test/*.e2e-spec.ts`) |
 | `cd apps/web && bun run test` | Vitest 4.1.9 | 154 (`*.spec.ts(x)`; CONTEXT DRIFT fixed 2026-10-03 — this said 135 while `origin/main` had 148, before the onboarding tour added 6 in `apps/web/src/components/tour/`) |
 | `cd packages/ai && bun run test` | Vitest 3.2.6 | 25 (`src/**/*.spec.ts`) |
 | `cd packages/db && bun run test` | Vitest 3.2.6 | 1 (`src/**/*.spec.ts`) |
@@ -460,6 +460,12 @@ Environment traps hit while verifying (they are execution preflight, not test lo
 - **Extended:** `procurement-documents.service.spec.ts`, `procurement-parse.processor.spec.ts` (photo branch, kill switch, the 200-line cap), `procurement-extraction.service.spec.ts`, `comparison.service.spec.ts` and `procurement-compare.service.spec.ts` (review gate), `procurement.controller.spec.ts`, `upload-exception.filter.spec.ts`, `bootstrap.spec.ts` (~900kb body accepted, over 1mb refused), `packages/ai` `procurement-extraction.spec.ts` (PDF prompt byte-identical, `EXTRACTOR_VERSION` still `@1`), web `page.spec.ts`, `discrepancy-review-modal.spec.tsx`, `auth-proxy.spec.ts` and the public-copy specs. API e2e `procurement.e2e-spec.ts` mocks `extractFromImages` alongside `extract`.
 - **Browser:** `apps/e2e/tests/procurement.spec.ts` `test.describe('photo and batch intake')`; fixtures `apps/e2e/fixtures/po-photo.jpg` (EXIF orientation 6 + GPS), `invoice-photo.png`, `receipt-photo.webp`, `fake.heic`, all under the e2e `MAX_UPLOAD_MB=1`; `support/ui.ts` MIME map and `support/flows.ts` photo/batch helpers.
 - **Not covered by any automated layer:** iOS Safari's HEIC → JPEG conversion on pick (manual QA on a device; `risk-register.md` "iOS HEIC Photos").
+
+**2026-10-08 — support-surface crons and digest behind `SUPPORT_SURFACES_ENABLED` (`docs/plans/fix-support-crons-flag.md`).**
+- New unit specs: `support-surfaces-flag.spec.ts` and the first specs for the three tick processors (`freshness-`, `faq-cluster-`, `topic-gap-tick.processor.spec.ts`; off → no fan-out, repeat still registered).
+- Extended: `faq-cluster`, `topic-gap`, `freshness-check` processor specs (off → no run row, no read, no model call) and `digest-content.service.spec.ts` (off → comparison counts only). The existing cases set the flag `true`.
+- API e2e: `apps/api/test/digest-settings.e2e-spec.ts`.
+- Browser: `workspace-alignment.spec.ts` digest-preview case. `apiEnv()` pins the flag `'false'`.
 
 ## Infrastructure / Docker / Deployment Verification
 

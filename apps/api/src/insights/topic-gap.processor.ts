@@ -6,6 +6,7 @@ import { db } from '@repo/db'
 import type Redis from 'ioredis'
 import { BackgroundRunsService } from './background-runs.service'
 import { FaqClusterService } from './faq-cluster.service'
+import { supportSurfacesEnabled } from './support-surfaces-flag'
 import { isBudgetExceeded, UsageService } from '../limits/usage.service'
 import { LOW_SCORE_THRESHOLD, topicGapsRedisKey, type TopicGap } from './coverage-dashboard.service'
 
@@ -33,6 +34,12 @@ export class TopicGapProcessor {
   @Process()
   async onGap(job: Job<{ workspaceId: string }>) {
     const { workspaceId } = job.data
+    // A job queued before the flag went off (or a retry) ends here, with no run
+    // row, no read and no model call.
+    if (!supportSurfacesEnabled()) {
+      this.logger.log(`Topic gap skipped workspaceId=${workspaceId}: support surfaces are off`)
+      return
+    }
     const runId = await this.runs.start('topic-gap', workspaceId)
 
     try {

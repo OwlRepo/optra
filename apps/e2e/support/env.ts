@@ -97,6 +97,8 @@ export function apiEnv(): Record<string, string> {
     EMAIL_OTP_ENABLED: 'false',
     CATALOG_ENABLED: 'true',
     PROCUREMENT_AUTO_COMPARE_ENABLED: 'false',
+    // Production default: the hidden support surfaces' crons and digest lines are off.
+    SUPPORT_SURFACES_ENABLED: 'false',
     MAX_UPLOAD_MB: '1',
     THROTTLE_DEFAULT_LIMIT: '100000',
     // The BFF is this API's one trusted hop, as in production.

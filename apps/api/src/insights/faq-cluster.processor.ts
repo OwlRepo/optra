@@ -6,6 +6,7 @@ import { db, faqDrafts, tickets } from '@repo/db'
 import { BackgroundRunsService } from './background-runs.service'
 import { TicketDocCoverageService } from './ticket-doc-coverage.service'
 import { FaqClusterService } from './faq-cluster.service'
+import { supportSurfacesEnabled } from './support-surfaces-flag'
 import { isBudgetExceeded, UsageService } from '../limits/usage.service'
 
 @Injectable()
@@ -23,6 +24,12 @@ export class FaqClusterProcessor {
   @Process()
   async onCluster(job: Job<{ workspaceId: string }>) {
     const { workspaceId } = job.data
+    // A job queued before the flag went off (or a retry) ends here, with no run
+    // row, no read and no model call.
+    if (!supportSurfacesEnabled()) {
+      this.logger.log(`FAQ cluster skipped workspaceId=${workspaceId}: support surfaces are off`)
+      return
+    }
     const runId = await this.runs.start('faq-cluster', workspaceId)
 
     try {

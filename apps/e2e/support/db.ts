@@ -76,6 +76,22 @@ export async function seedKnowledgeBase(workspaceId: string, name: string): Prom
   return rows[0].id
 }
 
+/** Activity rows the digest counts; the entity is the workspace itself. */
+export async function seedWorkspaceEvent(
+  workspaceId: string,
+  type: 'document_ingested' | 'comparison_flagged',
+  title: string,
+): Promise<void> {
+  await db().query(
+    `insert into workspace_events (workspace_id, type, entity_id, title) values ($1, $2, $1, $3)`,
+    [workspaceId, type, title],
+  )
+}
+
+export async function deleteWorkspaceEvents(workspaceId: string, titles: string[]): Promise<void> {
+  await db().query(`delete from workspace_events where workspace_id = $1 and title = any($2)`, [workspaceId, titles])
+}
+
 /** The newest unused OTP for an email. OTPs are stored in plaintext. */
 export async function latestOtp(email: string): Promise<string> {
   const { rows } = await db().query<{ code: string }>(
