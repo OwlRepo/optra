@@ -26,6 +26,7 @@ import { WorkspaceAccessDenied } from '@/components/workspace-access-denied'
 import { useWorkspaceContext } from '@/components/workspace-context'
 import {
   dismissDiscrepancy,
+  exportEvidenceTrail,
   listDiscrepancies,
   listInvoices,
   listPurchaseOrders,
@@ -120,6 +121,18 @@ export default function DiscrepanciesPage({ params }: { params: { id: string } }
   // renders, so no second fetch is needed to open it.
   const [reviewing, setReviewing] = React.useState<DiscrepancyFlag | null>(null)
   const [meta, setMeta] = React.useState({ page: 1, pageSize: 20, total: 0, totalPages: 0 })
+
+  const [isExporting, setIsExporting] = React.useState(false)
+  const exportButtonRef = React.useRef<HTMLButtonElement>(null)
+  const refocusExport = React.useRef(false)
+
+  // A disabled button drops focus; hand it back once the download is over.
+  React.useEffect(() => {
+    if (!isExporting && refocusExport.current) {
+      refocusExport.current = false
+      exportButtonRef.current?.focus()
+    }
+  }, [isExporting])
 
   const canManage = membership?.role === 'owner' || membership?.role === 'admin'
   const purchaseOrderIdFilter = searchParams.get('purchaseOrderId') ?? undefined
@@ -243,6 +256,31 @@ export default function DiscrepanciesPage({ params }: { params: { id: string } }
     [loadPage, router, toast, workspaceId],
   )
 
+  // Exports the whole filtered set (status + PO/invoice pair), never the page.
+  const handleExport = React.useCallback(async () => {
+    setIsExporting(true)
+    refocusExport.current = true
+    try {
+      await exportEvidenceTrail(workspaceId, {
+        purchaseOrderId: purchaseOrderIdFilter,
+        invoiceId: invoiceIdFilter,
+        status: statusFilter || undefined,
+      })
+    } catch (err) {
+      if (isUnauthorized(err)) {
+        router.push('/login')
+        return
+      }
+      toast({
+        variant: 'error',
+        title: 'Failed to export evidence',
+        description: extractErrorMessage(err, 'Try again in a moment.'),
+      })
+    } finally {
+      setIsExporting(false)
+    }
+  }, [invoiceIdFilter, purchaseOrderIdFilter, router, statusFilter, toast, workspaceId])
+
   // Any filter change restarts the queue: page 3 of the old filter is not a
   // meaningful place to land in the new one.
   const applyStatusFilter = React.useCallback((value: StatusFilterValue) => {
@@ -341,11 +379,22 @@ export default function DiscrepanciesPage({ params }: { params: { id: string } }
                   <ScopeChip label={pairLabel} clearLabel="Clear pair filter" onClear={clearPairFilter} />
                 ) : null}
               </div>
-              {meta.total > 0 ? (
-                <span className="hidden font-mono text-[12px] text-ink-muted lg:inline">
-                  {`${meta.total} flag${meta.total === 1 ? '' : 's'} · ${flags.length} shown`}
-                </span>
-              ) : null}
+              <div className="flex items-center gap-3">
+                {meta.total > 0 ? (
+                  <span className="hidden font-mono text-[12px] text-ink-muted lg:inline">
+                    {`${meta.total} flag${meta.total === 1 ? '' : 's'} · ${flags.length} shown`}
+                  </span>
+                ) : null}
+                <Button
+                  ref={exportButtonRef}
+                  variant="outline"
+                  size="sm"
+                  disabled={meta.total === 0 || isExporting}
+                  onClick={() => void handleExport()}
+                >
+                  Export evidence
+                </Button>
+              </div>
             </div>
 
             {flags.length === 0 ? (

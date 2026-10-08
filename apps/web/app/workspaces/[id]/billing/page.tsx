@@ -232,7 +232,7 @@ export default function BillingPage({ params }: { params: { id: string } }) {
         >
           <div>
             <h3 className="text-[18px]">Solo</h3>
-            <p className="mt-1 text-[14px] text-ink-body">$29 per month, 1 buyer</p>
+            <p className="mt-1 text-[14px] text-ink-body">$29 per month, sized for 1 buyer</p>
           </div>
           {isOwner ? (
             <Button
