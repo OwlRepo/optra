@@ -73,7 +73,7 @@ test.describe('billing copy on the public pages', () => {
   test('edge: Privacy lists Lemon Squeezy as a processor', async ({ page }) => {
     await page.goto('/privacy')
 
-    await expect(page.getByRole('rowheader', { name: 'Lemon Squeezy' })).toBeVisible()
+    await expect(page.getByRole('rowheader', { name: 'Lemon Squeezy', exact: true })).toBeVisible()
     await expect(page.getByText('as our Merchant of Record')).toBeVisible()
   })
 

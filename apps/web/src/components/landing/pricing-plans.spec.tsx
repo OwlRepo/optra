@@ -1,7 +1,7 @@
 /** @vitest-environment jsdom */
 
 import { readFileSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
+import { resolve } from 'node:path'
 import { cleanup, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 import { CONTACT_EMAIL } from '@/lib/legal-facts'
@@ -65,7 +65,7 @@ describe('PricingPlans', () => {
 
   it('regression: the quotas on the page equal quotasFor() in apps/api/src/billing/plans.ts', () => {
     const plans = readFileSync(
-      fileURLToPath(new URL('../../../../api/src/billing/plans.ts', import.meta.url)),
+      resolve(__dirname, '../../../../api/src/billing/plans.ts'),
       'utf8',
     )
     render(<PricingPlans />)
