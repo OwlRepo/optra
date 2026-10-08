@@ -4,11 +4,14 @@ Lemon Squeezy (LS) is the Merchant of Record: it takes payment, tax and sends in
 Optra stores only what the webhook tells it (plan, status, dates, seats) and meters usage
 itself. Design: `docs/plans/lemon-squeezy-billing-program.md`. Code: `apps/api/src/billing/`.
 
-Run every SQL line on the VPS from `/home/deploy/apps/optra`:
+Run every SQL snippet on the VPS from `/home/deploy/apps/optra`, passing it on stdin so the
+quotes inside the SQL never clash with the shell's:
 
 ```bash
 docker compose -f docker-compose.prod.yml exec -T postgres \
-  sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "<SQL>"'
+  sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"' <<'SQL'
+-- paste the SQL here
+SQL
 ```
 
 `billing_events.payload` holds the payer's name and email. Do not paste it into tickets or chat.
@@ -88,6 +91,7 @@ Find failures (section 7, query 1). If `processed_at` is NULL, fix the cause, th
 | 200, `foreign event` | the other app's event (section 2) | ignore |
 | 401 Invalid signature | webhook secret in LS differs from `.env` | make them equal, Resend |
 | `workspace binding signature missing or invalid`, `processed_at` set | the secret was changed between opening and paying a checkout, or custom data was edited | the Resend cannot succeed. Repair by hand: confirm the customer in LS, then insert the subscription via a fresh checkout or ask them to Subscribe again |
+| `foreign event` for what was really an Optra payment | the variant env was wrong AND the secret was rotated mid-checkout (both at once) | the Resend cannot succeed; repair as for `workspace binding` above |
 | `unknown workspace` / `store_id mismatch` | wrong store or deleted workspace | none; acknowledged by design |
 
 Do not rotate `LEMONSQUEEZY_WEBHOOK_SECRET` while a checkout may be open: it is also the key of the per-workspace binding. After any rotation run query 1 for `workspace binding%` errors.
