@@ -37,10 +37,35 @@ describe('PricingPlans', () => {
     expect(container.textContent).not.toContain('Every plan starts with a 14-day trial')
   })
 
+  it('error: Priority extraction queue is not offered anywhere, because no code prioritises extraction', () => {
+    const { container } = render(<PricingPlans />)
+
+    expect(container.textContent).not.toMatch(/priority extraction queue/i)
+  })
+
+  it('error: no plan claims a bare "1 buyer", since the plan only sizes the quota', () => {
+    const { container } = render(<PricingPlans />)
+
+    expect(container.textContent).not.toMatch(/(?<!sized for )1 buyer/)
+  })
+
   it('edge: Solo and Team both say the allowance stops at the monthly cap with no overage charges', () => {
     render(<PricingPlans />)
 
     expect(screen.getAllByText('Hard monthly cap, no overage charges')).toHaveLength(2)
+  })
+
+  it('edge: Solo and Team both list scanned PDFs and the exportable evidence trail', () => {
+    render(<PricingPlans />)
+
+    expect(screen.getAllByText('Scanned and photo-only PDFs included')).toHaveLength(2)
+    expect(screen.getAllByText('Exportable evidence trail')).toHaveLength(2)
+  })
+
+  it('edge: the Solo unit says it is sized for one buyer', () => {
+    render(<PricingPlans />)
+
+    expect(screen.getByText('per month · sized for 1 buyer')).not.toBeNull()
   })
 
   it('edge: Scale CTA is a mailto with the Optra Scale subject, not the trial anchor', () => {
@@ -88,7 +113,7 @@ describe('PricingPlans', () => {
 
     expect(screen.getByRole('heading', { name: 'Solo' })).not.toBeNull()
     expect(screen.getByText('$29')).not.toBeNull()
-    expect(screen.getByText('per month · 1 buyer')).not.toBeNull()
+    expect(screen.getByText('per month · sized for 1 buyer')).not.toBeNull()
 
     expect(screen.getByRole('heading', { name: 'Team' })).not.toBeNull()
     expect(screen.getByText('$69')).not.toBeNull()

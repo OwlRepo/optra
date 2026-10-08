@@ -30,9 +30,21 @@ function saveBlob(blob: Blob, filename: string) {
 /** Fetch a binary response and trigger a browser download, naming the file from Content-Disposition. */
 export async function fetchDownload(path: string, init: RequestInit, fallbackFilename: string) {
   const response = await fetch(path, init)
-  const blob = await response.blob()
   if (!response.ok) {
-    throw { statusCode: response.status, message: 'Download failed' }
+    // The API explains a refusal in JSON; surface its message, not a generic one.
+    let message = 'Download failed'
+    try {
+      const body: unknown = await response.json()
+      if (body && typeof body === 'object' && 'message' in body) {
+        const raw = (body as { message: unknown }).message
+        const text = Array.isArray(raw) ? raw.join(', ') : raw
+        if (typeof text === 'string' && text) message = text
+      }
+    } catch {
+      // Not JSON: keep the generic message.
+    }
+    throw { statusCode: response.status, message }
   }
+  const blob = await response.blob()
   saveBlob(blob, filenameFromDisposition(response.headers.get('Content-Disposition'), fallbackFilename))
 }

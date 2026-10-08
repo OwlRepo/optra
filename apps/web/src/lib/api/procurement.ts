@@ -320,6 +320,27 @@ export function downloadProcurementDocument(workspaceId: string, kind: Procureme
   )
 }
 
+/**
+ * Downloads the evidence-trail workbook for the given scope. Empty and
+ * undefined filters are left out; paging never applies, the export is the
+ * whole filtered set.
+ */
+export function exportEvidenceTrail(
+  workspaceId: string,
+  filters: { purchaseOrderId?: string; invoiceId?: string; status?: string; runId?: string },
+): Promise<void> {
+  const query = new URLSearchParams()
+  for (const [key, value] of Object.entries(filters)) {
+    if (value) query.set(key, value)
+  }
+  const qs = query.toString()
+  return fetchDownload(
+    `/api/workspaces/${workspaceId}/procurement/discrepancies/export${qs ? `?${qs}` : ''}`,
+    { method: 'GET' },
+    'optra-evidence-trail.xlsx',
+  )
+}
+
 export function compareDocuments(
   workspaceId: string,
   payload: { purchaseOrderId: string; invoiceId: string },

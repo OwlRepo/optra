@@ -14,13 +14,15 @@ const PLANS = [
   {
     name: 'Solo',
     price: '$29',
-    unit: 'per month · 1 buyer',
+    unit: 'per month · sized for 1 buyer',
     blurb: 'For an owner or single buyer checking their own vendors.',
     features: [
       '400 matched line items / month',
       '100 photo checks / month',
       'Unlimited vendors and catalogs',
       'Photo-level catalog matching',
+      'Scanned and photo-only PDFs included',
+      'Exportable evidence trail',
       'Full order and price history',
       'Hard monthly cap, no overage charges',
     ],
@@ -54,7 +56,6 @@ const PLANS = [
     blurb: 'For high-volume AP with its own review process.',
     features: [
       'Committed line-item rate',
-      'Priority extraction queue',
       'Custom retention and deletion',
       'Onboarding for existing archives',
     ],

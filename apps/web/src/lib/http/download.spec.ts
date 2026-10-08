@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest'
-import { filenameFromDisposition } from './download'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { fetchDownload, filenameFromDisposition } from './download'
 
 // B8. The API now names a non-ASCII download with RFC 5987 `filename*` and an
 // ASCII-only `filename` fallback; the browser must save it under the real name.
@@ -23,5 +23,33 @@ describe('filenameFromDisposition (B8)', () => {
         'document',
       ),
     ).toBe('façture-日本.csv')
+  })
+})
+
+describe('fetchDownload failures', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('error: a JSON error body surfaces its message instead of "Download failed"', async () => {
+    const body = { statusCode: 422, message: 'Too many flags to export at once; narrow the filters' }
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify(body), { status: 422, headers: { 'content-type': 'application/json' } }),
+      ),
+    )
+
+    await expect(fetchDownload('/api/x', { method: 'GET' }, 'x.xlsx')).rejects.toEqual({
+      statusCode: 422,
+      message: 'Too many flags to export at once; narrow the filters',
+    })
+  })
+
+  it('error: a non-JSON failure still rejects with the status and the generic message', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('boom', { status: 500 })))
+
+    await expect(fetchDownload('/api/x', { method: 'GET' }, 'x.xlsx')).rejects.toEqual({
+      statusCode: 500,
+      message: 'Download failed',
+    })
   })
 })
