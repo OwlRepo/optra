@@ -681,3 +681,12 @@ And one rule the owner made standing: every change now ships with its tests for 
 
 **Why different:** the plan trusted the architecture map ("all calls go through `metered`") over the call sites. **Before putting a price on a resource, grep every place it is consumed, and treat a kill switch's "off" as a behaviour that needs its own tests, not as the absence of code.**
 
+## 2026-10-08 — Billing launch: a shared payment store and a pinned env both outlive the code that assumes otherwise
+*Learning Contract: the plan's design is the prediction; the diff is below. No live prediction solicited.*
+
+**Predicted (from the approved plan):** copy and an env guard are a small change: edit three pages, five env checks and write a runbook; the 10 webhook events and `restart api` in the program plan are right.
+
+**Actual:** the copy work found a fourth page (the refund page promised non-refundable overage that no longer exists) and an overclaim on the landing page ("every plan starts with a 14-day trial", while the code gives the trial only to the first workspace). The code handles 7 subscription events, not 10, and `docker compose restart` does not re-read `.env` (the runbook uses `up -d --force-recreate api`). Two production facts mattered more than the code: the Lemon Squeezy store is shared with another app, so its events reached our webhook and were retried as "unknown variant" 500s until the binding check moved ahead of the variant check; and the VPS `.env` pinned `OPENAI_CHAT_MODEL=gpt-4-turbo`, so the S4 code default to gpt-4o changed nothing until the env line changed.
+
+**Why different:** the plan reasoned from the repository, but a payment store, a webhook list and a production `.env` are shared, long-lived state the repository does not show. **Before shipping a billing or model change, read the live configuration it depends on (read-only), and design the webhook so another tenant's events are ignored by default instead of retried.**
+
