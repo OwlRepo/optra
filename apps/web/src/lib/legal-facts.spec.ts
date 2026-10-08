@@ -38,9 +38,9 @@ describe('legal-facts', () => {
     expect(facts.SELLER_NAME).toBe('Romeo Angeles Jr.')
     expect(facts.SELLER_COUNTRY).toBe('Philippines')
     expect(facts.CONTACT_EMAIL).toBe('romeo@tyvera.app')
-    // Bumped for photo intake: the privacy page now says page images of photographed paper go to OpenAI.
+    // Bumped for billing launch: hard-cap terms and Lemon Squeezy named as a processor.
     expect(facts.LEGAL_LAST_UPDATED).toMatch(/^\d{4}-\d{2}-\d{2}$/)
-    expect(facts.LEGAL_LAST_UPDATED >= '2026-10-06').toBe(true)
+    expect(facts.LEGAL_LAST_UPDATED >= '2026-10-08').toBe(true)
     expect(facts.DELETION_SLA_DAYS).toBe(30)
     expect(facts.VPS_BACKUP_COUNT).toBe(7)
     expect(facts.REFUND_WINDOW_DAYS).toBe(14)

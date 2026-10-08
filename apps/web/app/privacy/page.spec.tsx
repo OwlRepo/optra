@@ -191,6 +191,33 @@ describe('Privacy page', () => {
     expect(container.textContent).not.toMatch(/portfolio|advertising cookies/i)
   })
 
+  it('error: the Lemon Squeezy row renders from fixed copy even when every optional fact is null', async () => {
+    const { container } = await renderWithFacts({})
+
+    expect(container.textContent).toContain('Lemon Squeezy')
+    expect(container.textContent).not.toMatch(/undefined|\bnull\b/)
+  })
+
+  it('edge: data-we-collect lists the stored Lemon Squeezy billing events with the payer name and email', () => {
+    const { container } = render(React.createElement(PrivacyPage))
+    const text = container.textContent ?? ''
+
+    expect(text).toContain(
+      'Billing events from Lemon Squeezy (plan, status, renewal dates, and the payer name and email in the event)',
+    )
+    expect(text).toContain('Keep your subscription status accurate and investigate billing problems.')
+  })
+
+  it('happy: Lemon Squeezy is a processor as Merchant of Record and the row says what each side sends', () => {
+    const { container } = render(React.createElement(PrivacyPage))
+    const text = container.textContent ?? ''
+
+    expect(text).toContain('Payments, tax and invoices, as our Merchant of Record.')
+    expect(text).toContain(
+      'We send it your email address and a workspace identifier; it sends us your plan, subscription status, renewal dates and the payer name and email.',
+    )
+  })
+
   it('happy: exports title, description and canonical metadata', () => {
     expect(metadata.title).toBe('Privacy Policy')
     expect(metadata.description).toBeTruthy()
