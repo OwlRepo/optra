@@ -1,6 +1,6 @@
 import { BadRequestException, HttpException, UnprocessableEntityException } from '@nestjs/common'
 import type { ConfigService } from '@nestjs/config'
-import { eq, like } from 'drizzle-orm'
+import { eq, like, sql } from 'drizzle-orm'
 import {
   comparisonRunGoodsReceipts,
   comparisonRuns,
@@ -3416,13 +3416,35 @@ describe('ComparisonService', () => {
       const { workspace } = await seedWorkspace(`${prefix}exp-cap@example.com`, 'Exp Cap')
       const pair = await seedPair(workspace.id)
       for (let i = 0; i < 3; i++) await insertFlag(workspace.id, pair, { sku: `CAP-${i}` })
-      expect(EXPORT_MAX_FLAGS).toBe(50_000)
+      expect(EXPORT_MAX_FLAGS).toBe(20_000)
       service.exportMaxFlags = 2
 
       const attempt = service.exportFlags(workspace.id, {})
 
       await expect(attempt).rejects.toBeInstanceOf(UnprocessableEntityException)
       await expect(attempt).rejects.toThrow(/narrow the filters/)
+    })
+
+    it('error: over the cap it refuses from a count, before reading a single flag row', async () => {
+      const { workspace } = await seedWorkspace(`${prefix}exp-countfirst@example.com`, 'Exp Count First')
+      const pair = await seedPair(workspace.id)
+      for (let i = 0; i < 4; i++) await insertFlag(workspace.id, pair, { sku: `CF-${i}` })
+      service.exportMaxFlags = 3
+      const rowReader = jest.spyOn(service as unknown as { flagCitationQuery: () => unknown }, 'flagCitationQuery')
+
+      await expect(service.exportFlags(workspace.id, {})).rejects.toBeInstanceOf(UnprocessableEntityException)
+
+      expect(rowReader).not.toHaveBeenCalled()
+    })
+
+    it('error: the cap is exact, one flag over is refused even when it would fit inside a batch', async () => {
+      const { workspace } = await seedWorkspace(`${prefix}exp-nooversh@example.com`, 'Exp No Overshoot')
+      const pair = await seedPair(workspace.id)
+      for (let i = 0; i < 5; i++) await insertFlag(workspace.id, pair, { sku: `NO-${i}` })
+      service.exportMaxFlags = 4
+      ;(service as unknown as { exportBatchSize: number }).exportBatchSize = 2
+
+      await expect(service.exportFlags(workspace.id, {})).rejects.toThrow(/narrow the filters/)
     })
 
     it('edge: exactly the cap is still exported', async () => {
@@ -3465,6 +3487,24 @@ describe('ComparisonService', () => {
       expect(result.flags).toHaveLength(1_001)
       expect(new Set(result.flags.map((flag) => flag.id)).size).toBe(1_001)
       expect(result.flags.map((flag) => flag.id)).toEqual([...result.flags.map((flag) => flag.id)].sort())
+    })
+
+    it('edge: flags created within the same millisecond but different microseconds come back once each, in created_at then id order', async () => {
+      const { workspace } = await seedWorkspace(`${prefix}exp-micro@example.com`, 'Exp Micro')
+      const pair = await seedPair(workspace.id)
+      // Earlier microsecond carries the LARGER id, so only a keyset on the raw
+      // column returns [early, late]; a millisecond-truncated one swaps them.
+      const early = await insertFlag(workspace.id, pair, { id: 'ffffffff-0000-4000-8000-000000000001', sku: 'MU-1' })
+      const late = await insertFlag(workspace.id, pair, { id: '00000000-0000-4000-8000-000000000002', sku: 'MU-2' })
+      const next = await insertFlag(workspace.id, pair, { id: '55555555-0000-4000-8000-000000000003', sku: 'MU-3' })
+      await db.execute(sql`update discrepancy_flags set created_at = '2026-10-01 00:00:00.000100' where id = ${early.id}`)
+      await db.execute(sql`update discrepancy_flags set created_at = '2026-10-01 00:00:00.000900' where id = ${late.id}`)
+      await db.execute(sql`update discrepancy_flags set created_at = '2026-10-01 00:00:00.001500' where id = ${next.id}`)
+      ;(service as unknown as { exportBatchSize: number }).exportBatchSize = 1
+
+      const result = await service.exportFlags(workspace.id, {})
+
+      expect(result.flags.map((row) => row.id)).toEqual([early.id, late.id, next.id])
     })
 
     it('edge: defaults to the current run, and runId reads an earlier one', async () => {

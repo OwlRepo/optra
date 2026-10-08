@@ -284,6 +284,13 @@ describe('ProcurementController evidence-trail export', () => {
     expect(comparison.exportFlags).toHaveBeenCalledWith('ws-1', query)
   })
 
+  it('edge: the export handler has its own throttle of 5 requests per 60 seconds', () => {
+    const handler = ProcurementController.prototype.exportDiscrepancies
+
+    expect(Reflect.getMetadata('THROTTLER:LIMITdefault', handler)).toBe(5)
+    expect(Reflect.getMetadata('THROTTLER:TTLdefault', handler)).toBe(60_000)
+  })
+
   it('happy: sends the workbook as a private, non-sniffable xlsx attachment named by UTC date', async () => {
     jest.useFakeTimers({ now: new Date('2026-10-08T23:30:00.000Z'), doNotFake: ['nextTick', 'setImmediate'] })
     const res = fakeRes()

@@ -754,6 +754,34 @@ describe('DiscrepanciesPage', () => {
       await waitFor(() => expect(button.disabled).toBe(false))
     })
 
+    it('edge: while exporting the button is aria-busy and reads "Exporting…"', async () => {
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha', role: 'owner' })
+      listDiscrepanciesMock.mockResolvedValue(listOf([makeFlag()]))
+      let finish: () => void = () => {}
+      exportEvidenceTrailMock.mockReturnValue(new Promise<void>((resolve) => (finish = resolve)))
+
+      renderPage()
+      const button = (await screen.findByRole('button', { name: 'Export evidence' })) as HTMLButtonElement
+      fireEvent.click(button)
+
+      await waitFor(() => expect(button.getAttribute('aria-busy')).toBe('true'))
+      expect(button.textContent).toContain('Exporting…')
+      finish()
+      await waitFor(() => expect(button.getAttribute('aria-busy')).not.toBe('true'))
+    })
+
+    it('edge: with no flags the disabled button is described by "No flags to export"', async () => {
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha', role: 'owner' })
+      listDiscrepanciesMock.mockResolvedValue(listOf([]))
+
+      renderPage()
+      const button = (await screen.findByRole('button', { name: 'Export evidence' })) as HTMLButtonElement
+
+      const describedBy = button.getAttribute('aria-describedby')
+      expect(describedBy).toBeTruthy()
+      expect(document.getElementById(describedBy as string)?.textContent).toContain('No flags to export')
+    })
+
     it('happy: exports the current filters, status and PO/invoice pair, not the visible page', async () => {
       mockSearchParams = new URLSearchParams('purchaseOrderId=po-1&invoiceId=inv-1')
       getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha', role: 'owner' })
@@ -771,6 +799,18 @@ describe('DiscrepanciesPage', () => {
       expect(filters).toEqual({ purchaseOrderId: 'po-1', invoiceId: 'inv-1', status: 'open' })
       expect(filters).not.toHaveProperty('page')
       expect(filters).not.toHaveProperty('pageSize')
+    })
+
+    it('happy: a finished export is announced in a status region as "Evidence exported"', async () => {
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha', role: 'owner' })
+      listDiscrepanciesMock.mockResolvedValue(listOf([makeFlag()]))
+
+      renderPage()
+      fireEvent.click(await screen.findByRole('button', { name: 'Export evidence' }))
+
+      await waitFor(() =>
+        expect(screen.getAllByRole('status').some((el) => (el.textContent ?? '').includes('Evidence exported'))).toBe(true),
+      )
     })
   })
 })

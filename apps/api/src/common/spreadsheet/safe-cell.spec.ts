@@ -8,6 +8,7 @@ describe('safeCell', () => {
     ['@', '@SUM(A1:A2)'],
     ['tab', '\t=1+1'],
     ['carriage return', '\r=1+1'],
+    ['line feed', '\n=1+1'],
   ])('error: a text cell starting with %s is prefixed with a single quote', (_name, input) => {
     expect(safeCell(input)).toBe(`'${input}`)
   })

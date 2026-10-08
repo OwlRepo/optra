@@ -116,6 +116,33 @@ describe('evidence-export', () => {
     expect(decisions[1][dHeader.indexOf('By')]).toBe(`'=${evil}`)
   })
 
+  it.each([['0x10'], ['1e3'], [' 5 '], ['5 pcs'], ['Infinity'], ['1,000']])(
+    'error: the value %j is not a plain decimal, so it stays text instead of becoming a number',
+    (raw) => {
+      const { rows } = read(buildWorkbook({ flags: [flag({ poValue: raw })], decisions: [] }))
+      const header = rows('Flags')[0] as string[]
+
+      expect(rows('Flags')[1][header.indexOf('PO value')]).toBe(raw)
+    },
+  )
+
+  it('error: a non-numeric delta or contract unit price keeps its text instead of going blank', () => {
+    const { rows } = read(
+      buildWorkbook({ flags: [flag({ delta: 'n/a', contractUnitPrice: 'USD 5' })], decisions: [] }),
+    )
+    const header = rows('Flags')[0] as string[]
+
+    expect(rows('Flags')[1][header.indexOf('Delta')]).toBe('n/a')
+    expect(rows('Flags')[1][header.indexOf('Contract unit price')]).toBe('USD 5')
+  })
+
+  it('error: a formula-looking delta keeps its text but is neutralised', () => {
+    const { rows } = read(buildWorkbook({ flags: [flag({ delta: '=1+1' })], decisions: [] }))
+    const header = rows('Flags')[0] as string[]
+
+    expect(rows('Flags')[1][header.indexOf('Delta')]).toBe("'=1+1")
+  })
+
   it('edge: no citation yields an empty cell', () => {
     expect(citationSource(null)).toBe('')
   })
@@ -124,13 +151,29 @@ describe('evidence-export', () => {
     expect(citationSource(citation({ sourceRow: 7 }))).toBe('row 7')
   })
 
-  it('edge: an edited line says so after the original source', () => {
-    expect(citationSource(citation({ sourceRow: 7, sourceSheet: 'Lines', editedAt: '2026-10-03T00:00:00.000Z' }))).toBe(
-      'row 7, sheet Lines, edited',
-    )
+  it('edge: a line edited by a reviewer says so and outranks how it was first read', () => {
     expect(
       citationSource(citation({ extractionConfidence: 0.5, sourceKind: 'pdf-extraction', editedAt: '2026-10-03T00:00:00.000Z' })),
-    ).toBe('read from PDF, 50% confidence, edited')
+    ).toBe('edited by reviewer')
+    expect(citationSource(citation({ sourceKind: 'manual', editedAt: '2026-10-03T00:00:00.000Z' }))).toBe(
+      'edited by reviewer',
+    )
+  })
+
+  it('edge: a line a reviewer added by hand says so', () => {
+    expect(citationSource(citation({ sourceKind: 'manual' }))).toBe('added by reviewer')
+  })
+
+  it('edge: a photo read cites the photo and its rounded confidence', () => {
+    expect(citationSource(citation({ sourceKind: 'image-extraction', extractionConfidence: 0.876 }))).toBe(
+      'read from photo, 88% confidence',
+    )
+  })
+
+  it('edge: a spreadsheet row wins over everything else, in the modal order (sheet, then row)', () => {
+    expect(
+      citationSource(citation({ sourceRow: 7, sourceSheet: 'Lines', editedAt: '2026-10-03T00:00:00.000Z', sourceKind: 'manual' })),
+    ).toBe('sheet Lines, row 7')
   })
 
   it('edge: confidence is rounded to a whole percent', () => {
@@ -225,7 +268,7 @@ describe('evidence-export', () => {
   })
 
   it('happy: a spreadsheet line cites row and sheet', () => {
-    expect(citationSource(citation({ sourceRow: 4, sourceSheet: 'Lines' }))).toBe('row 4, sheet Lines')
+    expect(citationSource(citation({ sourceRow: 4, sourceSheet: 'Lines' }))).toBe('sheet Lines, row 4')
   })
 
   it('happy: a PDF line cites the read and its confidence', () => {
@@ -254,7 +297,7 @@ describe('evidence-export', () => {
     expect(cell('SKU')).toBe('A1')
     expect(cell('PO document')).toBe('po-march.xlsx')
     expect(cell('PO line')).toBe(3)
-    expect(cell('PO source')).toBe('row 4, sheet Lines')
+    expect(cell('PO source')).toBe('sheet Lines, row 4')
     expect(cell('Invoice document')).toBe('inv-77.pdf')
     expect(cell('Invoice line')).toBe(2)
     expect(cell('Invoice source')).toBe('read from PDF, 87% confidence')
