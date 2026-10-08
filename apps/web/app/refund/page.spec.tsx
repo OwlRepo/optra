@@ -27,12 +27,19 @@ describe('Refund page', () => {
     expect(container.textContent).not.toMatch(/undefined|\bnull\b/)
   })
 
-  it('edge: states no partial-period refunds and non-refundable used overage', () => {
+  it('error: no longer mentions overage charges, because the plans are hard-capped', () => {
     const { container } = render(React.createElement(RefundPage))
 
-    expect(container.textContent).toMatch(/partial/i)
-    expect(container.textContent).toMatch(/overage/i)
-    expect(container.textContent).toMatch(/non-refundable/i)
+    expect(container.textContent).not.toMatch(/overage/i)
+    expect(container.textContent).not.toMatch(/non-refundable/i)
+  })
+
+  it('edge: states no partial-period refunds after the 14-day window', () => {
+    const { container } = render(React.createElement(RefundPage))
+
+    expect(container.textContent).toContain(
+      'No partial-period refunds once the 14-day window has passed.',
+    )
   })
 
   it('happy: exports title, description and canonical metadata', () => {

@@ -191,6 +191,16 @@ describe('BillingWebhookService', () => {
     expect(await subscriptionOf(workspaceId)).toBeUndefined()
   })
 
+  it('error: an event with no workspace binding for a variant that is not ours is ignored as foreign (200, processed, no retry)', async () => {
+    const body = eventBody({ workspaceId: null, subscriptionId: uniqueSub(), variantId: 123456 })
+
+    await expect(deliver(body)).resolves.toEqual({ received: true })
+
+    const event = await eventFor(body)
+    expect(event.processedAt).not.toBeNull()
+    expect(event.lastError).toMatch(/foreign|not an Optra/)
+  })
+
   it.each([
     ['LEMONSQUEEZY_STORE_ID', ''],
     ['LEMONSQUEEZY_STORE_ID', undefined],

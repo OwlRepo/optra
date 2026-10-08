@@ -4304,34 +4304,6 @@
     },
     {
       "endpoints": [
-        "claude",
-        "docs_ai_file_index_repository_map"
-      ],
-      "variants": [
-        {
-          "source": "claude",
-          "target": "docs_ai_file_index_repository_map",
-          "relation": "references",
-          "confidence": "EXTRACTED",
-          "confidence_score": 1.0,
-          "source_file": "CLAUDE.md",
-          "source_location": null,
-          "weight": 1.0
-        },
-        {
-          "source": "docs_ai_file_index_repository_map",
-          "target": "claude",
-          "relation": "references",
-          "confidence": "EXTRACTED",
-          "confidence_score": 1.0,
-          "source_file": "docs/ai/file-index/repository-map.md",
-          "source_location": null,
-          "weight": 1.0
-        }
-      ]
-    },
-    {
-      "endpoints": [
         "docs_ai_contracts_api_contracts",
         "docs_ai_contracts_api_contracts_drift_marks"
       ],
@@ -4353,6 +4325,62 @@
           "confidence": "EXTRACTED",
           "confidence_score": 1.0,
           "source_file": "docs/ai/contracts/api-contracts.md",
+          "source_location": null,
+          "weight": 1.0
+        }
+      ]
+    },
+    {
+      "endpoints": [
+        "docs_ai_file_index_repository_map_billing_section",
+        "docs_ops_billing"
+      ],
+      "variants": [
+        {
+          "source": "docs_ai_file_index_repository_map_billing_section",
+          "target": "docs_ops_billing",
+          "relation": "cites",
+          "confidence": "EXTRACTED",
+          "confidence_score": 1.0,
+          "source_file": "docs/ai/file-index/repository-map.md",
+          "source_location": null,
+          "weight": 1.0
+        },
+        {
+          "source": "docs_ops_billing",
+          "target": "docs_ai_file_index_repository_map_billing_section",
+          "relation": "references",
+          "confidence": "EXTRACTED",
+          "confidence_score": 1.0,
+          "source_file": "docs/ops/billing.md",
+          "source_location": null,
+          "weight": 1.0
+        }
+      ]
+    },
+    {
+      "endpoints": [
+        "docs_ai_module_ownership_map_comparison_engine",
+        "docs_ai_module_ownership_map_duckdb_sandbox"
+      ],
+      "variants": [
+        {
+          "source": "docs_ai_module_ownership_map_comparison_engine",
+          "target": "docs_ai_module_ownership_map_duckdb_sandbox",
+          "relation": "calls",
+          "confidence": "EXTRACTED",
+          "confidence_score": 1.0,
+          "source_file": "docs/ai/module-ownership-map.md",
+          "source_location": null,
+          "weight": 1.0
+        },
+        {
+          "source": "docs_ai_module_ownership_map_duckdb_sandbox",
+          "target": "docs_ai_module_ownership_map_comparison_engine",
+          "relation": "semantically_similar_to",
+          "confidence": "INFERRED",
+          "confidence_score": 0.65,
+          "source_file": "docs/ai/module-ownership-map.md",
           "source_location": null,
           "weight": 1.0
         }

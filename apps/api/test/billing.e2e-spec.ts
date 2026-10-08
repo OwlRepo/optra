@@ -291,6 +291,18 @@ describe('Billing (e2e)', () => {
     expect(await eventRow(body)).toBeUndefined()
   })
 
+  it('error: another app\'s subscription event (variant not ours, no workspace_sig) is 200, processed and recorded as foreign, with no row', async () => {
+    const id = await freshWorkspace()
+    const body = eventBody({ workspaceId: id, variantId: 123456, workspaceSig: null })
+
+    await signedWebhook(body).expect(200)
+
+    const row = await eventRow(body)
+    expect(row.processedAt).not.toBeNull()
+    expect(row.lastError).toMatch(/foreign|not an Optra/)
+    expect(await subscriptionRow(id)).toBeUndefined()
+  })
+
   it('error: no token is 401 on summary, checkout and portal', async () => {
     const id = await freshWorkspace()
 

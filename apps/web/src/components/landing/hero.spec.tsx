@@ -1,10 +1,15 @@
 /** @vitest-environment jsdom */
 
 import { cleanup, render, screen } from '@testing-library/react'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Hero } from './hero'
 
 afterEach(cleanup)
+
+vi.mock('@/lib/legal-facts', async (importActual) => ({
+  ...(await importActual<typeof import('@/lib/legal-facts')>()),
+  TRIAL_DAYS: 21,
+}))
 
 describe('Hero', () => {
   it('regression: no longer claims no card is needed', () => {
@@ -12,6 +17,12 @@ describe('Hero', () => {
 
     expect(container.textContent).not.toMatch(/no card/i)
     expect(container.textContent).not.toContain('14 days free')
+  })
+
+  it('regression: the trial length comes from TRIAL_DAYS', () => {
+    const { container } = render(<Hero />)
+
+    expect(container.textContent).toContain('21-day free trial')
   })
 
   it('happy: renders the headline with its deliberate line break', () => {
@@ -41,12 +52,12 @@ describe('Hero', () => {
     expect(screen.getByText('Catalog evidence')).not.toBeNull()
   })
 
-  it('happy: states the 14-day trial reassurance under the buttons', () => {
+  it('happy: states the trial reassurance under the buttons', () => {
     render(<Hero />)
 
     expect(
       screen.getByText(
-        '14-day free trial · reads the PDFs, spreadsheets and phone photos you already have',
+        '21-day free trial · reads the PDFs, spreadsheets and phone photos you already have',
       ),
     ).not.toBeNull()
   })
