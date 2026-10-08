@@ -1,10 +1,15 @@
 /** @vitest-environment jsdom */
 
 import { cleanup, render, screen } from '@testing-library/react'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { FinalCta } from './final-cta'
 
 afterEach(cleanup)
+
+vi.mock('@/lib/legal-facts', async (importActual) => ({
+  ...(await importActual<typeof import('@/lib/legal-facts')>()),
+  TRIAL_DAYS: 21,
+}))
 
 describe('FinalCta', () => {
   it('regression: no longer claims no card or self-serve deletion', () => {
@@ -21,6 +26,12 @@ describe('FinalCta', () => {
     const { container } = render(<FinalCta />)
 
     expect(container.querySelectorAll('a[href="/chat"]')).toHaveLength(0)
+  })
+
+  it('regression: the trial length comes from TRIAL_DAYS', () => {
+    const { container } = render(<FinalCta />)
+
+    expect(container.textContent).toContain('21-day free trial')
   })
 
   it('happy: spells out the trial and the ask-and-we-delete promise', () => {

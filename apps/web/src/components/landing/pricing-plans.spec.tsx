@@ -25,6 +25,12 @@ describe('PricingPlans', () => {
     expect(container.textContent).not.toMatch(/\$0\.0[34]/)
   })
 
+  it('error: no self-serve upgrade or buyer-change promise is made', () => {
+    const { container } = render(<PricingPlans />)
+
+    expect(container.textContent).not.toMatch(/upgrade anytime|add buyers anytime/i)
+  })
+
   it('error: the trial line no longer says every plan starts with a trial', () => {
     const { container } = render(<PricingPlans />)
 
@@ -34,8 +40,7 @@ describe('PricingPlans', () => {
   it('edge: Solo and Team both say the allowance stops at the monthly cap with no overage charges', () => {
     render(<PricingPlans />)
 
-    expect(screen.getByText('Hard monthly cap, no overage charges. Upgrade anytime')).not.toBeNull()
-    expect(screen.getByText('Hard monthly cap, no overage charges. Add buyers anytime')).not.toBeNull()
+    expect(screen.getAllByText('Hard monthly cap, no overage charges')).toHaveLength(2)
   })
 
   it('edge: Scale CTA is a mailto with the Optra Scale subject, not the trial anchor', () => {

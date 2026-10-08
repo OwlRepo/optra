@@ -67,7 +67,7 @@ test.describe('billing copy on the public pages', () => {
     await expect(body).toContainText('Your first workspace starts with a 14-day trial.')
     await expect(body).toContainText('The trial needs no payment card')
     await expect(body).toContainText('There is no overage charge.')
-    await expect(body).toContainText('You can upgrade your plan or add buyers at any time.')
+    await expect(body).toContainText('contact us to change the plan or the number of buyers')
   })
 
   test('edge: Privacy lists Lemon Squeezy as a processor', async ({ page }) => {
@@ -81,8 +81,8 @@ test.describe('billing copy on the public pages', () => {
     await page.goto('/')
     const pricing = page.locator('#pricing')
 
-    await expect(pricing).toContainText('Hard monthly cap, no overage charges. Upgrade anytime')
-    await expect(pricing).toContainText('Hard monthly cap, no overage charges. Add buyers anytime')
+    await expect(pricing).toContainText('Hard monthly cap, no overage charges')
+    await expect(pricing).not.toContainText(/upgrade anytime|add buyers anytime/i)
     await expect(pricing).toContainText('Your first workspace starts with a 14-day trial.')
   })
 })

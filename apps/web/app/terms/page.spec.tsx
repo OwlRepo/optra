@@ -61,10 +61,14 @@ describe('Terms page', () => {
     expect(text).toContain('Subscribing during the trial starts your paid plan immediately.')
   })
 
-  it('edge: states that you can upgrade or add buyers at any time', () => {
+  it('edge: says to contact us to change the plan or the number of buyers when a cap is reached', () => {
     const { container } = render(React.createElement(TermsPage))
+    const paragraph =
+      Array.from(container.querySelectorAll('p')).find((p) => /reach(es)? a cap/i.test(p.textContent ?? ''))
+        ?.textContent ?? ''
 
-    expect(container.textContent).toContain('You can upgrade your plan or add buyers at any time.')
+    expect(paragraph).toMatch(/reach a cap.*contact us.*plan or (the )?number of buyers/i)
+    expect(paragraph).not.toMatch(/at any time/i)
   })
 
   it('edge: does not promise that every discrepancy is caught', () => {

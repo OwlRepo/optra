@@ -208,6 +208,19 @@ describe('Privacy page', () => {
     expect(text).toContain('Keep your subscription status accurate and investigate billing problems.')
   })
 
+  it('edge: retention says billing records (payer name and email) are kept for tax and accounting and removed on request', () => {
+    render(React.createElement(PrivacyPage))
+    const heading = screen.getByRole('heading', { name: /how long we keep it/i })
+    const section = heading.closest('section')
+    const text = section?.textContent ?? ''
+
+    expect(section).not.toBeNull()
+    expect(text).toMatch(/billing records/i)
+    expect(text).toMatch(/payer name and email/i)
+    expect(text).toMatch(/tax and accounting/i)
+    expect(text).toMatch(/on request/i)
+  })
+
   it('happy: Lemon Squeezy is a processor as Merchant of Record and the row says what each side sends', () => {
     const { container } = render(React.createElement(PrivacyPage))
     const text = container.textContent ?? ''
