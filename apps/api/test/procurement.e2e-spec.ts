@@ -2820,4 +2820,207 @@ describe('Procurement flow (e2e)', () => {
       expect(rows[0].quantity).toBe(401)
     })
   })
+
+  // Evidence-trail export: a read-only xlsx of the review queue's scope. Guard
+  // chain is JwtAuthGuard -> WorkspaceMemberGuard (members may read flags), then
+  // ValidationPipe on the same filters as the list.
+  describe('evidence-trail export', () => {
+    const XLSX_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    const poCsv = 'sku,description,qty,unit price\nA1,Widget,10,5.00\nC3,Only On PO,1,1.00'
+    const invoiceCsv = 'sku,description,qty,unit price\nA1,Widget,10,6.00\nD4,Only On Invoice,1,1.00'
+    const exportPath = (workspaceId: string, query = '') =>
+      `/workspaces/${workspaceId}/procurement/discrepancies/export${query}`
+
+    const binary = (res: NodeJS.ReadableStream, callback: (err: Error | null, body: Buffer) => void) => {
+      const chunks: Buffer[] = []
+      res.on('data', (chunk: Buffer) => chunks.push(chunk))
+      res.on('end', () => callback(null, Buffer.concat(chunks)))
+    }
+
+    const download = (token: string, workspaceId: string, query = '') =>
+      request(app.getHttpServer())
+        .get(exportPath(workspaceId, query))
+        .set('Authorization', `Bearer ${token}`)
+        .buffer(true)
+        .parse(binary as never)
+
+    const sheetRows = (body: Buffer, name: string) => {
+      const book = XLSX.read(body, { type: 'buffer' })
+      return XLSX.utils.sheet_to_json<unknown[]>(book.Sheets[name], { header: 1, defval: '', raw: true })
+    }
+
+    async function seedComparedPair(owner: { workspaceId: string; accessToken: string }, numbers: { po: string; invoice: string }, poName = 'po.csv') {
+      const vendorId = await createVendor(app, owner.workspaceId, owner.accessToken)
+      const po = await request(app.getHttpServer())
+        .post(`/workspaces/${owner.workspaceId}/procurement/purchase-orders`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .field('vendorId', vendorId)
+        .field('poNumber', numbers.po)
+        .field('currency', 'USD')
+        .attach('file', Buffer.from(poCsv), poName)
+        .expect(201)
+      const invoice = await request(app.getHttpServer())
+        .post(`/workspaces/${owner.workspaceId}/procurement/invoices`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .field('purchaseOrderId', po.body.id)
+        .field('invoiceNumber', numbers.invoice)
+        .field('currency', 'USD')
+        .attach('file', Buffer.from(invoiceCsv), 'invoice.csv')
+        .expect(201)
+      await waitForPoDone(po.body.id)
+      await waitForInvoiceDone(invoice.body.id)
+      await request(app.getHttpServer())
+        .post(`/workspaces/${owner.workspaceId}/procurement/discrepancies/compare`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .send({ purchaseOrderId: po.body.id, invoiceId: invoice.body.id })
+        .expect(201)
+      return { poId: po.body.id as string, invoiceId: invoice.body.id as string }
+    }
+
+    it('error: answers 401 without a token', async () => {
+      const res = await request(app.getHttpServer()).get(exportPath('00000000-0000-4000-8000-000000000000'))
+
+      expect(res.status).toBe(401)
+      expect(res.body.message).toBe('Unauthorized')
+    })
+
+    it('error: a user outside the workspace is refused 403 and gets no workbook', async () => {
+      const owner = await seedOwnerWithWorkspace(app, `${prefix}exp-owner@example.com`, 'Exp Owner')
+      const outsider = await seedOwnerWithWorkspace(app, `${prefix}exp-outsider@example.com`, 'Exp Outsider')
+
+      const res = await download(outsider.accessToken, owner.workspaceId)
+
+      expect(res.status).toBe(403)
+      expect(res.headers['content-type']).not.toContain('spreadsheetml')
+    })
+
+    it('error: a malformed purchaseOrderId, invoiceId or runId answers 400 and an unknown status answers 400', async () => {
+      const owner = await seedOwnerWithWorkspace(app, `${prefix}exp-400@example.com`, 'Exp 400')
+
+      const answers = [
+        await download(owner.accessToken, owner.workspaceId, '?purchaseOrderId=not-a-uuid'),
+        await download(owner.accessToken, owner.workspaceId, '?invoiceId=not-a-uuid'),
+        await download(owner.accessToken, owner.workspaceId, '?runId=not-a-uuid'),
+        await download(owner.accessToken, owner.workspaceId, '?status=banana'),
+      ]
+
+      expect(answers.map((res) => res.status)).toEqual([400, 400, 400, 400])
+    })
+
+    it("error: another workspace's purchase order id as a filter returns a workbook with no rows and none of its data", async () => {
+      const mine = await seedOwnerWithWorkspace(app, `${prefix}exp-idor-a@example.com`, 'Exp Idor A')
+      const theirs = await seedOwnerWithWorkspace(app, `${prefix}exp-idor-b@example.com`, 'Exp Idor B')
+      await seedComparedPair(mine, { po: 'PO-EXP-IA', invoice: 'INV-EXP-IA' })
+      const foreign = await seedComparedPair(theirs, { po: 'PO-EXP-IB', invoice: 'INV-EXP-IB' }, 'secret-po-name.csv')
+
+      const res = await download(mine.accessToken, mine.workspaceId, `?purchaseOrderId=${foreign.poId}`)
+
+      expect(res.status).toBe(200)
+      expect(sheetRows(res.body, 'Flags')).toHaveLength(1)
+      expect(res.body.toString('latin1')).not.toContain('secret-po-name.csv')
+    })
+
+    it('edge: a workspace with no flags still answers 200 with both sheets and only header rows', async () => {
+      const owner = await seedOwnerWithWorkspace(app, `${prefix}exp-none@example.com`, 'Exp None')
+
+      const res = await download(owner.accessToken, owner.workspaceId)
+
+      expect(res.status).toBe(200)
+      expect(XLSX.read(res.body, { type: 'buffer' }).SheetNames).toEqual(['Flags', 'Decisions'])
+      expect(sheetRows(res.body, 'Flags')).toHaveLength(1)
+      expect(sheetRows(res.body, 'Decisions')).toHaveLength(1)
+    })
+
+    it('edge: a plain member can export, since members can already read every flag', async () => {
+      const owner = await seedOwnerWithWorkspace(app, `${prefix}exp-mem-owner@example.com`, 'Exp Member')
+      const member = await seedMemberOfWorkspace(app, owner.workspaceId, `${prefix}exp-mem@example.com`)
+
+      const res = await download(member.accessToken, owner.workspaceId)
+
+      expect(res.status).toBe(200)
+    })
+
+    it('edge: the status filter narrows the export like it narrows the list', async () => {
+      const owner = await seedOwnerWithWorkspace(app, `${prefix}exp-status@example.com`, 'Exp Status')
+      await seedComparedPair(owner, { po: 'PO-EXP-S', invoice: 'INV-EXP-S' })
+      const listed = await request(app.getHttpServer())
+        .get(`/workspaces/${owner.workspaceId}/procurement/discrepancies`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .expect(200)
+      await request(app.getHttpServer())
+        .patch(`/workspaces/${owner.workspaceId}/procurement/discrepancies/${listed.body.items[0].id}/dismiss`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .expect(200)
+
+      const open = await download(owner.accessToken, owner.workspaceId, '?status=open')
+      const dismissed = await download(owner.accessToken, owner.workspaceId, '?status=dismissed')
+
+      expect(sheetRows(open.body, 'Flags')).toHaveLength(3)
+      expect(sheetRows(dismissed.body, 'Flags')).toHaveLength(2)
+    })
+
+    it('regression: the response is a private, non-sniffable, uncached xlsx attachment named by UTC date', async () => {
+      const owner = await seedOwnerWithWorkspace(app, `${prefix}exp-headers@example.com`, 'Exp Headers')
+      const utcDay = () => new Date().toISOString().slice(0, 10)
+      const before = utcDay()
+
+      const res = await download(owner.accessToken, owner.workspaceId)
+
+      const after = utcDay()
+      expect(res.status).toBe(200)
+      expect(res.headers['content-type']).toContain(XLSX_TYPE)
+      expect([before, after].map((day) => `attachment; filename="optra-evidence-trail-${day}.xlsx"`)).toContain(
+        res.headers['content-disposition'],
+      )
+      expect(res.headers['x-content-type-options']).toBe('nosniff')
+      expect(res.headers['cache-control']).toBe('private, no-store')
+    })
+
+    it('happy: exports flags with citations, a decision row with the actor email, and a formula SKU neutralised', async () => {
+      const owner = await seedOwnerWithWorkspace(app, `${prefix}exp-happy@example.com`, 'Exp Happy')
+      await seedComparedPair(owner, { po: 'PO-EXP-H', invoice: 'INV-EXP-H' }, 'march-po.csv')
+      const list = await request(app.getHttpServer())
+        .get(`/workspaces/${owner.workspaceId}/procurement/discrepancies`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .expect(200)
+      const price = list.body.items.find((flag: { flagType: string }) => flag.flagType === 'price_mismatch')
+      const missing = list.body.items.find((flag: { flagType: string }) => flag.flagType === 'missing_on_po')
+      await request(app.getHttpServer())
+        .post(`/workspaces/${owner.workspaceId}/procurement/discrepancies/${price.id}/decisions`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .send({ outcome: 'approved_exception', note: 'Vendor agreed the new price.' })
+        .expect(201)
+      await db.update(discrepancyFlags).set({ sku: '=HYPERLINK("x")' }).where(eq(discrepancyFlags.id, missing.id))
+
+      const res = await download(owner.accessToken, owner.workspaceId)
+
+      expect(res.status).toBe(200)
+      expect(XLSX.read(res.body, { type: 'buffer' }).SheetNames).toEqual(['Flags', 'Decisions'])
+      const flags = sheetRows(res.body, 'Flags')
+      const header = flags[0] as string[]
+      expect(header.slice(0, 5)).toEqual(['Flag ID', 'Created (UTC ISO)', 'Type', 'Status', 'SKU'])
+      expect(header).toContain('Latest decision')
+      expect(flags).toHaveLength(4)
+      const col = (row: unknown[], name: string) => row[header.indexOf(name)]
+      const priceRow = flags.find((row) => row[0] === price.id) as unknown[]
+      expect(col(priceRow, 'PO document')).toBe('march-po.csv')
+      expect(col(priceRow, 'PO source')).toBe('row 2')
+      expect(col(priceRow, 'Invoice source')).toBe('row 2')
+      expect(col(priceRow, 'Latest decision')).toBe('approved exception')
+      expect(col(priceRow, 'Decided by')).toBe(`${prefix}exp-happy@example.com`)
+      const missingRow = flags.find((row) => row[0] === missing.id) as unknown[]
+      expect(col(missingRow, 'SKU')).toBe(`'=HYPERLINK("x")`)
+      const decisions = sheetRows(res.body, 'Decisions')
+      expect(decisions[0]).toEqual(['Flag ID', 'SKU', 'Outcome', 'Note', 'By', 'Role', 'At (UTC ISO)'])
+      expect(decisions).toHaveLength(2)
+      expect(decisions[1].slice(0, 6)).toEqual([
+        price.id,
+        'A1',
+        'approved exception',
+        'Vendor agreed the new price.',
+        `${prefix}exp-happy@example.com`,
+        'owner',
+      ])
+    })
+  })
 })

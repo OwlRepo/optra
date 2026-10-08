@@ -190,6 +190,24 @@ describe('BillingPage', () => {
     expect(assignMock).not.toHaveBeenCalled()
   })
 
+  it('error: no plan card claims a bare "1 buyer", since members are not capped', async () => {
+    getBillingMock.mockResolvedValue(trialingSummary())
+
+    renderPage()
+    await screen.findByText(/days left/i)
+
+    expect(document.body.textContent).not.toMatch(/(?<!sized for )1 buyer/)
+  })
+
+  it('edge: the Solo card says the plan is sized for one buyer', async () => {
+    getBillingMock.mockResolvedValue(trialingSummary())
+
+    renderPage()
+    await screen.findByText(/days left/i)
+
+    expect(screen.getByText('$29 per month, sized for 1 buyer')).toBeTruthy()
+  })
+
   it('error: a 403 shows the access-denied panel', async () => {
     getBillingMock.mockRejectedValue({ statusCode: 403, message: 'Forbidden' })
 

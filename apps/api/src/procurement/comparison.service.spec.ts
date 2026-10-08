@@ -1,4 +1,4 @@
-import { BadRequestException, HttpException } from '@nestjs/common'
+import { BadRequestException, HttpException, UnprocessableEntityException } from '@nestjs/common'
 import type { ConfigService } from '@nestjs/config'
 import { eq, like } from 'drizzle-orm'
 import {
@@ -21,7 +21,7 @@ import {
   workspaceMembers,
   workspaces,
 } from '@repo/db'
-import { COMPARISON_STRATEGY_VERSION, ComparisonService } from './comparison.service'
+import { COMPARISON_STRATEGY_VERSION, ComparisonService, EXPORT_MAX_FLAGS } from './comparison.service'
 import { DuckDbQueryService, SqlExecutionError } from '../structured-query/duckdb-query.service'
 import { BillingGateService } from '../billing/billing-gate.service'
 import { EntitlementService } from '../billing/entitlement.service'
@@ -3310,6 +3310,266 @@ describe('ComparisonService', () => {
       expect(rows).toHaveLength(1)
       expect(rows[0]).toMatchObject({ kind: 'matched_line', quantity: 2 })
       expect(rows[0].idempotencyKey).toMatch(new RegExp(`^cmp:${po.id}:${invoice.id}:\\d{4}-\\d{2}-\\d{2}$`))
+    })
+  })
+
+  // Evidence-trail export. Same scope as the review queue, no pagination, plus
+  // the decisions behind each flag. Every extra join is a new place a tenant
+  // boundary could leak, so isolation cases come first.
+  describe('exportFlags (evidence-trail export)', () => {
+    async function seedPair(workspaceId: string, names: { po?: string; invoice?: string } = {}) {
+      const { po, invoice } = await seedReadyPoAndInvoice(
+        workspaceId,
+        [{ sku: 'A1', quantity: '10', unitPrice: '5.00' }],
+        [{ sku: 'A1', quantity: '10', unitPrice: '6.00' }],
+        true,
+      )
+      if (names.po) await db.update(purchaseOrders).set({ name: names.po }).where(eq(purchaseOrders.id, po.id))
+      if (names.invoice) await db.update(invoices).set({ name: names.invoice }).where(eq(invoices.id, invoice.id))
+      const [poLine] = await db.select().from(poLineItems).where(eq(poLineItems.purchaseOrderId, po.id))
+      const [invLine] = await db.select().from(invoiceLineItems).where(eq(invoiceLineItems.invoiceId, invoice.id))
+      return { po, invoice, poLine, invLine }
+    }
+
+    async function insertFlag(
+      workspaceId: string,
+      pair: { po: { id: string }; invoice: { id: string }; poLine?: { id: string }; invLine?: { id: string } },
+      overrides: Partial<typeof discrepancyFlags.$inferInsert> = {},
+    ) {
+      const [flag] = await db
+        .insert(discrepancyFlags)
+        .values({
+          workspaceId,
+          purchaseOrderId: pair.po.id,
+          invoiceId: pair.invoice.id,
+          poLineItemId: pair.poLine?.id ?? null,
+          invoiceLineItemId: pair.invLine?.id ?? null,
+          sku: 'A1',
+          flagType: 'price_mismatch',
+          reason: 'Price differs.',
+          ...overrides,
+        })
+        .returning()
+      return flag
+    }
+
+    const ids = (rows: { id: string }[]) => rows.map((row) => row.id).sort()
+
+    it('error: another workspace\'s flags, decisions and document names are never included', async () => {
+      const { workspace: mine, user: me } = await seedWorkspace(`${prefix}exp-iso-a@example.com`, 'Exp Iso A')
+      const { workspace: theirs, user: them } = await seedWorkspace(`${prefix}exp-iso-b@example.com`, 'Exp Iso B')
+      const own = await seedPair(mine.id, { po: 'mine-po.csv', invoice: 'mine-inv.csv' })
+      const foreign = await seedPair(theirs.id, { po: 'secret-po.csv', invoice: 'secret-inv.csv' })
+      const ownFlag = await insertFlag(mine.id, own)
+      const foreignFlag = await insertFlag(theirs.id, foreign)
+      await service.recordDecision(mine.id, ownFlag.id, me.id, { outcome: 'resolved', note: 'mine ok' })
+      await service.recordDecision(theirs.id, foreignFlag.id, them.id, { outcome: 'vendor_dispute', note: 'secret note' })
+      // A decision row stamped with the other workspace but pointing at my flag.
+      await db.insert(discrepancyDecisions).values({
+        workspaceId: theirs.id,
+        discrepancyFlagId: ownFlag.id,
+        actorUserId: them.id,
+        actorRole: 'owner',
+        outcome: 'resolved',
+        note: 'planted cross-workspace decision',
+      })
+
+      const result = await service.exportFlags(mine.id, {})
+
+      expect(ids(result.flags)).toEqual([ownFlag.id])
+      expect(result.decisions.map((decision) => decision.note)).toEqual(['mine ok'])
+      const serialised = JSON.stringify(result)
+      for (const leak of ['secret-po.csv', 'secret-inv.csv', 'secret note', them.email, foreignFlag.id, foreign.po.id]) {
+        expect(serialised).not.toContain(leak)
+      }
+    })
+
+    it('error: a flag pointing at another workspace\'s line yields a null citation and no foreign document name', async () => {
+      const { workspace: mine } = await seedWorkspace(`${prefix}exp-cite-a@example.com`, 'Exp Cite A')
+      const { workspace: theirs } = await seedWorkspace(`${prefix}exp-cite-b@example.com`, 'Exp Cite B')
+      const own = await seedPair(mine.id)
+      const foreign = await seedPair(theirs.id, { po: 'foreign-po-name.csv', invoice: 'foreign-inv-name.csv' })
+      await insertFlag(mine.id, { ...own, poLine: foreign.poLine, invLine: foreign.invLine })
+
+      const result = await service.exportFlags(mine.id, {})
+
+      expect(result.flags).toHaveLength(1)
+      expect(result.flags[0].poLine).toBeNull()
+      expect(result.flags[0].invoiceLine).toBeNull()
+      expect(JSON.stringify(result)).not.toContain('foreign-po-name.csv')
+      expect(JSON.stringify(result)).not.toContain('foreign-inv-name.csv')
+    })
+
+    it('error: another workspace\'s purchase order id as a filter returns nothing', async () => {
+      const { workspace: mine } = await seedWorkspace(`${prefix}exp-idor-a@example.com`, 'Exp Idor A')
+      const { workspace: theirs } = await seedWorkspace(`${prefix}exp-idor-b@example.com`, 'Exp Idor B')
+      await insertFlag(mine.id, await seedPair(mine.id))
+      const foreign = await seedPair(theirs.id)
+      await insertFlag(theirs.id, foreign)
+
+      const result = await service.exportFlags(mine.id, { purchaseOrderId: foreign.po.id })
+
+      expect(result).toEqual({ flags: [], decisions: [] })
+    })
+
+    it('error: more flags than the cap answers 422 telling the caller to narrow the filters', async () => {
+      const { workspace } = await seedWorkspace(`${prefix}exp-cap@example.com`, 'Exp Cap')
+      const pair = await seedPair(workspace.id)
+      for (let i = 0; i < 3; i++) await insertFlag(workspace.id, pair, { sku: `CAP-${i}` })
+      expect(EXPORT_MAX_FLAGS).toBe(50_000)
+      service.exportMaxFlags = 2
+
+      const attempt = service.exportFlags(workspace.id, {})
+
+      await expect(attempt).rejects.toBeInstanceOf(UnprocessableEntityException)
+      await expect(attempt).rejects.toThrow(/narrow the filters/)
+    })
+
+    it('edge: exactly the cap is still exported', async () => {
+      const { workspace } = await seedWorkspace(`${prefix}exp-atcap@example.com`, 'Exp At Cap')
+      const pair = await seedPair(workspace.id)
+      for (let i = 0; i < 2; i++) await insertFlag(workspace.id, pair, { sku: `AT-${i}` })
+      service.exportMaxFlags = 2
+
+      const result = await service.exportFlags(workspace.id, {})
+
+      expect(result.flags).toHaveLength(2)
+    })
+
+    it('edge: a workspace with no flags exports empty lists', async () => {
+      const { workspace } = await seedWorkspace(`${prefix}exp-empty@example.com`, 'Exp Empty')
+
+      expect(await service.exportFlags(workspace.id, {})).toEqual({ flags: [], decisions: [] })
+    })
+
+    it('edge: more flags than one read batch come back once each, oldest first', async () => {
+      const { workspace } = await seedWorkspace(`${prefix}exp-batch@example.com`, 'Exp Batch')
+      const pair = await seedPair(workspace.id)
+      // One shared created_at, which is what a run's single transaction writes:
+      // only the id tiebreak keeps batches from repeating or skipping rows.
+      const createdAt = new Date('2026-10-01T00:00:00.000Z')
+      await db.insert(discrepancyFlags).values(
+        Array.from({ length: 1_001 }, (_, i) => ({
+          workspaceId: workspace.id,
+          purchaseOrderId: pair.po.id,
+          invoiceId: pair.invoice.id,
+          sku: `B-${i}`,
+          flagType: 'price_mismatch' as const,
+          reason: 'Price differs.',
+          createdAt,
+        })),
+      )
+
+      const result = await service.exportFlags(workspace.id, {})
+
+      expect(result.flags).toHaveLength(1_001)
+      expect(new Set(result.flags.map((flag) => flag.id)).size).toBe(1_001)
+      expect(result.flags.map((flag) => flag.id)).toEqual([...result.flags.map((flag) => flag.id)].sort())
+    })
+
+    it('edge: defaults to the current run, and runId reads an earlier one', async () => {
+      const { workspace, user } = await seedWorkspace(`${prefix}exp-run@example.com`, 'Exp Run')
+      const { po, invoice } = await seedReadyPoAndInvoice(
+        workspace.id,
+        [{ sku: 'A1', quantity: '10', unitPrice: '5.00' }],
+        [{ sku: 'A1', quantity: '8', unitPrice: '5.00' }],
+      )
+      const first = await service.compare(workspace.id, po.id, invoice.id, user.id)
+      const second = await service.compare(workspace.id, po.id, invoice.id, user.id)
+
+      const current = await service.exportFlags(workspace.id, {})
+      const historical = await service.exportFlags(workspace.id, { runId: first.runId })
+
+      expect(current.flags).toHaveLength(1)
+      expect(current.flags[0].comparisonRunId).toBe(second.runId)
+      expect(historical.flags).toHaveLength(1)
+      expect(historical.flags[0].comparisonRunId).toBe(first.runId)
+    })
+
+    it('edge: a flag from before comparison runs counts as current, like in the list', async () => {
+      const { workspace } = await seedWorkspace(`${prefix}exp-legacy@example.com`, 'Exp Legacy')
+      const legacy = await insertFlag(workspace.id, await seedPair(workspace.id))
+
+      expect(ids((await service.exportFlags(workspace.id, {})).flags)).toEqual([legacy.id])
+    })
+
+    it('edge: status, purchase order and invoice filters narrow the export', async () => {
+      const { workspace } = await seedWorkspace(`${prefix}exp-filters@example.com`, 'Exp Filters')
+      const one = await seedPair(workspace.id)
+      const two = await seedPair(workspace.id)
+      const open = await insertFlag(workspace.id, one)
+      const dismissed = await insertFlag(workspace.id, one, { status: 'dismissed', dismissedAt: new Date() })
+      const other = await insertFlag(workspace.id, two)
+
+      expect(ids((await service.exportFlags(workspace.id, { status: 'open' })).flags)).toEqual(ids([open, other]))
+      expect(ids((await service.exportFlags(workspace.id, { status: 'dismissed' })).flags)).toEqual([dismissed.id])
+      expect(ids((await service.exportFlags(workspace.id, { purchaseOrderId: two.po.id })).flags)).toEqual([other.id])
+      expect(ids((await service.exportFlags(workspace.id, { invoiceId: one.invoice.id })).flags)).toEqual(
+        ids([open, dismissed]),
+      )
+    })
+
+    it('edge: a decision whose actor was deleted keeps its row with a null email', async () => {
+      const { workspace, user } = await seedWorkspace(`${prefix}exp-noactor@example.com`, 'Exp No Actor')
+      const flag = await insertFlag(workspace.id, await seedPair(workspace.id))
+      await service.recordDecision(workspace.id, flag.id, user.id, { outcome: 'resolved', note: 'done' })
+      await db.update(discrepancyDecisions).set({ actorUserId: null }).where(eq(discrepancyDecisions.discrepancyFlagId, flag.id))
+
+      const result = await service.exportFlags(workspace.id, {})
+
+      expect(result.decisions).toEqual([expect.objectContaining({ discrepancyFlagId: flag.id, actorEmail: null })])
+    })
+
+    it('regression: for the same filters the export lists exactly the flags the review queue lists', async () => {
+      const { workspace, user } = await seedWorkspace(`${prefix}exp-parity@example.com`, 'Exp Parity')
+      const { po, invoice } = await seedReadyPoAndInvoice(
+        workspace.id,
+        [{ sku: 'A1', quantity: '10', unitPrice: '5.00' }, { sku: 'B2', quantity: '3', unitPrice: '2.00' }],
+        [{ sku: 'A1', quantity: '8', unitPrice: '5.00' }, { sku: 'C3', quantity: '1', unitPrice: '1.00' }],
+      )
+      await service.compare(workspace.id, po.id, invoice.id, user.id)
+      await service.compare(workspace.id, po.id, invoice.id, user.id)
+      const legacyPair = await seedPair(workspace.id)
+      await insertFlag(workspace.id, legacyPair)
+
+      for (const filters of [{}, { status: 'open' as const }, { purchaseOrderId: po.id }]) {
+        const listed = await service.listFlags(workspace.id, { ...filters, pageSize: '100' })
+        const exported = await service.exportFlags(workspace.id, filters)
+        expect(ids(exported.flags)).toEqual(ids(listed.items))
+        expect(exported.flags.length).toBe(listed.total)
+      }
+    })
+
+    it('happy: returns flags with line citations and document names, and decisions joined with the actor email, oldest first', async () => {
+      const { workspace, user } = await seedWorkspace(`${prefix}exp-happy@example.com`, 'Exp Happy')
+      const pair = await seedPair(workspace.id, { po: 'march-po.csv', invoice: 'march-inv.csv' })
+      await db.update(poLineItems).set({ sourceRow: 2, sourceSheet: 'Lines' }).where(eq(poLineItems.id, pair.poLine.id))
+      const flag = await insertFlag(workspace.id, pair, {
+        status: 'dismissed',
+        dismissedAt: new Date(),
+        dismissedBy: user.id,
+      })
+      await service.recordDecision(workspace.id, flag.id, user.id, { outcome: 'vendor_dispute', note: 'first call' })
+      await service.recordDecision(workspace.id, flag.id, user.id, { outcome: 'resolved', note: 'second call' })
+
+      const result = await service.exportFlags(workspace.id, {})
+
+      expect(result.flags).toHaveLength(1)
+      expect(result.flags[0]).toMatchObject({
+        id: flag.id,
+        sku: 'A1',
+        flagType: 'price_mismatch',
+        status: 'dismissed',
+        dismissedByEmail: user.email,
+        poLine: expect.objectContaining({ lineNumber: 1, sourceRow: 2, sourceSheet: 'Lines', documentName: 'march-po.csv' }),
+        invoiceLine: expect.objectContaining({ lineNumber: 1, documentName: 'march-inv.csv' }),
+        receiptLine: null,
+      })
+      expect(result.decisions.map((decision) => [decision.discrepancyFlagId, decision.outcome, decision.note, decision.actorEmail])).toEqual([
+        [flag.id, 'vendor_dispute', 'first call', user.email],
+        [flag.id, 'resolved', 'second call', user.email],
+      ])
+      expect(result.decisions[0]).toMatchObject({ actorRole: 'owner', createdAt: expect.any(Date) })
     })
   })
 })

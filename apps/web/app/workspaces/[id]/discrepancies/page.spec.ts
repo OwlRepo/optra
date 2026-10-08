@@ -19,6 +19,7 @@ const recordDecisionMock = vi.fn()
 const listRunsMock = vi.fn()
 const listPurchaseOrdersMock = vi.fn()
 const listInvoicesMock = vi.fn()
+const exportEvidenceTrailMock = vi.fn()
 
 let mockSearchParams = new URLSearchParams()
 
@@ -42,6 +43,7 @@ vi.mock('@/lib/api/procurement', () => ({
   // C-3 #1: the pair chip looks the two documents up by id for their numbers.
   listPurchaseOrders: (...args: unknown[]) => listPurchaseOrdersMock(...args),
   listInvoices: (...args: unknown[]) => listInvoicesMock(...args),
+  exportEvidenceTrail: (...args: unknown[]) => exportEvidenceTrailMock(...args),
 }))
 
 vi.mock('@/lib/api/auth', () => ({
@@ -139,6 +141,7 @@ describe('DiscrepanciesPage', () => {
     listRunsMock.mockReset().mockResolvedValue({ items: [], page: 1, pageSize: 20, total: 0, totalPages: 0 })
     listPurchaseOrdersMock.mockReset().mockResolvedValue([])
     listInvoicesMock.mockReset().mockResolvedValue([])
+    exportEvidenceTrailMock.mockReset().mockResolvedValue(undefined)
   })
 
   afterEach(() => {
@@ -680,6 +683,94 @@ describe('DiscrepanciesPage', () => {
       // so a failed workspace read toasts there.
       expect(await screen.findByText('Failed to load workspace')).toBeDefined()
       expect(screen.queryByRole('heading', { name: "You don't have access to this workspace" })).toBeNull()
+    })
+  })
+
+  describe('evidence export', () => {
+    it('error: a failed export toasts the reason, re-enables the button and keeps the list', async () => {
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha', role: 'owner' })
+      listDiscrepanciesMock.mockResolvedValue(listOf([makeFlag()]))
+      exportEvidenceTrailMock.mockRejectedValue({
+        statusCode: 422,
+        message: 'Too many flags to export at once; narrow the filters',
+      })
+
+      renderPage()
+      fireEvent.click(await screen.findByRole('button', { name: 'Export evidence' }))
+
+      expect(await screen.findByText('Failed to export evidence')).toBeDefined()
+      expect(screen.getByText('Too many flags to export at once; narrow the filters')).toBeDefined()
+      await waitFor(() => expect((screen.getByRole('button', { name: 'Export evidence' }) as HTMLButtonElement).disabled).toBe(false))
+      expect(screen.getByText('SKU-100')).toBeDefined()
+    })
+
+    it('error: a 401 on export sends the user to login instead of toasting', async () => {
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha', role: 'owner' })
+      listDiscrepanciesMock.mockResolvedValue(listOf([makeFlag()]))
+      exportEvidenceTrailMock.mockRejectedValue({ statusCode: 401, message: 'Unauthorized' })
+
+      renderPage()
+      fireEvent.click(await screen.findByRole('button', { name: 'Export evidence' }))
+
+      await waitFor(() => expect(pushMock).toHaveBeenCalledWith('/login'))
+      expect(screen.queryByText('Failed to export evidence')).toBeNull()
+    })
+
+    it('edge: the button is disabled when the scope has no flags, and a click does nothing', async () => {
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha', role: 'owner' })
+      listDiscrepanciesMock.mockResolvedValue(listOf([]))
+
+      renderPage()
+      const button = (await screen.findByRole('button', { name: 'Export evidence' })) as HTMLButtonElement
+
+      expect(button.disabled).toBe(true)
+      fireEvent.click(button)
+      expect(exportEvidenceTrailMock).not.toHaveBeenCalled()
+    })
+
+    it('edge: a plain member sees the button too, since members can read every flag', async () => {
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha', role: 'member' })
+      listDiscrepanciesMock.mockResolvedValue(listOf([makeFlag()]))
+
+      renderPage()
+
+      expect(await screen.findByRole('button', { name: 'Export evidence' })).toBeDefined()
+    })
+
+    it('edge: the button is disabled while the download is in flight, so it cannot double-fire', async () => {
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha', role: 'owner' })
+      listDiscrepanciesMock.mockResolvedValue(listOf([makeFlag()]))
+      let finish: () => void = () => {}
+      exportEvidenceTrailMock.mockReturnValue(new Promise<void>((resolve) => (finish = resolve)))
+
+      renderPage()
+      const button = (await screen.findByRole('button', { name: 'Export evidence' })) as HTMLButtonElement
+      fireEvent.click(button)
+
+      await waitFor(() => expect(button.disabled).toBe(true))
+      fireEvent.click(button)
+      expect(exportEvidenceTrailMock).toHaveBeenCalledTimes(1)
+      finish()
+      await waitFor(() => expect(button.disabled).toBe(false))
+    })
+
+    it('happy: exports the current filters, status and PO/invoice pair, not the visible page', async () => {
+      mockSearchParams = new URLSearchParams('purchaseOrderId=po-1&invoiceId=inv-1')
+      getWorkspaceMock.mockResolvedValue({ id: 'ws-1', name: 'Alpha', role: 'owner' })
+      listDiscrepanciesMock.mockResolvedValue(listOf([makeFlag()], { total: 40, totalPages: 2 }))
+
+      renderPage()
+      expect(await screen.findByText('SKU-100')).toBeDefined()
+      fireEvent.click(screen.getByRole('radio', { name: 'Open' }))
+      await waitFor(() => expect(listDiscrepanciesMock).toHaveBeenLastCalledWith('ws-1', expect.objectContaining({ status: 'open' })))
+      fireEvent.click(await screen.findByRole('button', { name: 'Export evidence' }))
+
+      await waitFor(() => expect(exportEvidenceTrailMock).toHaveBeenCalledTimes(1))
+      const [workspaceId, filters] = exportEvidenceTrailMock.mock.calls[0]
+      expect(workspaceId).toBe('ws-1')
+      expect(filters).toEqual({ purchaseOrderId: 'po-1', invoiceId: 'inv-1', status: 'open' })
+      expect(filters).not.toHaveProperty('page')
+      expect(filters).not.toHaveProperty('pageSize')
     })
   })
 })
