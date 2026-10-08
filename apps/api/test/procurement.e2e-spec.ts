@@ -9,6 +9,7 @@ import { and, eq, like } from 'drizzle-orm'
 import request from 'supertest'
 import sharp from 'sharp'
 import * as XLSX from 'xlsx'
+import { ThrottlerStorage, ThrottlerStorageService } from '@nestjs/throttler'
 import {
   comparisonRuns,
   db,
@@ -2877,6 +2878,14 @@ describe('Procurement flow (e2e)', () => {
       return { poId: po.body.id as string, invoiceId: invoice.body.id as string }
     }
 
+    // Every supertest call comes from 127.0.0.1, so the export's own
+    // 5-per-minute limit (one bucket per visitor address) would carry over
+    // between tests. Each test starts with an empty bucket; the limit itself
+    // is proven by the 429 test below.
+    beforeEach(() => {
+      app.get<ThrottlerStorageService>(ThrottlerStorage).storage.clear()
+    })
+
     it('error: answers 401 without a token', async () => {
       const res = await request(app.getHttpServer()).get(exportPath('00000000-0000-4000-8000-000000000000'))
 
@@ -2918,6 +2927,14 @@ describe('Procurement flow (e2e)', () => {
       expect(res.status).toBe(200)
       expect(sheetRows(res.body, 'Flags')).toHaveLength(1)
       expect(res.body.toString('latin1')).not.toContain('secret-po-name.csv')
+    })
+
+    it('error: a sixth export from the same visitor within a minute answers 429', async () => {
+      const owner = await seedOwnerWithWorkspace(app, `${prefix}exp-throttle@example.com`, 'Exp Throttle')
+      const statuses: number[] = []
+      for (let i = 0; i < 6; i++) statuses.push((await download(owner.accessToken, owner.workspaceId)).status)
+
+      expect(statuses).toEqual([200, 200, 200, 200, 200, 429])
     })
 
     it('edge: a workspace with no flags still answers 200 with both sheets and only header rows', async () => {
