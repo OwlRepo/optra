@@ -123,6 +123,7 @@ export default function DiscrepanciesPage({ params }: { params: { id: string } }
   const [meta, setMeta] = React.useState({ page: 1, pageSize: 20, total: 0, totalPages: 0 })
 
   const [isExporting, setIsExporting] = React.useState(false)
+  const [exported, setExported] = React.useState(false)
   const exportButtonRef = React.useRef<HTMLButtonElement>(null)
   const refocusExport = React.useRef(false)
 
@@ -133,6 +134,13 @@ export default function DiscrepanciesPage({ params }: { params: { id: string } }
       exportButtonRef.current?.focus()
     }
   }, [isExporting])
+
+  // The announcement clears itself so a second export is announced again.
+  React.useEffect(() => {
+    if (!exported) return
+    const timer = setTimeout(() => setExported(false), 4000)
+    return () => clearTimeout(timer)
+  }, [exported])
 
   const canManage = membership?.role === 'owner' || membership?.role === 'admin'
   const purchaseOrderIdFilter = searchParams.get('purchaseOrderId') ?? undefined
@@ -259,6 +267,7 @@ export default function DiscrepanciesPage({ params }: { params: { id: string } }
   // Exports the whole filtered set (status + PO/invoice pair), never the page.
   const handleExport = React.useCallback(async () => {
     setIsExporting(true)
+    setExported(false)
     refocusExport.current = true
     try {
       await exportEvidenceTrail(workspaceId, {
@@ -266,6 +275,7 @@ export default function DiscrepanciesPage({ params }: { params: { id: string } }
         invoiceId: invoiceIdFilter,
         status: statusFilter || undefined,
       })
+      setExported(true)
     } catch (err) {
       if (isUnauthorized(err)) {
         router.push('/login')
@@ -390,10 +400,20 @@ export default function DiscrepanciesPage({ params }: { params: { id: string } }
                   variant="outline"
                   size="sm"
                   disabled={meta.total === 0 || isExporting}
+                  aria-busy={isExporting ? 'true' : undefined}
+                  aria-describedby={meta.total === 0 ? 'export-evidence-hint' : undefined}
                   onClick={() => void handleExport()}
                 >
-                  Export evidence
+                  {isExporting ? 'Exporting…' : 'Export evidence'}
                 </Button>
+                {meta.total === 0 ? (
+                  <span id="export-evidence-hint" className="sr-only">
+                    No flags to export
+                  </span>
+                ) : null}
+                <span role="status" className="sr-only">
+                  {exported ? 'Evidence exported' : ''}
+                </span>
               </div>
             </div>
 
