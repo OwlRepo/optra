@@ -44,11 +44,17 @@ export default function TermsPage() {
 
       <LegalSection title="Subscription and trial">
         <p>
-          Optra is a subscription. Every plan starts with a {TRIAL_DAYS}-day trial. Plans include a
-          number of matched line items and photo checks, as shown on the pricing page. Extra
-          matched line items are charged at the overage rate shown for your plan. Photo checks
-          stop at your plan&apos;s cap. Refunds are
-          covered in the{' '}
+          Optra is a subscription. Your first workspace starts with a {TRIAL_DAYS}-day trial. The
+          trial needs no payment card and gives you the Solo plan&apos;s allowance of matched line
+          items and photo checks. Workspaces you create later do not get a trial and need a plan.
+          Subscribing during the trial starts your paid plan immediately.
+        </p>
+        <p>
+          Each plan includes a monthly allowance of matched line items and photo checks, as shown
+          on the pricing page, and a monthly limit on AI usage. Allowances reset each calendar
+          month (UTC); the trial allowance covers the whole trial. When a workspace reaches a cap,
+          that kind of work stops until the allowance resets. There is no overage charge. You can
+          upgrade your plan or add buyers at any time. Refunds are covered in the{' '}
           <LegalLink href="/refund">refund policy</LegalLink>; the full refund window is{' '}
           {REFUND_WINDOW_DAYS} days.
         </p>

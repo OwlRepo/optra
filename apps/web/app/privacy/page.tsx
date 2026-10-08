@@ -46,6 +46,11 @@ export default function PrivacyPage() {
         ? `Hosting (server location: ${HOSTING_COUNTRY}).`
         : 'Hosting (server location on request).',
     ],
+    [
+      'Lemon Squeezy',
+      'Your email address, plus the billing, tax and payment details you enter on its hosted checkout. We send it your email address and a workspace identifier; it sends us your plan, subscription status, renewal dates and the payer name and email.',
+      'Payments, tax and invoices, as our Merchant of Record.',
+    ],
   ]
   if (LANGSMITH_TRACING_IN_PROD !== false) {
     processors.push([
@@ -84,6 +89,10 @@ export default function PrivacyPage() {
             ],
             ['Workspace activity events', 'Show what happened in your workspace.'],
             ['Workspace member emails and roles', 'Control who can access the workspace.'],
+            [
+              'Billing events from Lemon Squeezy (plan, status, renewal dates, and the payer name and email in the event)',
+              'Keep your subscription status accurate and investigate billing problems.',
+            ],
           ]}
         />
       </LegalSection>

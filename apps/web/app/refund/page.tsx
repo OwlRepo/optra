@@ -39,10 +39,7 @@ export default function RefundPage() {
       </LegalSection>
 
       <LegalSection title="After that">
-        <ul className="list-disc space-y-2 pl-5">
-          <li>No partial-period refunds once the {REFUND_WINDOW_DAYS}-day window has passed.</li>
-          <li>Overage charges are non-refundable once the extra lines have been used.</li>
-        </ul>
+        <p>No partial-period refunds once the {REFUND_WINDOW_DAYS}-day window has passed.</p>
       </LegalSection>
 
       <LegalSection title="How to ask">
