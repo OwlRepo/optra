@@ -66,12 +66,12 @@ Verified against the files cited:
   structured queries. Modules live in `apps/api/src/<domain>/`.
 - **`packages/db`:** Drizzle ORM on PostgreSQL 16 + pgvector
   (`pgvector/pgvector:pg16` in `docker-compose.yml`). Schema in
-  `packages/db/src/schema/` (37 tables, 21 enums, counted from
-  `export const … = pgTable(` / `pgEnum(` on 2026-09-23); SQL migrations in
+  `packages/db/src/schema/` (40 tables, 23 enums, counted from
+  `export const … = pgTable(` / `pgEnum(` on 2026-10-08); SQL migrations in
   `packages/db/drizzle/`.
 - **`packages/ai`:** LangChain / LangGraph RAG pipeline on OpenAI
-  (`packages/ai/package.json`). Chat/answer models are gpt-4-turbo and
-  gpt-4o-mini; procurement extraction and catalog matching use gpt-4o
+  (`packages/ai/package.json`). Chat/answer models default to gpt-4o (since 2026-10-08, was gpt-4-turbo)
+  with gpt-4o-mini for rewrite/grade/condense; procurement extraction and catalog matching use gpt-4o
   (`OPENAI_PROCUREMENT_EXTRACTION_MODEL`, `packages/ai/src/chains/models.ts`).
   Embeddings are `text-embedding-3-small` at 1536 dimensions
   (`.env.example`, `packages/db/src/schema/chunks.ts`).

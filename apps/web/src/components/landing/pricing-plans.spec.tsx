@@ -1,5 +1,7 @@
 /** @vitest-environment jsdom */
 
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { cleanup, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 import { CONTACT_EMAIL } from '@/lib/legal-facts'
@@ -14,6 +16,56 @@ describe('PricingPlans', () => {
     expect(container.textContent).not.toMatch(/no card/i)
     expect(container.textContent).not.toMatch(/no onboarding call/i)
     expect(screen.queryByRole('link', { name: 'Contact sales' })).toBeNull()
+  })
+
+  it('error: no per-line overage is offered, because the plans are hard-capped', () => {
+    const { container } = render(<PricingPlans />)
+
+    expect(container.textContent).not.toMatch(/Extra lines/i)
+    expect(container.textContent).not.toMatch(/\$0\.0[34]/)
+  })
+
+  it('error: no self-serve upgrade or buyer-change promise is made', () => {
+    const { container } = render(<PricingPlans />)
+
+    expect(container.textContent).not.toMatch(/upgrade anytime|add buyers anytime/i)
+  })
+
+  it('error: the trial line no longer says every plan starts with a trial', () => {
+    const { container } = render(<PricingPlans />)
+
+    expect(container.textContent).not.toContain('Every plan starts with a 14-day trial')
+  })
+
+  it('error: Priority extraction queue is not offered anywhere, because no code prioritises extraction', () => {
+    const { container } = render(<PricingPlans />)
+
+    expect(container.textContent).not.toMatch(/priority extraction queue/i)
+  })
+
+  it('error: no plan claims a bare "1 buyer", since the plan only sizes the quota', () => {
+    const { container } = render(<PricingPlans />)
+
+    expect(container.textContent).not.toMatch(/(?<!sized for )1 buyer/)
+  })
+
+  it('edge: Solo and Team both say the allowance stops at the monthly cap with no overage charges', () => {
+    render(<PricingPlans />)
+
+    expect(screen.getAllByText('Hard monthly cap, no overage charges')).toHaveLength(2)
+  })
+
+  it('edge: Solo and Team both list scanned PDFs and the exportable evidence trail', () => {
+    render(<PricingPlans />)
+
+    expect(screen.getAllByText('Scanned and photo-only PDFs included')).toHaveLength(2)
+    expect(screen.getAllByText('Exportable evidence trail')).toHaveLength(2)
+  })
+
+  it('edge: the Solo unit says it is sized for one buyer', () => {
+    render(<PricingPlans />)
+
+    expect(screen.getByText('per month · sized for 1 buyer')).not.toBeNull()
   })
 
   it('edge: Scale CTA is a mailto with the Optra Scale subject, not the trial anchor', () => {
@@ -41,12 +93,27 @@ describe('PricingPlans', () => {
     expect(container.querySelector(`a[href^="mailto:${CONTACT_EMAIL}"]`)).not.toBeNull()
   })
 
+  it('regression: the quotas on the page equal quotasFor() in apps/api/src/billing/plans.ts', () => {
+    const plans = readFileSync(
+      resolve(__dirname, '../../../../api/src/billing/plans.ts'),
+      'utf8',
+    )
+    render(<PricingPlans />)
+
+    expect(plans).toMatch(/\{ matchedLines: 2000 \* seats, photoChecks: 300 \* seats \}/)
+    expect(plans).toMatch(/\{ matchedLines: 400, photoChecks: 100 \}/)
+    expect(screen.getByText('400 matched line items / month')).not.toBeNull()
+    expect(screen.getByText('100 photo checks / month')).not.toBeNull()
+    expect(screen.getByText('2,000 matched line items per buyer, pooled')).not.toBeNull()
+    expect(screen.getByText('300 photo checks per buyer, pooled')).not.toBeNull()
+  })
+
   it('happy: renders the three plans with their prices and cadences', () => {
     render(<PricingPlans />)
 
     expect(screen.getByRole('heading', { name: 'Solo' })).not.toBeNull()
     expect(screen.getByText('$29')).not.toBeNull()
-    expect(screen.getByText('per month · 1 buyer')).not.toBeNull()
+    expect(screen.getByText('per month · sized for 1 buyer')).not.toBeNull()
 
     expect(screen.getByRole('heading', { name: 'Team' })).not.toBeNull()
     expect(screen.getByText('$69')).not.toBeNull()
@@ -63,23 +130,21 @@ describe('PricingPlans', () => {
   })
 
   // Quantified commitments; pinned so changing them is a deliberate product call.
-  it('happy: states the metered quotas, photo checks and overage rates verbatim', () => {
+  it('happy: states the metered quotas and photo checks verbatim', () => {
     render(<PricingPlans />)
 
     expect(screen.getByText('400 matched line items / month')).not.toBeNull()
     expect(screen.getByText('100 photo checks / month')).not.toBeNull()
-    expect(screen.getByText('Extra lines at $0.04 each')).not.toBeNull()
     expect(screen.getByText('2,000 matched line items per buyer, pooled')).not.toBeNull()
     expect(screen.getByText('300 photo checks per buyer, pooled')).not.toBeNull()
-    expect(screen.getByText('Extra lines at $0.03 each')).not.toBeNull()
   })
 
-  it('happy: makes per-line-item pricing and the 14-day trial explicit', () => {
+  it('happy: makes per-line-item pricing and the first-workspace 14-day trial explicit', () => {
     render(<PricingPlans />)
 
     expect(
       screen.getByText(
-        /Priced per matched line item, not per document\. Every plan starts with a 14-day trial\./i,
+        /Priced per matched line item, not per document\. Your first workspace starts with a 14-day trial\./i,
       ),
     ).not.toBeNull()
   })

@@ -1,26 +1,30 @@
 import Link from 'next/link'
-import { CONTACT_EMAIL } from '@/lib/legal-facts'
+import { CONTACT_EMAIL, TRIAL_DAYS } from '@/lib/legal-facts'
 import { Check } from 'lucide-react'
 import { Reveal } from '@/components/motion/reveal'
 
-// Included volumes and overage rates are the product decision of record, not
-// measured usage. The metering that enforces them -- counting *matched line
-// items* per comparison run, idempotent across re-comparisons of the same
-// PO/invoice pair -- is a separate backend task; this section is copy only.
-// A photo check is one PO line verified against up to 8 catalog photos.
+// Included volumes are the product decision of record and the API enforces
+// them: BillingGateService (apps/api/src/billing/billing-gate.service.ts)
+// refuses work past the cap once BILLING_ENFORCEMENT is on. The numbers live in
+// apps/api/src/billing/plans.ts#quotasFor; this section mirrors them because web
+// cannot import the API, and pricing-plans.spec.tsx fails if they drift.
+// There is no overage billing: a workspace stops at its cap (owner decision
+// 2026-10-08). A photo check is one PO line verified against up to 8 catalog photos.
 const PLANS = [
   {
     name: 'Solo',
     price: '$29',
-    unit: 'per month · 1 buyer',
+    unit: 'per month · sized for 1 buyer',
     blurb: 'For an owner or single buyer checking their own vendors.',
     features: [
       '400 matched line items / month',
       '100 photo checks / month',
       'Unlimited vendors and catalogs',
       'Photo-level catalog matching',
+      'Scanned and photo-only PDFs included',
+      'Exportable evidence trail',
       'Full order and price history',
-      'Extra lines at $0.04 each',
+      'Hard monthly cap, no overage charges',
     ],
     cta: 'Start free trial',
     href: '#trial',
@@ -38,7 +42,7 @@ const PLANS = [
       'Shared workspace, roles, and flag history',
       'Scanned and photo-only PDFs included',
       'Exportable evidence trail',
-      'Extra lines at $0.03 each',
+      'Hard monthly cap, no overage charges',
     ],
     cta: 'Start free trial',
     href: '#trial',
@@ -52,7 +56,6 @@ const PLANS = [
     blurb: 'For high-volume AP with its own review process.',
     features: [
       'Committed line-item rate',
-      'Priority extraction queue',
       'Custom retention and deletion',
       'Onboarding for existing archives',
     ],
@@ -79,7 +82,7 @@ export function PricingPlans() {
               </h2>
             </div>
             <p className="max-w-[42ch] text-sm leading-[1.7] text-muted-foreground">
-              Priced per matched line item, not per document. Every plan starts with a 14-day trial.
+              {`Priced per matched line item, not per document. Your first workspace starts with a ${TRIAL_DAYS}-day trial.`}
             </p>
           </div>
         </Reveal>

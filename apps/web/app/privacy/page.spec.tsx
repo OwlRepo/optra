@@ -191,6 +191,46 @@ describe('Privacy page', () => {
     expect(container.textContent).not.toMatch(/portfolio|advertising cookies/i)
   })
 
+  it('error: the Lemon Squeezy row renders from fixed copy even when every optional fact is null', async () => {
+    const { container } = await renderWithFacts({})
+
+    expect(container.textContent).toContain('Lemon Squeezy')
+    expect(container.textContent).not.toMatch(/undefined|\bnull\b/)
+  })
+
+  it('edge: data-we-collect lists the stored Lemon Squeezy billing events with the payer name and email', () => {
+    const { container } = render(React.createElement(PrivacyPage))
+    const text = container.textContent ?? ''
+
+    expect(text).toContain(
+      'Billing events from Lemon Squeezy (plan, status, renewal dates, and the payer name and email in the event)',
+    )
+    expect(text).toContain('Keep your subscription status accurate and investigate billing problems.')
+  })
+
+  it('edge: retention says billing records (payer name and email) are kept for tax and accounting and removed on request', () => {
+    render(React.createElement(PrivacyPage))
+    const heading = screen.getByRole('heading', { name: /how long we keep it/i })
+    const section = heading.closest('section')
+    const text = section?.textContent ?? ''
+
+    expect(section).not.toBeNull()
+    expect(text).toMatch(/billing records/i)
+    expect(text).toMatch(/payer name and email/i)
+    expect(text).toMatch(/tax and accounting/i)
+    expect(text).toMatch(/on request/i)
+  })
+
+  it('happy: Lemon Squeezy is a processor as Merchant of Record and the row says what each side sends', () => {
+    const { container } = render(React.createElement(PrivacyPage))
+    const text = container.textContent ?? ''
+
+    expect(text).toContain('Payments, tax and invoices, as our Merchant of Record.')
+    expect(text).toContain(
+      'We send it your email address and a workspace identifier; it sends us your plan, subscription status, renewal dates and the payer name and email.',
+    )
+  })
+
   it('happy: exports title, description and canonical metadata', () => {
     expect(metadata.title).toBe('Privacy Policy')
     expect(metadata.description).toBeTruthy()
@@ -202,7 +242,9 @@ describe('Privacy page', () => {
 
     expect(container.textContent).toContain('Singapore')
     expect(container.textContent).toMatch(/off-?site[^.]*30 days/i)
-    expect(container.textContent).not.toMatch(/on request/i)
+    // Backups are kept a fixed 30 days, never "on request". Billing records
+    // are removed on request (retention section), so scope this to backups.
+    expect(container.textContent).not.toMatch(/backups?[^.]*on request/i)
   })
 
   it('happy: shows h1, seller identity, contact and a Data Privacy Act basis', () => {

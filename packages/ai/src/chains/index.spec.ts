@@ -29,7 +29,11 @@ vi.mock('@repo/db', () => ({
 
 vi.mock('@langchain/openai', () => ({
   ChatOpenAI: class {
+    modelName: string
     stream = streamMock
+    constructor(fields: { modelName: string }) {
+      this.modelName = fields.modelName
+    }
   },
 }))
 
@@ -372,5 +376,85 @@ describe('answerQuestion', () => {
 
     const messages = streamMock.mock.calls[0][0]
     expect(messages).toHaveLength(2)
+  })
+
+  describe('metering (S4)', () => {
+    const SOURCE_ROW = [{ id: 'doc-1', title: 'D', sourceUrl: null, knowledgeBaseId: 'kb-1' }]
+    const CHUNKS = [{ id: 'c1', content: 'x', metadata: { documentId: 'doc-1' }, score: 0.9 }]
+
+    it('edge: the light-path stream records the trailing usage chunk under the answer model', async () => {
+      vi.resetModules()
+      process.env.OPENAI_ANSWER_MODEL = 'gpt-4o-mini'
+      similaritySearchMock.mockResolvedValue(CHUNKS)
+      whereMock.mockResolvedValue(SOURCE_ROW)
+      streamMock.mockResolvedValue(
+        (async function* () {
+          yield { content: 'hello ' }
+          yield { content: 'world' }
+          yield { content: '', usage_metadata: { input_tokens: 1000, output_tokens: 500, total_tokens: 1500 } }
+        })(),
+      )
+
+      try {
+        const { answerQuestion } = await import('./index')
+        const { TokenMeter } = await import('../tokens')
+        const meter = new TokenMeter()
+        const result = await answerQuestion('What is SSO?', 'ws-1', 5, undefined, undefined, [], meter)
+        const tokens: string[] = []
+        for await (const token of result.stream) tokens.push(token)
+
+        expect(tokens.join('')).toBe('hello world')
+        expect(meter.total).toBe(1500)
+        expect(meter.inputTokens).toBe(1000)
+        expect(meter.outputTokens).toBe(500)
+        expect(meter.dominantModel).toBe('gpt-4o-mini')
+      } finally {
+        delete process.env.OPENAI_ANSWER_MODEL
+      }
+    })
+
+    it('regression: answerQuestion without a meter streams the same tokens as before', async () => {
+      similaritySearchMock.mockResolvedValue(CHUNKS)
+      whereMock.mockResolvedValue(SOURCE_ROW)
+      streamMock.mockResolvedValue(
+        (async function* () {
+          yield { content: 'a' }
+          yield { content: 'b', usage_metadata: { input_tokens: 1, output_tokens: 1, total_tokens: 2 } }
+        })(),
+      )
+
+      const { answerQuestion } = await import('./index')
+      const result = await answerQuestion('What is SSO?', 'ws-1')
+      const tokens: string[] = []
+      for await (const token of result.stream) tokens.push(token)
+
+      expect(tokens).toEqual(['a', 'b'])
+    })
+
+    it('happy: answerQuestion hands the meter to the graph path', async () => {
+      vi.resetModules()
+      process.env.LANGGRAPH_ENABLED = 'true'
+      const graphMock = vi.fn().mockResolvedValue({
+        sources: [],
+        isFallback: false,
+        stream: (async function* () {
+          yield 'graph answer'
+        })(),
+      })
+      vi.doMock('./graph', () => ({ answerQuestionWithGraph: graphMock }))
+
+      try {
+        const { answerQuestion } = await import('./index')
+        const { TokenMeter } = await import('../tokens')
+        const meter = new TokenMeter()
+        await answerQuestion('How do I fix the error when SSO login fails after migration?', 'ws-1', 5, undefined, undefined, [], meter)
+
+        expect(graphMock).toHaveBeenCalledTimes(1)
+        expect(graphMock.mock.calls[0][6]).toBe(meter)
+      } finally {
+        vi.doUnmock('./graph')
+        delete process.env.LANGGRAPH_ENABLED
+      }
+    })
   })
 })

@@ -24,6 +24,15 @@ import { ListMembersQueryDto } from './dto/list-members-query.dto'
 
 type DbTx = Parameters<Parameters<typeof db.transaction>[0]>[0]
 
+// Explicit columns: workspaces now carries billing columns (trial_ends_at,
+// billing_exempt) that only GET /workspaces/:id/billing may expose.
+const WORKSPACE_COLUMNS = {
+  id: workspaces.id,
+  name: workspaces.name,
+  ownerId: workspaces.ownerId,
+  createdAt: workspaces.createdAt,
+}
+
 @Injectable()
 export class WorkspacesService {
   constructor(
@@ -36,7 +45,7 @@ export class WorkspacesService {
       const [workspace] = await tx
         .insert(workspaces)
         .values({ name, ownerId: userId })
-        .returning()
+        .returning(WORKSPACE_COLUMNS)
 
       await tx.insert(workspaceMembers).values({
         workspaceId: workspace.id,
@@ -98,7 +107,7 @@ export class WorkspacesService {
       .update(workspaces)
       .set({ name })
       .where(eq(workspaces.id, workspaceId))
-      .returning()
+      .returning(WORKSPACE_COLUMNS)
 
     if (!workspace) {
       throw new NotFoundException('Workspace not found')
@@ -109,7 +118,7 @@ export class WorkspacesService {
 
   async getOne(workspaceId: string) {
     const [workspace] = await db
-      .select()
+      .select(WORKSPACE_COLUMNS)
       .from(workspaces)
       .where(eq(workspaces.id, workspaceId))
       .limit(1)
@@ -270,7 +279,7 @@ export class WorkspacesService {
 
   private async getWorkspaceOrThrow(client: typeof db | DbTx, workspaceId: string) {
     const [workspace] = await client
-      .select()
+      .select(WORKSPACE_COLUMNS)
       .from(workspaces)
       .where(eq(workspaces.id, workspaceId))
       .limit(1)

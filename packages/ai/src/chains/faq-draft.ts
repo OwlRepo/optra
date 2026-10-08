@@ -57,7 +57,7 @@ export async function generateFaqDraft(
     new SystemMessage(SYSTEM_PROMPT),
     new HumanMessage(buildTicketSummary(tickets)),
   ])
-  options.meter?.record(response)
+  options.meter?.record(response, llm.modelName)
 
   const raw = typeof response.content === 'string' ? response.content : String(response.content)
   const cleaned = raw

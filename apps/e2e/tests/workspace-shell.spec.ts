@@ -8,7 +8,7 @@ import { rowFor } from '../support/ui'
 // with the [support-surfaces-off] lines in apps/web.
 
 const HIDDEN = ['Knowledge Bases', 'Datasets', 'Chat', 'Tickets', 'Insights']
-const KEPT = ['Overview', 'Members', 'Settings', 'Vendors', 'Purchase Orders', 'Discrepancies', 'Catalog Matches']
+const KEPT = ['Overview', 'Members', 'Settings', 'Vendors', 'Purchase Orders', 'Discrepancies', 'Catalog Matches', 'Billing']
 
 test.use({ storageState: storageStateFor('ownerA') })
 

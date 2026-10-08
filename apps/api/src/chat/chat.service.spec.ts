@@ -40,6 +40,12 @@ jest.mock('@repo/ai', () => ({
   historyCondenseEnabled: jest.fn(() => true),
   historyInAnswerEnabled: jest.fn(() => true),
   historyMaxMessages: jest.fn(() => 12),
+  resolveModel: jest.fn(() => 'answer-model-under-test'),
+  // The answer meter is a plain collector here; its pricing is covered in packages/ai.
+  TokenMeter: class {
+    total = 0
+    record = jest.fn()
+  },
 }))
 
 async function cleanupChatFixtures(prefix: string) {
@@ -98,6 +104,7 @@ describe('ChatService', () => {
     assertWithinBudget: jest.Mock
     addUsage: jest.Mock
     metered: jest.Mock
+    recordLedger: jest.Mock
   }
   const meter = { record: jest.fn(), total: 0 }
   let structuredQuery: {
@@ -117,6 +124,7 @@ describe('ChatService', () => {
     usage = {
       assertWithinBudget: jest.fn(),
       addUsage: jest.fn(),
+      recordLedger: jest.fn().mockResolvedValue(undefined),
       metered: jest.fn((_workspaceId: string, run: (m: typeof meter) => Promise<unknown>) => run(meter)),
     }
     structuredQuery = {
@@ -184,6 +192,7 @@ describe('ChatService', () => {
       [0.1, 0.2, 0.3],
       undefined,
       [],
+      expect.objectContaining({ record: expect.any(Function) }),
     )
     expect(result.sessionId).toBeDefined()
 
@@ -651,6 +660,7 @@ describe('ChatService', () => {
       [0.1],
       undefined,
       passedHistory,
+      expect.anything(),
     )
 
     // Condense tokens are charged from the provider's own count through
@@ -713,6 +723,7 @@ describe('ChatService', () => {
       [0.2],
       undefined,
       [],
+      expect.anything(),
     )
     expect(usage.addUsage).toHaveBeenLastCalledWith(
       workspace.id,
@@ -1049,5 +1060,280 @@ describe('ChatService', () => {
       status: 402,
     })
     expect(structuredQuery.answer).not.toHaveBeenCalled()
+  })
+
+  describe('answer metering (S4)', () => {
+    async function missSetup(label: string, stream: AsyncGenerator<string>) {
+      const { user, workspace } = await seedWorkspaceFixture(`${prefix}meter-${label}@example.com`, `Chat Spec Meter ${label}`)
+      cache.getExact.mockResolvedValue(null)
+      cache.getSemantic.mockResolvedValue(null)
+      cache.getVersion.mockResolvedValue(1)
+      usage.assertWithinBudget.mockResolvedValue(undefined)
+      usage.addUsage.mockResolvedValue(undefined)
+      ;(embedQuery as jest.Mock).mockResolvedValue([0.1, 0.2])
+      ;(countTokens as jest.Mock).mockImplementation((text: string) => text.length)
+      ;(answerQuestion as jest.Mock).mockResolvedValue({ sources: [], stream, isFallback: false })
+      return { user, workspace }
+    }
+
+    const meterGiven = () => (answerQuestion as jest.Mock).mock.calls[0][6] as { record: jest.Mock }
+
+    it("error: the answer stream's meter reaches the ledger even when the stream throws midway", async () => {
+      const { user, workspace } = await missSetup(
+        'throws',
+        (async function* () {
+          yield 'partial '
+          throw new Error('upstream dropped the stream')
+        })(),
+      )
+
+      const result = await service.answer(workspace.id, user.id, 'Will this break?')
+      const seen: string[] = []
+      await expect(
+        (async () => {
+          for await (const token of result.stream) seen.push(token)
+        })(),
+      ).rejects.toThrow('upstream dropped the stream')
+
+      expect(seen).toEqual(['partial '])
+      expect(usage.recordLedger).toHaveBeenCalledTimes(1)
+      expect(usage.recordLedger).toHaveBeenCalledWith(workspace.id, meterGiven())
+    })
+
+    it('error: answerQuestion throwing after a metered call still writes the ledger once and rethrows', async () => {
+      const { user, workspace } = await missSetup(
+        'answer-throws',
+        (async function* () {
+          yield 'unused'
+        })(),
+      )
+      const failure = new Error('graph failed after the rewrite call')
+      ;(answerQuestion as jest.Mock).mockImplementation(async (...args: unknown[]) => {
+        (args[6] as { total: number }).total = 800
+        throw failure
+      })
+
+      await expect(service.answer(workspace.id, user.id, 'Will the graph fail?')).rejects.toBe(failure)
+
+      expect(usage.recordLedger).toHaveBeenCalledTimes(1)
+      expect(usage.recordLedger).toHaveBeenCalledWith(workspace.id, meterGiven())
+    })
+
+    it('error: answerQuestion throwing before any tokens were metered writes no ledger row', async () => {
+      const { user, workspace } = await missSetup(
+        'answer-throws-free',
+        (async function* () {
+          yield 'unused'
+        })(),
+      )
+      ;(answerQuestion as jest.Mock).mockRejectedValue(new Error('retrieval failed'))
+
+      await expect(service.answer(workspace.id, user.id, 'Free failure')).rejects.toThrow('retrieval failed')
+
+      expect(usage.recordLedger).not.toHaveBeenCalled()
+    })
+
+    it('error: a stream closed with return() before the first chunk still writes the ledger exactly once', async () => {
+      const { user, workspace } = await missSetup(
+        'never-iterated',
+        (async function* () {
+          yield 'never read'
+        })(),
+      )
+      ;(answerQuestion as jest.Mock).mockImplementation(async (...args: unknown[]) => {
+        (args[6] as { total: number }).total = 900
+        return { sources: [], stream: (async function* () { yield 'never read' })(), isFallback: false }
+      })
+
+      const result = await service.answer(workspace.id, user.id, 'Abandoned before reading')
+      await result.stream.return(undefined)
+      await result.stream.return(undefined)
+
+      expect(usage.recordLedger).toHaveBeenCalledTimes(1)
+      expect(usage.recordLedger).toHaveBeenCalledWith(workspace.id, meterGiven())
+    })
+
+    it('edge: exact and semantic cache hits write no ledger row', async () => {
+      const { user, workspace } = await seedWorkspaceFixture(`${prefix}meter-cache@example.com`, 'Chat Spec Meter Cache')
+      const sources = [{ documentId: 'doc-1', title: 'Doc', sourceUrl: null, score: 0.9, snippet: 's' }]
+      cache.getExact.mockResolvedValueOnce({ answer: 'cached exact', sources })
+      const exact = await service.answer(workspace.id, user.id, 'Cached question')
+      for await (const _token of exact.stream) {
+        /* drain */
+      }
+      await exact.onComplete('cached exact')
+
+      cache.getExact.mockResolvedValue(null)
+      cache.getSemantic.mockResolvedValueOnce({ answer: 'cached semantic', sources })
+      ;(embedQuery as jest.Mock).mockResolvedValue([0.3, 0.4])
+      const semantic = await service.answer(workspace.id, user.id, 'Similar question')
+      for await (const _token of semantic.stream) {
+        /* drain */
+      }
+      await semantic.onComplete('cached semantic')
+
+      expect(answerQuestion).not.toHaveBeenCalled()
+      expect(usage.recordLedger).not.toHaveBeenCalled()
+    })
+
+    it('edge: the stream is charged once, after its last chunk', async () => {
+      const { user, workspace } = await missSetup(
+        'once',
+        (async function* () {
+          yield 'one '
+          yield 'two '
+          yield 'three'
+        })(),
+      )
+
+      const result = await service.answer(workspace.id, user.id, 'Charge me once')
+      const chargedBeforeChunk: number[] = []
+      for await (const _token of result.stream) {
+        chargedBeforeChunk.push(usage.recordLedger.mock.calls.length)
+      }
+
+      expect(chargedBeforeChunk).toEqual([0, 0, 0])
+      expect(usage.recordLedger).toHaveBeenCalledTimes(1)
+    })
+
+    it('edge: a stream that ends with no provider usage records a fallback estimate from countTokens, priced at the answer model', async () => {
+      const { user, workspace } = await missSetup(
+        'fallback',
+        (async function* () {
+          yield 'hello '
+          yield 'world'
+        })(),
+      )
+
+      const result = await service.answer(workspace.id, user.id, 'Estimate me')
+      for await (const _token of result.stream) {
+        /* drain */
+      }
+
+      const question = 'Estimate me'
+      const text = 'hello world'
+      expect(usage.recordLedger).toHaveBeenCalledTimes(1)
+      expect(meterGiven().record).toHaveBeenCalledTimes(1)
+      expect(meterGiven().record).toHaveBeenCalledWith(
+        {
+          usage_metadata: {
+            input_tokens: question.length,
+            output_tokens: text.length,
+            total_tokens: question.length + text.length,
+          },
+        },
+        'answer-model-under-test',
+      )
+      expect(usage.recordLedger).toHaveBeenCalledWith(workspace.id, meterGiven())
+    })
+
+    it('edge: a stream that ends after the provider reported usage records no fallback estimate and still writes once', async () => {
+      const { user, workspace } = await missSetup(
+        'reported',
+        (async function* () {
+          yield 'hello'
+        })(),
+      )
+      ;(answerQuestion as jest.Mock).mockImplementation(async (...args: unknown[]) => {
+        (args[6] as { total: number }).total = 1500
+        return { sources: [], stream: (async function* () { yield 'hello' })(), isFallback: false }
+      })
+
+      const result = await service.answer(workspace.id, user.id, 'Provider reported')
+      for await (const _token of result.stream) {
+        /* drain */
+      }
+
+      expect(meterGiven().record).not.toHaveBeenCalled()
+      expect(usage.recordLedger).toHaveBeenCalledTimes(1)
+    })
+
+    it('edge: draining the stream and then closing it again never writes a second ledger row', async () => {
+      const { user, workspace } = await missSetup(
+        'twice',
+        (async function* () {
+          yield 'only'
+        })(),
+      )
+
+      const result = await service.answer(workspace.id, user.id, 'Charge once only')
+      for await (const _token of result.stream) {
+        /* drain */
+      }
+      await result.stream.return(undefined)
+      await result.onComplete('only')
+
+      expect(usage.recordLedger).toHaveBeenCalledTimes(1)
+    })
+
+    it('edge: onComplete still adds the countTokens estimate to Redis (off mode unchanged)', async () => {
+      const { user, workspace } = await missSetup(
+        'redis',
+        (async function* () {
+          yield 'final answer'
+        })(),
+      )
+
+      const result = await service.answer(workspace.id, user.id, 'Count these tokens')
+      for await (const _token of result.stream) {
+        /* drain */
+      }
+      await result.onComplete('final answer')
+
+      expect(usage.addUsage).toHaveBeenCalledWith(workspace.id, 'Count these tokens'.length + 'final answer'.length)
+    })
+
+    it('regression: assertWithinBudget still runs before answerQuestion', async () => {
+      const { user, workspace } = await missSetup(
+        'order',
+        (async function* () {
+          yield 'x'
+        })(),
+      )
+
+      await service.answer(workspace.id, user.id, 'Order check')
+
+      const budgetOrder = usage.assertWithinBudget.mock.invocationCallOrder[0]
+      const answerOrder = (answerQuestion as jest.Mock).mock.invocationCallOrder[0]
+      expect(budgetOrder).toBeLessThan(answerOrder)
+    })
+
+    it('regression: the pass-through stream yields the same chunks in the same order', async () => {
+      const { user, workspace } = await missSetup(
+        'same',
+        (async function* () {
+          yield 'a'
+          yield ''
+          yield 'b'
+          yield 'c'
+        })(),
+      )
+
+      const result = await service.answer(workspace.id, user.id, 'Keep my chunks')
+      const seen: string[] = []
+      for await (const token of result.stream) seen.push(token)
+
+      expect(seen).toEqual(['a', '', 'b', 'c'])
+    })
+
+    it('happy: a miss answer hands a meter to answerQuestion and writes one llm_cost row', async () => {
+      const { user, workspace } = await missSetup(
+        'happy',
+        (async function* () {
+          yield 'hello'
+        })(),
+      )
+
+      const result = await service.answer(workspace.id, user.id, 'Meter me')
+      for await (const _token of result.stream) {
+        /* drain */
+      }
+      await result.onComplete('hello')
+
+      const meter = meterGiven()
+      expect(typeof meter.record).toBe('function')
+      expect(usage.recordLedger).toHaveBeenCalledTimes(1)
+      expect(usage.recordLedger).toHaveBeenCalledWith(workspace.id, meter)
+    })
   })
 })

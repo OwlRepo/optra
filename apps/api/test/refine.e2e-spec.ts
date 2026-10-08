@@ -1,4 +1,5 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common'
+import { JwtService } from '@nestjs/jwt'
 import { Test } from '@nestjs/testing'
 import cookieParser from 'cookie-parser'
 import { eq, like } from 'drizzle-orm'
@@ -10,6 +11,7 @@ import {
   pool,
   refreshTokens,
   savedRefinedMessages,
+  usageEvents,
   users,
   workspaceMembers,
   workspaces,
@@ -20,6 +22,35 @@ jest.mock('@repo/ai', () => ({
   refineMessage: jest.fn(),
   RefineEmptyError: class RefineEmptyError extends Error {},
   RefineRefusalError: class RefineRefusalError extends Error {},
+  // UsageService.metered() constructs a real meter; a minimal stand-in priced
+  // like gpt-4o ($2.50 / $10 per 1M tokens) so the e2e can assert ledger rows.
+  TokenMeter: class {
+    private input = 0
+    private output = 0
+    private model: string | null = null
+    record(response: { usage_metadata?: { input_tokens?: number; output_tokens?: number } } | null, model?: string): void {
+      const usage = response?.usage_metadata
+      if (!usage) return
+      this.input += usage.input_tokens ?? 0
+      this.output += usage.output_tokens ?? 0
+      if (model) this.model = model
+    }
+    get total(): number {
+      return this.input + this.output
+    }
+    get inputTokens(): number {
+      return this.input
+    }
+    get outputTokens(): number {
+      return this.output
+    }
+    get costMicroUsd(): number {
+      return Math.ceil(this.input * 2.5 + this.output * 10)
+    }
+    get dominantModel(): string | null {
+      return this.model
+    }
+  },
 }))
 
 async function cleanupUsers(prefix: string) {
@@ -191,5 +222,59 @@ describe('Refine flow (e2e)', () => {
       .expect(429)
 
     expect(blocked.body.message).toBe('Daily refine limit reached')
+  })
+
+  describe('billing metering (S4)', () => {
+    // Registration is capped at 5 per 10 minutes; seed the owner directly.
+    async function seedOwnerWithWorkspace(email: string) {
+      const [user] = await db.insert(users).values({ email, passwordHash: 'x', isVerified: true }).returning()
+      const [workspace] = await db.insert(workspaces).values({ name: 'S4 Refine', ownerId: user.id }).returning()
+      await db.insert(workspaceMembers).values({ workspaceId: workspace.id, userId: user.id, role: 'owner' })
+      return { workspaceId: workspace.id, accessToken: app.get(JwtService).sign({ sub: user.id, email }) }
+    }
+
+    async function withEnforcement<T>(value: string, fn: () => Promise<T>): Promise<T> {
+      const previous = process.env.BILLING_ENFORCEMENT
+      process.env.BILLING_ENFORCEMENT = value
+      try {
+        return await fn()
+      } finally {
+        if (previous === undefined) delete process.env.BILLING_ENFORCEMENT
+        else process.env.BILLING_ENFORCEMENT = previous
+      }
+    }
+
+    const refine = (owner: { workspaceId: string; accessToken: string }) =>
+      request(app.getHttpServer())
+        .post(`/workspaces/${owner.workspaceId}/refine`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .send({ text: 'raw messy question' })
+
+    it('error: state none gets 402 SUBSCRIPTION_REQUIRED on refine', async () => {
+      const owner = await seedOwnerWithWorkspace(`${prefix}s4-none@example.com`)
+      ;(refineMessage as jest.Mock).mockResolvedValue('Should not be reached')
+
+      const res = await withEnforcement('on', () => refine(owner).expect(402))
+
+      expect(res.body).toMatchObject({ statusCode: 402, code: 'SUBSCRIPTION_REQUIRED' })
+      expect(refineMessage).not.toHaveBeenCalled()
+    })
+
+    it('happy: refine writes an llm_cost row with enforcement off', async () => {
+      const owner = await seedOwnerWithWorkspace(`${prefix}s4-off@example.com`)
+      ;(refineMessage as jest.Mock).mockImplementation(
+        async (_text: string, options: { meter: { record: (r: unknown, m?: string) => void } }) => {
+          options.meter.record({ usage_metadata: { input_tokens: 1000, output_tokens: 500, total_tokens: 1500 } }, 'gpt-4o')
+          return 'Clean refined question'
+        },
+      )
+
+      const res = await withEnforcement('off', () => refine(owner).expect(201))
+
+      expect(res.body).toEqual({ original: 'raw messy question', refined: 'Clean refined question' })
+      const rows = await db.select().from(usageEvents).where(eq(usageEvents.workspaceId, owner.workspaceId))
+      expect(rows).toHaveLength(1)
+      expect(rows[0]).toMatchObject({ kind: 'llm_cost', quantity: 7500, model: 'gpt-4o' })
+    })
   })
 })

@@ -1821,7 +1821,7 @@
           "relation": "contains",
           "confidence": "EXTRACTED",
           "source_file": "apps/api/src/procurement/comparison.service.spec.ts",
-          "source_location": "L2207",
+          "source_location": "L2217",
           "weight": 1.0,
           "_origin": "ast"
         },
@@ -1831,7 +1831,63 @@
           "relation": "contains",
           "confidence": "EXTRACTED",
           "source_file": "apps/api/src/procurement/comparison.service.spec.ts",
-          "source_location": "L3083",
+          "source_location": "L3093",
+          "weight": 1.0,
+          "_origin": "ast"
+        }
+      ]
+    },
+    {
+      "endpoints": [
+        "apps_api_src_procurement_comparison_service_spec",
+        "apps_api_src_procurement_comparison_service_spec_insertflag"
+      ],
+      "variants": [
+        {
+          "source": "apps_api_src_procurement_comparison_service_spec",
+          "target": "apps_api_src_procurement_comparison_service_spec_insertflag",
+          "relation": "contains",
+          "confidence": "EXTRACTED",
+          "source_file": "apps/api/src/procurement/comparison.service.spec.ts",
+          "source_location": "L2239",
+          "weight": 1.0,
+          "_origin": "ast"
+        },
+        {
+          "source": "apps_api_src_procurement_comparison_service_spec",
+          "target": "apps_api_src_procurement_comparison_service_spec_insertflag",
+          "relation": "contains",
+          "confidence": "EXTRACTED",
+          "source_file": "apps/api/src/procurement/comparison.service.spec.ts",
+          "source_location": "L3334",
+          "weight": 1.0,
+          "_origin": "ast"
+        }
+      ]
+    },
+    {
+      "endpoints": [
+        "apps_api_src_procurement_comparison_service_spec",
+        "apps_api_src_procurement_comparison_service_spec_seedpair"
+      ],
+      "variants": [
+        {
+          "source": "apps_api_src_procurement_comparison_service_spec",
+          "target": "apps_api_src_procurement_comparison_service_spec_seedpair",
+          "relation": "contains",
+          "confidence": "EXTRACTED",
+          "source_file": "apps/api/src/procurement/comparison.service.spec.ts",
+          "source_location": "L2944",
+          "weight": 1.0,
+          "_origin": "ast"
+        },
+        {
+          "source": "apps_api_src_procurement_comparison_service_spec",
+          "target": "apps_api_src_procurement_comparison_service_spec_seedpair",
+          "relation": "contains",
+          "confidence": "EXTRACTED",
+          "source_file": "apps/api/src/procurement/comparison.service.spec.ts",
+          "source_location": "L3320",
           "weight": 1.0,
           "_origin": "ast"
         }
@@ -2383,7 +2439,7 @@
           "relation": "references",
           "confidence": "EXTRACTED",
           "source_file": "apps/api/src/procurement/procurement.controller.ts",
-          "source_location": "L486",
+          "source_location": "L515",
           "weight": 1.0,
           "context": "decorator",
           "_origin": "ast"
@@ -2394,7 +2450,7 @@
           "relation": "references",
           "confidence": "EXTRACTED",
           "source_file": "apps/api/src/procurement/procurement.controller.ts",
-          "source_location": "L487",
+          "source_location": "L516",
           "weight": 1.0,
           "context": "decorator",
           "_origin": "ast"
@@ -2413,7 +2469,7 @@
           "relation": "references",
           "confidence": "EXTRACTED",
           "source_file": "apps/api/src/procurement/procurement.controller.ts",
-          "source_location": "L254",
+          "source_location": "L256",
           "weight": 1.0,
           "context": "decorator",
           "_origin": "ast"
@@ -2424,7 +2480,7 @@
           "relation": "references",
           "confidence": "EXTRACTED",
           "source_file": "apps/api/src/procurement/procurement.controller.ts",
-          "source_location": "L255",
+          "source_location": "L257",
           "weight": 1.0,
           "context": "decorator",
           "_origin": "ast"
@@ -2443,7 +2499,7 @@
           "relation": "references",
           "confidence": "EXTRACTED",
           "source_file": "apps/api/src/procurement/procurement.controller.ts",
-          "source_location": "L244",
+          "source_location": "L246",
           "weight": 1.0,
           "context": "decorator",
           "_origin": "ast"
@@ -2454,7 +2510,7 @@
           "relation": "references",
           "confidence": "EXTRACTED",
           "source_file": "apps/api/src/procurement/procurement.controller.ts",
-          "source_location": "L245",
+          "source_location": "L247",
           "weight": 1.0,
           "context": "decorator",
           "_origin": "ast"
@@ -2473,7 +2529,7 @@
           "relation": "references",
           "confidence": "EXTRACTED",
           "source_file": "apps/api/src/procurement/procurement.controller.ts",
-          "source_location": "L234",
+          "source_location": "L236",
           "weight": 1.0,
           "context": "decorator",
           "_origin": "ast"
@@ -2484,7 +2540,7 @@
           "relation": "references",
           "confidence": "EXTRACTED",
           "source_file": "apps/api/src/procurement/procurement.controller.ts",
-          "source_location": "L235",
+          "source_location": "L237",
           "weight": 1.0,
           "context": "decorator",
           "_origin": "ast"
@@ -2503,29 +2559,29 @@
           "relation": "references",
           "confidence": "EXTRACTED",
           "source_file": "apps/api/src/procurement/procurement.controller.ts",
-          "source_location": "L409",
-          "weight": 1.0,
-          "context": "decorator",
-          "_origin": "ast"
-        },
-        {
-          "source": "apps_api_src_procurement_procurement_controller_procurementcontroller_getgoodsreceiptpage",
-          "target": "apps_api_src_procurement_procurement_controller_ts_param",
-          "relation": "references",
-          "confidence": "EXTRACTED",
-          "source_file": "apps/api/src/procurement/procurement.controller.ts",
-          "source_location": "L410",
-          "weight": 1.0,
-          "context": "decorator",
-          "_origin": "ast"
-        },
-        {
-          "source": "apps_api_src_procurement_procurement_controller_procurementcontroller_getgoodsreceiptpage",
-          "target": "apps_api_src_procurement_procurement_controller_ts_param",
-          "relation": "references",
-          "confidence": "EXTRACTED",
-          "source_file": "apps/api/src/procurement/procurement.controller.ts",
           "source_location": "L411",
+          "weight": 1.0,
+          "context": "decorator",
+          "_origin": "ast"
+        },
+        {
+          "source": "apps_api_src_procurement_procurement_controller_procurementcontroller_getgoodsreceiptpage",
+          "target": "apps_api_src_procurement_procurement_controller_ts_param",
+          "relation": "references",
+          "confidence": "EXTRACTED",
+          "source_file": "apps/api/src/procurement/procurement.controller.ts",
+          "source_location": "L412",
+          "weight": 1.0,
+          "context": "decorator",
+          "_origin": "ast"
+        },
+        {
+          "source": "apps_api_src_procurement_procurement_controller_procurementcontroller_getgoodsreceiptpage",
+          "target": "apps_api_src_procurement_procurement_controller_ts_param",
+          "relation": "references",
+          "confidence": "EXTRACTED",
+          "source_file": "apps/api/src/procurement/procurement.controller.ts",
+          "source_location": "L413",
           "weight": 1.0,
           "context": "decorator",
           "_origin": "ast"
@@ -2544,29 +2600,29 @@
           "relation": "references",
           "confidence": "EXTRACTED",
           "source_file": "apps/api/src/procurement/procurement.controller.ts",
-          "source_location": "L359",
-          "weight": 1.0,
-          "context": "decorator",
-          "_origin": "ast"
-        },
-        {
-          "source": "apps_api_src_procurement_procurement_controller_procurementcontroller_getinvoicepage",
-          "target": "apps_api_src_procurement_procurement_controller_ts_param",
-          "relation": "references",
-          "confidence": "EXTRACTED",
-          "source_file": "apps/api/src/procurement/procurement.controller.ts",
-          "source_location": "L360",
-          "weight": 1.0,
-          "context": "decorator",
-          "_origin": "ast"
-        },
-        {
-          "source": "apps_api_src_procurement_procurement_controller_procurementcontroller_getinvoicepage",
-          "target": "apps_api_src_procurement_procurement_controller_ts_param",
-          "relation": "references",
-          "confidence": "EXTRACTED",
-          "source_file": "apps/api/src/procurement/procurement.controller.ts",
           "source_location": "L361",
+          "weight": 1.0,
+          "context": "decorator",
+          "_origin": "ast"
+        },
+        {
+          "source": "apps_api_src_procurement_procurement_controller_procurementcontroller_getinvoicepage",
+          "target": "apps_api_src_procurement_procurement_controller_ts_param",
+          "relation": "references",
+          "confidence": "EXTRACTED",
+          "source_file": "apps/api/src/procurement/procurement.controller.ts",
+          "source_location": "L362",
+          "weight": 1.0,
+          "context": "decorator",
+          "_origin": "ast"
+        },
+        {
+          "source": "apps_api_src_procurement_procurement_controller_procurementcontroller_getinvoicepage",
+          "target": "apps_api_src_procurement_procurement_controller_ts_param",
+          "relation": "references",
+          "confidence": "EXTRACTED",
+          "source_file": "apps/api/src/procurement/procurement.controller.ts",
+          "source_location": "L363",
           "weight": 1.0,
           "context": "decorator",
           "_origin": "ast"
@@ -2585,29 +2641,29 @@
           "relation": "references",
           "confidence": "EXTRACTED",
           "source_file": "apps/api/src/procurement/procurement.controller.ts",
-          "source_location": "L309",
-          "weight": 1.0,
-          "context": "decorator",
-          "_origin": "ast"
-        },
-        {
-          "source": "apps_api_src_procurement_procurement_controller_procurementcontroller_getpurchaseorderpage",
-          "target": "apps_api_src_procurement_procurement_controller_ts_param",
-          "relation": "references",
-          "confidence": "EXTRACTED",
-          "source_file": "apps/api/src/procurement/procurement.controller.ts",
-          "source_location": "L310",
-          "weight": 1.0,
-          "context": "decorator",
-          "_origin": "ast"
-        },
-        {
-          "source": "apps_api_src_procurement_procurement_controller_procurementcontroller_getpurchaseorderpage",
-          "target": "apps_api_src_procurement_procurement_controller_ts_param",
-          "relation": "references",
-          "confidence": "EXTRACTED",
-          "source_file": "apps/api/src/procurement/procurement.controller.ts",
           "source_location": "L311",
+          "weight": 1.0,
+          "context": "decorator",
+          "_origin": "ast"
+        },
+        {
+          "source": "apps_api_src_procurement_procurement_controller_procurementcontroller_getpurchaseorderpage",
+          "target": "apps_api_src_procurement_procurement_controller_ts_param",
+          "relation": "references",
+          "confidence": "EXTRACTED",
+          "source_file": "apps/api/src/procurement/procurement.controller.ts",
+          "source_location": "L312",
+          "weight": 1.0,
+          "context": "decorator",
+          "_origin": "ast"
+        },
+        {
+          "source": "apps_api_src_procurement_procurement_controller_procurementcontroller_getpurchaseorderpage",
+          "target": "apps_api_src_procurement_procurement_controller_ts_param",
+          "relation": "references",
+          "confidence": "EXTRACTED",
+          "source_file": "apps/api/src/procurement/procurement.controller.ts",
+          "source_location": "L313",
           "weight": 1.0,
           "context": "decorator",
           "_origin": "ast"
@@ -2626,7 +2682,7 @@
           "relation": "references",
           "confidence": "EXTRACTED",
           "source_file": "apps/api/src/procurement/procurement.controller.ts",
-          "source_location": "L511",
+          "source_location": "L540",
           "weight": 1.0,
           "context": "decorator",
           "_origin": "ast"
@@ -2637,7 +2693,7 @@
           "relation": "references",
           "confidence": "EXTRACTED",
           "source_file": "apps/api/src/procurement/procurement.controller.ts",
-          "source_location": "L512",
+          "source_location": "L541",
           "weight": 1.0,
           "context": "decorator",
           "_origin": "ast"
@@ -2656,7 +2712,7 @@
           "relation": "references",
           "confidence": "EXTRACTED",
           "source_file": "apps/api/src/procurement/procurement.controller.ts",
-          "source_location": "L399",
+          "source_location": "L401",
           "weight": 1.0,
           "context": "decorator",
           "_origin": "ast"
@@ -2667,7 +2723,7 @@
           "relation": "references",
           "confidence": "EXTRACTED",
           "source_file": "apps/api/src/procurement/procurement.controller.ts",
-          "source_location": "L400",
+          "source_location": "L402",
           "weight": 1.0,
           "context": "decorator",
           "_origin": "ast"
@@ -2686,7 +2742,7 @@
           "relation": "references",
           "confidence": "EXTRACTED",
           "source_file": "apps/api/src/procurement/procurement.controller.ts",
-          "source_location": "L349",
+          "source_location": "L351",
           "weight": 1.0,
           "context": "decorator",
           "_origin": "ast"
@@ -2697,7 +2753,7 @@
           "relation": "references",
           "confidence": "EXTRACTED",
           "source_file": "apps/api/src/procurement/procurement.controller.ts",
-          "source_location": "L350",
+          "source_location": "L352",
           "weight": 1.0,
           "context": "decorator",
           "_origin": "ast"
@@ -2716,7 +2772,7 @@
           "relation": "references",
           "confidence": "EXTRACTED",
           "source_file": "apps/api/src/procurement/procurement.controller.ts",
-          "source_location": "L299",
+          "source_location": "L301",
           "weight": 1.0,
           "context": "decorator",
           "_origin": "ast"
@@ -2727,7 +2783,7 @@
           "relation": "references",
           "confidence": "EXTRACTED",
           "source_file": "apps/api/src/procurement/procurement.controller.ts",
-          "source_location": "L300",
+          "source_location": "L302",
           "weight": 1.0,
           "context": "decorator",
           "_origin": "ast"
@@ -2746,7 +2802,7 @@
           "relation": "references",
           "confidence": "EXTRACTED",
           "source_file": "apps/api/src/procurement/procurement.controller.ts",
-          "source_location": "L500",
+          "source_location": "L529",
           "weight": 1.0,
           "context": "decorator",
           "_origin": "ast"
@@ -2757,7 +2813,7 @@
           "relation": "references",
           "confidence": "EXTRACTED",
           "source_file": "apps/api/src/procurement/procurement.controller.ts",
-          "source_location": "L501",
+          "source_location": "L530",
           "weight": 1.0,
           "context": "decorator",
           "_origin": "ast"
@@ -2776,7 +2832,7 @@
           "relation": "references",
           "confidence": "EXTRACTED",
           "source_file": "apps/api/src/procurement/procurement.controller.ts",
-          "source_location": "L422",
+          "source_location": "L424",
           "weight": 1.0,
           "context": "decorator",
           "_origin": "ast"
@@ -2787,7 +2843,7 @@
           "relation": "references",
           "confidence": "EXTRACTED",
           "source_file": "apps/api/src/procurement/procurement.controller.ts",
-          "source_location": "L423",
+          "source_location": "L425",
           "weight": 1.0,
           "context": "decorator",
           "_origin": "ast"
@@ -2806,7 +2862,7 @@
           "relation": "references",
           "confidence": "EXTRACTED",
           "source_file": "apps/api/src/procurement/procurement.controller.ts",
-          "source_location": "L372",
+          "source_location": "L374",
           "weight": 1.0,
           "context": "decorator",
           "_origin": "ast"
@@ -2817,7 +2873,7 @@
           "relation": "references",
           "confidence": "EXTRACTED",
           "source_file": "apps/api/src/procurement/procurement.controller.ts",
-          "source_location": "L373",
+          "source_location": "L375",
           "weight": 1.0,
           "context": "decorator",
           "_origin": "ast"
@@ -2836,7 +2892,7 @@
           "relation": "references",
           "confidence": "EXTRACTED",
           "source_file": "apps/api/src/procurement/procurement.controller.ts",
-          "source_location": "L322",
+          "source_location": "L324",
           "weight": 1.0,
           "context": "decorator",
           "_origin": "ast"
@@ -2847,7 +2903,7 @@
           "relation": "references",
           "confidence": "EXTRACTED",
           "source_file": "apps/api/src/procurement/procurement.controller.ts",
-          "source_location": "L323",
+          "source_location": "L325",
           "weight": 1.0,
           "context": "decorator",
           "_origin": "ast"
@@ -3906,6 +3962,37 @@
     {
       "endpoints": [
         "apps_e2e_support_db_closedb",
+        "apps_e2e_tests_billing_spec"
+      ],
+      "variants": [
+        {
+          "source": "apps_e2e_tests_billing_spec",
+          "target": "apps_e2e_support_db_closedb",
+          "relation": "imports",
+          "context": "import",
+          "confidence": "EXTRACTED",
+          "source_file": "apps/e2e/tests/billing.spec.ts",
+          "source_location": "L2",
+          "weight": 1.0,
+          "_origin": "ast"
+        },
+        {
+          "source": "apps_e2e_tests_billing_spec",
+          "target": "apps_e2e_support_db_closedb",
+          "relation": "indirect_call",
+          "context": "argument",
+          "confidence": "INFERRED",
+          "confidence_score": 0.8,
+          "source_file": "apps/e2e/tests/billing.spec.ts",
+          "source_location": "L33",
+          "weight": 1.0,
+          "_origin": "ast"
+        }
+      ]
+    },
+    {
+      "endpoints": [
+        "apps_e2e_support_db_closedb",
         "apps_e2e_tests_catalog_spec"
       ],
       "variants": [
@@ -4184,6 +4271,66 @@
     },
     {
       "endpoints": [
+        "apps_e2e_support_env",
+        "apps_e2e_support_lemonsqueezy"
+      ],
+      "variants": [
+        {
+          "source": "apps_e2e_support_lemonsqueezy",
+          "target": "apps_e2e_support_env",
+          "relation": "imports_from",
+          "context": "import",
+          "confidence": "EXTRACTED",
+          "source_file": "apps/e2e/support/lemonsqueezy.ts",
+          "source_location": "L3",
+          "weight": 1.0,
+          "_origin": "ast"
+        },
+        {
+          "source": "apps_e2e_support_lemonsqueezy",
+          "target": "apps_e2e_support_env",
+          "relation": "re_exports",
+          "context": "export",
+          "confidence": "EXTRACTED",
+          "source_file": "apps/e2e/support/lemonsqueezy.ts",
+          "source_location": "L57",
+          "weight": 1.0,
+          "_origin": "ast"
+        }
+      ]
+    },
+    {
+      "endpoints": [
+        "apps_e2e_support_state",
+        "apps_e2e_tests_billing_spec"
+      ],
+      "variants": [
+        {
+          "source": "apps_e2e_tests_billing_spec",
+          "target": "apps_e2e_support_state",
+          "relation": "imports_from",
+          "context": "import",
+          "confidence": "EXTRACTED",
+          "source_file": "apps/e2e/tests/billing.spec.ts",
+          "source_location": "L15",
+          "weight": 1.0,
+          "_origin": "ast"
+        },
+        {
+          "source": "apps_e2e_tests_billing_spec",
+          "target": "apps_e2e_support_state",
+          "relation": "imports_from",
+          "context": "import",
+          "confidence": "EXTRACTED",
+          "source_file": "apps/e2e/tests/billing.spec.ts",
+          "source_location": "L18",
+          "weight": 1.0,
+          "_origin": "ast"
+        }
+      ]
+    },
+    {
+      "endpoints": [
         "apps_web_app_workspaces_id_vendors_vendorid_page",
         "apps_web_src_lib_api_catalog"
       ],
@@ -4239,6 +4386,34 @@
           "source_location": "L19",
           "weight": 1.0,
           "_origin": "ast"
+        }
+      ]
+    },
+    {
+      "endpoints": [
+        "docs_ai_module_ownership_map_comparison_engine",
+        "docs_ai_module_ownership_map_duckdb_sandbox"
+      ],
+      "variants": [
+        {
+          "source": "docs_ai_module_ownership_map_comparison_engine",
+          "target": "docs_ai_module_ownership_map_duckdb_sandbox",
+          "relation": "calls",
+          "confidence": "EXTRACTED",
+          "confidence_score": 1.0,
+          "source_file": "docs/ai/module-ownership-map.md",
+          "source_location": null,
+          "weight": 1.0
+        },
+        {
+          "source": "docs_ai_module_ownership_map_duckdb_sandbox",
+          "target": "docs_ai_module_ownership_map_comparison_engine",
+          "relation": "semantically_similar_to",
+          "confidence": "INFERRED",
+          "confidence_score": 0.65,
+          "source_file": "docs/ai/module-ownership-map.md",
+          "source_location": null,
+          "weight": 1.0
         }
       ]
     },
@@ -4339,7 +4514,7 @@
           "context": "re-export",
           "confidence": "EXTRACTED",
           "source_file": "packages/ai/src/index.ts",
-          "source_location": "L20",
+          "source_location": "L22",
           "weight": 1.0,
           "_origin": "ast"
         },
@@ -4350,7 +4525,7 @@
           "context": "export",
           "confidence": "EXTRACTED",
           "source_file": "packages/ai/src/index.ts",
-          "source_location": "L20",
+          "source_location": "L22",
           "weight": 1.0,
           "_origin": "ast"
         }
@@ -4399,7 +4574,7 @@
           "context": "re-export",
           "confidence": "EXTRACTED",
           "source_file": "packages/ai/src/index.ts",
-          "source_location": "L15",
+          "source_location": "L17",
           "weight": 1.0,
           "_origin": "ast"
         },
@@ -4410,7 +4585,7 @@
           "context": "export",
           "confidence": "EXTRACTED",
           "source_file": "packages/ai/src/index.ts",
-          "source_location": "L15",
+          "source_location": "L17",
           "weight": 1.0,
           "_origin": "ast"
         }
@@ -4429,7 +4604,7 @@
           "context": "re-export",
           "confidence": "EXTRACTED",
           "source_file": "packages/ai/src/index.ts",
-          "source_location": "L13",
+          "source_location": "L15",
           "weight": 1.0,
           "_origin": "ast"
         },
@@ -4440,7 +4615,7 @@
           "context": "export",
           "confidence": "EXTRACTED",
           "source_file": "packages/ai/src/index.ts",
-          "source_location": "L13",
+          "source_location": "L15",
           "weight": 1.0,
           "_origin": "ast"
         }
@@ -4459,7 +4634,7 @@
           "context": "re-export",
           "confidence": "EXTRACTED",
           "source_file": "packages/ai/src/index.ts",
-          "source_location": "L17",
+          "source_location": "L19",
           "weight": 1.0,
           "_origin": "ast"
         },
@@ -4470,7 +4645,7 @@
           "context": "export",
           "confidence": "EXTRACTED",
           "source_file": "packages/ai/src/index.ts",
-          "source_location": "L17",
+          "source_location": "L19",
           "weight": 1.0,
           "_origin": "ast"
         }
@@ -4488,7 +4663,7 @@
           "relation": "contains",
           "confidence": "EXTRACTED",
           "source_file": "packages/ai/src/chains/graph.ts",
-          "source_location": "L369",
+          "source_location": "L380",
           "weight": 1.0,
           "_origin": "ast"
         },
@@ -4499,7 +4674,7 @@
           "context": "argument",
           "confidence": "INFERRED",
           "source_file": "packages/ai/src/chains/graph.ts",
-          "source_location": "L384",
+          "source_location": "L395",
           "weight": 1.0,
           "_origin": "ast"
         }
@@ -4517,7 +4692,7 @@
           "relation": "contains",
           "confidence": "EXTRACTED",
           "source_file": "packages/ai/src/chains/graph.ts",
-          "source_location": "L305",
+          "source_location": "L313",
           "weight": 1.0,
           "_origin": "ast"
         },
@@ -4528,7 +4703,7 @@
           "context": "argument",
           "confidence": "INFERRED",
           "source_file": "packages/ai/src/chains/graph.ts",
-          "source_location": "L381",
+          "source_location": "L392",
           "weight": 1.0,
           "_origin": "ast"
         }
@@ -4546,7 +4721,7 @@
           "relation": "contains",
           "confidence": "EXTRACTED",
           "source_file": "packages/ai/src/chains/graph.ts",
-          "source_location": "L328",
+          "source_location": "L337",
           "weight": 1.0,
           "_origin": "ast"
         },
@@ -4557,7 +4732,7 @@
           "context": "argument",
           "confidence": "INFERRED",
           "source_file": "packages/ai/src/chains/graph.ts",
-          "source_location": "L382",
+          "source_location": "L393",
           "weight": 1.0,
           "_origin": "ast"
         }
@@ -4575,7 +4750,7 @@
           "relation": "contains",
           "confidence": "EXTRACTED",
           "source_file": "packages/ai/src/chains/graph.ts",
-          "source_location": "L284",
+          "source_location": "L291",
           "weight": 1.0,
           "_origin": "ast"
         },
@@ -4586,7 +4761,7 @@
           "context": "argument",
           "confidence": "INFERRED",
           "source_file": "packages/ai/src/chains/graph.ts",
-          "source_location": "L380",
+          "source_location": "L391",
           "weight": 1.0,
           "_origin": "ast"
         }
@@ -4604,7 +4779,7 @@
           "relation": "contains",
           "confidence": "EXTRACTED",
           "source_file": "packages/ai/src/chains/graph.ts",
-          "source_location": "L357",
+          "source_location": "L367",
           "weight": 1.0,
           "_origin": "ast"
         },
@@ -4615,7 +4790,7 @@
           "context": "argument",
           "confidence": "INFERRED",
           "source_file": "packages/ai/src/chains/graph.ts",
-          "source_location": "L383",
+          "source_location": "L394",
           "weight": 1.0,
           "_origin": "ast"
         }
@@ -4633,7 +4808,7 @@
           "relation": "contains",
           "confidence": "EXTRACTED",
           "source_file": "packages/ai/src/chains/graph.ts",
-          "source_location": "L239",
+          "source_location": "L246",
           "weight": 1.0,
           "_origin": "ast"
         },
@@ -4644,7 +4819,7 @@
           "context": "argument",
           "confidence": "INFERRED",
           "source_file": "packages/ai/src/chains/graph.ts",
-          "source_location": "L378",
+          "source_location": "L389",
           "weight": 1.0,
           "_origin": "ast"
         }
@@ -4662,7 +4837,7 @@
           "relation": "contains",
           "confidence": "EXTRACTED",
           "source_file": "packages/ai/src/chains/graph.ts",
-          "source_location": "L288",
+          "source_location": "L295",
           "weight": 1.0,
           "_origin": "ast"
         },
@@ -4673,7 +4848,7 @@
           "context": "argument",
           "confidence": "INFERRED",
           "source_file": "packages/ai/src/chains/graph.ts",
-          "source_location": "L379",
+          "source_location": "L390",
           "weight": 1.0,
           "_origin": "ast"
         }
@@ -4691,7 +4866,7 @@
           "relation": "contains",
           "confidence": "EXTRACTED",
           "source_file": "packages/ai/src/chains/graph.ts",
-          "source_location": "L323",
+          "source_location": "L332",
           "weight": 1.0,
           "_origin": "ast"
         },
@@ -4702,7 +4877,7 @@
           "context": "argument",
           "confidence": "INFERRED",
           "source_file": "packages/ai/src/chains/graph.ts",
-          "source_location": "L389",
+          "source_location": "L400",
           "weight": 1.0,
           "_origin": "ast"
         }
@@ -4720,7 +4895,7 @@
           "relation": "contains",
           "confidence": "EXTRACTED",
           "source_file": "packages/ai/src/chains/graph.ts",
-          "source_location": "L349",
+          "source_location": "L359",
           "weight": 1.0,
           "_origin": "ast"
         },
@@ -4731,7 +4906,7 @@
           "context": "argument",
           "confidence": "INFERRED",
           "source_file": "packages/ai/src/chains/graph.ts",
-          "source_location": "L390",
+          "source_location": "L401",
           "weight": 1.0,
           "_origin": "ast"
         }
@@ -4749,7 +4924,7 @@
           "relation": "contains",
           "confidence": "EXTRACTED",
           "source_file": "packages/ai/src/chains/graph.ts",
-          "source_location": "L266",
+          "source_location": "L273",
           "weight": 1.0,
           "_origin": "ast"
         },
@@ -4760,7 +4935,7 @@
           "context": "argument",
           "confidence": "INFERRED",
           "source_file": "packages/ai/src/chains/graph.ts",
-          "source_location": "L386",
+          "source_location": "L397",
           "weight": 1.0,
           "_origin": "ast"
         }
@@ -4779,7 +4954,7 @@
           "context": "re-export",
           "confidence": "EXTRACTED",
           "source_file": "packages/ai/src/index.ts",
-          "source_location": "L14",
+          "source_location": "L16",
           "weight": 1.0,
           "_origin": "ast"
         },
@@ -4790,7 +4965,7 @@
           "context": "export",
           "confidence": "EXTRACTED",
           "source_file": "packages/ai/src/index.ts",
-          "source_location": "L14",
+          "source_location": "L16",
           "weight": 1.0,
           "_origin": "ast"
         }
@@ -4828,6 +5003,36 @@
     },
     {
       "endpoints": [
+        "packages_ai_src_chains_models",
+        "packages_ai_src_index"
+      ],
+      "variants": [
+        {
+          "source": "packages_ai_src_index",
+          "target": "packages_ai_src_chains_models",
+          "relation": "imports_from",
+          "context": "re-export",
+          "confidence": "EXTRACTED",
+          "source_file": "packages/ai/src/index.ts",
+          "source_location": "L14",
+          "weight": 1.0,
+          "_origin": "ast"
+        },
+        {
+          "source": "packages_ai_src_index",
+          "target": "packages_ai_src_chains_models",
+          "relation": "re_exports",
+          "context": "export",
+          "confidence": "EXTRACTED",
+          "source_file": "packages/ai/src/index.ts",
+          "source_location": "L14",
+          "weight": 1.0,
+          "_origin": "ast"
+        }
+      ]
+    },
+    {
+      "endpoints": [
         "packages_ai_src_chains_procurement_extraction",
         "packages_ai_src_index"
       ],
@@ -4839,7 +5044,7 @@
           "context": "re-export",
           "confidence": "EXTRACTED",
           "source_file": "packages/ai/src/index.ts",
-          "source_location": "L19",
+          "source_location": "L21",
           "weight": 1.0,
           "_origin": "ast"
         },
@@ -4850,7 +5055,7 @@
           "context": "export",
           "confidence": "EXTRACTED",
           "source_file": "packages/ai/src/index.ts",
-          "source_location": "L19",
+          "source_location": "L21",
           "weight": 1.0,
           "_origin": "ast"
         }
@@ -4899,7 +5104,7 @@
           "context": "re-export",
           "confidence": "EXTRACTED",
           "source_file": "packages/ai/src/index.ts",
-          "source_location": "L12",
+          "source_location": "L13",
           "weight": 1.0,
           "_origin": "ast"
         },
@@ -4910,7 +5115,7 @@
           "context": "export",
           "confidence": "EXTRACTED",
           "source_file": "packages/ai/src/index.ts",
-          "source_location": "L12",
+          "source_location": "L13",
           "weight": 1.0,
           "_origin": "ast"
         }
@@ -4929,7 +5134,7 @@
           "context": "re-export",
           "confidence": "EXTRACTED",
           "source_file": "packages/ai/src/index.ts",
-          "source_location": "L16",
+          "source_location": "L18",
           "weight": 1.0,
           "_origin": "ast"
         },
@@ -4940,7 +5145,7 @@
           "context": "export",
           "confidence": "EXTRACTED",
           "source_file": "packages/ai/src/index.ts",
-          "source_location": "L16",
+          "source_location": "L18",
           "weight": 1.0,
           "_origin": "ast"
         }
@@ -4959,7 +5164,7 @@
           "context": "re-export",
           "confidence": "EXTRACTED",
           "source_file": "packages/ai/src/index.ts",
-          "source_location": "L11",
+          "source_location": "L12",
           "weight": 1.0,
           "_origin": "ast"
         },
@@ -4970,7 +5175,7 @@
           "context": "export",
           "confidence": "EXTRACTED",
           "source_file": "packages/ai/src/index.ts",
-          "source_location": "L11",
+          "source_location": "L12",
           "weight": 1.0,
           "_origin": "ast"
         }
@@ -4989,7 +5194,7 @@
           "context": "re-export",
           "confidence": "EXTRACTED",
           "source_file": "packages/ai/src/index.ts",
-          "source_location": "L18",
+          "source_location": "L20",
           "weight": 1.0,
           "_origin": "ast"
         },
@@ -5000,7 +5205,7 @@
           "context": "export",
           "confidence": "EXTRACTED",
           "source_file": "packages/ai/src/index.ts",
-          "source_location": "L18",
+          "source_location": "L20",
           "weight": 1.0,
           "_origin": "ast"
         }
@@ -5169,7 +5374,7 @@
           "context": "re-export",
           "confidence": "EXTRACTED",
           "source_file": "packages/ai/src/index.ts",
-          "source_location": "L21",
+          "source_location": "L23",
           "weight": 1.0,
           "_origin": "ast"
         },
@@ -5180,7 +5385,37 @@
           "context": "export",
           "confidence": "EXTRACTED",
           "source_file": "packages/ai/src/index.ts",
-          "source_location": "L21",
+          "source_location": "L23",
+          "weight": 1.0,
+          "_origin": "ast"
+        }
+      ]
+    },
+    {
+      "endpoints": [
+        "packages_ai_src_index",
+        "packages_ai_src_pricing"
+      ],
+      "variants": [
+        {
+          "source": "packages_ai_src_index",
+          "target": "packages_ai_src_pricing",
+          "relation": "imports_from",
+          "context": "re-export",
+          "confidence": "EXTRACTED",
+          "source_file": "packages/ai/src/index.ts",
+          "source_location": "L11",
+          "weight": 1.0,
+          "_origin": "ast"
+        },
+        {
+          "source": "packages_ai_src_index",
+          "target": "packages_ai_src_pricing",
+          "relation": "re_exports",
+          "context": "export",
+          "confidence": "EXTRACTED",
+          "source_file": "packages/ai/src/index.ts",
+          "source_location": "L11",
           "weight": 1.0,
           "_origin": "ast"
         }
@@ -5852,6 +6087,36 @@
           "confidence": "EXTRACTED",
           "source_file": "packages/db/src/schema/index.ts",
           "source_location": "L18",
+          "weight": 1.0,
+          "_origin": "ast"
+        }
+      ]
+    },
+    {
+      "endpoints": [
+        "packages_db_src_schema_billingevents",
+        "packages_db_src_schema_index"
+      ],
+      "variants": [
+        {
+          "source": "packages_db_src_schema_index",
+          "target": "packages_db_src_schema_billingevents",
+          "relation": "imports_from",
+          "context": "re-export",
+          "confidence": "EXTRACTED",
+          "source_file": "packages/db/src/schema/index.ts",
+          "source_location": "L38",
+          "weight": 1.0,
+          "_origin": "ast"
+        },
+        {
+          "source": "packages_db_src_schema_index",
+          "target": "packages_db_src_schema_billingevents",
+          "relation": "re_exports",
+          "context": "export",
+          "confidence": "EXTRACTED",
+          "source_file": "packages/db/src/schema/index.ts",
+          "source_location": "L38",
           "weight": 1.0,
           "_origin": "ast"
         }
@@ -6700,6 +6965,36 @@
     {
       "endpoints": [
         "packages_db_src_schema_index",
+        "packages_db_src_schema_usageevents"
+      ],
+      "variants": [
+        {
+          "source": "packages_db_src_schema_index",
+          "target": "packages_db_src_schema_usageevents",
+          "relation": "imports_from",
+          "context": "re-export",
+          "confidence": "EXTRACTED",
+          "source_file": "packages/db/src/schema/index.ts",
+          "source_location": "L39",
+          "weight": 1.0,
+          "_origin": "ast"
+        },
+        {
+          "source": "packages_db_src_schema_index",
+          "target": "packages_db_src_schema_usageevents",
+          "relation": "re_exports",
+          "context": "export",
+          "confidence": "EXTRACTED",
+          "source_file": "packages/db/src/schema/index.ts",
+          "source_location": "L39",
+          "weight": 1.0,
+          "_origin": "ast"
+        }
+      ]
+    },
+    {
+      "endpoints": [
+        "packages_db_src_schema_index",
         "packages_db_src_schema_users"
       ],
       "variants": [
@@ -6909,6 +7204,36 @@
     },
     {
       "endpoints": [
+        "packages_db_src_schema_index",
+        "packages_db_src_schema_workspacesubscriptions"
+      ],
+      "variants": [
+        {
+          "source": "packages_db_src_schema_index",
+          "target": "packages_db_src_schema_workspacesubscriptions",
+          "relation": "imports_from",
+          "context": "re-export",
+          "confidence": "EXTRACTED",
+          "source_file": "packages/db/src/schema/index.ts",
+          "source_location": "L37",
+          "weight": 1.0,
+          "_origin": "ast"
+        },
+        {
+          "source": "packages_db_src_schema_index",
+          "target": "packages_db_src_schema_workspacesubscriptions",
+          "relation": "re_exports",
+          "context": "export",
+          "confidence": "EXTRACTED",
+          "source_file": "packages/db/src/schema/index.ts",
+          "source_location": "L37",
+          "weight": 1.0,
+          "_origin": "ast"
+        }
+      ]
+    },
+    {
+      "endpoints": [
         "packages_db_src_schema_vendorpriceterms",
         "ref_drizzle_orm_pg_core"
       ],
@@ -6960,6 +7285,36 @@
           "confidence": "EXTRACTED",
           "source_file": "packages/db/src/schema/workspaceDigestSettings.ts",
           "source_location": "L27",
+          "weight": 1.0,
+          "_origin": "ast"
+        }
+      ]
+    },
+    {
+      "endpoints": [
+        "packages_types_src_billing",
+        "packages_types_src_index"
+      ],
+      "variants": [
+        {
+          "source": "packages_types_src_index",
+          "target": "packages_types_src_billing",
+          "relation": "imports_from",
+          "context": "re-export",
+          "confidence": "EXTRACTED",
+          "source_file": "packages/types/src/index.ts",
+          "source_location": "L56",
+          "weight": 1.0,
+          "_origin": "ast"
+        },
+        {
+          "source": "packages_types_src_index",
+          "target": "packages_types_src_billing",
+          "relation": "re_exports",
+          "context": "export",
+          "confidence": "EXTRACTED",
+          "source_file": "packages/types/src/index.ts",
+          "source_location": "L56",
           "weight": 1.0,
           "_origin": "ast"
         }

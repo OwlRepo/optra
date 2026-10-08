@@ -663,6 +663,42 @@ And one rule the owner made standing: every change now ships with its tests for 
 
 **Why different:** not different. **Any UI that appears unasked on first visit changes the starting state of every browser test; seed its "already seen" state in the shared setup on day one, and make the one suite that tests it opt back in.**
 
+## 2026-10-08 — Billing core: a webhook is only as trustworthy as what binds it to a tenant
+*Learning Contract: the plan's design is the prediction; the diff is below. No live prediction solicited.*
+
+**Predicted (from the approved plan):** HMAC over the raw body plus a store/variant allowlist and `custom_data.workspace_id` set server-side at checkout is enough to bind a paid subscription to the right workspace; the hard part is getting raw bytes through the BFF intact.
+
+**Actual:** raw bytes were the easy part once `rawBody: true` was set and the BFF forwarded `arrayBuffer` bytes — but the API e2e helper itself broke them (superagent JSON-encodes a Buffer under a JSON content type). The security review found the real gap: the signature proves Lemon Squeezy sent the event, not that Optra started that checkout, because anyone can put `checkout[custom][workspace_id]` on a public buy link. Fixed with a per-workspace `workspace_sig` (HMAC of the workspace id) that only our checkout endpoint can mint. Two more review findings changed semantics: misconfiguration must answer 500 with `processed_at` NULL (a terminal 200 would turn a typo in `.env` into a permanently lost payment), and staleness must be compared across subscriptions, not just within one.
+
+**Why different:** the plan treated "signed by the provider" as "authorised by us". **For any provider webhook, sign the tenant binding yourself at the moment you create the checkout, and make every failure that a config fix could cure retryable.**
+
+## 2026-10-08 — Billing metering: a cap in dollars has to see every call, and "off" must stay exactly off
+*Learning Contract: the plan's design is the prediction; the diff is below. No live prediction solicited.*
+
+**Predicted (from the approved plan):** every LLM call already funnels through `UsageService.metered`, so a dollar cap is one gate in one place, priced from `response_metadata.model_name`; matched lines are idempotent per PO/invoice pair.
+
+**Actual:** three of those assumptions were wrong in the code. The chat answer stream, LangGraph rewrite/grade and refine were never metered; `@langchain/openai@0.2.11` sets no `model_name`, so every chain now passes `llm.modelName` to `meter.record`; and "once per pair" let a re-parsed PO or a new month compare for free, so the key became `cmp:{po}:{inv}:{periodStart}` with delta charging. Review also caught that "enforcement off" had quietly gained a new failure mode (a ledger write error could 500 a compare) and that switching to the dollar cap had dropped the Redis token ceiling instead of layering on it.
+
+**Why different:** the plan trusted the architecture map ("all calls go through `metered`") over the call sites. **Before putting a price on a resource, grep every place it is consumed, and treat a kill switch's "off" as a behaviour that needs its own tests, not as the absence of code.**
+
+## 2026-10-08 — Billing launch: a shared payment store and a pinned env both outlive the code that assumes otherwise
+*Learning Contract: the plan's design is the prediction; the diff is below. No live prediction solicited.*
+
+**Predicted (from the approved plan):** copy and an env guard are a small change: edit three pages, five env checks and write a runbook; the 10 webhook events and `restart api` in the program plan are right.
+
+**Actual:** the copy work found a fourth page (the refund page promised non-refundable overage that no longer exists) and an overclaim on the landing page ("every plan starts with a 14-day trial", while the code gives the trial only to the first workspace). The code handles 7 subscription events, not 10, and `docker compose restart` does not re-read `.env` (the runbook uses `up -d --force-recreate api`). Two production facts mattered more than the code: the Lemon Squeezy store is shared with another app, so its events reached our webhook and were retried as "unknown variant" 500s until the binding check moved ahead of the variant check; and the VPS `.env` pinned `OPENAI_CHAT_MODEL=gpt-4-turbo`, so the S4 code default to gpt-4o changed nothing until the env line changed.
+
+**Why different:** the plan reasoned from the repository, but a payment store, a webhook list and a production `.env` are shared, long-lived state the repository does not show. **Before shipping a billing or model change, read the live configuration it depends on (read-only), and design the webhook so another tenant's events are ignored by default instead of retried.**
+
+## 2026-10-08 — Evidence-trail export: an export is a second UI, so it must say exactly what the first one says
+*Learning Contract: the plan's design is the prediction; the diff is below. No live prediction solicited.*
+
+**Predicted (from the approved plan):** reuse the `listFlags` scope and citation joins, batch through 50,000 flags, write two sheets with SheetJS, neutralise formula cells; the citation wording is "the same as `citationText()`".
+
+**Actual:** the shared query builder worked as planned, but the first export described photo-read lines as "read from PDF", left reviewer-added lines blank and worded edits differently from the review modal — a wrong provenance claim in a file sold as evidence. Review also found that loose `Number()` coercion turned text like `0x10` into 16, that a 50,000-row in-memory workbook could stall the single API process (now count-first refusal at 20,000 and a 5/min route throttle), and that a keyset on `date_trunc('milliseconds', created_at)` could not use the index (now a raw `(created_at, id)` cursor carried as text to keep microseconds).
+
+**Why different:** "same wording" was a sentence in the plan, not a test. **When a second surface restates what the UI shows, pin it with tests that use the UI's exact strings and branch order, and treat an export as a public claim.**
+
 ## 2026-10-08 — Turning off a Bull cron means gating the tick and the worker
 *Learning Contract: the plan's design is the prediction; the diff is below. No live prediction solicited.*
 

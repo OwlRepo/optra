@@ -119,7 +119,7 @@ export async function extractTicketFromTranscript(
         new SystemMessage(EXTRACTION_SYSTEM_PROMPT),
         new HumanMessage(EXTRACTION_HUMAN_PROMPT(transcript)),
       ])
-      options.meter?.record(response)
+      options.meter?.record(response, llm.modelName)
 
       if (isRefusal(response)) {
         throw new ExtractionRefusalError()

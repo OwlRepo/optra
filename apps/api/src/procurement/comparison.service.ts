@@ -8,8 +8,9 @@ import {
   Logger,
   NotFoundException,
   ServiceUnavailableException,
+  UnprocessableEntityException,
 } from '@nestjs/common'
-import { and, count, desc, eq, inArray, isNull, notExists, or, sql } from 'drizzle-orm'
+import { and, asc, count, desc, eq, inArray, isNull, notExists, or, sql, type SQL } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import Papa from 'papaparse'
 import {
@@ -36,6 +37,12 @@ import {
 } from '@repo/db'
 import { DuckDbQueryService, SqlExecutionError } from '../structured-query/duckdb-query.service'
 import { isReviewPending } from './procurement-review'
+import type { EvidenceCitation, EvidenceDecisionRow, EvidenceFlagRow } from './evidence-export'
+import { BillingGateService } from '../billing/billing-gate.service'
+
+export const EXPORT_MAX_FLAGS = 20_000
+const EXPORT_BATCH_SIZE = 1_000
+const EXPORT_ID_CHUNK = 5_000
 
 type DecisionOutcome = (typeof discrepancyDecisions.$inferInsert)['outcome']
 
@@ -411,9 +418,17 @@ function lineName(line?: { sku: string | null; description: string | null }): st
 
 @Injectable()
 export class ComparisonService {
+  /** test seam */
+  exportMaxFlags: number = EXPORT_MAX_FLAGS
+  /** test seam */
+  exportBatchSize: number = EXPORT_BATCH_SIZE
+
   private readonly logger = new Logger(ComparisonService.name)
 
-  constructor(private readonly duckDb: DuckDbQueryService) {}
+  constructor(
+    private readonly duckDb: DuckDbQueryService,
+    private readonly gate: BillingGateService,
+  ) {}
 
   async compare(workspaceId: string, purchaseOrderId: string, invoiceId: string, initiatedBy?: string) {
     const po = await this.loadReadyPo(workspaceId, purchaseOrderId)
@@ -500,6 +515,13 @@ export class ComparisonService {
     // missing receiving document must be "clearly labeled; no false three-way
     // claim". A receipt that exists but parsed to zero lines is no evidence.
     const mode = grnItems.length > 0 ? 'three_way' : 'two_way'
+
+    // S4 metering. After every 400 above (a request that never reaches the
+    // engine counts nothing) and before the run row (a refused pair leaves no
+    // run). Counted once per PO/invoice pair for good: comparing the same pair
+    // again is free. The manual route and the procurement-compare processor both
+    // land here, so both are gated.
+    await this.gate.assertMatchedLines(workspaceId, po.id, invoice.id, poItems.length)
 
     // The run row is written before the engine call so a failed attempt still
     // leaves evidence that someone tried, and when. A request that never gets
@@ -697,15 +719,48 @@ export class ComparisonService {
     // share it exactly. Ordering on that alone is not a total order, so
     // Postgres could return a different sequence per OFFSET and the reviewer
     // would see some flags twice and never see others at all.
-    // Citations ride on the same query as LEFT JOINs (no N+1). Each join is
-    // pinned to the flag's workspace, so a line id from another tenant yields
-    // a null citation instead of a foreign documentId.
+    const rows = await this.flagCitationQuery(where)
+      .orderBy(discrepancyFlags.createdAt, discrepancyFlags.id)
+      .limit(pageSize)
+      .offset(offset)
+
+    const items = rows.map((row) => this.withCitations(row))
+
+    // One aggregate serves both the stat cards and `total`. Deriving the total
+    // by summing the counts makes "the cards add up to the list" structural
+    // rather than something a test has to keep checking.
+    const grouped = await db
+      .select({ flagType: discrepancyFlags.flagType, value: count() })
+      .from(discrepancyFlags)
+      .where(where)
+      .groupBy(discrepancyFlags.flagType)
+
+    const counts = { ...EMPTY_FLAG_COUNTS }
+    let total = 0
+    for (const row of grouped) {
+      counts[row.flagType] = Number(row.value)
+      total += Number(row.value)
+    }
+
+    return { ...buildOffsetResult(items, total, page, pageSize), counts }
+  }
+
+  /**
+   * The one workspace-pinned flag query, shared by the review queue and the
+   * evidence export so the tenant filter and the citation joins exist once.
+   * Citations ride on LEFT JOINs (no N+1). Each join is pinned to the flag's
+   * workspace, so a line id from another tenant yields a null citation instead
+   * of a foreign documentId. Callers add ordering and paging.
+   */
+  private flagCitationQuery(where: SQL | undefined) {
     const po = alias(poLineItems, 'cite_po')
     const inv = alias(invoiceLineItems, 'cite_inv')
     const rcpt = alias(goodsReceiptLineItems, 'cite_rcpt')
-    const rows = await db
+    return db
       .select({
         flag: discrepancyFlags,
+        // Full-precision cursor for keyset readers; ::text keeps microseconds a JS Date drops.
+        createdAtText: sql<string>`${discrepancyFlags.createdAt}::text`,
         po: {
           id: po.id,
           lineNumber: po.lineNumber,
@@ -751,13 +806,12 @@ export class ComparisonService {
         and(eq(rcpt.id, discrepancyFlags.goodsReceiptLineItemId), eq(rcpt.workspaceId, discrepancyFlags.workspaceId)),
       )
       .where(where)
-      .orderBy(discrepancyFlags.createdAt, discrepancyFlags.id)
-      .limit(pageSize)
-      .offset(offset)
+  }
 
+  private withCitations({ flag, po: p, inv: i, rcpt: r }: Awaited<ReturnType<ComparisonService['flagCitationQuery']>>[number]) {
     const toConfidence = (value: string | null): number | null => (value === null ? null : Number(value))
     const toIso = (value: Date | null): string | null => (value === null ? null : value.toISOString())
-    const items = rows.map(({ flag, po: p, inv: i, rcpt: r }) => ({
+    return {
       ...flag,
       poLine: p && p.id !== null
         ? {
@@ -792,25 +846,139 @@ export class ComparisonService {
             documentId: r.documentId as string,
           }
         : null,
-    }))
+    }
+  }
 
-    // One aggregate serves both the stat cards and `total`. Deriving the total
-    // by summing the counts makes "the cards add up to the list" structural
-    // rather than something a test has to keep checking.
-    const grouped = await db
-      .select({ flagType: discrepancyFlags.flagType, value: count() })
+  /**
+   * Evidence-trail export: the same scope as `listFlags` (current flags by
+   * default, one run with `runId`), unpaginated, with document names, the
+   * dismissing user and every recorded decision. Read in keyset batches so a
+   * large export never holds an OFFSET scan or a duplicate/skipped row, and
+   * refused above `exportMaxFlags` so memory stays bounded.
+   */
+  async exportFlags(
+    workspaceId: string,
+    filters: { purchaseOrderId?: string; invoiceId?: string; status?: 'open' | 'dismissed'; runId?: string },
+  ): Promise<{ flags: EvidenceFlagRow[]; decisions: EvidenceDecisionRow[] }> {
+    const conditions = [eq(discrepancyFlags.workspaceId, workspaceId)]
+    if (filters.purchaseOrderId) conditions.push(eq(discrepancyFlags.purchaseOrderId, filters.purchaseOrderId))
+    if (filters.invoiceId) conditions.push(eq(discrepancyFlags.invoiceId, filters.invoiceId))
+    if (filters.status) conditions.push(eq(discrepancyFlags.status, filters.status))
+    conditions.push(
+      filters.runId ? eq(discrepancyFlags.comparisonRunId, filters.runId) : this.currentFlagScope(workspaceId),
+    )
+
+    // Refuse from a COUNT before reading any flag row.
+    const [{ value: matching }] = await db
+      .select({ value: count() })
       .from(discrepancyFlags)
-      .where(where)
-      .groupBy(discrepancyFlags.flagType)
-
-    const counts = { ...EMPTY_FLAG_COUNTS }
-    let total = 0
-    for (const row of grouped) {
-      counts[row.flagType] = Number(row.value)
-      total += Number(row.value)
+      .where(and(...conditions))
+    if (Number(matching) > this.exportMaxFlags) {
+      throw new UnprocessableEntityException('Too many flags to export at once; narrow the filters')
     }
 
-    return { ...buildOffsetResult(items, total, page, pageSize), counts }
+    // Keyset on the raw created_at (full microseconds, via its ::text form)
+    // plus id, so the (workspace_id, status, created_at) index can serve it.
+    const batches: Awaited<ReturnType<ComparisonService['flagCitationQuery']>> = []
+    let cursor: { createdAt: string; id: string } | null = null
+    for (;;) {
+      const where: SQL | undefined = cursor
+        ? and(
+            ...conditions,
+            sql`(${discrepancyFlags.createdAt}, ${discrepancyFlags.id}) > (${cursor.createdAt}::timestamp, ${cursor.id}::uuid)`,
+          )
+        : and(...conditions)
+      const limit = Math.min(this.exportBatchSize, this.exportMaxFlags - batches.length + 1)
+      const rows = await this.flagCitationQuery(where)
+        .orderBy(asc(discrepancyFlags.createdAt), asc(discrepancyFlags.id))
+        .limit(limit)
+      batches.push(...rows)
+      if (batches.length > this.exportMaxFlags) {
+        throw new UnprocessableEntityException('Too many flags to export at once; narrow the filters')
+      }
+      if (rows.length < limit) break
+      const last = rows[rows.length - 1]
+      cursor = { createdAt: last.createdAtText, id: last.flag.id }
+    }
+
+    if (batches.length === 0) return { flags: [], decisions: [] }
+    const cited = batches.map((row) => this.withCitations(row))
+
+    // Document names and dismissers, each looked up pinned to the workspace.
+    const unique = (values: (string | null | undefined)[]) => [...new Set(values.filter((v): v is string => !!v))]
+    const chunks = <T>(list: T[]): T[][] => {
+      const out: T[][] = []
+      for (let i = 0; i < list.length; i += EXPORT_ID_CHUNK) out.push(list.slice(i, i + EXPORT_ID_CHUNK))
+      return out
+    }
+    const poIds = unique(cited.map((f) => f.poLine?.documentId))
+    const invIds = unique(cited.map((f) => f.invoiceLine?.documentId))
+    const rcptIds = unique(cited.map((f) => f.receiptLine?.documentId))
+    const userIds = unique(cited.map((f) => f.dismissedBy))
+
+    const names = new Map<string, string>()
+    for (const part of chunks(poIds)) {
+      const rows = await db
+        .select({ id: purchaseOrders.id, name: purchaseOrders.name })
+        .from(purchaseOrders)
+        .where(and(eq(purchaseOrders.workspaceId, workspaceId), inArray(purchaseOrders.id, part)))
+      for (const row of rows) names.set(row.id, row.name)
+    }
+    for (const part of chunks(invIds)) {
+      const rows = await db
+        .select({ id: invoices.id, name: invoices.name })
+        .from(invoices)
+        .where(and(eq(invoices.workspaceId, workspaceId), inArray(invoices.id, part)))
+      for (const row of rows) names.set(row.id, row.name)
+    }
+    for (const part of chunks(rcptIds)) {
+      const rows = await db
+        .select({ id: goodsReceipts.id, name: goodsReceipts.name })
+        .from(goodsReceipts)
+        .where(and(eq(goodsReceipts.workspaceId, workspaceId), inArray(goodsReceipts.id, part)))
+      for (const row of rows) names.set(row.id, row.name)
+    }
+    const emails = new Map<string, string>()
+    for (const part of chunks(userIds)) {
+      const rows = await db.select({ id: users.id, email: users.email }).from(users).where(inArray(users.id, part))
+      for (const row of rows) emails.set(row.id, row.email)
+    }
+
+    const name = (citation: (typeof cited)[number]['poLine']): EvidenceCitation | null =>
+      citation ? { ...citation, documentName: names.get(citation.documentId) ?? null } : null
+    const flags: EvidenceFlagRow[] = cited.map((flag) => ({
+      ...flag,
+      poLine: name(flag.poLine),
+      invoiceLine: name(flag.invoiceLine),
+      receiptLine: name(flag.receiptLine),
+      dismissedByEmail: flag.dismissedBy ? (emails.get(flag.dismissedBy) ?? null) : null,
+    }))
+
+    const decisions: EvidenceDecisionRow[] = []
+    for (const part of chunks(flags.map((flag) => flag.id))) {
+      const rows = await db
+        .select({
+          id: discrepancyDecisions.id,
+          discrepancyFlagId: discrepancyDecisions.discrepancyFlagId,
+          outcome: discrepancyDecisions.outcome,
+          note: discrepancyDecisions.note,
+          actorEmail: users.email,
+          actorRole: discrepancyDecisions.actorRole,
+          createdAt: discrepancyDecisions.createdAt,
+        })
+        .from(discrepancyDecisions)
+        .leftJoin(users, eq(users.id, discrepancyDecisions.actorUserId))
+        .where(
+          and(
+            eq(discrepancyDecisions.workspaceId, workspaceId),
+            inArray(discrepancyDecisions.discrepancyFlagId, part),
+          ),
+        )
+      decisions.push(...rows)
+    }
+    decisions.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime() || a.id.localeCompare(b.id))
+
+    return { flags, decisions }
   }
 
   /**

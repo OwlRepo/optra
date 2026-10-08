@@ -9,6 +9,7 @@ import { and, eq, like } from 'drizzle-orm'
 import request from 'supertest'
 import sharp from 'sharp'
 import * as XLSX from 'xlsx'
+import { ThrottlerStorage, ThrottlerStorageService } from '@nestjs/throttler'
 import {
   comparisonRuns,
   db,
@@ -22,9 +23,11 @@ import {
   poLineItems,
   purchaseOrders,
   refreshTokens,
+  usageEvents,
   users,
   workspaceEvents,
   workspaceMembers,
+  workspaceSubscriptions,
   workspaces,
 } from '@repo/db'
 import { AppModule } from '../src/app.module'
@@ -2618,6 +2621,423 @@ describe('Procurement flow (e2e)', () => {
       expect(answers).toEqual(
         routes.map(([route]) => ({ route, status: 400, message: 'Validation failed (uuid is expected)' })),
       )
+    })
+  })
+
+  // S4: matched-line metering on the manual compare route. The pairs are seeded
+  // straight into the tables (status done, line rows present): the gate sits
+  // after every 400 and before the run row, so what matters here is the HTTP
+  // answer, the ledger and the run table.
+  describe('billing metering (S4)', () => {
+    const DAY = 24 * 60 * 60 * 1000
+
+    async function withEnforcement<T>(value: string, fn: () => Promise<T>): Promise<T> {
+      const previous = process.env.BILLING_ENFORCEMENT
+      process.env.BILLING_ENFORCEMENT = value
+      try {
+        return await fn()
+      } finally {
+        if (previous === undefined) delete process.env.BILLING_ENFORCEMENT
+        else process.env.BILLING_ENFORCEMENT = previous
+      }
+    }
+
+    async function seedBillingOwner(label: string, state: 'none' | 'trial' | 'solo' | 'exempt') {
+      const owner = await seedOwnerWithWorkspace(app, `${prefix}s4-${label}@example.com`, `S4 ${label}`)
+      if (state === 'trial' || state === 'exempt') {
+        await db
+          .update(workspaces)
+          .set({ trialEndsAt: state === 'trial' ? new Date(Date.now() + 5 * DAY) : null, billingExempt: state === 'exempt' })
+          .where(eq(workspaces.id, owner.workspaceId))
+      }
+      if (state === 'solo') {
+        await db.insert(workspaceSubscriptions).values({
+          workspaceId: owner.workspaceId,
+          lsSubscriptionId: `sub-${owner.workspaceId}`,
+          lsCustomerId: 'cus-1',
+          lsVariantId: '9001',
+          plan: 'solo',
+          status: 'active',
+          seats: 1,
+          lsUpdatedAt: new Date('2026-10-01T00:00:00.000Z'),
+        })
+      }
+      return owner
+    }
+
+    async function seedPair(workspaceId: string, lineCount: number) {
+      const [po] = await db
+        .insert(purchaseOrders)
+        .values({ workspaceId, name: 'po.csv', status: 'done', rowCount: lineCount })
+        .returning()
+      const [invoice] = await db
+        .insert(invoices)
+        .values({ workspaceId, name: 'invoice.csv', status: 'done', rowCount: lineCount, purchaseOrderId: po.id })
+        .returning()
+      const lines = Array.from({ length: lineCount }, (_, i) => ({ sku: `S4-${i + 1}`, quantity: '10', unitPrice: '5.00' }))
+      await db.insert(poLineItems).values(lines.map((line, i) => ({ workspaceId, purchaseOrderId: po.id, lineNumber: i + 1, ...line })))
+      await db
+        .insert(invoiceLineItems)
+        .values(lines.map((line, i) => ({ workspaceId, invoiceId: invoice.id, lineNumber: i + 1, ...line, quantity: '8' })))
+      return { po, invoice }
+    }
+
+    async function seedUsage(workspaceId: string, quantity: number) {
+      await db.insert(usageEvents).values({
+        workspaceId,
+        kind: 'matched_line',
+        quantity,
+        idempotencyKey: `e2e-seed:${Math.random().toString(36).slice(2)}`,
+        occurredAt: new Date(),
+      })
+    }
+
+    const ledgerOf = (workspaceId: string) =>
+      db.select().from(usageEvents).where(eq(usageEvents.workspaceId, workspaceId))
+    const runsOf = (workspaceId: string) =>
+      db.select().from(comparisonRuns).where(eq(comparisonRuns.workspaceId, workspaceId))
+
+    const compare = (workspaceId: string, token: string, poId: string, invoiceId: string) =>
+      request(app.getHttpServer())
+        .post(`/workspaces/${workspaceId}/procurement/discrepancies/compare`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ purchaseOrderId: poId, invoiceId })
+
+    it('error: a workspace with no trial and no subscription gets 402 SUBSCRIPTION_REQUIRED on compare and no run row is written', async () => {
+      const owner = await seedBillingOwner('none', 'none')
+      const { po, invoice } = await seedPair(owner.workspaceId, 2)
+
+      const res = await withEnforcement('on', () => compare(owner.workspaceId, owner.accessToken, po.id, invoice.id).expect(402))
+
+      expect(res.body).toMatchObject({ statusCode: 402, code: 'SUBSCRIPTION_REQUIRED' })
+      expect(typeof res.body.message).toBe('string')
+      expect(await runsOf(owner.workspaceId)).toHaveLength(0)
+      expect(await ledgerOf(owner.workspaceId)).toHaveLength(0)
+    })
+
+    it('error: a member gets 403 before the gate', async () => {
+      const owner = await seedBillingOwner('member', 'none')
+      const member = await seedMemberOfWorkspace(app, owner.workspaceId, `${prefix}s4-member-user@example.com`)
+      const { po, invoice } = await seedPair(owner.workspaceId, 1)
+
+      await withEnforcement('on', () => compare(owner.workspaceId, member.accessToken, po.id, invoice.id).expect(403))
+
+      expect(await ledgerOf(owner.workspaceId)).toHaveLength(0)
+    })
+
+    it("error: another workspace's purchase order id is 404 before the gate and counts nothing", async () => {
+      const mine = await seedBillingOwner('idor-mine', 'trial')
+      const theirs = await seedBillingOwner('idor-theirs', 'trial')
+      const foreign = await seedPair(theirs.workspaceId, 2)
+
+      await withEnforcement('on', () => compare(mine.workspaceId, mine.accessToken, foreign.po.id, foreign.invoice.id).expect(404))
+
+      expect(await ledgerOf(mine.workspaceId)).toHaveLength(0)
+      expect(await ledgerOf(theirs.workspaceId)).toHaveLength(0)
+    })
+
+    it('error: a new pair over the Solo quota (399 lines already used) gets 402 QUOTA_EXCEEDED with quota matchedLines', async () => {
+      const owner = await seedBillingOwner('quota', 'solo')
+      await seedUsage(owner.workspaceId, 399)
+      const { po, invoice } = await seedPair(owner.workspaceId, 2)
+
+      const res = await withEnforcement('on', () => compare(owner.workspaceId, owner.accessToken, po.id, invoice.id).expect(402))
+
+      expect(res.body).toMatchObject({ statusCode: 402, code: 'QUOTA_EXCEEDED', quota: 'matchedLines' })
+      expect(await runsOf(owner.workspaceId)).toHaveLength(0)
+      expect(await ledgerOf(owner.workspaceId)).toHaveLength(1)
+    })
+
+    it('edge: comparing an already counted pair at quota still succeeds', async () => {
+      const owner = await seedBillingOwner('again', 'solo')
+      const { po, invoice } = await seedPair(owner.workspaceId, 2)
+      await withEnforcement('on', () => compare(owner.workspaceId, owner.accessToken, po.id, invoice.id).expect(201))
+      await seedUsage(owner.workspaceId, 398)
+
+      await withEnforcement('on', () => compare(owner.workspaceId, owner.accessToken, po.id, invoice.id).expect(201))
+
+      const counted = (await ledgerOf(owner.workspaceId)).filter((row) => row.idempotencyKey.startsWith(`cmp:${po.id}:${invoice.id}:`))
+      expect(counted).toHaveLength(1)
+      expect(await runsOf(owner.workspaceId)).toHaveLength(2)
+    })
+
+    it('edge: a re-parsed PO with more lines charges only the extra lines, and a refused delta is 402 QUOTA_EXCEEDED', async () => {
+      const owner = await seedBillingOwner('reparse', 'solo')
+      const { po, invoice } = await seedPair(owner.workspaceId, 2)
+      await withEnforcement('on', () => compare(owner.workspaceId, owner.accessToken, po.id, invoice.id).expect(201))
+
+      // Re-parse: the PO now has 5 lines (3 more). Same pair, same month.
+      await db.insert(poLineItems).values(
+        [3, 4, 5].map((n) => ({ workspaceId: owner.workspaceId, purchaseOrderId: po.id, lineNumber: n, sku: `S4-${n}`, quantity: '10', unitPrice: '5.00' })),
+      )
+      await withEnforcement('on', () => compare(owner.workspaceId, owner.accessToken, po.id, invoice.id).expect(201))
+
+      const counted = (await ledgerOf(owner.workspaceId)).filter((row) => row.idempotencyKey.startsWith(`cmp:${po.id}:${invoice.id}:`))
+      expect(counted.map((row) => row.quantity).sort((a, b) => a - b)).toEqual([2, 3])
+
+      // Another re-parse to 8 lines would add 3 more; only 2 of 400 remain after seeding 393.
+      await seedUsage(owner.workspaceId, 393)
+      await db.insert(poLineItems).values(
+        [6, 7, 8].map((n) => ({ workspaceId: owner.workspaceId, purchaseOrderId: po.id, lineNumber: n, sku: `S4-${n}`, quantity: '10', unitPrice: '5.00' })),
+      )
+      const res = await withEnforcement('on', () => compare(owner.workspaceId, owner.accessToken, po.id, invoice.id).expect(402))
+      expect(res.body).toMatchObject({ statusCode: 402, code: 'QUOTA_EXCEEDED', quota: 'matchedLines' })
+      const total = (await ledgerOf(owner.workspaceId)).reduce((sum, row) => sum + row.quantity, 0)
+      expect(total).toBe(2 + 3 + 393)
+    })
+
+    it('edge: with enforcement off the same over-quota workspace compares and the ledger still gets the row', async () => {
+      const owner = await seedBillingOwner('off', 'solo')
+      await seedUsage(owner.workspaceId, 399)
+      const { po, invoice } = await seedPair(owner.workspaceId, 2)
+
+      await withEnforcement('off', () => compare(owner.workspaceId, owner.accessToken, po.id, invoice.id).expect(201))
+
+      const rows = await ledgerOf(owner.workspaceId)
+      expect(rows.some((row) => row.idempotencyKey.startsWith(`cmp:${po.id}:${invoice.id}:`) && row.quantity === 2)).toBe(true)
+      expect(await runsOf(owner.workspaceId)).toHaveLength(1)
+    })
+
+    it("happy: a trial workspace's first compare writes one matched_line row", async () => {
+      const owner = await seedBillingOwner('trial', 'trial')
+      const { po, invoice } = await seedPair(owner.workspaceId, 3)
+
+      await withEnforcement('on', () => compare(owner.workspaceId, owner.accessToken, po.id, invoice.id).expect(201))
+
+      const rows = await ledgerOf(owner.workspaceId)
+      expect(rows).toHaveLength(1)
+      expect(rows[0]).toMatchObject({ kind: 'matched_line', quantity: 3 })
+      expect(rows[0].idempotencyKey).toMatch(new RegExp(`^cmp:${po.id}:${invoice.id}:\\d{4}-\\d{2}-\\d{2}$`))
+    })
+
+    it('happy: an exempt workspace compares past 400 lines', async () => {
+      const owner = await seedBillingOwner('exempt', 'exempt')
+      const { po, invoice } = await seedPair(owner.workspaceId, 401)
+
+      await withEnforcement('on', () => compare(owner.workspaceId, owner.accessToken, po.id, invoice.id).expect(201))
+
+      const rows = await ledgerOf(owner.workspaceId)
+      expect(rows).toHaveLength(1)
+      expect(rows[0].quantity).toBe(401)
+    })
+  })
+
+  // Evidence-trail export: a read-only xlsx of the review queue's scope. Guard
+  // chain is JwtAuthGuard -> WorkspaceMemberGuard (members may read flags), then
+  // ValidationPipe on the same filters as the list.
+  describe('evidence-trail export', () => {
+    const XLSX_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    const poCsv = 'sku,description,qty,unit price\nA1,Widget,10,5.00\nC3,Only On PO,1,1.00'
+    const invoiceCsv = 'sku,description,qty,unit price\nA1,Widget,10,6.00\nD4,Only On Invoice,1,1.00'
+    const exportPath = (workspaceId: string, query = '') =>
+      `/workspaces/${workspaceId}/procurement/discrepancies/export${query}`
+
+    const binary = (res: NodeJS.ReadableStream, callback: (err: Error | null, body: Buffer) => void) => {
+      const chunks: Buffer[] = []
+      res.on('data', (chunk: Buffer) => chunks.push(chunk))
+      res.on('end', () => callback(null, Buffer.concat(chunks)))
+    }
+
+    const download = (token: string, workspaceId: string, query = '') =>
+      request(app.getHttpServer())
+        .get(exportPath(workspaceId, query))
+        .set('Authorization', `Bearer ${token}`)
+        .buffer(true)
+        .parse(binary as never)
+
+    const sheetRows = (body: Buffer, name: string) => {
+      const book = XLSX.read(body, { type: 'buffer' })
+      return XLSX.utils.sheet_to_json<unknown[]>(book.Sheets[name], { header: 1, defval: '', raw: true })
+    }
+
+    async function seedComparedPair(owner: { workspaceId: string; accessToken: string }, numbers: { po: string; invoice: string }, poName = 'po.csv') {
+      const vendorId = await createVendor(app, owner.workspaceId, owner.accessToken)
+      const po = await request(app.getHttpServer())
+        .post(`/workspaces/${owner.workspaceId}/procurement/purchase-orders`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .field('vendorId', vendorId)
+        .field('poNumber', numbers.po)
+        .field('currency', 'USD')
+        .attach('file', Buffer.from(poCsv), poName)
+        .expect(201)
+      const invoice = await request(app.getHttpServer())
+        .post(`/workspaces/${owner.workspaceId}/procurement/invoices`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .field('purchaseOrderId', po.body.id)
+        .field('invoiceNumber', numbers.invoice)
+        .field('currency', 'USD')
+        .attach('file', Buffer.from(invoiceCsv), 'invoice.csv')
+        .expect(201)
+      await waitForPoDone(po.body.id)
+      await waitForInvoiceDone(invoice.body.id)
+      await request(app.getHttpServer())
+        .post(`/workspaces/${owner.workspaceId}/procurement/discrepancies/compare`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .send({ purchaseOrderId: po.body.id, invoiceId: invoice.body.id })
+        .expect(201)
+      return { poId: po.body.id as string, invoiceId: invoice.body.id as string }
+    }
+
+    // Every supertest call comes from 127.0.0.1, so the export's own
+    // 5-per-minute limit (one bucket per visitor address) would carry over
+    // between tests. Each test starts with an empty bucket; the limit itself
+    // is proven by the 429 test below.
+    beforeEach(() => {
+      app.get<ThrottlerStorageService>(ThrottlerStorage).storage.clear()
+    })
+
+    it('error: answers 401 without a token', async () => {
+      const res = await request(app.getHttpServer()).get(exportPath('00000000-0000-4000-8000-000000000000'))
+
+      expect(res.status).toBe(401)
+      expect(res.body.message).toBe('Unauthorized')
+    })
+
+    it('error: a user outside the workspace is refused 403 and gets no workbook', async () => {
+      const owner = await seedOwnerWithWorkspace(app, `${prefix}exp-owner@example.com`, 'Exp Owner')
+      const outsider = await seedOwnerWithWorkspace(app, `${prefix}exp-outsider@example.com`, 'Exp Outsider')
+
+      const res = await download(outsider.accessToken, owner.workspaceId)
+
+      expect(res.status).toBe(403)
+      expect(res.headers['content-type']).not.toContain('spreadsheetml')
+    })
+
+    it('error: a malformed purchaseOrderId, invoiceId or runId answers 400 and an unknown status answers 400', async () => {
+      const owner = await seedOwnerWithWorkspace(app, `${prefix}exp-400@example.com`, 'Exp 400')
+
+      const answers = [
+        await download(owner.accessToken, owner.workspaceId, '?purchaseOrderId=not-a-uuid'),
+        await download(owner.accessToken, owner.workspaceId, '?invoiceId=not-a-uuid'),
+        await download(owner.accessToken, owner.workspaceId, '?runId=not-a-uuid'),
+        await download(owner.accessToken, owner.workspaceId, '?status=banana'),
+      ]
+
+      expect(answers.map((res) => res.status)).toEqual([400, 400, 400, 400])
+    })
+
+    it("error: another workspace's purchase order id as a filter returns a workbook with no rows and none of its data", async () => {
+      const mine = await seedOwnerWithWorkspace(app, `${prefix}exp-idor-a@example.com`, 'Exp Idor A')
+      const theirs = await seedOwnerWithWorkspace(app, `${prefix}exp-idor-b@example.com`, 'Exp Idor B')
+      await seedComparedPair(mine, { po: 'PO-EXP-IA', invoice: 'INV-EXP-IA' })
+      const foreign = await seedComparedPair(theirs, { po: 'PO-EXP-IB', invoice: 'INV-EXP-IB' }, 'secret-po-name.csv')
+
+      const res = await download(mine.accessToken, mine.workspaceId, `?purchaseOrderId=${foreign.poId}`)
+
+      expect(res.status).toBe(200)
+      expect(sheetRows(res.body, 'Flags')).toHaveLength(1)
+      expect(res.body.toString('latin1')).not.toContain('secret-po-name.csv')
+    })
+
+    it('error: a sixth export from the same visitor within a minute answers 429', async () => {
+      const owner = await seedOwnerWithWorkspace(app, `${prefix}exp-throttle@example.com`, 'Exp Throttle')
+      const statuses: number[] = []
+      for (let i = 0; i < 6; i++) statuses.push((await download(owner.accessToken, owner.workspaceId)).status)
+
+      expect(statuses).toEqual([200, 200, 200, 200, 200, 429])
+    })
+
+    it('edge: a workspace with no flags still answers 200 with both sheets and only header rows', async () => {
+      const owner = await seedOwnerWithWorkspace(app, `${prefix}exp-none@example.com`, 'Exp None')
+
+      const res = await download(owner.accessToken, owner.workspaceId)
+
+      expect(res.status).toBe(200)
+      expect(XLSX.read(res.body, { type: 'buffer' }).SheetNames).toEqual(['Flags', 'Decisions'])
+      expect(sheetRows(res.body, 'Flags')).toHaveLength(1)
+      expect(sheetRows(res.body, 'Decisions')).toHaveLength(1)
+    })
+
+    it('edge: a plain member can export, since members can already read every flag', async () => {
+      const owner = await seedOwnerWithWorkspace(app, `${prefix}exp-mem-owner@example.com`, 'Exp Member')
+      const member = await seedMemberOfWorkspace(app, owner.workspaceId, `${prefix}exp-mem@example.com`)
+
+      const res = await download(member.accessToken, owner.workspaceId)
+
+      expect(res.status).toBe(200)
+    })
+
+    it('edge: the status filter narrows the export like it narrows the list', async () => {
+      const owner = await seedOwnerWithWorkspace(app, `${prefix}exp-status@example.com`, 'Exp Status')
+      await seedComparedPair(owner, { po: 'PO-EXP-S', invoice: 'INV-EXP-S' })
+      const listed = await request(app.getHttpServer())
+        .get(`/workspaces/${owner.workspaceId}/procurement/discrepancies`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .expect(200)
+      await request(app.getHttpServer())
+        .patch(`/workspaces/${owner.workspaceId}/procurement/discrepancies/${listed.body.items[0].id}/dismiss`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .expect(200)
+
+      const open = await download(owner.accessToken, owner.workspaceId, '?status=open')
+      const dismissed = await download(owner.accessToken, owner.workspaceId, '?status=dismissed')
+
+      expect(sheetRows(open.body, 'Flags')).toHaveLength(3)
+      expect(sheetRows(dismissed.body, 'Flags')).toHaveLength(2)
+    })
+
+    it('regression: the response is a private, non-sniffable, uncached xlsx attachment named by UTC date', async () => {
+      const owner = await seedOwnerWithWorkspace(app, `${prefix}exp-headers@example.com`, 'Exp Headers')
+      const utcDay = () => new Date().toISOString().slice(0, 10)
+      const before = utcDay()
+
+      const res = await download(owner.accessToken, owner.workspaceId)
+
+      const after = utcDay()
+      expect(res.status).toBe(200)
+      expect(res.headers['content-type']).toContain(XLSX_TYPE)
+      expect([before, after].map((day) => `attachment; filename="optra-evidence-trail-${day}.xlsx"`)).toContain(
+        res.headers['content-disposition'],
+      )
+      expect(res.headers['x-content-type-options']).toBe('nosniff')
+      expect(res.headers['cache-control']).toBe('private, no-store')
+    })
+
+    it('happy: exports flags with citations, a decision row with the actor email, and a formula SKU neutralised', async () => {
+      const owner = await seedOwnerWithWorkspace(app, `${prefix}exp-happy@example.com`, 'Exp Happy')
+      await seedComparedPair(owner, { po: 'PO-EXP-H', invoice: 'INV-EXP-H' }, 'march-po.csv')
+      const list = await request(app.getHttpServer())
+        .get(`/workspaces/${owner.workspaceId}/procurement/discrepancies`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .expect(200)
+      const price = list.body.items.find((flag: { flagType: string }) => flag.flagType === 'price_mismatch')
+      const missing = list.body.items.find((flag: { flagType: string }) => flag.flagType === 'missing_on_po')
+      await request(app.getHttpServer())
+        .post(`/workspaces/${owner.workspaceId}/procurement/discrepancies/${price.id}/decisions`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .send({ outcome: 'approved_exception', note: 'Vendor agreed the new price.' })
+        .expect(201)
+      await db.update(discrepancyFlags).set({ sku: '=HYPERLINK("x")' }).where(eq(discrepancyFlags.id, missing.id))
+
+      const res = await download(owner.accessToken, owner.workspaceId)
+
+      expect(res.status).toBe(200)
+      expect(XLSX.read(res.body, { type: 'buffer' }).SheetNames).toEqual(['Flags', 'Decisions'])
+      const flags = sheetRows(res.body, 'Flags')
+      const header = flags[0] as string[]
+      expect(header.slice(0, 5)).toEqual(['Flag ID', 'Created (UTC ISO)', 'Type', 'Status', 'SKU'])
+      expect(header).toContain('Latest decision')
+      expect(flags).toHaveLength(4)
+      const col = (row: unknown[], name: string) => row[header.indexOf(name)]
+      const priceRow = flags.find((row) => row[0] === price.id) as unknown[]
+      expect(col(priceRow, 'PO document')).toBe('march-po.csv')
+      expect(col(priceRow, 'PO source')).toBe('row 2')
+      expect(col(priceRow, 'Invoice source')).toBe('row 2')
+      expect(col(priceRow, 'Latest decision')).toBe('approved exception')
+      expect(col(priceRow, 'Decided by')).toBe(`${prefix}exp-happy@example.com`)
+      const missingRow = flags.find((row) => row[0] === missing.id) as unknown[]
+      expect(col(missingRow, 'SKU')).toBe(`'=HYPERLINK("x")`)
+      const decisions = sheetRows(res.body, 'Decisions')
+      expect(decisions[0]).toEqual(['Flag ID', 'SKU', 'Outcome', 'Note', 'By', 'Role', 'At (UTC ISO)'])
+      expect(decisions).toHaveLength(2)
+      expect(decisions[1].slice(0, 6)).toEqual([
+        price.id,
+        'A1',
+        'approved exception',
+        'Vendor agreed the new price.',
+        `${prefix}exp-happy@example.com`,
+        'owner',
+      ])
     })
   })
 })

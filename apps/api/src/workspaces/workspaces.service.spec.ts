@@ -363,4 +363,42 @@ describe('WorkspacesService', () => {
     expect(hit.items.map((m: any) => m.userId)).toEqual([member.id])
     expect(hit.total).toBe(1)
   })
+
+  describe('billing columns', () => {
+    const PUBLIC_KEYS = ['createdAt', 'id', 'name', 'ownerId']
+
+    async function seedUser(label: string) {
+      const [user] = await db
+        .insert(users)
+        .values({ email: `workspaces-spec-billing-${label}-${Date.now()}-${Math.random().toString(36).slice(2)}@example.com`, passwordHash: 'x', isVerified: true })
+        .returning()
+      return user
+    }
+
+    it('regression: create leaves trial_ends_at null (extra workspaces never get a trial)', async () => {
+      const owner = await seedUser('trial')
+
+      const workspace = await service.create(owner.id, 'Spec WS Billing Trial')
+
+      const [row] = await db.select().from(workspaces).where(eq(workspaces.id, workspace.id)).limit(1)
+      expect(row.trialEndsAt).toBeNull()
+      expect(row.billingExempt).toBe(false)
+    })
+
+    it('regression: create, getOne, update and acceptInvite return only id, name, ownerId and createdAt', async () => {
+      const owner = await seedUser('shape-owner')
+      const invitee = await seedUser('shape-invitee')
+
+      const created = await service.create(owner.id, 'Spec WS Billing Shape')
+      const fetched = await service.getOne(created.id)
+      const updated = await service.update(created.id, 'Spec WS Billing Shape 2')
+      await service.invite(created.id, invitee.email)
+      const [invite] = await db.select().from(invitations).where(eq(invitations.email, invitee.email)).limit(1)
+      const joined = await service.acceptInvite(invitee.id, invitee.email, invite.token)
+
+      for (const result of [created, fetched, updated, joined]) {
+        expect(Object.keys(result).sort()).toEqual(PUBLIC_KEYS)
+      }
+    })
+  })
 })

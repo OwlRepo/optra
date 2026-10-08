@@ -2,21 +2,21 @@
 
 ## Coverage
 
-- Detected source files: 1201
-- Source files represented by graph nodes: 1201
-- Semantic files represented: 156
-- Raw extracted relationships retained: 16774
-- Interactive unique endpoint-pair edges: 16374
-- Collapsed edge groups preserved in ledger: 258
-- Zero-symbol files materialized as artifacts: 47
-- Unresolved endpoint IDs materialized as placeholders: 309
+- Detected source files: 1271
+- Source files represented by graph nodes: 1271
+- Semantic files represented: 161
+- Raw extracted relationships retained: 18482
+- Interactive unique endpoint-pair edges: 18067
+- Collapsed edge groups preserved in ledger: 269
+- Zero-symbol files materialized as artifacts: 48
+- Unresolved endpoint IDs materialized as placeholders: 347
 
 ## Integrity
 
 - Missing endpoint edges: 0
 - Dangling endpoint edges: 0
 - Self-loop edges: 0
-- Undirected collapsed variants: 329
+- Undirected collapsed variants: 340
 
 Parallel variants are retained in `collapsed-edge-variants.json`; the interactive graph remains an undirected simple graph.
 
@@ -25,7 +25,6 @@ Parallel variants are retained in `collapsed-edge-variants.json`; the interactiv
 - `.claude/launch.json`
 - `.claude/settings.example.json`
 - `.claude/settings.json`
-- `.claude/settings.local.json`
 - `apps/api/test/jest-e2e.json`
 - `docker/seaweedfs/s3.json`
 - `packages/db/drizzle/meta/0000_snapshot.json`
@@ -65,6 +64,8 @@ Parallel variants are retained in `collapsed-edge-variants.json`; the interactiv
 - `packages/db/drizzle/meta/0034_snapshot.json`
 - `packages/db/drizzle/meta/0035_snapshot.json`
 - `packages/db/drizzle/meta/0036_snapshot.json`
+- `packages/db/drizzle/meta/0037_snapshot.json`
+- `packages/db/drizzle/meta/0038_snapshot.json`
 - `packages/db/drizzle/meta/_journal.json`
 - `scripts/eval/eval-dataset.json`
 - `scripts/eval/extraction-eval-dataset.json`

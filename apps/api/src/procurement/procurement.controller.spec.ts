@@ -1,6 +1,8 @@
-import { BadRequestException } from '@nestjs/common'
+import { BadRequestException, RequestMethod } from '@nestjs/common'
 import type { Response } from 'express'
 import { ProcurementController, photoFileFilter } from './procurement.controller'
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard'
+import { WorkspaceMemberGuard } from '../auth/guards/workspace-member.guard'
 import { ComparisonService } from './comparison.service'
 import { ProcurementDocumentsService } from './procurement-documents.service'
 import { ProcurementReviewService } from './procurement-review.service'
@@ -233,5 +235,79 @@ describe('photoFileFilter', () => {
     photoFileFilter(null, jpeg, callback)
 
     expect(callback).toHaveBeenCalledWith(null, true)
+  })
+})
+
+// Evidence-trail export. The controller only wires guards, headers and the
+// workbook; the scope lives in ComparisonService.exportFlags.
+describe('ProcurementController evidence-trail export', () => {
+  let comparison: { exportFlags: jest.Mock }
+  let controller: ProcurementController
+
+  beforeEach(() => {
+    comparison = { exportFlags: jest.fn().mockResolvedValue({ flags: [], decisions: [] }) }
+    controller = new ProcurementController(
+      {} as unknown as ProcurementDocumentsService,
+      comparison as unknown as ComparisonService,
+      {} as unknown as ProcurementReviewService,
+    )
+  })
+
+  it('error: a service refusal sends no headers and no body', async () => {
+    comparison.exportFlags.mockRejectedValue(new Error('Too many flags to export at once; narrow the filters'))
+    const res = fakeRes()
+
+    await expect(controller.exportDiscrepancies('ws-1', {}, res)).rejects.toThrow('narrow the filters')
+
+    expect(res.set).not.toHaveBeenCalled()
+    expect(res.send).not.toHaveBeenCalled()
+  })
+
+  it('error: the route is readable by any member, so it carries the member guards and no RolesGuard', () => {
+    const guards = Reflect.getMetadata('__guards__', ProcurementController.prototype.exportDiscrepancies) as unknown[]
+
+    expect(guards).toEqual([JwtAuthGuard, WorkspaceMemberGuard])
+  })
+
+  it('edge: the route is GET discrepancies/export', () => {
+    const handler = ProcurementController.prototype.exportDiscrepancies
+
+    expect(Reflect.getMetadata('path', handler)).toBe('discrepancies/export')
+    expect(Reflect.getMetadata('method', handler)).toBe(RequestMethod.GET)
+  })
+
+  it('edge: the workspace id and the unpaginated filters go to the service unchanged', async () => {
+    const query = { purchaseOrderId: 'po-1', invoiceId: 'inv-1', status: 'open' as const, runId: 'run-1' }
+
+    await controller.exportDiscrepancies('ws-1', query, fakeRes())
+
+    expect(comparison.exportFlags).toHaveBeenCalledWith('ws-1', query)
+  })
+
+  it('edge: the export handler has its own throttle of 5 requests per 60 seconds', () => {
+    const handler = ProcurementController.prototype.exportDiscrepancies
+
+    expect(Reflect.getMetadata('THROTTLER:LIMITdefault', handler)).toBe(5)
+    expect(Reflect.getMetadata('THROTTLER:TTLdefault', handler)).toBe(60_000)
+  })
+
+  it('happy: sends the workbook as a private, non-sniffable xlsx attachment named by UTC date', async () => {
+    jest.useFakeTimers({ now: new Date('2026-10-08T23:30:00.000Z'), doNotFake: ['nextTick', 'setImmediate'] })
+    const res = fakeRes()
+
+    try {
+      await controller.exportDiscrepancies('ws-1', {}, res)
+    } finally {
+      jest.useRealTimers()
+    }
+
+    const headers = res.set.mock.calls[0][0] as Record<string, string>
+    expect(headers['Content-Type']).toBe('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    expect(headers['Content-Disposition']).toBe('attachment; filename="optra-evidence-trail-2026-10-08.xlsx"')
+    expect(headers['X-Content-Type-Options']).toBe('nosniff')
+    expect(headers['Cache-Control']).toBe('private, no-store')
+    const body = res.send.mock.calls[0][0] as Buffer
+    expect(Buffer.isBuffer(body)).toBe(true)
+    expect(headers['Content-Length']).toBe(String(body.length))
   })
 })

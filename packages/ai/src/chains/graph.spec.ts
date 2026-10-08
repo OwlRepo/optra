@@ -40,8 +40,12 @@ vi.mock("@repo/db", () => ({
 
 vi.mock("@langchain/openai", () => ({
   ChatOpenAI: class {
+    modelName: string;
     stream = streamMock;
     invoke = invokeMock;
+    constructor(fields: { modelName: string }) {
+      this.modelName = fields.modelName;
+    }
   },
 }));
 
@@ -625,5 +629,133 @@ describe("answerQuestionWithGraph", () => {
 
     expect(result.isFallback).toBe(true);
     expect(streamMock).not.toHaveBeenCalled();
+  });
+
+  describe("metering (S4)", () => {
+    const CONFIDENT = [
+      { id: "chunk-1", content: "Grounded context.", metadata: { documentId: "doc-1" }, score: 0.91 },
+    ];
+
+    beforeEach(() => {
+      vi.resetModules();
+      process.env.OPENAI_ANSWER_MODEL = "gpt-4o";
+      process.env.OPENAI_REWRITE_MODEL = "gpt-4o-mini";
+      process.env.OPENAI_GRADE_MODEL = "gpt-4o-mini";
+    });
+
+    afterEach(() => {
+      delete process.env.OPENAI_ANSWER_MODEL;
+      delete process.env.OPENAI_REWRITE_MODEL;
+      delete process.env.OPENAI_GRADE_MODEL;
+    });
+
+    it("edge: the rewrite and grade calls record on the meter passed to answerQuestionWithGraph", async () => {
+      process.env.SELF_GRADE_ENABLED = "true";
+      similaritySearchMock
+        .mockResolvedValueOnce([{ ...CONFIDENT[0], score: 0.3 }])
+        .mockResolvedValueOnce(CONFIDENT);
+      invokeMock
+        .mockResolvedValueOnce({
+          content: "rewritten question",
+          usage_metadata: { input_tokens: 10, output_tokens: 5, total_tokens: 15 },
+        })
+        .mockResolvedValueOnce({
+          content: "yes",
+          usage_metadata: { input_tokens: 20, output_tokens: 1, total_tokens: 21 },
+        });
+      streamMock.mockResolvedValue(
+        (async function* () {
+          yield { content: "answer" };
+          yield { content: "", usage_metadata: { input_tokens: 100, output_tokens: 40, total_tokens: 140 } };
+        })(),
+      );
+
+      const { answerQuestionWithGraph } = await import("./graph");
+      const { TokenMeter } = await import("../tokens");
+      const meter = new TokenMeter();
+      const result = await answerQuestionWithGraph("question", "ws-1", 5, undefined, undefined, [], meter);
+      for await (const _token of result.stream) {
+        // drain
+      }
+
+      // rewrite 15 + answer 140 + grade 21.
+      expect(meter.total).toBe(176);
+      expect(meter.inputTokens).toBe(130);
+      expect(meter.outputTokens).toBe(46);
+      // gpt-4o 100/40 = 650; gpt-4o-mini 30 in / 6 out = ceil(8.1) = 9.
+      expect(meter.costMicroUsd).toBe(659);
+      expect(meter.dominantModel).toBe("gpt-4o");
+    });
+
+    it("edge: only the trailing stream chunk's usage is counted on the confident streaming path", async () => {
+      similaritySearchMock.mockResolvedValue(CONFIDENT);
+      streamMock.mockResolvedValue(
+        (async function* () {
+          yield { content: "a" };
+          yield { content: "b" };
+          yield { content: "", usage_metadata: { input_tokens: 50, output_tokens: 20, total_tokens: 70 } };
+        })(),
+      );
+
+      const { answerQuestionWithGraph } = await import("./graph");
+      const { TokenMeter } = await import("../tokens");
+      const meter = new TokenMeter();
+      const result = await answerQuestionWithGraph("question", "ws-1", 5, undefined, undefined, [], meter);
+      const tokens: string[] = [];
+      for await (const token of result.stream) {
+        tokens.push(token);
+      }
+
+      expect(tokens).toEqual(["a", "b"]);
+      expect(meter.total).toBe(70);
+      expect(meter.inputTokens).toBe(50);
+      expect(meter.dominantModel).toBe("gpt-4o");
+    });
+
+    it("regression: answerQuestionWithGraph without a meter behaves as before", async () => {
+      similaritySearchMock.mockResolvedValue(CONFIDENT);
+      streamMock.mockResolvedValue(
+        (async function* () {
+          yield { content: "plain" };
+          yield { content: "", usage_metadata: { input_tokens: 5, output_tokens: 5, total_tokens: 10 } };
+        })(),
+      );
+
+      const { answerQuestionWithGraph } = await import("./graph");
+      const result = await answerQuestionWithGraph("question", "ws-1");
+      const tokens: string[] = [];
+      for await (const token of result.stream) {
+        tokens.push(token);
+      }
+
+      expect(result.isFallback).toBe(false);
+      expect(tokens).toEqual(["plain"]);
+    });
+
+    it("happy: the buffered generate path records the answer stream's usage on the meter", async () => {
+      process.env.SELF_GRADE_ENABLED = "true";
+      similaritySearchMock.mockResolvedValue(CONFIDENT);
+      streamMock.mockResolvedValue(
+        (async function* () {
+          yield { content: "buffered answer" };
+          yield { content: "", usage_metadata: { input_tokens: 100, output_tokens: 40, total_tokens: 140 } };
+        })(),
+      );
+      invokeMock.mockResolvedValueOnce({ content: "yes" });
+
+      const { answerQuestionWithGraph } = await import("./graph");
+      const { TokenMeter } = await import("../tokens");
+      const meter = new TokenMeter();
+      const result = await answerQuestionWithGraph("question", "ws-1", 5, undefined, undefined, [], meter);
+      const tokens: string[] = [];
+      for await (const token of result.stream) {
+        tokens.push(token);
+      }
+
+      expect(tokens).toEqual(["buffered answer"]);
+      expect(meter.total).toBe(140);
+      expect(meter.inputTokens).toBe(100);
+      expect(meter.outputTokens).toBe(40);
+    });
   });
 });

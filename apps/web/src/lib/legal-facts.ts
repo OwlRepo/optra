@@ -3,7 +3,7 @@
 export const SELLER_NAME = 'Romeo Angeles Jr.'
 export const SELLER_COUNTRY = 'Philippines'
 export const CONTACT_EMAIL = 'romeo@tyvera.app'
-export const LEGAL_LAST_UPDATED = '2026-10-06'
+export const LEGAL_LAST_UPDATED = '2026-10-08'
 export const DELETION_SLA_DAYS = 30
 export const VPS_BACKUP_COUNT = 7
 export const REFUND_WINDOW_DAYS = 14

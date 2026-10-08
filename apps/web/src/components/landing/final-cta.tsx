@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { ArrowRight } from 'lucide-react'
+import { TRIAL_DAYS } from '@/lib/legal-facts'
 
 export function FinalCta() {
   return (
@@ -35,7 +36,7 @@ export function FinalCta() {
               <ArrowRight aria-hidden="true" className="size-4" />
             </Link>
             <p className="mt-4 text-[13px] text-cta-surface-muted">
-              14-day free trial · ask and we delete your workspace and every file
+              {`${TRIAL_DAYS}-day free trial · ask and we delete your workspace and every file`}
             </p>
           </div>
         </div>

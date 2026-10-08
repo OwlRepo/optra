@@ -1,5 +1,5 @@
 import { defineConfig, devices } from '@playwright/test'
-import { API_PORT, API_URL, OPENAI_STUB_PORT, WEB_PORT, WEB_URL, apiEnv, runId } from './support/env'
+import { API_PORT, API_URL, LS_STUB_PORT, OPENAI_STUB_PORT, WEB_PORT, WEB_URL, apiEnv, runId } from './support/env'
 
 // The browser suite against the local stack: a real browser, the real Next.js
 // server, the real API, Postgres, Redis and SeaweedFS - and a stub in place of
@@ -44,6 +44,13 @@ export default defineConfig({
       command: 'bun stubs/openai-stub.ts',
       url: `http://127.0.0.1:${OPENAI_STUB_PORT}/health`,
       env: { PORT: String(OPENAI_STUB_PORT) },
+      reuseExistingServer: false,
+      stdout: 'pipe',
+    },
+    {
+      command: 'bun stubs/lemonsqueezy-stub.ts',
+      url: `http://127.0.0.1:${LS_STUB_PORT}/health`,
+      env: { PORT: String(LS_STUB_PORT) },
       reuseExistingServer: false,
       stdout: 'pipe',
     },
