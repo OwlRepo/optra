@@ -11,7 +11,7 @@ import { ConfigService } from '@nestjs/config'
 import { createHash } from 'crypto'
 import { and, eq, ne, sql } from 'drizzle-orm'
 import { billingEvents, db, workspaceSubscriptions, workspaces } from '@repo/db'
-import { SEATS_MAX, SEATS_MIN, isEntitledStatus, planForVariant } from './plans'
+import { SEATS_MAX, SEATS_MIN, isEntitledStatus, planForVariant, variantIdFor } from './plans'
 import { verifySignature } from './webhook-signature'
 
 const SUBSCRIPTION_EVENTS = new Set([
@@ -152,6 +152,18 @@ export class BillingWebhookService {
     }
   }
 
+  private hasValidBinding(event: ParsedEvent): boolean {
+    const { workspace_id: workspaceId, workspace_sig: workspaceSig } = event.customData
+    const secret = this.config.get<string>('LEMONSQUEEZY_WEBHOOK_SECRET')
+    return (
+      typeof workspaceId === 'string' &&
+      UUID_RE.test(workspaceId) &&
+      typeof workspaceSig === 'string' &&
+      !!secret &&
+      verifySignature(Buffer.from(workspaceId, 'utf8'), workspaceSig, secret)
+    )
+  }
+
   private async upsert(eventId: string, event: ParsedEvent): Promise<void> {
     const { attributes } = event
     // Our own misconfiguration or an unmapped variant is retryable: a terminal
@@ -160,6 +172,12 @@ export class BillingWebhookService {
     if (!expectedStore) throw new RetryableFailure('LEMONSQUEEZY_STORE_ID is not configured')
     if (String(attributes.store_id) !== expectedStore) throw new TerminalRejection('store_id mismatch')
     const plan = planForVariant(attributes.variant_id as string | number | null | undefined, this.config)
+    // The store is shared with another app: a subscription event that carries no
+    // valid workspace binding and a variant that is not ours is not ours. Only
+    // decidable when both variant ids are configured; otherwise stay retryable.
+    if (!plan && !this.hasValidBinding(event) && variantIdFor('solo', this.config) && variantIdFor('team', this.config)) {
+      throw new TerminalRejection(`foreign event: not an Optra subscription (variant ${String(attributes.variant_id ?? 'none')})`)
+    }
     if (!plan) throw new RetryableFailure('unknown variant (not mapped to a plan; check LEMONSQUEEZY_VARIANT_* env)')
 
     const workspaceId = event.customData.workspace_id
