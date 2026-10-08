@@ -135,6 +135,10 @@ export default function PrivacyPage() {
           below.
         </p>
         <p>
+          Billing records, including the payer name and email, are kept as required for tax and
+          accounting and are removed on request.
+        </p>
+        <p>
           Backups: the {VPS_BACKUP_COUNT} newest database backups are kept on the server. {offsite}{' '}
           Deleted data leaves backups when they expire.
         </p>

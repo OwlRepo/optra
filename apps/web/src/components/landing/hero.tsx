@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { ArrowRight } from 'lucide-react'
 import { Reveal } from '@/components/motion/reveal'
+import { TRIAL_DAYS } from '@/lib/legal-facts'
 import { HeroMatchDemo } from './hero-match-demo'
 
 export function Hero() {
@@ -42,7 +43,7 @@ export function Hero() {
           </div>
 
           <p className="mt-4 text-sm text-muted-foreground">
-            14-day free trial · reads the PDFs, spreadsheets and phone photos you already have
+            {`${TRIAL_DAYS}-day free trial · reads the PDFs, spreadsheets and phone photos you already have`}
           </p>
         </Reveal>
 

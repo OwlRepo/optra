@@ -53,8 +53,9 @@ export default function TermsPage() {
           Each plan includes a monthly allowance of matched line items and photo checks, as shown
           on the pricing page, and a monthly limit on AI usage. Allowances reset each calendar
           month (UTC); the trial allowance covers the whole trial. When a workspace reaches a cap,
-          that kind of work stops until the allowance resets. There is no overage charge. You can
-          upgrade your plan or add buyers at any time. Refunds are covered in the{' '}
+          that kind of work stops until the allowance resets. There is no overage charge. If you
+          reach a cap, contact us to change the plan or the number of buyers at{' '}
+          <LegalLink href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</LegalLink>. Refunds are covered in the{' '}
           <LegalLink href="/refund">refund policy</LegalLink>; the full refund window is{' '}
           {REFUND_WINDOW_DAYS} days.
         </p>
