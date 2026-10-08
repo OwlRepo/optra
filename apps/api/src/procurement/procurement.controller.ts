@@ -26,6 +26,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard'
 import { RolesGuard } from '../auth/guards/roles.guard'
 import { WorkspaceMemberGuard } from '../auth/guards/workspace-member.guard'
 import { ComparisonService } from './comparison.service'
+import { buildWorkbook, evidenceFilename } from './evidence-export'
 import { CompareDocumentsDto } from './dto/compare-documents.dto'
 import { attachmentDisposition } from '../common/http/content-disposition'
 import { ListComparisonRunsQueryDto } from './dto/list-comparison-runs-query.dto'
@@ -467,6 +468,32 @@ export class ProcurementController {
   @UseGuards(JwtAuthGuard, WorkspaceMemberGuard)
   listDiscrepancies(@Param('workspaceId') workspaceId: string, @Query() query: ListDiscrepanciesQueryDto) {
     return this.comparison.listFlags(workspaceId, query)
+  }
+
+  /**
+   * Evidence-trail workbook (Flags + Decisions). Same scope and member-readable
+   * guards as the list; declared before any `discrepancies/:flagId` route.
+   * Pagination fields in the query are ignored.
+   */
+  @Get('discrepancies/export')
+  @UseGuards(JwtAuthGuard, WorkspaceMemberGuard)
+  async exportDiscrepancies(
+    @Param('workspaceId') workspaceId: string,
+    @Query() query: ListDiscrepanciesQueryDto,
+    @Res() res: Response,
+  ): Promise<void> {
+    const { purchaseOrderId, invoiceId, status, runId } = query
+    const data = await this.comparison.exportFlags(workspaceId, { purchaseOrderId, invoiceId, status, runId })
+    const buffer = buildWorkbook(data)
+
+    res.set({
+      'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': attachmentDisposition(evidenceFilename(new Date())),
+      'Content-Length': String(buffer.length),
+      'X-Content-Type-Options': 'nosniff',
+      'Cache-Control': 'private, no-store',
+    })
+    res.send(buffer)
   }
 
   /**
