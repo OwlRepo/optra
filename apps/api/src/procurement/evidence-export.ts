@@ -106,18 +106,19 @@ export const FLAGS_HEADERS = [
 
 export const DECISIONS_HEADERS = ['Flag ID', 'SKU', 'Outcome', 'Note', 'By', 'Role', 'At (UTC ISO)'] as const
 
-/** Same wording as the review modal's citation text, plus "edited". */
+/** Mirrors `citationText` in discrepancy-review-modal.tsx. */
 export function citationSource(citation: EvidenceCitation | null): string {
   if (!citation) return ''
-  const parts: string[] = []
   if (citation.sourceRow !== null) {
-    parts.push(`row ${citation.sourceRow}`)
-    if (citation.sourceSheet) parts.push(`sheet ${citation.sourceSheet}`)
-  } else if (citation.extractionConfidence !== null) {
-    parts.push('read from PDF', `${Math.round(citation.extractionConfidence * 100)}% confidence`)
+    return citation.sourceSheet ? `sheet ${citation.sourceSheet}, row ${citation.sourceRow}` : `row ${citation.sourceRow}`
   }
-  if (citation.editedAt) parts.push('edited')
-  return parts.join(', ')
+  if (citation.editedAt) return 'edited by reviewer'
+  if (citation.sourceKind === 'manual') return 'added by reviewer'
+  const percent =
+    citation.extractionConfidence === null ? null : `${Math.round(citation.extractionConfidence * 100)}% confidence`
+  if (citation.sourceKind === 'image-extraction' && percent) return `read from photo, ${percent}`
+  if (percent) return `read from PDF, ${percent}`
+  return ''
 }
 
 export function evidenceFilename(date: Date): string {
@@ -126,18 +127,13 @@ export function evidenceFilename(date: Date): string {
 
 type Cell = string | number | null
 
-function toNumber(value: string | null): number | null {
-  if (value === null || value.trim() === '') return null
-  const parsed = Number(value)
-  return Number.isFinite(parsed) ? parsed : null
-}
+const PLAIN_DECIMAL = /^-?\d+(\.\d+)?$/
 
-// Numeric-looking values become numbers; anything else (units, currency codes)
-// stays text and goes through safeCell.
+// Only a plain decimal becomes a number; anything else keeps its text (through
+// safeCell) so no value is silently blanked or reinterpreted.
 function valueCell(value: string | null): Cell {
   if (value === null) return null
-  const parsed = toNumber(value)
-  return parsed === null ? safeCell(value) : parsed
+  return PLAIN_DECIMAL.test(value) ? Number(value) : safeCell(value)
 }
 
 const iso = (date: Date | null): string | null => (date ? date.toISOString() : null)
@@ -173,8 +169,8 @@ export function buildWorkbook({
       valueCell(flag.poValue),
       valueCell(flag.invoiceValue),
       valueCell(flag.receivedValue),
-      toNumber(flag.delta),
-      toNumber(flag.contractUnitPrice),
+      valueCell(flag.delta),
+      valueCell(flag.contractUnitPrice),
       safeCell(flag.reason),
       last ? OUTCOME_LABELS[last.outcome] : null,
       last ? safeCell(last.actorEmail) : null,

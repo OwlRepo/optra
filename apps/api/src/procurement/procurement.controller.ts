@@ -18,6 +18,7 @@ import {
   UseInterceptors,
 } from '@nestjs/common'
 import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express'
+import { Throttle } from '@nestjs/throttler'
 import type { Response } from 'express'
 import { extname } from 'path'
 import { CurrentUser, CurrentUserContext } from '../auth/decorators/current-user.decorator'
@@ -476,6 +477,7 @@ export class ProcurementController {
    * Pagination fields in the query are ignored.
    */
   @Get('discrepancies/export')
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @UseGuards(JwtAuthGuard, WorkspaceMemberGuard)
   async exportDiscrepancies(
     @Param('workspaceId') workspaceId: string,

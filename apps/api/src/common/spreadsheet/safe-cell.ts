@@ -1,4 +1,4 @@
-const FORMULA_LEAD = new Set(['=', '+', '-', '@', '\t', '\r'])
+const FORMULA_LEAD = new Set(['=', '+', '-', '@', '\t', '\r', '\n'])
 
 /**
  * Neutralises spreadsheet formula injection: a text cell whose first character

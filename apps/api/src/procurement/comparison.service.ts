@@ -10,7 +10,7 @@ import {
   ServiceUnavailableException,
   UnprocessableEntityException,
 } from '@nestjs/common'
-import { and, asc, count, desc, eq, gt, inArray, isNull, notExists, or, sql, type SQL } from 'drizzle-orm'
+import { and, asc, count, desc, eq, inArray, isNull, notExists, or, sql, type SQL } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import Papa from 'papaparse'
 import {
@@ -40,7 +40,7 @@ import { isReviewPending } from './procurement-review'
 import type { EvidenceCitation, EvidenceDecisionRow, EvidenceFlagRow } from './evidence-export'
 import { BillingGateService } from '../billing/billing-gate.service'
 
-export const EXPORT_MAX_FLAGS = 50_000
+export const EXPORT_MAX_FLAGS = 20_000
 const EXPORT_BATCH_SIZE = 1_000
 const EXPORT_ID_CHUNK = 5_000
 
@@ -418,7 +418,10 @@ function lineName(line?: { sku: string | null; description: string | null }): st
 
 @Injectable()
 export class ComparisonService {
+  /** test seam */
   exportMaxFlags: number = EXPORT_MAX_FLAGS
+  /** test seam */
+  exportBatchSize: number = EXPORT_BATCH_SIZE
 
   private readonly logger = new Logger(ComparisonService.name)
 
@@ -756,6 +759,8 @@ export class ComparisonService {
     return db
       .select({
         flag: discrepancyFlags,
+        // Full-precision cursor for keyset readers; ::text keeps microseconds a JS Date drops.
+        createdAtText: sql<string>`${discrepancyFlags.createdAt}::text`,
         po: {
           id: po.id,
           lineNumber: po.lineNumber,
@@ -863,32 +868,37 @@ export class ComparisonService {
       filters.runId ? eq(discrepancyFlags.comparisonRunId, filters.runId) : this.currentFlagScope(workspaceId),
     )
 
-    // Postgres keeps microseconds, a JS Date only milliseconds. Keyset on the
-    // raw column would compare a truncated cursor to the stored value and
-    // re-read the cursor row, so both order and cursor use the ms-truncated time.
-    const createdMs = sql<Date>`date_trunc('milliseconds', ${discrepancyFlags.createdAt})`
+    // Refuse from a COUNT before reading any flag row.
+    const [{ value: matching }] = await db
+      .select({ value: count() })
+      .from(discrepancyFlags)
+      .where(and(...conditions))
+    if (Number(matching) > this.exportMaxFlags) {
+      throw new UnprocessableEntityException('Too many flags to export at once; narrow the filters')
+    }
+
+    // Keyset on the raw created_at (full microseconds, via its ::text form)
+    // plus id, so the (workspace_id, status, created_at) index can serve it.
     const batches: Awaited<ReturnType<ComparisonService['flagCitationQuery']>> = []
-    let cursor: { createdAt: Date; id: string } | null = null
+    let cursor: { createdAt: string; id: string } | null = null
     for (;;) {
       const where: SQL | undefined = cursor
         ? and(
             ...conditions,
-            or(
-              sql`${createdMs} > ${cursor.createdAt.toISOString()}::timestamp`,
-              and(sql`${createdMs} = ${cursor.createdAt.toISOString()}::timestamp`, gt(discrepancyFlags.id, cursor.id)),
-            ),
+            sql`(${discrepancyFlags.createdAt}, ${discrepancyFlags.id}) > (${cursor.createdAt}::timestamp, ${cursor.id}::uuid)`,
           )
         : and(...conditions)
+      const limit = Math.min(this.exportBatchSize, this.exportMaxFlags - batches.length + 1)
       const rows = await this.flagCitationQuery(where)
-        .orderBy(asc(createdMs), asc(discrepancyFlags.id))
-        .limit(EXPORT_BATCH_SIZE)
+        .orderBy(asc(discrepancyFlags.createdAt), asc(discrepancyFlags.id))
+        .limit(limit)
       batches.push(...rows)
       if (batches.length > this.exportMaxFlags) {
         throw new UnprocessableEntityException('Too many flags to export at once; narrow the filters')
       }
-      if (rows.length < EXPORT_BATCH_SIZE) break
-      const last = rows[rows.length - 1].flag
-      cursor = { createdAt: last.createdAt, id: last.id }
+      if (rows.length < limit) break
+      const last = rows[rows.length - 1]
+      cursor = { createdAt: last.createdAtText, id: last.flag.id }
     }
 
     if (batches.length === 0) return { flags: [], decisions: [] }
